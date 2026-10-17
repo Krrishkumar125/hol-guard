@@ -6,6 +6,9 @@ use std::time::Instant;
 
 use crate::{CapturedOutput, Isolation, PinnedCommand};
 
+#[path = "source_ack.rs"]
+mod acknowledgement;
+
 pub(crate) struct SourceGate<'a> {
     pub gate: &'a mut dyn SourceLaunchGate,
     pub frame_before_commit: bool,
@@ -67,15 +70,16 @@ impl PinnedCommand {
 
     /// Deliver a complete NUL-terminated source frame before committing, then
     /// release a second empty frame after authorization. The trusted bootstrap
-    /// must acknowledge source readiness through a separately owned channel in
-    /// `commit`, and dispatch in `released`. Neither callback may wait unboundedly.
+    /// must send readiness `R` and dispatch `S` to reserved fd6. The process
+    /// owner waits for each acknowledgment within the deadline before calling
+    /// the corresponding gate callback. Other inherited files start at fd7.
     pub fn capture_acknowledged_source(
         self,
         source: &[u8],
         cap: usize,
         deadline: Instant,
         cancel: &AtomicBool,
-        isolation: Isolation,
+        mut isolation: Isolation,
         gate: &mut dyn SourceLaunchGate,
     ) -> io::Result<CapturedOutput> {
         if cap == 0 || source.len() > 4 * 1024 * 1024 || source.contains(&0) {
@@ -84,6 +88,19 @@ impl PinnedCommand {
                 "invalid frozen source frame",
             ));
         }
+        use std::os::fd::OwnedFd;
+        use std::os::unix::net::UnixStream;
+        let (channel, writer) = UnixStream::pair()?;
+        channel.set_nonblocking(true)?;
+        isolation
+            .inherited_files
+            .insert(0, std::fs::File::from(OwnedFd::from(writer)));
+        let mut acknowledged = acknowledgement::Gate {
+            authority: gate,
+            channel,
+            deadline,
+            cancel,
+        };
         crate::unix::capture(
             self,
             source,
@@ -92,7 +109,7 @@ impl PinnedCommand {
             cancel,
             isolation,
             Some(SourceGate {
-                gate,
+                gate: &mut acknowledged,
                 frame_before_commit: true,
             }),
         )

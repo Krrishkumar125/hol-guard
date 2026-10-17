@@ -51,36 +51,6 @@ fn command(root: &Path) -> PinnedCommand {
 
 #[test]
 fn acknowledged_frame_is_ready_before_claim_and_denial_cannot_run() {
-    use std::io::Read;
-    use std::os::fd::OwnedFd;
-    use std::os::unix::net::UnixStream;
-
-    struct ReadyGate {
-        stream: UnixStream,
-        allow: bool,
-        ready: bool,
-        started: bool,
-    }
-    impl SourceLaunchGate for ReadyGate {
-        fn commit(&mut self) -> io::Result<()> {
-            let mut byte = [0];
-            self.stream.read_exact(&mut byte)?;
-            assert_eq!(byte, *b"R");
-            self.ready = true;
-            if self.allow {
-                Ok(())
-            } else {
-                Err(io::ErrorKind::PermissionDenied.into())
-            }
-        }
-        fn released(&mut self) -> io::Result<()> {
-            let mut byte = [0];
-            self.stream.read_exact(&mut byte)?;
-            assert_eq!(byte, *b"S");
-            self.started = true;
-            Ok(())
-        }
-    }
     for allow in [false, true] {
         let root = tempfile::tempdir().unwrap();
         let source = format!("#{}\nprintf executed > result", "x".repeat(300_000));
@@ -102,35 +72,66 @@ fn acknowledged_frame_is_ready_before_claim_and_denial_cannot_run() {
             &[("LC_ALL".into(), "C".into())],
         )
         .unwrap();
-        let (reader, writer) = UnixStream::pair().unwrap();
-        reader
-            .set_read_timeout(Some(Duration::from_secs(2)))
-            .unwrap();
-        let mut gate = ReadyGate {
-            stream: reader,
+        let mut gate = Gate {
             allow,
-            ready: false,
-            started: false,
+            ..Gate::default()
         };
         let result = command.capture_acknowledged_source(
             source.as_bytes(),
             1024,
             Instant::now() + Duration::from_secs(5),
             &AtomicBool::new(false),
-            Isolation {
-                inherited_files: vec![std::fs::File::from(OwnedFd::from(writer))],
-                ..Isolation::default()
-            },
+            Isolation::default(),
             &mut gate,
         );
-        assert!(gate.ready);
-        assert_eq!(gate.started, allow);
+        assert_eq!(gate.commits, 1);
+        assert_eq!(gate.releases, usize::from(allow));
         assert_eq!(root.path().join("result").exists(), allow);
         if allow {
             assert_eq!(result.unwrap().exit_code, Some(0));
         } else {
             assert_eq!(result.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
         }
+    }
+}
+
+#[test]
+fn missing_or_invalid_ack_never_claims_and_missing_start_is_not_retried() {
+    for (ready, started, expected_claims) in [("", "S", 0), ("X", "S", 0), ("R", "X", 1)] {
+        let root = tempfile::tempdir().unwrap();
+        let bootstrap = format!(
+            "IFS= read -r -d '' code || exit 125; printf '{ready}' >&6; \
+             IFS= read -r -d '' auth || exit 125; printf '{started}' >&6; \
+             IFS= read -r -d '' never || exit 125"
+        );
+        let command = PinnedCommand::new(
+            Path::new("/bin/bash"),
+            &[
+                OsStr::new("--noprofile"),
+                OsStr::new("--norc"),
+                OsStr::new("-c"),
+                OsStr::new(&bootstrap),
+            ],
+            &std::fs::canonicalize(root.path()).unwrap(),
+            &[],
+        )
+        .unwrap();
+        let mut gate = Gate {
+            allow: true,
+            ..Gate::default()
+        };
+        let result = command.capture_acknowledged_source(
+            b"printf forbidden > result",
+            1024,
+            Instant::now() + Duration::from_millis(300),
+            &AtomicBool::new(false),
+            Isolation::default(),
+            &mut gate,
+        );
+        assert!(result.is_err());
+        assert_eq!(gate.commits, expected_claims);
+        assert_eq!(gate.releases, 0);
+        assert!(!root.path().join("result").exists());
     }
 }
 
