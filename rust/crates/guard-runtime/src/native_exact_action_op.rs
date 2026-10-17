@@ -7,6 +7,8 @@
 //! reason, so only a malformed request is an `error`.
 
 pub(crate) mod bash_capture;
+#[cfg(target_os = "macos")]
+mod bash_launch;
 mod bash_policy;
 mod binding;
 pub(crate) mod context;

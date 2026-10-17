@@ -30,6 +30,7 @@ use owner::{require_wait_custody, ChildOwner};
 #[cfg(target_os = "macos")]
 use process_io::drain_report;
 use process_io::{check_protocol_budget, drain, nonblocking, pipe, write_without_sigpipe};
+pub(crate) use process_io::{nonblocking as control_nonblocking, pipe as control_pipe};
 #[cfg(test)]
 #[path = "unix/process_regressions.rs"]
 mod process_regressions;
@@ -43,6 +44,7 @@ pub(crate) fn capture(
     isolation: Isolation,
     source_gate: Option<crate::source_launch::SourceGate<'_>>,
 ) -> io::Result<CapturedOutput> {
+    crate::source_launch::validate_deferred_outputs(&isolation, source_gate.as_ref())?;
     let window = RequestWindow { deadline, cancel };
     window.require_launch()?;
     command.verify_bindings()?;
@@ -83,11 +85,12 @@ pub(crate) fn capture(
     }
     // Duplicate above the reserved child descriptors before dup2: inherited
     // descriptors can otherwise collide with the exec/status descriptors.
-    let reserved = i32::try_from(isolation.inherited_files.len())
-        .map_err(|_| crate::bound_fs::changed())?
-        .checked_add(6)
-        .ok_or_else(crate::bound_fs::changed)?
-        .max(10);
+    let reserved =
+        i32::try_from(isolation.inherited_files.len() + isolation.deferred_outputs.len())
+            .map_err(|_| crate::bound_fs::changed())?
+            .checked_add(6)
+            .ok_or_else(crate::bound_fs::changed)?
+            .max(10);
     let exe_fd = unsafe {
         libc::fcntl(
             command.executable.as_raw_fd(),
@@ -122,11 +125,12 @@ pub(crate) fn capture(
             }
         })
         .collect::<io::Result<Vec<_>>>()?;
+    let outputs = crate::deferred_output::prepare_all(&isolation.deferred_outputs, reserved)?;
     let parent = unsafe { libc::getpid() };
     #[cfg(target_os = "macos")]
-    let mut descriptors = supervisor::DescriptorTable::prepare(inherited.len())?;
+    let mut descriptors = supervisor::DescriptorTable::prepare(inherited.len() + outputs.len())?;
     #[cfg(target_os = "macos")]
-    let keep_descriptors = (0..6 + inherited.len() as i32)
+    let keep_descriptors = (0..6 + inherited.len() as i32 + outputs.len() as i32)
         .chain(std::iter::once(launch_fd.as_raw_fd()))
         .collect::<Vec<_>>();
     let launch_deadline = LaunchDeadline::prepare(deadline)?;
@@ -159,6 +163,8 @@ pub(crate) fn capture(
             env: &env_ptr,
             deadline: &launch_deadline,
             inherited: &inherited,
+            outputs: &outputs,
+            creation_mask: isolation.creation_mask,
             #[cfg(target_os = "macos")]
             keep_descriptors: &keep_descriptors,
             #[cfg(target_os = "macos")]
@@ -184,6 +190,7 @@ pub(crate) fn capture(
     // Only the child owns inherited pipe/socket writers after spawn. Keeping
     // parent copies would hide EOF from native acknowledgment/output readers.
     drop(inherited);
+    drop(outputs);
     drop(isolation.inherited_files);
     #[cfg(target_os = "macos")]
     drop(foreign_report_write);
@@ -423,6 +430,12 @@ pub(crate) fn capture(
                 // approve execution using the cancellation snapshot from fork.
                 if window.stopped() {
                     continue;
+                }
+                if !isolation.deferred_outputs.is_empty() {
+                    for output in &isolation.deferred_outputs {
+                        output.verify_before()?;
+                    }
+                    transfer.prepare_effects(&window)?;
                 }
                 match write_without_sigpipe(fd.as_raw_fd(), &[1]) {
                     Ok(1) => {

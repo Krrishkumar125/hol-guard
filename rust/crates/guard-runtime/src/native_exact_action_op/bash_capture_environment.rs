@@ -22,7 +22,19 @@ pub(super) fn capture(request: &NativeBashCaptureV1) -> Result<BTreeMap<String, 
     for name in &stamp.environment_names {
         if matches!(
             name.as_str(),
-            "BASH_ENV" | "ENV" | "SHELLOPTS" | "BASHOPTS" | "POSIXLY_CORRECT" | "GLOBIGNORE"
+            "BASH_ENV"
+                | "ENV"
+                | "SHELLOPTS"
+                | "BASHOPTS"
+                | "POSIXLY_CORRECT"
+                | "GLOBIGNORE"
+                | "BASH_ARGV0"
+                | "BASH_COMPAT"
+                | "BASH_XTRACEFD"
+                | "LOCPATH"
+                | "PATH_LOCALE"
+                | "GCONV_PATH"
+                | "NLSPATH"
         ) || name.starts_with("LD_")
             || name.starts_with("DYLD_")
             || name.starts_with("BASH_FUNC_")
@@ -51,5 +63,51 @@ pub(super) fn capture(request: &NativeBashCaptureV1) -> Result<BTreeMap<String, 
     {
         return Err("bash_startup_environment_unproven");
     }
+    if request.environment.iter().any(|(name, value)| {
+        (name == "LANG" || name.starts_with("LC_"))
+            && !value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"_.@+-".contains(&byte))
+    }) {
+        return Err("bash_locale_configuration_unproven");
+    }
     Ok(environment)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn startup_inputs_and_locale_paths_are_never_silently_discarded() {
+        let (_root, mut request) = super::super::tests::fixture();
+        for name in [
+            "BASH_ARGV0",
+            "BASH_COMPAT",
+            "BASH_XTRACEFD",
+            "LOCPATH",
+            "PATH_LOCALE",
+            "GCONV_PATH",
+            "NLSPATH",
+        ] {
+            request
+                .execution_environment
+                .environment_names
+                .push(name.into());
+            assert_eq!(
+                super::capture(&request),
+                Err("bash_startup_environment_unproven")
+            );
+            request.execution_environment.environment_names.pop();
+        }
+        request
+            .execution_environment
+            .environment_names
+            .push("LC_ALL".into());
+        request
+            .environment
+            .insert("LC_ALL".into(), "/unobserved/locale".into());
+        assert_eq!(
+            super::capture(&request),
+            Err("bash_locale_configuration_unproven")
+        );
+    }
 }

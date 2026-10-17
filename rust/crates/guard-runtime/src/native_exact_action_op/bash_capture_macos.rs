@@ -19,6 +19,9 @@ use guard_contracts::{
 use sha2::{Digest, Sha256};
 
 #[cfg(test)]
+#[path = "bash_launch_tests.rs"]
+mod launch_tests;
+#[cfg(test)]
 #[path = "bash_policy_tests.rs"]
 mod policy_tests;
 #[cfg(test)]

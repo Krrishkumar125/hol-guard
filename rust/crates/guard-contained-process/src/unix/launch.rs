@@ -131,6 +131,8 @@ pub(super) struct ChildSetup<'a> {
     pub(super) env: &'a [*const libc::c_char],
     pub(super) deadline: &'a LaunchDeadline,
     pub(super) inherited: &'a [std::os::fd::OwnedFd],
+    pub(super) outputs: &'a [crate::deferred_output::ChildOutput],
+    pub(super) creation_mask: Option<u32>,
     #[cfg(target_os = "macos")]
     pub(super) keep_descriptors: &'a [i32],
     #[cfg(target_os = "macos")]
@@ -241,9 +243,22 @@ impl ChildSetup<'_> {
                 }
             }
         }
+        for (index, output) in self.outputs.iter().enumerate() {
+            if unsafe {
+                libc::dup2(
+                    output.directory.as_raw_fd(),
+                    6 + self.inherited.len() as i32 + index as i32,
+                )
+            } < 0
+            {
+                unsafe {
+                    child_failure(4, 11);
+                }
+            }
+        }
         #[cfg(target_os = "linux")]
         {
-            let first = 6 + self.inherited.len() as u32;
+            let first = 6 + self.inherited.len() as u32 + self.outputs.len() as u32;
             let gate = self.launch as u32;
             // Keep the already-open CLOEXEC gate above the reserved targets.
             // Duplicating it into a new low target would raise the existing
@@ -300,6 +315,19 @@ impl ChildSetup<'_> {
         }
         unsafe {
             await_launch(self.launch, 4, self.deadline);
+        }
+        if let Some(mask) = self.creation_mask {
+            unsafe {
+                libc::umask(mask as libc::mode_t);
+            }
+        }
+        for (index, output) in self.outputs.iter().enumerate() {
+            if !unsafe { output.open_at_target(6 + self.inherited.len() as i32 + index as i32, 6) }
+            {
+                unsafe {
+                    child_failure(4, 11);
+                }
+            }
         }
         #[cfg(target_os = "linux")]
         unsafe {

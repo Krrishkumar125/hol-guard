@@ -14,6 +14,8 @@ use std::time::Instant;
 pub mod bound_fs;
 #[cfg(unix)]
 pub mod bound_output;
+#[cfg(unix)]
+pub mod deferred_output;
 pub mod probe;
 pub use probe::main as probe_main;
 pub mod runtime_files;
@@ -75,6 +77,10 @@ pub struct Isolation {
     pub node_virtual_address_space: bool,
     #[cfg(unix)]
     pub inherited_files: Vec<File>,
+    #[cfg(unix)]
+    pub deferred_outputs: Vec<deferred_output::DeferredOutput>,
+    #[cfg(unix)]
+    pub creation_mask: Option<u32>,
     #[cfg(windows)]
     pub app_container: Option<windows::AppContainer>,
     #[cfg(windows)]
@@ -182,6 +188,22 @@ impl PinnedCommand {
     }
     pub fn cwd(&self) -> &Path {
         self.cwd.path()
+    }
+
+    /// Set exact arguments and environment without resolving the executable
+    /// or working directory again. The held image and all bindings survive.
+    pub fn with_invocation(
+        mut self,
+        arguments: &[&OsStr],
+        environment: &[(OsString, OsString)],
+    ) -> io::Result<Self> {
+        self.verify_bindings()?;
+        self.arguments = arguments
+            .iter()
+            .map(|argument| argument.to_os_string())
+            .collect();
+        self.environment = environment.to_vec();
+        Ok(self)
     }
     pub(crate) fn verify_bindings(&self) -> io::Result<()> {
         self.source_directory.verify()?;

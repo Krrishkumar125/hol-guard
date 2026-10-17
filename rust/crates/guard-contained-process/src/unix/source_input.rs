@@ -14,6 +14,7 @@ pub(super) struct Input<'input, 'gate> {
     framed: bool,
     committed: bool,
     released: bool,
+    effects_prepared: bool,
 }
 
 impl<'input, 'gate> Input<'input, 'gate> {
@@ -25,7 +26,18 @@ impl<'input, 'gate> Input<'input, 'gate> {
             framed: false,
             committed: false,
             released: false,
+            effects_prepared: false,
         }
+    }
+
+    pub(super) fn prepare_effects(&mut self, window: &RequestWindow<'_>) -> io::Result<()> {
+        window.require_launch()?;
+        if !self.effects_prepared {
+            let gate = self.gate.as_mut().ok_or(io::ErrorKind::PermissionDenied)?;
+            gate.gate.prepare_effects()?;
+            self.effects_prepared = true;
+        }
+        window.require_launch()
     }
 
     pub(super) fn write_body(&mut self, stdin: &mut Option<OwnedFd>) -> io::Result<()> {
