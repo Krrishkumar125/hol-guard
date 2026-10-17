@@ -154,6 +154,8 @@ mod native_exact_action;
 pub use native_exact_action::*;
 mod native_bash_subject;
 pub use native_bash_subject::*;
+mod native_bash_launch;
+pub use native_bash_launch::*;
 
 mod workflow_capability;
 pub use workflow_capability::*;

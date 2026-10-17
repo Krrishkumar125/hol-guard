@@ -245,6 +245,14 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::ContextDigest(request) => {
                 crate::context_digest::evaluate_context_digest_request(&request)
             }
+            ResidentOperationV1::NativeBashPrepare(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::prepare_bash_request(&request, store)
+            }
+            ResidentOperationV1::NativeBashExecute(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::execute_bash_request(&request, store)
+            }
             ResidentOperationV1::CommandEffectDecide(request) => {
                 crate::command_effect::evaluate_command_effect_request(&request)
             }
@@ -583,6 +591,8 @@ pub(crate) fn evaluate_resident_bytes(
 /// The Guard home an operation acts on, for operations that open per-home state.
 fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
     match operation {
+        ResidentOperationV1::NativeBashPrepare(request) => Some(&request.capture.guard_home),
+        ResidentOperationV1::NativeBashExecute(request) => Some(&request.capture.guard_home),
         ResidentOperationV1::ArchiveAcquisition(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirect(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirectEvidenceDrain(request) => Some(&request.guard_home),
@@ -644,6 +654,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
 /// The store an operation opens, for operations that carry an explicit path.
 fn operation_store_path(operation: &ResidentOperationV1) -> Option<&str> {
     match operation {
+        ResidentOperationV1::NativeBashExecute(request) => Some(&request.claim.store_path),
         ResidentOperationV1::ApprovalReuseDiagnostic(request) => Some(&request.store_path),
         ResidentOperationV1::ClaimApprovalReuseDecisions(request) => Some(&request.store_path),
         ResidentOperationV1::GuardStore(request) => Some(&request.store_path),

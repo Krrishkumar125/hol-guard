@@ -17,7 +17,36 @@ use crate::policy_store::{
     policy_store_approval::launch_fence::LaunchPolicyFence, PolicySnapshotStore,
 };
 
-const ARTIFACT: &str = "native-bash-launch:v1";
+pub(super) const ARTIFACT: &str = "native-bash-launch:v1";
+
+#[derive(Debug)]
+pub(crate) struct LaunchFailure {
+    pub(crate) error: io::Error,
+    pub(crate) grant_claimed: bool,
+    pub(crate) dispatch_acknowledged: bool,
+}
+
+impl From<io::Error> for LaunchFailure {
+    fn from(error: io::Error) -> Self {
+        Self {
+            error,
+            grant_claimed: false,
+            dispatch_acknowledged: false,
+        }
+    }
+}
+
+impl From<io::ErrorKind> for LaunchFailure {
+    fn from(kind: io::ErrorKind) -> Self {
+        io::Error::from(kind).into()
+    }
+}
+
+pub(crate) struct LaunchOutput {
+    pub(crate) output: CapturedOutput,
+    pub(crate) grant_claimed: bool,
+    pub(crate) dispatch_acknowledged: bool,
+}
 
 pub(crate) fn binding(
     subject: &NativeBashSubjectV1,
@@ -56,7 +85,7 @@ pub(crate) fn execute_saved(
     claim: &ClaimApprovalReuseDecisionsRequestV1,
     deadline: Instant,
     cancel: &AtomicBool,
-) -> io::Result<CapturedOutput> {
+) -> Result<LaunchOutput, LaunchFailure> {
     let refuse = |_| io::Error::from(io::ErrorKind::PermissionDenied);
     store
         .require_guard_home(&request.guard_home)
@@ -67,23 +96,7 @@ pub(crate) fn execute_saved(
     store
         .require_store_path(&claim.store_path)
         .map_err(refuse)?;
-    if envelope.recording_only
-        || envelope.event != "PreToolUse"
-        || envelope.harness != request.harness
-        || envelope.source.home_dir != request.home_dir
-        || envelope.source.cwd.as_deref() != Some(request.cwd.as_str())
-        || envelope.source.execution_environment.as_ref() != Some(&request.execution_environment)
-        || envelope
-            .raw_payload
-            .get("tool_name")
-            .and_then(|value| value.as_str())
-            != Some("bash")
-        || envelope
-            .raw_payload
-            .pointer("/tool_input/command")
-            .and_then(|value| value.as_str())
-            != Some(request.command.as_str())
-    {
+    if !context_matches(request, envelope) {
         return Err(io::ErrorKind::PermissionDenied.into());
     }
     let fence = store.fence_for_launch(envelope).map_err(refuse)?;
@@ -100,8 +113,43 @@ pub(crate) fn execute_saved(
         fence: Some(fence),
         claim,
         claimed: false,
+        dispatched: false,
     };
-    super::bash_launch::execute(captured, deadline, cancel, &mut gate)
+    match super::bash_launch::execute(captured, deadline, cancel, &mut gate) {
+        Ok(output) => Ok(LaunchOutput {
+            output,
+            grant_claimed: gate.claimed,
+            dispatch_acknowledged: gate.dispatched,
+        }),
+        Err(error) => Err(LaunchFailure {
+            error,
+            grant_claimed: gate.claimed,
+            dispatch_acknowledged: gate.dispatched,
+        }),
+    }
+}
+
+pub(super) fn context_matches(
+    request: &NativeBashCaptureV1,
+    envelope: &GuardHookEnvelopeV2,
+) -> bool {
+    !(envelope.schema != guard_contracts::GUARD_HOOK_ENVELOPE_V2_SCHEMA
+        || envelope.recording_only
+        || envelope.event != "PreToolUse"
+        || envelope.harness != request.harness
+        || envelope.source.home_dir != request.home_dir
+        || envelope.source.cwd.as_deref() != Some(request.cwd.as_str())
+        || envelope.source.execution_environment.as_ref() != Some(&request.execution_environment)
+        || envelope
+            .raw_payload
+            .get("tool_name")
+            .and_then(|value| value.as_str())
+            != Some("bash")
+        || envelope
+            .raw_payload
+            .pointer("/tool_input/command")
+            .and_then(|value| value.as_str())
+            != Some(request.command.as_str()))
 }
 
 fn matches_grant(
@@ -132,6 +180,7 @@ struct Gate<'store> {
     fence: Option<LaunchPolicyFence<'store>>,
     claim: ClaimApprovalReuseDecisionsRequestV1,
     claimed: bool,
+    dispatched: bool,
 }
 
 impl Gate<'_> {
@@ -168,6 +217,7 @@ impl SourceLaunchGate for Gate<'_> {
         if !self.claimed || self.fence.take().is_none() {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
+        self.dispatched = true;
         Ok(())
     }
 }

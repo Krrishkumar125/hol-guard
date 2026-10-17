@@ -16,6 +16,8 @@ use std::sync::atomic::AtomicBool;
 
 #[path = "bash_grant_lifecycle_tests.rs"]
 mod lifecycle_tests;
+#[path = "bash_grant_route_tests.rs"]
+mod route_tests;
 
 fn policy_store(request: &NativeBashCaptureV1) -> (PolicySnapshotStore, GuardHookEnvelopeV2) {
     let root = Path::new(&request.guard_home);
@@ -188,6 +190,8 @@ fn run(
         Instant::now() + Duration::from_secs(5),
         &AtomicBool::new(false),
     )
+    .map(|result| result.output)
+    .map_err(|failure| failure.error)
 }
 
 fn persistent(

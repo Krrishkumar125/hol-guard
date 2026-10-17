@@ -13,7 +13,13 @@ mod bash_grant;
 mod bash_host;
 #[cfg(target_os = "macos")]
 mod bash_launch;
+#[cfg(target_os = "macos")]
 mod bash_policy;
+mod bash_route;
+pub(crate) use bash_route::observe_host_bytes as observe_bash_host_bytes;
+pub(crate) use bash_route::{
+    execute_request as execute_bash_request, prepare_request as prepare_bash_request,
+};
 mod binding;
 pub(crate) mod context;
 mod env_launch;

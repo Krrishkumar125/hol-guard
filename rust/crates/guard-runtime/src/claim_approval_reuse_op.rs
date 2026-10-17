@@ -58,6 +58,7 @@ fn evaluate(request: &ClaimApprovalReuseDecisionsRequestV1) -> Result<Value, Str
 /// A launch owner must use the store's current clock, never the earlier
 /// preview timestamp carried by the transport. This still uses the same
 /// authenticated rows and atomic claim transaction.
+#[cfg(target_os = "macos")]
 pub(crate) fn claim_now(request: &ClaimApprovalReuseDecisionsRequestV1) -> Result<bool, String> {
     let result = evaluate_with_clock(request, true)?;
     result

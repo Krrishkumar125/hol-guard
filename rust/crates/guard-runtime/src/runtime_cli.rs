@@ -69,6 +69,10 @@ pub(super) fn run() -> Result<(), String> {
             let response = oneshot::evaluate_hook_bytes(&bytes)?;
             write_bytes_response(&response)
         }
+        [command, flag] if command == "native-bash-host-context" && flag == "--stdin" => {
+            let bytes = read_stdin_bounded()?;
+            write_bytes_response(&native_exact_action_op::observe_bash_host_bytes(&bytes)?)
+        }
         [command, flag] if policy_snapshot_build::is_command(command) && flag == "--stdin" => {
             let response = policy_snapshot_build::run_command(command, io::stdin().lock())?;
             write_bytes_response(&response)

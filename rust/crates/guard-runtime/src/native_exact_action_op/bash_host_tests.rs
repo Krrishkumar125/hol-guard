@@ -147,3 +147,44 @@ fn bash_native_sink_observes_the_current_process_and_actual_mask() {
     assert!(observed.file_creation_mask.is_some());
     assert!(observed.execution_environment.has_valid_shape());
 }
+
+#[test]
+fn bash_host_cli_contract_observes_actual_context_and_rejects_unknown_versions() {
+    use guard_contracts::{
+        NativeBashHostRequestV1, NativeBashHostResultV1, NATIVE_BASH_HOST_REQUEST_SCHEMA,
+    };
+    let root = tempfile::tempdir().unwrap();
+    let mut request = NativeBashHostRequestV1 {
+        schema: NATIVE_BASH_HOST_REQUEST_SCHEMA.into(),
+        request_id: "host-context-test".into(),
+        capture: intended(root.path()),
+        budget_ms: 1000,
+    };
+    let evaluate = |request: &NativeBashHostRequestV1| -> NativeBashHostResultV1 {
+        serde_json::from_slice(
+            &super::super::bash_route::observe_host_bytes(&serde_json::to_vec(request).unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    let result = evaluate(&request);
+    assert_eq!(result.status, "ok");
+    let capture = result.payload.unwrap();
+    assert_ne!(capture.cwd, request.capture.cwd);
+    assert_ne!(capture.home_dir, request.capture.home_dir);
+    assert!(capture.file_creation_mask.is_some());
+    assert!(
+        !root.path().join("guard").exists(),
+        "observation creates no Guard state"
+    );
+    request.schema = "guard-native-bash-host-request.v99".into();
+    let refused = evaluate(&request);
+    assert_eq!(refused.status, "error");
+    assert!(refused.payload.is_none());
+    let mut unknown = serde_json::to_value(&request).unwrap();
+    unknown["allow"] = serde_json::Value::Bool(true);
+    assert!(
+        super::super::bash_route::observe_host_bytes(&serde_json::to_vec(&unknown).unwrap())
+            .is_err()
+    );
+}

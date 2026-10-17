@@ -5,9 +5,10 @@ use std::sync::{Arc, MutexGuard};
 use guard_contracts::GuardHookEnvelopeV2;
 
 use crate::policy_enforcement::AdmittedPolicySnapshot;
+#[cfg(target_os = "macos")]
+use crate::policy_store::policy_store_authority;
 use crate::policy_store::{
-    now_ms, policy_store_authority, policy_store_command_authority::CommandAuthorityLease,
-    PolicySnapshotStore, PolicyState,
+    now_ms, policy_store_command_authority::CommandAuthorityLease, PolicySnapshotStore, PolicyState,
 };
 
 pub(crate) struct LaunchPolicyFence<'store> {
@@ -16,6 +17,7 @@ pub(crate) struct LaunchPolicyFence<'store> {
     _command: Option<CommandAuthorityLease>,
     snapshot: Arc<AdmittedPolicySnapshot>,
     _state: MutexGuard<'store, PolicyState>,
+    #[cfg(target_os = "macos")]
     store: &'store PolicySnapshotStore,
 }
 
@@ -24,6 +26,7 @@ impl LaunchPolicyFence<'_> {
         self.snapshot.as_ref()
     }
 
+    #[cfg(target_os = "macos")]
     pub(crate) fn require_current(&self) -> Result<(), String> {
         if self.snapshot.expires_at_ms <= now_ms()?
             || self
@@ -61,6 +64,7 @@ impl PolicySnapshotStore {
             _state: state,
             _command: command,
             snapshot,
+            #[cfg(target_os = "macos")]
             store: self,
         })
     }
