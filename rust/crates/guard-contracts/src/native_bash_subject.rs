@@ -10,6 +10,20 @@ use sha2::{Digest, Sha256};
 /// Only descriptor inspection is available; this advertises no launch authority.
 pub const NATIVE_BASH_SUBJECT_INSPECTION_FEATURE: &str = "native-bash-subject-inspection-v1";
 
+/// Values the bounded Bash owner preserves from the final host process.
+/// Other exports are observed by name and remain withheld from the child.
+pub const NATIVE_BASH_SELECTED_ENVIRONMENT_NAMES: &[&str] = &[
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LC_COLLATE",
+    "LC_MESSAGES",
+    "LC_NUMERIC",
+    "LC_TIME",
+    "LC_MONETARY",
+    "TMPDIR",
+];
+
 /// Read-only resident inspection. Supplied context is not execution authority.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]

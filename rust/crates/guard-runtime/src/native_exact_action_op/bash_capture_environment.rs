@@ -2,17 +2,7 @@
 
 use super::{BTreeMap, NativeBashCaptureV1, Result};
 
-const SELECTED: &[&str] = &[
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "LC_COLLATE",
-    "LC_MESSAGES",
-    "LC_NUMERIC",
-    "LC_TIME",
-    "LC_MONETARY",
-    "TMPDIR",
-];
+use guard_contracts::NATIVE_BASH_SELECTED_ENVIRONMENT_NAMES as SELECTED;
 
 pub(super) fn capture(request: &NativeBashCaptureV1) -> Result<BTreeMap<String, String>> {
     let stamp = &request.execution_environment;

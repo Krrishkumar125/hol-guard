@@ -10,6 +10,8 @@ pub(crate) mod bash_capture;
 #[cfg(target_os = "macos")]
 mod bash_grant;
 #[cfg(target_os = "macos")]
+mod bash_host;
+#[cfg(target_os = "macos")]
 mod bash_launch;
 mod bash_policy;
 mod binding;
