@@ -6,6 +6,11 @@ use std::time::Instant;
 
 use crate::{CapturedOutput, Isolation, PinnedCommand};
 
+pub(crate) struct SourceGate<'a> {
+    pub gate: &'a mut dyn SourceLaunchGate,
+    pub frame_before_commit: bool,
+}
+
 pub trait SourceLaunchGate {
     /// Revalidate current authority and atomically claim the grant. Keep any
     /// launch fence held until `released` or this capture returns an error.
@@ -46,7 +51,51 @@ impl PinnedCommand {
                 "invalid frozen source frame",
             ));
         }
-        crate::unix::capture(self, source, cap, deadline, cancel, isolation, Some(gate))
+        crate::unix::capture(
+            self,
+            source,
+            cap,
+            deadline,
+            cancel,
+            isolation,
+            Some(SourceGate {
+                gate,
+                frame_before_commit: false,
+            }),
+        )
+    }
+
+    /// Deliver a complete NUL-terminated source frame before committing, then
+    /// release a second empty frame after authorization. The trusted bootstrap
+    /// must acknowledge source readiness through a separately owned channel in
+    /// `commit`, and dispatch in `released`. Neither callback may wait unboundedly.
+    pub fn capture_acknowledged_source(
+        self,
+        source: &[u8],
+        cap: usize,
+        deadline: Instant,
+        cancel: &AtomicBool,
+        isolation: Isolation,
+        gate: &mut dyn SourceLaunchGate,
+    ) -> io::Result<CapturedOutput> {
+        if cap == 0 || source.len() > 4 * 1024 * 1024 || source.contains(&0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid frozen source frame",
+            ));
+        }
+        crate::unix::capture(
+            self,
+            source,
+            cap,
+            deadline,
+            cancel,
+            isolation,
+            Some(SourceGate {
+                gate,
+                frame_before_commit: true,
+            }),
+        )
     }
 }
 

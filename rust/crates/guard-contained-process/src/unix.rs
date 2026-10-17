@@ -41,7 +41,7 @@ pub(crate) fn capture(
     deadline: Instant,
     cancel: &AtomicBool,
     isolation: Isolation,
-    source_gate: Option<&mut dyn crate::SourceLaunchGate>,
+    source_gate: Option<crate::source_launch::SourceGate<'_>>,
 ) -> io::Result<CapturedOutput> {
     let window = RequestWindow { deadline, cancel };
     window.require_launch()?;
