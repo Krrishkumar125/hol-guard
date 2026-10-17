@@ -28,7 +28,7 @@ pub(crate) mod approval_v4_secure_state;
 #[path = "native_review_origin.rs"]
 pub(crate) mod native_review_origin;
 #[path = "policy_store_approval.rs"]
-mod policy_store_approval;
+pub(crate) mod policy_store_approval;
 #[path = "policy_store_authority.rs"]
 mod policy_store_authority;
 #[path = "policy_store_business_floor.rs"]
