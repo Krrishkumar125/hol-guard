@@ -2,8 +2,10 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use guard_command::bash_approval::{graph, subject, MAX_SOURCE_BYTES};
@@ -269,7 +271,30 @@ impl graph::Resolver for Resolver<'_> {
     }
 }
 
+pub(crate) struct CapturedReport {
+    pub(crate) directory: Arc<Directory>,
+    pub(crate) leaf: OsString,
+    pub(crate) append: bool,
+}
+
+/// Constructed only from native observations, never from a serialized subject.
+pub(crate) struct CapturedBash {
+    pub(crate) subject: NativeBashSubjectV1,
+    pub(crate) graph: graph::Graph,
+    pub(crate) interpreter: PinnedCommand,
+    pub(crate) environment: BTreeMap<String, String>,
+    pub(crate) report: Option<CapturedReport>,
+}
+
 pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubjectV1> {
+    capture(request, false).map(|captured| captured.subject)
+}
+
+pub(crate) fn capture_for_launch(request: &NativeBashCaptureV1) -> Result<CapturedBash> {
+    capture(request, true)
+}
+
+fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<CapturedBash> {
     // Resource deadline, not the separately measured installed-latency gate.
     let deadline = Instant::now() + Duration::from_millis(request.budget_ms.min(1000));
     if request.file_creation_mask.is_some_and(|mask| mask > 0o777) {
@@ -325,14 +350,24 @@ pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubject
         return Err("bash_invocation_options_unproven");
     }
     let entry = canonical(&text(&cwd.join(&argv[0]))?)?;
-    let graph = graph::build(
-        resolver.code(&argv[0], &entry)?,
-        argv,
-        &environment,
-        &resolver,
-        deadline,
-    )
-    .map_err(|uncertainty| uncertainty.reason)?;
+    let entry = resolver.code(&argv[0], &entry)?;
+    let observed = graph::build(entry.clone(), argv, &environment, &resolver, deadline)
+        .map_err(|uncertainty| uncertainty.reason)?;
+    let graph = if bind_outputs {
+        let fds = observed
+            .writes
+            .iter()
+            .map(|effect| effect.redirect.path.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .enumerate()
+            .map(|(index, path)| (path, 6 + index as u32))
+            .collect();
+        graph::build_with_outputs(entry, argv, &environment, &resolver, deadline, &fds)
+            .map_err(|uncertainty| uncertainty.reason)?
+    } else {
+        observed
+    };
     // Bash 3 exports functions under the command name; Bash 4+ encodes it.
     // A withheld function body must not be mistaken for a PATH executable or builtin.
     for call in &graph.invocations {
@@ -340,15 +375,34 @@ pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubject
         resolver.reject_function(&call.operation.argv[0])?;
     }
     let mut outputs = BTreeMap::new();
+    let mut report = None;
     for effect in &graph.writes {
+        if outputs.contains_key(&effect.redirect.path) {
+            continue;
+        }
         let path = cwd.join(&effect.redirect.path);
         let parent = std::fs::canonicalize(path.parent().ok_or("bash_output_path_invalid")?)
             .map_err(|_| "bash_output_parent_unavailable")?;
         let resolved = parent.join(path.file_name().ok_or("bash_output_path_invalid")?);
+        if bind_outputs {
+            report = Some(CapturedReport {
+                directory: Arc::new(
+                    Directory::open(&parent).map_err(|_| "bash_output_parent_unavailable")?,
+                ),
+                leaf: resolved
+                    .file_name()
+                    .ok_or("bash_output_path_invalid")?
+                    .to_os_string(),
+                append: graph
+                    .initial_output()
+                    .ok_or("bash_output_timing_unproven")?
+                    .append,
+            });
+        }
         outputs.insert(effect.redirect.path.clone(), text(&resolved)?);
     }
     resolver.check()?;
-    subject::from_graph(
+    let subject = subject::from_graph(
         &graph,
         subject::Observations {
             context: NativeBashContextV1 {
@@ -368,10 +422,17 @@ pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubject
                 kind: NativeScriptInputKindV1::Interpreter,
                 requested_path: text(&interpreter)?,
                 resolved_path: text(&interpreter)?,
-                content_sha256: image.executable_digest,
+                content_sha256: image.executable_digest.clone(),
             },
             environment: &environment,
             resolved_outputs: &outputs,
         },
-    )
+    )?;
+    Ok(CapturedBash {
+        subject,
+        graph,
+        interpreter: image,
+        environment,
+        report,
+    })
 }

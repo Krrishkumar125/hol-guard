@@ -42,6 +42,46 @@ fn fixture() -> (tempfile::TempDir, NativeBashCaptureV1) {
 }
 
 #[test]
+fn bash_launch_capture_holds_native_inputs_without_touching_the_report() {
+    let (_root, request) = fixture();
+    let report_path = Path::new(&request.home_dir).join("maintenance-report.tsv");
+    std::fs::write(&report_path, "existing report").unwrap();
+    let inspected = inspect(&request).unwrap();
+    let captured = capture_for_launch(&request).unwrap();
+    assert_eq!(
+        inspected.identity_sha256().unwrap(),
+        captured.subject.identity_sha256().unwrap()
+    );
+    assert!(captured.graph.source_for_launch().unwrap().contains(">&6"));
+    assert!(captured.interpreter.has_readonly_system_image().unwrap());
+    assert_eq!(captured.environment.get("HOME"), Some(&request.home_dir));
+    let target = captured.report.unwrap();
+    target.directory.verify().unwrap();
+    assert_eq!(target.leaf, "maintenance-report.tsv");
+    assert!(!target.append);
+    assert_eq!(
+        std::fs::read_to_string(report_path).unwrap(),
+        "existing report"
+    );
+}
+
+#[test]
+fn bash_launch_capture_rejects_late_report_preparation() {
+    let (_root, request) = fixture();
+    std::fs::write(
+        Path::new(&request.cwd).join("maintenance.sh"),
+        "set -euo pipefail; false; : > \"$HOME/report.tsv\"",
+    )
+    .unwrap();
+    assert!(inspect(&request).is_ok());
+    assert!(matches!(
+        capture_for_launch(&request),
+        Err("bash_output_timing_unproven")
+    ));
+    assert!(!Path::new(&request.home_dir).join("report.tsv").exists());
+}
+
+#[test]
 fn bash_resident_inspection_preserves_helper_execution_spelling() {
     let (_root, request) = fixture();
     let cwd = Path::new(&request.cwd);

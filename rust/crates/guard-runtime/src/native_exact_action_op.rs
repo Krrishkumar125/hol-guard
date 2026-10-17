@@ -6,7 +6,7 @@
 //! judged it. A proof that fails is a successful reply carrying the once-only
 //! reason, so only a malformed request is an `error`.
 
-mod bash_capture;
+pub(crate) mod bash_capture;
 mod binding;
 pub(crate) mod context;
 mod env_launch;
