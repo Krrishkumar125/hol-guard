@@ -6,7 +6,8 @@ use guard_contracts::GuardHookEnvelopeV2;
 
 use crate::policy_enforcement::AdmittedPolicySnapshot;
 use crate::policy_store::{
-    now_ms, policy_store_command_authority::CommandAuthorityLease, PolicySnapshotStore, PolicyState,
+    now_ms, policy_store_authority, policy_store_command_authority::CommandAuthorityLease,
+    PolicySnapshotStore, PolicyState,
 };
 
 pub(crate) struct LaunchPolicyFence<'store> {
@@ -15,11 +16,25 @@ pub(crate) struct LaunchPolicyFence<'store> {
     _command: Option<CommandAuthorityLease>,
     snapshot: Arc<AdmittedPolicySnapshot>,
     _state: MutexGuard<'store, PolicyState>,
+    store: &'store PolicySnapshotStore,
 }
 
 impl LaunchPolicyFence<'_> {
     pub(crate) fn snapshot(&self) -> &AdmittedPolicySnapshot {
         self.snapshot.as_ref()
+    }
+
+    pub(crate) fn require_current(&self) -> Result<(), String> {
+        if self.snapshot.expires_at_ms <= now_ms()?
+            || self
+                .store
+                .authority_changed
+                .load(std::sync::atomic::Ordering::SeqCst)
+            || !policy_store_authority::authority_unchanged_fenced(self.store)
+        {
+            return Err("native_policy_snapshot_context_mismatch".to_owned());
+        }
+        Ok(())
     }
 }
 
@@ -46,6 +61,7 @@ impl PolicySnapshotStore {
             _state: state,
             _command: command,
             snapshot,
+            store: self,
         })
     }
 }

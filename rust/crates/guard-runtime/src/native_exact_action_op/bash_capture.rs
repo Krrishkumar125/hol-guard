@@ -7,7 +7,7 @@ use guard_contracts::{NativeBashCaptureV1, NativeBashSubjectV1};
 mod platform;
 
 #[cfg(target_os = "macos")]
-pub(crate) use platform::{capture_for_launch, CapturedBash, CapturedReport};
+pub(crate) use platform::{capture_for_launch, CapturedBash};
 
 pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubjectV1, &'static str> {
     #[cfg(target_os = "macos")]
