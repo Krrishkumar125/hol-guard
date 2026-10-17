@@ -19,6 +19,9 @@ use guard_contracts::{
 use sha2::{Digest, Sha256};
 
 #[cfg(test)]
+#[path = "bash_policy_tests.rs"]
+mod policy_tests;
+#[cfg(test)]
 #[path = "bash_capture_tests.rs"]
 mod tests;
 
@@ -277,14 +280,29 @@ pub(crate) struct CapturedBash {
     pub(crate) interpreter: PinnedCommand,
     pub(crate) environment: BTreeMap<String, String>,
     pub(crate) report: Option<CapturedReport>,
+    pub(crate) policy: Option<super::super::bash_policy::Assessment>,
 }
 
 pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubjectV1> {
     capture(request, false).map(|captured| captured.subject)
 }
 
-pub(crate) fn capture_for_launch(request: &NativeBashCaptureV1) -> Result<CapturedBash> {
-    capture(request, true)
+pub(crate) fn capture_for_launch(
+    request: &NativeBashCaptureV1,
+    snapshot: &crate::policy_enforcement::AdmittedPolicySnapshot,
+) -> std::result::Result<CapturedBash, String> {
+    let mut captured = capture(request, true).map_err(str::to_owned)?;
+    let assessment = super::super::bash_policy::assess(
+        &captured.graph,
+        request,
+        snapshot,
+        Instant::now() + Duration::from_millis(request.budget_ms.min(1000)),
+    )?;
+    if assessment.has_hard_deny() {
+        return Err("bash_current_policy_denied".into());
+    }
+    captured.policy = Some(assessment);
+    Ok(captured)
 }
 
 fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<CapturedBash> {
@@ -364,9 +382,9 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .enumerate()
-            .map(|(index, path)| (path, 6 + index as u32))
+            .map(|(index, path)| (path, 7 + index as u32))
             .collect();
-        graph::build_with_outputs(entry, argv, &environment, &resolver, deadline, &fds)
+        graph::build_with_acknowledged_outputs(entry, argv, &environment, &resolver, deadline, &fds)
             .map_err(|uncertainty| uncertainty.reason)?
     } else {
         observed
@@ -455,5 +473,6 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
         interpreter: image,
         environment,
         report,
+        policy: None,
     })
 }

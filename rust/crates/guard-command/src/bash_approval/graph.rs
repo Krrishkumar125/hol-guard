@@ -11,7 +11,9 @@ use std::time::Instant;
 use super::{Analysis, Operation, Result, Uncertainty, MAX_SOURCE_BYTES};
 
 mod inputs;
+mod output_fds;
 mod output_preparation;
+pub use output_fds::{build_with_acknowledged_outputs, build_with_outputs};
 
 const MAX_CODE_INPUTS: usize = 64;
 const MAX_GRAPH_CALLS: usize = 1024;
@@ -152,39 +154,6 @@ pub fn build(
     deadline: Instant,
 ) -> Result<Graph> {
     build_inner(entry, argv, environment, resolver, deadline, None)
-}
-
-/// Render again using the same captured resolver inputs and native-owned FDs.
-/// Neither the FD table nor these source bytes grant permission to execute.
-pub fn build_with_outputs(
-    entry: Code,
-    argv: &[String],
-    environment: &BTreeMap<String, String>,
-    resolver: &dyn Resolver,
-    deadline: Instant,
-    output_fds: &BTreeMap<String, u32>,
-) -> Result<Graph> {
-    let unique = output_fds.values().copied().collect::<BTreeSet<_>>();
-    if output_fds.len() > 64
-        || unique.len() != output_fds.len()
-        || unique
-            .iter()
-            .enumerate()
-            .any(|(index, fd)| *fd != 6 + index as u32)
-    {
-        return Err(Uncertainty {
-            reason: "bash_output_descriptor_bounds",
-            line: 1,
-        });
-    }
-    build_inner(
-        entry,
-        argv,
-        environment,
-        resolver,
-        deadline,
-        Some(output_fds),
-    )
 }
 
 fn build_inner(

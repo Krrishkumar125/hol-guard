@@ -79,7 +79,7 @@ mod policy_enforcement_business;
 
 #[cfg(test)]
 #[path = "policy_enforcement_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 const VALID_ACTIONS: &[&str] = &[
     "allow",
     "warn",

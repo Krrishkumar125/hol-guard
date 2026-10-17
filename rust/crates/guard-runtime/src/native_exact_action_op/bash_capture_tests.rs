@@ -8,7 +8,12 @@ const SCRIPT: &str = include_str!("../../../../../tests/fixtures/script_approval
 const HELPER: &str =
     include_str!("../../../../../tests/fixtures/script_approvals/fixture-registry");
 
-fn fixture() -> (tempfile::TempDir, NativeBashCaptureV1) {
+pub(super) fn admitted(default: &str) -> crate::policy_enforcement::AdmittedPolicySnapshot {
+    use crate::policy_enforcement::tests::{policy, snapshot};
+    crate::policy_enforcement::AdmittedPolicySnapshot::new(snapshot(policy(default))).unwrap()
+}
+
+pub(super) fn fixture() -> (tempfile::TempDir, NativeBashCaptureV1) {
     let root = tempfile::tempdir().unwrap();
     let project = root.path().canonicalize().unwrap();
     let home = project.join("home");
@@ -47,12 +52,16 @@ fn bash_launch_capture_holds_native_inputs_without_touching_the_report() {
     let report_path = Path::new(&request.home_dir).join("maintenance-report.tsv");
     std::fs::write(&report_path, "existing report").unwrap();
     let inspected = inspect(&request).unwrap();
-    let captured = capture_for_launch(&request).unwrap();
+    let captured = capture_for_launch(&request, &admitted("allow")).unwrap();
     assert_eq!(
         inspected.identity_sha256().unwrap(),
         captured.subject.identity_sha256().unwrap()
     );
-    assert!(captured.graph.source_for_launch().unwrap().contains(">&6"));
+    assert!(captured.graph.source_for_launch().unwrap().contains(">&7"));
+    assert_eq!(
+        captured.policy.as_ref().unwrap().decisions.len(),
+        1 + captured.graph.invocations.len() + captured.graph.writes.len()
+    );
     assert!(captured.interpreter.has_readonly_system_image().unwrap());
     assert_eq!(captured.environment.get("HOME"), Some(&request.home_dir));
     let target = captured.report.unwrap();
@@ -75,10 +84,46 @@ fn bash_launch_capture_rejects_late_report_preparation() {
     .unwrap();
     assert!(inspect(&request).is_ok());
     assert!(matches!(
-        capture_for_launch(&request),
-        Err("bash_output_timing_unproven")
+        capture_for_launch(&request, &admitted("allow")),
+        Err(reason) if reason == "bash_output_timing_unproven"
     ));
     assert!(!Path::new(&request.home_dir).join("report.tsv").exists());
+}
+
+#[test]
+fn bash_launch_capture_rechecks_policy_without_mutating_outputs() {
+    let (_root, request) = fixture();
+    let initial = capture_for_launch(&request, &admitted("allow")).unwrap();
+    assert!(initial
+        .policy
+        .as_ref()
+        .unwrap()
+        .decisions
+        .iter()
+        .any(|decision| decision.minimum_action != "allow"));
+    assert!(
+        matches!(capture_for_launch(&request, &admitted("block")), Err(reason) if reason == "bash_current_policy_denied")
+    );
+    let graph = &initial.graph;
+    let blocked = super::super::super::bash_policy::assess(
+        graph,
+        &request,
+        &admitted("block"),
+        Instant::now() + Duration::from_secs(2),
+    )
+    .unwrap();
+    assert!(blocked.has_hard_deny());
+    assert_eq!(
+        blocked.decisions.len(),
+        1 + graph.invocations.len() + graph.writes.len()
+    );
+    assert!(blocked
+        .decisions
+        .iter()
+        .all(|decision| decision.minimum_action == "block"));
+    assert!(!Path::new(&request.home_dir)
+        .join("maintenance-report.tsv")
+        .exists());
 }
 
 #[test]

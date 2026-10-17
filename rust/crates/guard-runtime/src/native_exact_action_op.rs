@@ -7,6 +7,7 @@
 //! reason, so only a malformed request is an `error`.
 
 pub(crate) mod bash_capture;
+mod bash_policy;
 mod binding;
 pub(crate) mod context;
 mod env_launch;

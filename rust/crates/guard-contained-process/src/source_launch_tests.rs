@@ -153,6 +153,37 @@ fn rejected_commit_releases_no_marker_and_has_no_effect() {
 }
 
 #[test]
+fn child_exit_before_readiness_closes_ack_channel_without_claim() {
+    let root = tempfile::tempdir().unwrap();
+    let command = PinnedCommand::new(
+        Path::new("/bin/bash"),
+        &[
+            OsStr::new("--noprofile"),
+            OsStr::new("--norc"),
+            OsStr::new("-c"),
+            OsStr::new("IFS= read -r -d '' code || exit 125; exit 125"),
+        ],
+        &std::fs::canonicalize(root.path()).unwrap(),
+        &[],
+    )
+    .unwrap();
+    let mut gate = Gate {
+        allow: true,
+        ..Gate::default()
+    };
+    let result = command.capture_acknowledged_source(
+        b"printf forbidden",
+        1024,
+        Instant::now() + Duration::from_secs(5),
+        &AtomicBool::new(false),
+        Isolation::default(),
+        &mut gate,
+    );
+    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::UnexpectedEof);
+    assert_eq!((gate.commits, gate.releases), (0, 0));
+}
+
+#[test]
 fn successful_commit_runs_once_and_acknowledges_one_dispatch() {
     let root = tempfile::tempdir().unwrap();
     let mut gate = Gate {

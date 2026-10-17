@@ -46,7 +46,15 @@ impl Gate<'_> {
             }
             let mut byte = [0];
             match self.channel.read(&mut byte) {
-                Ok(1) if byte[0] == expected => return Ok(()),
+                Ok(1) if byte[0] == expected => {
+                    if self.cancel.load(Ordering::Acquire) {
+                        return Err(io::ErrorKind::Interrupted.into());
+                    }
+                    if Instant::now() >= self.deadline {
+                        return Err(io::ErrorKind::TimedOut.into());
+                    }
+                    return Ok(());
+                }
                 Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
                 Ok(_) => return Err(io::ErrorKind::InvalidData.into()),
                 Err(error)

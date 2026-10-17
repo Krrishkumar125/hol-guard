@@ -181,6 +181,10 @@ pub(crate) fn capture(
     drop(completion_write);
     drop(launch_read);
     drop(launch_fd);
+    // Only the child owns inherited pipe/socket writers after spawn. Keeping
+    // parent copies would hide EOF from native acknowledgment/output readers.
+    drop(inherited);
+    drop(isolation.inherited_files);
     #[cfg(target_os = "macos")]
     drop(foreign_report_write);
     let mut owner = ChildOwner::new(pid);
