@@ -4,8 +4,8 @@
 
 use crate::native_command_program::packaged_command_program_bytes;
 use crate::native_command_program::source::{
-    compare_programs, compile_build_request, descriptor_schema, evaluate_batch, run_fixtures,
-    source_schema, MAX_SOURCE_INPUT_BYTES,
+    compare_programs, compile_build_request, compile_pack_stream, compile_source_stream,
+    descriptor_schema, evaluate_batch, run_fixtures, source_schema, MAX_SOURCE_INPUT_BYTES,
 };
 use serde_json::{json, Value};
 use std::io::{BufRead, Read, Write};
@@ -124,6 +124,8 @@ pub fn is_command(arguments: &[String]) -> bool {
         | "github-classify-serve"
         | "validate"
         | "compile"
+        | "compile-stream"
+        | "compile-packs"
         | "test"
         | "compare"
         | "evaluate-batch" => arguments.len() == 1,
@@ -221,7 +223,27 @@ pub fn main(arguments: Vec<String>) -> i32 {
     if arguments == ["github-classify-serve"] {
         return github_classify_serve();
     }
-    let (value, code) = match run(&arguments) {
+    let result = if arguments == ["compile-packs"] {
+        compile_pack_stream(std::io::stdin().lock(), std::io::stdout().lock())
+            .map_err(|code| (code, String::new()))
+    } else if arguments == ["compile-stream"] {
+        compile_source_stream(std::io::stdin().lock())
+            .and_then(|output| {
+                serde_json::to_value(output).map_err(|_| "command_source_encoding_failed".into())
+            })
+            .map_err(|error| {
+                (
+                    error.code,
+                    error
+                        .record
+                        .map(|index| format!("/records/{index}"))
+                        .unwrap_or_default(),
+                )
+            })
+    } else {
+        run(&arguments).map_err(|code| (code, String::new()))
+    };
+    let (value, code) = match result {
         Ok(value) => {
             let code = if value.get("ok") == Some(&Value::Bool(false)) {
                 1
@@ -230,7 +252,7 @@ pub fn main(arguments: Vec<String>) -> i32 {
             };
             (value, code)
         }
-        Err(error) => (json!({"ok":false,"code":error,"pointer":""}), 2),
+        Err((error, pointer)) => (json!({"ok":false,"code":error,"pointer":pointer}), 2),
     };
     let mut stdout = std::io::stdout().lock();
     if serde_json::to_writer(&mut stdout, &value).is_err() || stdout.write_all(b"\n").is_err() {
@@ -275,6 +297,7 @@ mod tests {
             vec!["github-classify-serve"],
             vec!["validate"],
             vec!["compile"],
+            vec!["compile-stream"],
             vec!["test"],
             vec!["compare"],
             vec!["evaluate-batch"],
