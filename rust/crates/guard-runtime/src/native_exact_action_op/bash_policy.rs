@@ -58,15 +58,25 @@ pub(crate) fn assess(
             },
             Some(&request.execution_environment),
         );
-        // Only the generic lack-of-command-proof review is discharged. The
+        // Only generic lack-of-proof/containment requirements are discharged. The
         // caller holds this closed graph's immutable code and effect boundary;
         // every reachable operation is judged independently below. Specific
         // command/extension risks and sensitive-target reviews remain intact.
         if captured_operation
             && intrinsic.action.action_type == PreToolActionTypeV1::Command
             && !intrinsic.action.sensitive_target
-            && intrinsic.minimum_action == "review"
-            && intrinsic.reason_code == "native_command_review_required"
+            && matches!(
+                (
+                    intrinsic.minimum_action.as_str(),
+                    intrinsic.reason_code.as_str()
+                ),
+                ("review", "native_command_review_required")
+                    | ("sandbox-required", "native_workspace_containment_required")
+                    | (
+                        "review",
+                        "native_workspace_containment_executable_outside_roots"
+                    )
+            )
         {
             intrinsic.minimum_action = "allow".into();
             intrinsic.policy_action = "allow".into();

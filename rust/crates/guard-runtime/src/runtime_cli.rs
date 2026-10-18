@@ -158,6 +158,11 @@ pub(super) fn run() -> Result<(), String> {
             )?;
             write_bytes_response(&request)
         }
+        #[cfg(target_os = "macos")]
+        [command, flag, state_dir] if command == "native-bash-execute-client" && flag == "--stdin" => {
+            let response = native_bash_client::run(std::path::Path::new(state_dir), read_stdin_bounded()?)?;
+            write_bytes_response(&response)
+        }
         [command, flag, state_dir]
             if matches!(command.as_str(), "hook-client" | "resident-client")
                 && flag == "--stdin" =>

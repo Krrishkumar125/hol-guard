@@ -114,14 +114,15 @@ fn prepare(
     let artifact_hash =
         super::bash_grant::binding(&captured.subject, fence.snapshot()).map_err(str::to_owned)?;
     fence.require_current()?;
+    let assessment = captured
+        .policy
+        .ok_or_else(|| "native_bash_assessment_missing".to_owned())?;
     Ok(NativeBashPreparedV1 {
         subject: captured.subject,
         artifact_id: super::bash_grant::ARTIFACT.into(),
         artifact_hash,
-        assessment: captured
-            .policy
-            .ok_or_else(|| "native_bash_assessment_missing".to_owned())?
-            .decisions,
+        consent_required: !assessment.allows_without_consent(),
+        assessment: assessment.decisions,
     })
 }
 

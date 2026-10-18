@@ -507,6 +507,8 @@ mod mcp_tool_policy_lookup;
 mod mcp_tool_policy_proxy;
 mod mcp_tool_policy_revalidate;
 mod memory_pattern;
+#[cfg(target_os = "macos")]
+mod native_bash_client;
 mod native_decision_receipt;
 mod native_exact_action_op;
 mod native_hook_receipt;

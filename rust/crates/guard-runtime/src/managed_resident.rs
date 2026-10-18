@@ -461,6 +461,7 @@ pub(crate) fn client_timeout(payload: &[u8]) -> Duration {
             | "shim_admin",
         ) => CONTAINED_RUNNER_TIMEOUT_CEILING_MS,
         Some("codex_request_resume") => CODEX_REQUEST_RESUME_TIMEOUT_CEILING_MS,
+        Some("native_bash_execute") => guard_contracts::NATIVE_BASH_EXECUTE_MAX_TIMEOUT_MS + 1_000,
         Some("daemon_lifecycle_decide") => DAEMON_LIFECYCLE_TIMEOUT_CEILING_MS,
         _ => CLIENT_TIMEOUT_CEILING_MS,
     };

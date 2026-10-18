@@ -58,6 +58,14 @@ def _configure_guard_local_parsers(
     contained_hook_parser.add_argument("--request-sha256", required=True)
     contained_hook_parser.add_argument("--timeout-seconds", type=int, default=30 * 60)
 
+    bound_bash_parser = guard_subparsers.add_parser("execute-bound-bash", help=argparse.SUPPRESS)
+    _add_guard_common_args(bound_bash_parser)
+    bound_bash_parser.add_argument("--harness", choices=("omp", "pi"), required=True)
+    bound_bash_parser.add_argument("--request-file", required=True)
+    bound_bash_parser.add_argument("--request-sha256", required=True)
+    bound_bash_parser.add_argument("--operation-id", required=True)
+    bound_bash_parser.add_argument("--timeout-seconds", type=int, default=120)
+
     start_parser = guard_subparsers.add_parser("start", help="Show the first Guard steps for a local harness")
     _add_guard_common_args(start_parser)
     start_parser.add_argument("--json", action="store_true")
