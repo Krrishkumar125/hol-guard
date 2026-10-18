@@ -7,9 +7,7 @@ mod direct_mcp;
 #[path = "native_command_program_pack_validation.rs"]
 mod pack_validation;
 
-pub(super) fn valid_direct_mcp_command(value: &str) -> bool {
-    direct_mcp::valid_direct_mcp_command(value)
-}
+pub(super) use direct_mcp::valid_direct_mcp_command;
 
 fn valid_mcp_server_name(value: &str) -> bool {
     !value.is_empty()
@@ -477,7 +475,11 @@ impl NativeCommandProgram {
             .map(|(index, rule)| (rule.rule_id.clone(), index))
             .collect();
         observe_phase("rule_candidate_indexes");
+        let (extension_rule_indices, baseline_allow_permissions) =
+            dispatch::admission_indexes(&raw.extensions, &rules);
         Ok(Self {
+            baseline_allow_permissions,
+            extension_rule_indices,
             rule_indices,
             program_digest: raw.program_digest,
             catalog_digest: raw.catalog_digest,
