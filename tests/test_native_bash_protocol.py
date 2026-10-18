@@ -234,7 +234,14 @@ def test_replay_reports_completion_without_emitting_old_output():
     assert sink.render_result(result, output=output, errors=errors) == 125
 
 
-@pytest.mark.parametrize("assurance", ["macos-readonly-root-framed-outputs-v1", "macos-readonly-root-http-read-v1"])
+@pytest.mark.parametrize(
+    "assurance",
+    [
+        "macos-readonly-root-framed-outputs-v1",
+        "macos-readonly-root-http-read-v1",
+        "macos-hardened-broker-v1",
+    ],
+)
 def test_prepare_requires_native_consent_flag_and_assurance(assurance):
     payload = {
         "artifact_id": bridge.ARTIFACT_ID,

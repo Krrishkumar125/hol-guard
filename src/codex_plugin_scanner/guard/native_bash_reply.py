@@ -11,6 +11,7 @@ def supported_execution_assurance(value: object) -> bool:
     return isinstance(value, str) and value in {
         "macos-readonly-root-framed-outputs-v1",
         "macos-readonly-root-http-read-v1",
+        "macos-hardened-broker-v1",
     }
 
 

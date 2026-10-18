@@ -106,6 +106,7 @@ pub(crate) fn assess(
         let captured_operation = match invocation.resolved_path.as_deref() {
             Some(path) => {
                 graph.code.iter().any(|code| code.resolved_path == path)
+                    || graph.brokered_images.contains_key(path)
                     || matches!(path, "/usr/bin/sort" | "/usr/bin/head" | "/usr/bin/curl")
                         && graph.native_images.contains_key(path)
             }

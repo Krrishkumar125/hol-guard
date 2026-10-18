@@ -49,15 +49,66 @@ impl Resolver for FixtureResolver {
                 resolved_path: format!("/usr/bin/{command}"),
                 content_sha256: "1".repeat(64),
                 openssl_config: None,
+                delivery: NativeDelivery::ReadonlySystem,
             }),
             "rm" => Ok(Executable::Native {
                 resolved_path: "/bin/rm".into(),
                 content_sha256: "2".repeat(64),
                 openssl_config: None,
+                delivery: NativeDelivery::ReadonlySystem,
+            }),
+            "compiled" => Ok(Executable::Native {
+                resolved_path: "/fixtures/compiled".into(),
+                content_sha256: "3".repeat(64),
+                openssl_config: None,
+                delivery: NativeDelivery::HardenedBroker,
             }),
             _ => Err("bash_helper_unresolved"),
         }
     }
+}
+
+#[test]
+fn brokered_native_call_reserves_fd7_and_keeps_outputs_contiguous_from_fd8() {
+    let graph = build_with_acknowledged_broker_outputs(
+        Code {
+            original_path: "/script.sh".into(),
+            resolved_path: "/script.sh".into(),
+            source: ": > /report\ncompiled value".into(),
+        },
+        &["/script.sh".into()],
+        &BTreeMap::new(),
+        &FixtureResolver,
+        Instant::now() + Duration::from_secs(1),
+        &BTreeMap::from([("/report".into(), 8)]),
+    )
+    .unwrap();
+    assert_eq!(
+        graph.brokered_images.get("/fixtures/compiled"),
+        Some(&"3".repeat(64))
+    );
+    assert_eq!(graph.invocations.last().unwrap().broker_id, Some(0));
+    let source = graph.source_for_launch().unwrap();
+    assert!(source.contains("builtin printf '%s\\n' \"$__guard_id\" >&7"));
+    assert!(source.contains(": >&8"));
+    assert!(source.contains("__guard_broker_call 0 value"));
+}
+
+#[test]
+fn brokered_native_call_rejects_pipeline_input_instead_of_changing_stdin() {
+    let error = build(
+        Code {
+            original_path: "/script.sh".into(),
+            resolved_path: "/script.sh".into(),
+            source: "printf x | compiled value".into(),
+        },
+        &["/script.sh".into()],
+        &BTreeMap::new(),
+        &FixtureResolver,
+        Instant::now() + Duration::from_secs(1),
+    )
+    .unwrap_err();
+    assert_eq!(error.reason, "bash_broker_stdin_unproven");
 }
 
 fn graph(mode: &str) -> Graph {
@@ -257,6 +308,7 @@ fn frozen_native_call_preserves_original_argv_zero() {
                 resolved_path: "/bin/bash".into(),
                 content_sha256: "a".repeat(64),
                 openssl_config: None,
+                delivery: NativeDelivery::ReadonlySystem,
             })
         }
     }

@@ -49,15 +49,17 @@ pub(crate) fn capture(
     mode: CaptureMode<'_>,
 ) -> io::Result<CapturedOutput> {
     let (source_gate, hardened) = match mode {
-        CaptureMode::Standard(gate) => (gate, None),
+        CaptureMode::Standard(gate) => {
+            command.verify_bindings()?;
+            (gate, None)
+        }
         #[cfg(target_os = "macos")]
         CaptureMode::Hardened => (None, Some(hardened_spawn::Prepared::prepare(&command)?)),
     };
     crate::source_launch::validate_deferred_outputs(&isolation, source_gate.as_ref())?;
     let window = RequestWindow { deadline, cancel };
     window.require_launch()?;
-    command.verify_bindings()?;
-    let argv: Vec<CString> = std::iter::once(command.executable_path.as_os_str())
+    let argv: Vec<CString> = std::iter::once(command.argument_zero.as_os_str())
         .chain(command.arguments.iter().map(|arg| arg.as_os_str()))
         .map(|arg| cstring(arg.as_bytes()))
         .collect::<io::Result<_>>()?;

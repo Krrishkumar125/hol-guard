@@ -4,6 +4,8 @@
 use super::*;
 use guard_contained_process::SourceLaunchGate;
 use std::io;
+use std::path::PathBuf;
+use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
 struct Gate {
@@ -34,6 +36,125 @@ impl SourceLaunchGate for Gate {
         self.released += 1;
         Ok(())
     }
+}
+
+fn hardened_helper(root: &Path, return_code: u8) -> PathBuf {
+    let source = root.join("compiled-helper.c");
+    let image = root.join("compiled-helper");
+    std::fs::write(
+        &source,
+        format!(
+            r#"#include <stdio.h>
+int main(int argc, char **argv) {{
+  printf("argv0=%s arg=%s\n", argv[0], argc > 1 ? argv[1] : "");
+  fputs("broker-stderr\n", stderr);
+  return {return_code};
+}}
+"#
+        ),
+    )
+    .unwrap();
+    let mut compile = Command::new("/usr/bin/clang");
+    compile
+        .args(["-O0", "-Wl,-no_uuid"])
+        .arg(&source)
+        .arg("-o")
+        .arg(&image);
+    let mut signing = Command::new("/usr/bin/codesign");
+    signing
+        .args([
+            "--force",
+            "--sign",
+            "-",
+            "--options",
+            "runtime",
+            "--identifier",
+            "guard.bash-broker-test",
+        ])
+        .arg(&image);
+    for command in [&mut compile, &mut signing] {
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "fixture command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    image
+}
+
+#[test]
+fn bash_broker_runs_the_captured_hardened_image_after_source_mutation() {
+    let (_root, request) = tests::fixture();
+    let root = Path::new(&request.cwd);
+    let helper = hardened_helper(root, 7);
+    std::fs::write(root.join("maintenance.sh"), "compiled-helper value\n").unwrap();
+    let captured = capture_for_launch(&request, &tests::admitted("allow")).unwrap();
+    assert_eq!(
+        captured.subject.execution_assurance,
+        guard_contracts::NativeBashAssuranceV1::MacosHardenedBrokerV1
+    );
+    assert_eq!(captured.graph.brokered_images.len(), 1);
+    assert_eq!(captured.brokered_commands.len(), 1);
+    std::fs::write(&helper, "#!/bin/bash\nprintf attacked\n").unwrap();
+    std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut gate = Gate {
+        allow: true,
+        prepared: 0,
+        committed: 0,
+        released: 0,
+    };
+    let output = super::super::super::bash_launch::execute(
+        captured,
+        Instant::now() + Duration::from_secs(10),
+        &AtomicBool::new(false),
+        &mut gate,
+    )
+    .unwrap();
+    assert_eq!(output.exit_code, Some(7));
+    assert_eq!(output.stdout, b"argv0=compiled-helper arg=value\n");
+    assert_eq!(output.stderr, b"broker-stderr\n");
+    assert_eq!((gate.prepared, gate.committed, gate.released), (0, 1, 1));
+}
+
+#[test]
+fn bash_broker_cache_returns_the_final_pinned_image_identity() {
+    let (_root, request) = tests::fixture();
+    let cwd = Path::new(&request.cwd);
+    let home = Path::new(&request.home_dir);
+    let environment = environment(&request).unwrap();
+    hardened_helper(cwd, 7);
+    let resolver = Resolver {
+        cwd,
+        home,
+        environment: &environment,
+        names: &request.execution_environment.environment_names,
+        deadline: Instant::now() + Duration::from_secs(10),
+        captured: RefCell::new(BTreeMap::new()),
+        brokered_commands: RefCell::new(Vec::new()),
+        source_snapshots: RefCell::new(BTreeMap::new()),
+        source_contents: RefCell::new(BTreeMap::new()),
+        network_destinations: RefCell::new(BTreeSet::new()),
+    };
+    let argv = vec!["compiled-helper".into(), "value".into()];
+    let first = graph::Resolver::resolve(&resolver, &argv).unwrap();
+    hardened_helper(cwd, 8);
+    let second = graph::Resolver::resolve(&resolver, &argv).unwrap();
+    let digest = |executable: graph::Executable| match executable {
+        graph::Executable::Native {
+            content_sha256,
+            delivery: graph::NativeDelivery::HardenedBroker,
+            ..
+        } => content_sha256,
+        _ => panic!("expected hardened broker image"),
+    };
+    let first = digest(first);
+    let second = digest(second);
+    assert_ne!(first, second);
+    let commands = resolver.brokered_commands.into_inner();
+    assert_eq!(commands.len(), 2);
+    assert_eq!(commands[0].executable_digest, first);
+    assert_eq!(commands[1].executable_digest, second);
 }
 
 #[test]

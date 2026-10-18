@@ -10,18 +10,21 @@ use std::time::Instant;
 
 use super::{Analysis, Operation, Result, Uncertainty, MAX_SOURCE_BYTES};
 
+mod broker;
+pub use broker::NativeDelivery;
 mod curl;
 mod inputs;
 mod output_fds;
 mod output_preparation;
-pub use output_fds::{build_with_acknowledged_outputs, build_with_outputs};
+pub use output_fds::{
+    build_with_acknowledged_broker_outputs, build_with_acknowledged_outputs, build_with_outputs,
+};
 
 const MAX_CODE_INPUTS: usize = 64;
 const MAX_GRAPH_CALLS: usize = 1024;
 const MAX_RENDERED_BYTES: usize = 4 * MAX_SOURCE_BYTES;
 // A helper uses one -c argument. Larger code needs a separate framed pipe,
 // rather than silently exceeding a host's argument budget.
-const MAX_HELPER_ARGUMENT_BYTES: usize = 64 * 1024;
 
 /// Source is deliberately not serializable. Only its observed digest belongs
 /// in a public descriptor; frozen bytes stay in the native launch boundary.
@@ -51,6 +54,7 @@ pub enum Executable {
         resolved_path: String,
         content_sha256: String,
         openssl_config: Option<Code>,
+        delivery: NativeDelivery,
     },
 }
 
@@ -70,6 +74,7 @@ pub struct Invocation {
     pub source_path: String,
     pub operation: Operation,
     pub resolved_path: Option<String>,
+    pub broker_id: Option<u16>,
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +96,7 @@ pub struct Graph {
     pub sources: Vec<CodeIdentity>,
     pub startup: Vec<CodeIdentity>,
     pub native_images: BTreeMap<String, String>,
+    pub brokered_images: BTreeMap<String, String>,
     pub invocations: Vec<Invocation>,
     pub writes: Vec<OutputEffect>,
     // Frozen code alone does not establish a bound output/effect boundary.
@@ -125,6 +131,7 @@ impl std::fmt::Debug for Graph {
             .field("sources", &self.sources)
             .field("startup", &self.startup)
             .field("native_images", &self.native_images)
+            .field("brokered_images", &self.brokered_images)
             .field("invocation_count", &self.invocations.len())
             .field("write_count", &self.writes.len())
             .field("frozen_bytes", &self.frozen_source.len())
@@ -141,6 +148,8 @@ struct Builder<'a> {
     startup: BTreeMap<String, CodeIdentity>,
     snapshots: BTreeMap<String, String>,
     native_images: BTreeMap<String, String>,
+    brokered_images: BTreeMap<String, String>,
+    broker_ids: BTreeMap<(String, Vec<String>), u16>,
     invocations: Vec<Invocation>,
     writes: Vec<OutputEffect>,
     output_fds: Option<&'a BTreeMap<String, u32>>,
@@ -178,6 +187,8 @@ fn build_inner(
         startup: BTreeMap::new(),
         snapshots: BTreeMap::new(),
         native_images: BTreeMap::new(),
+        brokered_images: BTreeMap::new(),
+        broker_ids: BTreeMap::new(),
         invocations: Vec::new(),
         writes: Vec::new(),
         output_fds,
@@ -187,8 +198,9 @@ fn build_inner(
         initial_output: None,
     };
     let frozen_source = builder.visit(&entry, argv)?;
+    let frozen_source = broker::render(frozen_source, !builder.brokered_images.is_empty())?;
     if output_fds.is_some() {
-        validate_output_order(&builder.writes)?;
+        output_preparation::validate_order(&builder.writes)?;
         output_preparation::validate(
             &entry.original_path,
             &builder.writes,
@@ -201,30 +213,13 @@ fn build_inner(
         sources: builder.sources.into_values().collect(),
         startup: builder.startup.into_values().collect(),
         native_images: builder.native_images,
+        brokered_images: builder.brokered_images,
         invocations: builder.invocations,
         writes: builder.writes,
         frozen_source,
         outputs_bound: output_fds.is_some(),
         initial_output: builder.initial_output,
     })
-}
-
-// A held append descriptor preserves a first truncate followed by appends,
-// or appends alone. It cannot model a later truncate. Cross-source ordering
-// needs a separate proof; collection order is not execution order there.
-fn validate_output_order(writes: &[OutputEffect]) -> Result<()> {
-    let mut owners = BTreeMap::new();
-    for effect in writes {
-        if let Some(owner) = owners.insert(&effect.redirect.path, &effect.source_path) {
-            if owner != &effect.source_path || !effect.redirect.append {
-                return Err(Uncertainty {
-                    reason: "bash_output_order_unproven",
-                    line: effect.redirect.line,
-                });
-            }
-        }
-    }
-    Ok(())
 }
 
 impl Builder<'_> {
@@ -266,6 +261,7 @@ impl Builder<'_> {
                 source_path: code.original_path.clone(),
                 operation: operation.clone(),
                 resolved_path: None,
+                broker_id: None,
             };
             let name = &operation.argv[0];
             let mut replacement_span = (operation.command_start, operation.command_end);
@@ -308,6 +304,7 @@ impl Builder<'_> {
                         resolved_path,
                         content_sha256,
                         openssl_config,
+                        delivery,
                     } => {
                         if !resolved_path.starts_with('/')
                             || resolved_path.len() > 4096
@@ -321,11 +318,20 @@ impl Builder<'_> {
                             });
                         }
                         invocation.resolved_path = Some(resolved_path.clone());
-                        if !self.native_images.contains_key(&resolved_path)
+                        let known = match delivery {
+                            NativeDelivery::ReadonlySystem => {
+                                self.native_images.contains_key(&resolved_path)
+                            }
+                            NativeDelivery::HardenedBroker => {
+                                self.brokered_images.contains_key(&resolved_path)
+                            }
+                        };
+                        if !known
                             && self.code.len()
                                 + self.sources.len()
                                 + self.startup.len()
                                 + self.native_images.len()
+                                + self.brokered_images.len()
                                 + 1
                                 >= MAX_CODE_INPUTS
                         {
@@ -334,8 +340,11 @@ impl Builder<'_> {
                                 line: operation.line,
                             });
                         }
-                        if self
-                            .native_images
+                        let images = match delivery {
+                            NativeDelivery::ReadonlySystem => &mut self.native_images,
+                            NativeDelivery::HardenedBroker => &mut self.brokered_images,
+                        };
+                        if images
                             .get(&resolved_path)
                             .is_some_and(|previous| previous != &content_sha256)
                         {
@@ -344,27 +353,51 @@ impl Builder<'_> {
                                 line: operation.line,
                             });
                         }
-                        self.native_images
-                            .insert(resolved_path.clone(), content_sha256);
-                        // Keep the original native argv[0] while pinning the
-                        // executable path. A direct path replacement changes it.
-                        let mut launch = format!("exec -a \"$0\" {} \"$@\"", quote(&resolved_path));
-                        if let Some(config) = openssl_config {
-                            launch =
-                                self.curl_startup(&operation, &resolved_path, config, launch)?;
+                        images.insert(resolved_path.clone(), content_sha256);
+                        if delivery == NativeDelivery::HardenedBroker {
+                            if operation.pipeline_input {
+                                return Err(Uncertainty {
+                                    reason: "bash_broker_stdin_unproven",
+                                    line: operation.line,
+                                });
+                            }
+                            if openssl_config.is_some() {
+                                return Err(Uncertainty {
+                                    reason: "bash_broker_startup_unproven",
+                                    line: operation.line,
+                                });
+                            }
+                            let key = (resolved_path.clone(), operation.argv.clone());
+                            let next =
+                                u16::try_from(self.broker_ids.len()).map_err(|_| Uncertainty {
+                                    reason: "bash_broker_invocation_bounds",
+                                    line: operation.line,
+                                })?;
+                            let id = *self.broker_ids.entry(key).or_insert(next);
+                            invocation.broker_id = Some(id);
+                            Some(format!("__guard_broker_call {id}"))
+                        } else {
+                            // Keep the original native argv[0] while pinning the
+                            // executable path. A direct path replacement changes it.
+                            let mut launch =
+                                format!("exec -a \"$0\" {} \"$@\"", quote(&resolved_path));
+                            if let Some(config) = openssl_config {
+                                launch =
+                                    self.curl_startup(&operation, &resolved_path, config, launch)?;
+                            }
+                            Some(format!(
+                                "/bin/bash --noprofile --norc -c {} {}",
+                                quote(&launch),
+                                quote(name)
+                            ))
                         }
-                        Some(format!(
-                            "/bin/bash --noprofile --norc -c {} {}",
-                            quote(&launch),
-                            quote(name)
-                        ))
                     }
                     Executable::Bash(helper) => {
                         invocation.resolved_path = Some(helper.resolved_path.clone());
                         let mut helper_argv = operation.argv.clone();
                         helper_argv[0] = helper.original_path.clone();
                         let frozen = self.visit(&helper, &helper_argv)?;
-                        if frozen.len() > MAX_HELPER_ARGUMENT_BYTES {
+                        if frozen.len() > broker::MAX_HELPER_ARGUMENT_BYTES {
                             return Err(Uncertainty {
                                 reason: "bash_helper_delivery_bounds",
                                 line: operation.line,
@@ -374,7 +407,7 @@ impl Builder<'_> {
                         // The native backend must verify that assurance, enforce
                         // the argv size and attach the reviewed effect boundary.
                         let encoded = quote(&frozen);
-                        if encoded.len() > MAX_HELPER_ARGUMENT_BYTES {
+                        if encoded.len() > broker::MAX_HELPER_ARGUMENT_BYTES {
                             return Err(Uncertainty {
                                 reason: "bash_helper_delivery_bounds",
                                 line: operation.line,

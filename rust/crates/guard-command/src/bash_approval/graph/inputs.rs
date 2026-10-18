@@ -45,6 +45,7 @@ impl Builder<'_> {
             + self.sources.len()
             + self.startup.len()
             + self.native_images.len()
+            + self.brokered_images.len()
             + 1;
         let inputs = match kind {
             Kind::Code => &mut self.code,

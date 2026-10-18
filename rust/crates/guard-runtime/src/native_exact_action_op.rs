@@ -9,6 +9,8 @@
 mod bash_ack;
 mod bash_activity;
 pub(crate) use bash_ack::evaluate as acknowledge_bash_request;
+#[cfg(target_os = "macos")]
+mod bash_broker;
 mod bash_cancel_route;
 pub(crate) mod bash_capture;
 mod bash_delivery;

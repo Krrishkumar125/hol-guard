@@ -26,6 +26,19 @@ pub fn build_with_acknowledged_outputs(
     build(entry, argv, environment, resolver, deadline, output_fds, 7)
 }
 
+/// The acknowledged protocol reserves fd6 and the compiled-image broker uses
+/// fd7, so held output descriptors begin at fd8.
+pub fn build_with_acknowledged_broker_outputs(
+    entry: Code,
+    argv: &[String],
+    environment: &BTreeMap<String, String>,
+    resolver: &dyn Resolver,
+    deadline: Instant,
+    output_fds: &BTreeMap<String, u32>,
+) -> Result<Graph> {
+    build(entry, argv, environment, resolver, deadline, output_fds, 8)
+}
+
 fn build(
     entry: Code,
     argv: &[String],

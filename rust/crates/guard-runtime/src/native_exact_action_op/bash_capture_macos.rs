@@ -36,6 +36,8 @@ mod tests;
 
 #[path = "bash_capture_native.rs"]
 mod native_image;
+#[path = "bash_capture_outputs.rs"]
+mod output_capture;
 #[path = "bash_capture_environment.rs"]
 mod startup_environment;
 use startup_environment::capture as environment;
@@ -62,6 +64,7 @@ struct Resolver<'a> {
     names: &'a [String],
     deadline: Instant,
     captured: RefCell<BTreeMap<(String, PathBuf), graph::Executable>>,
+    brokered_commands: RefCell<Vec<PinnedCommand>>,
     source_snapshots: RefCell<BTreeMap<(String, PathBuf), graph::Code>>,
     source_contents: RefCell<BTreeMap<PathBuf, Arc<str>>>,
     network_destinations: RefCell<BTreeSet<std::net::SocketAddrV4>>,
@@ -246,6 +249,20 @@ impl graph::Resolver for Resolver<'_> {
             return Err("bash_native_arguments_unproven");
         }
         if let Some(captured) = self.captured.borrow().get(&key) {
+            if matches!(
+                captured,
+                graph::Executable::Native {
+                    delivery: graph::NativeDelivery::HardenedBroker,
+                    ..
+                }
+            ) {
+                // The final, output-bound graph pass must use the identity of
+                // the exact private image it will launch. Reusing the observed
+                // pass's digest would misbind a replacement between passes.
+                let (current, command) = native_image::capture_hardened(self, &path, argv)?;
+                self.brokered_commands.borrow_mut().push(command);
+                return Ok(current);
+            }
             return Ok(captured.clone());
         }
         if self.captured.borrow().len() >= 64 {
@@ -253,6 +270,9 @@ impl graph::Resolver for Resolver<'_> {
         }
         let captured = if native {
             native_image::capture(self, &path)?
+        } else if let Ok((captured, command)) = native_image::capture_hardened(self, &path, argv) {
+            self.brokered_commands.borrow_mut().push(command);
+            captured
         } else {
             if spelling.starts_with('-') || spelling.starts_with('+') {
                 return Err("bash_helper_interpreter_unproven");
@@ -283,6 +303,7 @@ pub(crate) struct CapturedBash {
     pub(crate) report: Option<CapturedReport>,
     pub(crate) policy: Option<super::super::bash_policy::Assessment>,
     pub(crate) network_destinations: BTreeSet<std::net::SocketAddrV4>,
+    pub(crate) brokered_commands: Vec<PinnedCommand>,
 }
 
 pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubjectV1> {
@@ -333,6 +354,7 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
         names: &request.execution_environment.environment_names,
         deadline,
         captured: RefCell::new(BTreeMap::new()),
+        brokered_commands: RefCell::new(Vec::new()),
         source_snapshots: RefCell::new(BTreeMap::new()),
         source_contents: RefCell::new(BTreeMap::new()),
         network_destinations: RefCell::new(BTreeSet::new()),
@@ -378,6 +400,12 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
     let observed = graph::build(entry.clone(), argv, &environment, &resolver, deadline)
         .map_err(|uncertainty| uncertainty.reason)?;
     let graph = if bind_outputs {
+        resolver.brokered_commands.borrow_mut().clear();
+        let first_output = if observed.brokered_images.is_empty() {
+            7
+        } else {
+            8
+        };
         let fds = observed
             .writes
             .iter()
@@ -385,10 +413,28 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .enumerate()
-            .map(|(index, path)| (path, 7 + index as u32))
+            .map(|(index, path)| (path, first_output + index as u32))
             .collect();
-        graph::build_with_acknowledged_outputs(entry, argv, &environment, &resolver, deadline, &fds)
-            .map_err(|uncertainty| uncertainty.reason)?
+        if observed.brokered_images.is_empty() {
+            graph::build_with_acknowledged_outputs(
+                entry,
+                argv,
+                &environment,
+                &resolver,
+                deadline,
+                &fds,
+            )
+        } else {
+            graph::build_with_acknowledged_broker_outputs(
+                entry,
+                argv,
+                &environment,
+                &resolver,
+                deadline,
+                &fds,
+            )
+        }
+        .map_err(|uncertainty| uncertainty.reason)?
     } else {
         observed
     };
@@ -398,56 +444,8 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
         resolver.check()?;
         resolver.reject_function(&call.operation.argv[0])?;
     }
-    let mut outputs = BTreeMap::new();
-    let mut report = None;
-    for effect in &graph.writes {
-        resolver.check()?;
-        let leaf = effect.redirect.path.rsplit('/').next().unwrap_or("");
-        if matches!(leaf, "" | "." | "..") {
-            return Err("bash_output_path_invalid");
-        }
-        if guard_command::bash_approval::is_descriptor_reference(&effect.redirect.path) {
-            return Err("bash_process_descriptor_unproven");
-        }
-        if outputs.contains_key(&effect.redirect.path) {
-            continue;
-        }
-        let path = cwd.join(&effect.redirect.path);
-        let parent = std::fs::canonicalize(path.parent().ok_or("bash_output_path_invalid")?)
-            .map_err(|_| "bash_output_parent_unavailable")?;
-        if guard_command::bash_approval::is_descriptor_reference(&text(&parent)?) {
-            return Err("bash_process_descriptor_unproven");
-        }
-        let resolved = parent.join(path.file_name().ok_or("bash_output_path_invalid")?);
-        // Guard state is never an overridable report destination, including
-        // when an otherwise ordinary path aliases its configured home.
-        if resolved.starts_with(&guard_home) {
-            return Err("bash_output_guard_state_protected");
-        }
-        if guard_command::bash_approval::is_descriptor_reference(&text(&resolved)?) {
-            return Err("bash_process_descriptor_unproven");
-        }
-        let directory = Directory::open(&parent).map_err(|_| "bash_output_parent_unavailable")?;
-        guard_contained_process::bound_output::validate_target(
-            &directory,
-            resolved.file_name().ok_or("bash_output_path_invalid")?,
-        )
-        .map_err(|_| "bash_output_target_unavailable")?;
-        if bind_outputs {
-            report = Some(CapturedReport {
-                directory: Arc::new(directory),
-                leaf: resolved
-                    .file_name()
-                    .ok_or("bash_output_path_invalid")?
-                    .to_os_string(),
-                append: graph
-                    .initial_output()
-                    .ok_or("bash_output_timing_unproven")?
-                    .append,
-            });
-        }
-        outputs.insert(effect.redirect.path.clone(), text(&resolved)?);
-    }
+    let (outputs, report) =
+        output_capture::capture(&graph, &resolver, &cwd, &guard_home, bind_outputs)?;
     resolver.check()?;
     let subject = subject::from_graph(
         &graph,
@@ -476,6 +474,16 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
         },
     )?;
     let network_destinations = resolver.network_destinations.into_inner();
+    let brokered_commands = resolver.brokered_commands.into_inner();
+    if brokered_commands.len()
+        != graph
+            .invocations
+            .iter()
+            .filter(|invocation| invocation.broker_id.is_some())
+            .count()
+    {
+        return Err("bash_broker_capture_mismatch");
+    }
     Ok(CapturedBash {
         subject,
         graph,
@@ -484,5 +492,6 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
         report,
         policy: None,
         network_destinations,
+        brokered_commands,
     })
 }

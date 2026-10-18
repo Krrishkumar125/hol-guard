@@ -28,7 +28,8 @@ pub(crate) fn execute(
     let source = captured
         .graph
         .source_for_launch()
-        .map_err(|_| io::ErrorKind::InvalidData)?;
+        .map_err(|_| io::ErrorKind::InvalidData)?
+        .to_owned();
     let bootstrap =
         guard_command::bash_approval::delivery::acknowledged_bootstrap(source.len(), 0, 6)
             .map_err(|_| io::ErrorKind::InvalidData)?;
@@ -60,19 +61,49 @@ pub(crate) fn execute(
             .collect::<Vec<&OsStr>>(),
         &environment,
     )?;
-    command.capture_acknowledged_source(
-        source.as_bytes(),
-        1024 * 1024,
-        deadline,
-        cancel,
-        Isolation {
-            seatbelt: Some(profile),
-            deferred_outputs: outputs,
-            creation_mask: captured.subject.context.file_creation_mask,
-            ..Isolation::default()
-        },
-        gate,
-    )
+    let broker_ids = captured
+        .graph
+        .invocations
+        .iter()
+        .filter_map(|invocation| invocation.broker_id)
+        .collect::<Vec<_>>();
+    let mut isolation = Isolation {
+        seatbelt: Some(profile),
+        deferred_outputs: outputs,
+        creation_mask: captured.subject.context.file_creation_mask,
+        ..Isolation::default()
+    };
+    if broker_ids.is_empty() {
+        return command.capture_acknowledged_source(
+            source.as_bytes(),
+            1024 * 1024,
+            deadline,
+            cancel,
+            isolation,
+            gate,
+        );
+    }
+    let (child, owner) = super::bash_broker::pair()?;
+    isolation.inherited_files.push(child);
+    let commands = captured.brokered_commands;
+    std::thread::scope(|scope| {
+        let broker = scope.spawn(move || {
+            super::bash_broker::serve(owner, broker_ids, commands, deadline, cancel)
+        });
+        let output = command.capture_acknowledged_source(
+            source.as_bytes(),
+            1024 * 1024,
+            deadline,
+            cancel,
+            isolation,
+            gate,
+        );
+        let broker = broker
+            .join()
+            .map_err(|_| io::Error::other("compiled-image broker panicked"))?;
+        broker?;
+        output
+    })
 }
 
 pub(super) fn profile(captured: &CapturedBash) -> io::Result<String> {

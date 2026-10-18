@@ -69,6 +69,14 @@ pub fn from_graph(
             content_sha256: digest.clone(),
         });
     }
+    for (path, digest) in &graph.brokered_images {
+        inputs.push(NativeScriptCodeInputV1 {
+            kind: NativeScriptInputKindV1::Native,
+            requested_path: path.clone(),
+            resolved_path: path.clone(),
+            content_sha256: digest.clone(),
+        });
+    }
     inputs.sort_by(|left, right| {
         (left.kind, &left.requested_path, &left.resolved_path).cmp(&(
             right.kind,
@@ -109,7 +117,9 @@ pub fn from_graph(
             })
             .collect(),
         outputs,
-        execution_assurance: if graph.startup.is_empty() {
+        execution_assurance: if !graph.brokered_images.is_empty() {
+            NativeBashAssuranceV1::MacosHardenedBrokerV1
+        } else if graph.startup.is_empty() {
             NativeBashAssuranceV1::MacosReadonlyRootFramedOutputsV1
         } else {
             NativeBashAssuranceV1::MacosReadonlyRootHttpReadV1

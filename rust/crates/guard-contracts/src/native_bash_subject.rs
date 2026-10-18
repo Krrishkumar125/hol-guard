@@ -62,6 +62,7 @@ pub enum NativeBashHostV1 {
 pub enum NativeBashAssuranceV1 {
     MacosReadonlyRootFramedOutputsV1,
     MacosReadonlyRootHttpReadV1,
+    MacosHardenedBrokerV1,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]

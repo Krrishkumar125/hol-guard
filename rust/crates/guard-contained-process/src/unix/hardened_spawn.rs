@@ -56,7 +56,7 @@ impl Prepared {
         #[cfg(test)]
         let resume_probe = RESUME_PROBE.with(|enabled| enabled.replace(false));
         Ok(Self {
-            binding: command.image.hardened_binding(&command.executable_digest)?,
+            binding: command.hardened_binding()?,
             attributes: Attributes::prepare()?,
             #[cfg(test)]
             resume_probe,
