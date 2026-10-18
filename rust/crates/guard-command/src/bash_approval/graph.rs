@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use super::{Analysis, Operation, Result, Uncertainty, MAX_SOURCE_BYTES};
 
+mod curl;
 mod inputs;
 mod output_fds;
 mod output_preparation;
@@ -49,6 +50,7 @@ pub enum Executable {
     Native {
         resolved_path: String,
         content_sha256: String,
+        openssl_config: Option<Code>,
     },
 }
 
@@ -87,6 +89,7 @@ pub struct Graph {
     pub entry_path: String,
     pub code: Vec<CodeIdentity>,
     pub sources: Vec<CodeIdentity>,
+    pub startup: Vec<CodeIdentity>,
     pub native_images: BTreeMap<String, String>,
     pub invocations: Vec<Invocation>,
     pub writes: Vec<OutputEffect>,
@@ -120,6 +123,7 @@ impl std::fmt::Debug for Graph {
             .debug_struct("Graph")
             .field("code", &self.code)
             .field("sources", &self.sources)
+            .field("startup", &self.startup)
             .field("native_images", &self.native_images)
             .field("invocation_count", &self.invocations.len())
             .field("write_count", &self.writes.len())
@@ -134,6 +138,7 @@ struct Builder<'a> {
     deadline: Instant,
     code: BTreeMap<String, CodeIdentity>,
     sources: BTreeMap<String, CodeIdentity>,
+    startup: BTreeMap<String, CodeIdentity>,
     snapshots: BTreeMap<String, String>,
     native_images: BTreeMap<String, String>,
     invocations: Vec<Invocation>,
@@ -170,6 +175,7 @@ fn build_inner(
         deadline,
         code: BTreeMap::new(),
         sources: BTreeMap::new(),
+        startup: BTreeMap::new(),
         snapshots: BTreeMap::new(),
         native_images: BTreeMap::new(),
         invocations: Vec::new(),
@@ -193,6 +199,7 @@ fn build_inner(
         entry_path: entry.original_path,
         code: builder.code.into_values().collect(),
         sources: builder.sources.into_values().collect(),
+        startup: builder.startup.into_values().collect(),
         native_images: builder.native_images,
         invocations: builder.invocations,
         writes: builder.writes,
@@ -223,7 +230,7 @@ fn validate_output_order(writes: &[OutputEffect]) -> Result<()> {
 impl Builder<'_> {
     fn visit(&mut self, code: &Code, argv: &[String]) -> Result<String> {
         let entry = self.active.is_empty();
-        self.register(code, false)?;
+        self.register(code, inputs::Kind::Code)?;
         self.active.insert(code.resolved_path.clone());
         let analysis =
             super::source::analyze(code, argv, self.environment, self.resolver, self.deadline)?;
@@ -271,7 +278,7 @@ impl Builder<'_> {
                         line: operation.line,
                     })?;
                 let source = sources.remove(index);
-                self.register(&source.code, true)?;
+                self.register(&source.code, inputs::Kind::Source)?;
                 self.active.insert(source.code.resolved_path.clone());
                 invocation.resolved_path = Some(source.code.resolved_path.clone());
                 let empty = source.empty_program;
@@ -300,6 +307,7 @@ impl Builder<'_> {
                     Executable::Native {
                         resolved_path,
                         content_sha256,
+                        openssl_config,
                     } => {
                         if !resolved_path.starts_with('/')
                             || resolved_path.len() > 4096
@@ -314,7 +322,11 @@ impl Builder<'_> {
                         }
                         invocation.resolved_path = Some(resolved_path.clone());
                         if !self.native_images.contains_key(&resolved_path)
-                            && self.code.len() + self.sources.len() + self.native_images.len() + 1
+                            && self.code.len()
+                                + self.sources.len()
+                                + self.startup.len()
+                                + self.native_images.len()
+                                + 1
                                 >= MAX_CODE_INPUTS
                         {
                             return Err(Uncertainty {
@@ -336,7 +348,11 @@ impl Builder<'_> {
                             .insert(resolved_path.clone(), content_sha256);
                         // Keep the original native argv[0] while pinning the
                         // executable path. A direct path replacement changes it.
-                        let launch = format!("exec -a \"$0\" {} \"$@\"", quote(&resolved_path));
+                        let mut launch = format!("exec -a \"$0\" {} \"$@\"", quote(&resolved_path));
+                        if let Some(config) = openssl_config {
+                            launch =
+                                self.curl_startup(&operation, &resolved_path, config, launch)?;
+                        }
                         Some(format!(
                             "/bin/bash --noprofile --norc -c {} {}",
                             quote(&launch),

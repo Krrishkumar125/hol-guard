@@ -355,11 +355,10 @@ pub(crate) fn supervise_managed_for_owner(
             .map_err(|_| "native_resident_supervisor_wait_failed".to_owned())?;
         child_done.store(true, Ordering::Release);
         let _ = watcher.join();
-        if status.success() {
-            Ok(())
-        } else {
-            Err("native_resident_managed_exit_failed".to_owned())
-        }
+        restart_budget::finish_supervised_exit(
+            &state_scope(state_base, expected_digest)?,
+            status.success(),
+        )
     }
 }
 

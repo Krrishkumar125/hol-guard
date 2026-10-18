@@ -62,6 +62,33 @@ fn temp_scope(label: &str) -> PathBuf {
     scope
 }
 
+#[cfg(unix)]
+#[test]
+fn clean_supervised_exit_allows_repeated_cli_lifetimes_but_crashes_keep_the_circuit() {
+    use std::os::unix::process::ExitStatusExt;
+    let scope = temp_scope("supervised-exit");
+    for _ in 0..10 {
+        consume(&scope).unwrap();
+        let status = std::process::Command::new("/usr/bin/true")
+            .status()
+            .unwrap();
+        finish_supervised_exit(&scope, status.success()).unwrap();
+    }
+    for raw in [1 << 8, libc::SIGTERM, libc::SIGKILL] {
+        consume(&scope).unwrap();
+        let status = std::process::ExitStatus::from_raw(raw);
+        assert_eq!(
+            finish_supervised_exit(&scope, status.success()).unwrap_err(),
+            "native_resident_managed_exit_failed"
+        );
+    }
+    assert_eq!(
+        consume(&scope).unwrap_err(),
+        "native_resident_restart_circuit_open"
+    );
+    fs::remove_dir_all(scope).unwrap();
+}
+
 fn read_budget(scope: &Path) -> RestartBudget {
     serde_json::from_slice(&std::fs::read(scope.join("restart-budget.json")).unwrap()).unwrap()
 }

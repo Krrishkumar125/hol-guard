@@ -53,6 +53,14 @@ pub fn from_graph(
             content_sha256: code.content_sha256.clone(),
         });
     }
+    for code in &graph.startup {
+        inputs.push(NativeScriptCodeInputV1 {
+            kind: NativeScriptInputKindV1::Startup,
+            requested_path: code.original_path.clone(),
+            resolved_path: code.resolved_path.clone(),
+            content_sha256: code.content_sha256.clone(),
+        });
+    }
     for (path, digest) in &graph.native_images {
         inputs.push(NativeScriptCodeInputV1 {
             kind: NativeScriptInputKindV1::Native,
@@ -101,7 +109,11 @@ pub fn from_graph(
             })
             .collect(),
         outputs,
-        execution_assurance: NativeBashAssuranceV1::MacosReadonlyRootFramedOutputsV1,
+        execution_assurance: if graph.startup.is_empty() {
+            NativeBashAssuranceV1::MacosReadonlyRootFramedOutputsV1
+        } else {
+            NativeBashAssuranceV1::MacosReadonlyRootHttpReadV1
+        },
     };
     subject.validate()?;
     Ok(subject)

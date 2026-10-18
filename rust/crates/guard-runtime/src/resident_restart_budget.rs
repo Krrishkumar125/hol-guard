@@ -347,6 +347,16 @@ pub(super) fn consume(scope: &Path) -> Result<(), String> {
     write_private(&path, &encoded, &private_root)
 }
 
+#[cfg(not(windows))]
+pub(super) fn finish_supervised_exit(scope: &Path, successful: bool) -> Result<(), String> {
+    if !successful {
+        return Err("native_resident_managed_exit_failed".to_owned());
+    }
+    // Losing the last client lease is an ordinary, successful shutdown.
+    // Counting it as a crash strands short-lived CLI result acknowledgments.
+    clear(scope)
+}
+
 pub(super) fn clear(scope: &Path) -> Result<(), String> {
     let private_root = crate::resident_state::private_root_for_scope(scope)?;
     let _lock = acquire_budget_lock(scope)?;

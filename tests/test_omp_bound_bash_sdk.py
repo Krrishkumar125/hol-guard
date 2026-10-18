@@ -23,16 +23,39 @@ from codex_plugin_scanner.guard.hook_execution_environment import (
     collect_hook_execution_environment,
 )
 from codex_plugin_scanner.guard.native_bash_protocol import runtime_status
-from codex_plugin_scanner.guard.native_resident_client import close_native_residents
+from codex_plugin_scanner.guard.native_resident_client import (
+    close_native_residents,
+    native_resident_client_failure_code,
+)
 from codex_plugin_scanner.guard.store import GuardStore
+from tests.bash_http_registry import local_registry
 from tests.omp_bound_bash_lifecycle import assert_sdk_host_death_cancels, pause_native_execute_source
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="native Bash owner is macOS-only")
 
 
+@pytest.fixture
+def http_registry(request):
+    if not request.node.callspec.params["duration"].startswith("network-"):
+        yield None
+        return
+    with local_registry() as registry:
+        yield registry
+
+
 @pytest.mark.parametrize(
     "duration",
-    ["once", "persistent", "persistent-same-intent", "persistent-nonzero", "keep-blocked", "host-parent-death"],
+    [
+        "once",
+        "persistent",
+        "persistent-same-intent",
+        "persistent-nonzero",
+        "keep-blocked",
+        "host-parent-death",
+        "network-once",
+        "network-persistent-same-intent",
+        "network-quiet",
+    ],
 )
 @pytest.mark.parametrize("harness", ["omp", "pi"])
 def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
@@ -41,8 +64,10 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     monkeypatch,
     duration,
     harness,
+    http_registry,
 ):
     del native_context_digest
+    duration = duration.removeprefix("network-")
     repo = Path(__file__).resolve().parents[1]
     sdk_root = repo / "ci" / "pi-exact-continuation"
     package_name = "@earendil-works/pi-coding-agent" if harness == "pi" else "@oh-my-pi/pi-coding-agent"
@@ -65,6 +90,11 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
         target = execution_cwd / name
         target.write_bytes((fixtures / name).read_bytes())
         target.chmod(0o700)
+    if http_registry is not None:
+        (execution_cwd / "fixture-registry").write_text(http_registry.helper())
+        for name in tuple(os.environ):
+            if name.lower() in {"http_proxy", "https_proxy", "all_proxy", "no_proxy"} or name.startswith("CURL_"):
+                monkeypatch.delenv(name)
     if duration == "persistent-nonzero":
         script = execution_cwd / "maintenance.sh"
         script.write_text(script.read_text() + "\nexit 7\n")
@@ -72,7 +102,12 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("LANG", "C")
     monkeypatch.setenv("PATH", f"{execution_cwd}:/usr/bin:/bin:{Path(bun).parent}")
-    update_guard_settings(guard, {"blocked_request_mode": "ask"})
+    settings: dict[str, object] = {"blocked_request_mode": "ask"}
+    if duration != "quiet":
+        # Deliberate Ask must not depend on whether this machine classifies
+        # the temporary report directory as a persistence location.
+        settings["subprocess_action"] = "require-reapproval"
+    update_guard_settings(guard, settings)
     store = GuardStore(guard)
     command = f"/bin/bash {shlex.quote(str(execution_cwd / 'maintenance.sh'))} dry"
     original_input = {"command": command, "timeout": 45}
@@ -104,7 +139,12 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
             home_dir=home,
             guard_home=guard,
         )
-        assert response["required_execution_profile"] == "native-bash-owner-v1"
+        assert response.get("required_execution_profile") == "native-bash-owner-v1", (
+            response.get("policy_action"),
+            response.get("reason_code"),
+            response.get("reason"),
+            native_resident_client_failure_code(),
+        )
     finally:
         worker.close()
     wrapper = tmp_path / "guard-cli"
@@ -208,7 +248,7 @@ pi.on("tool_call", async (event, ctx) => {
         assert completed.returncode == 0, completed.stderr[-2000:]
         decoded = json.loads(completed.stdout)
         assert decoded["version"] == expected and decoded["originalInput"] == original_input
-        if call_id == "approved-retry":
+        if call_id == "approved-retry" or duration == "quiet" or call_id.startswith("persistent-"):
             assert decoded.get("acknowledgements") == [{"code": 0, "stderr": ""}], decoded
             text = "\n".join(block.get("text", "") for block in decoded.get("result", {}).get("content", []))
             assert "getcwd: cannot access parent directories" not in text, text
@@ -222,25 +262,45 @@ pi.on("tool_call", async (event, ctx) => {
             assert result["details"]["exitCode"] == 125, result
 
     try:
+        if duration == "quiet":
+            update_guard_settings(guard, {"subprocess_action": "allow", "risk_actions": {"persistence": "allow"}})
+            report = home / "maintenance-report.tsv"
+            assert close_native_residents(guard_home=guard)
+            for iteration in range(1, 11):
+                report.write_text(f"must refresh quiet invocation {iteration}")
+                result, error = run(f"persistent-{iteration}")
+                assert error is None and not result.get("isError", False), (result, error)
+                assert "local metadata" in report.read_text()
+                assert store.list_approval_requests() == []
+            assert http_registry is not None and len(http_registry.requests) == 40
+            assert all(method == "GET" for method, _ in http_registry.requests)
+            return
         refused("initial-call", "native_bash_consent_required")
         report = home / "maintenance-report.tsv"
         assert not report.exists()
         pending = store.list_approval_requests()
         assert len(pending) == 1
         request = pending[0]
-        subject = request["action_envelope_json"]["native_bash"]["subject"]
+        request_id = request["request_id"]
+        version, digest = request["scope_contract_version"], request["scope_contract_digest"]
+        assert isinstance(request_id, str) and isinstance(version, str) and isinstance(digest, str)
+        envelope = request["action_envelope_json"]
+        assert isinstance(envelope, dict)
+        native = envelope["native_bash"]
+        assert isinstance(native, dict)
+        subject = native["subject"]
         assert subject["context"]["cwd"] == str(execution_cwd)
         if duration == "keep-blocked":
             apply_approval_resolution(
                 store=store,
-                request_id=request["request_id"],
+                request_id=request_id,
                 action="block",
                 scope="artifact",
                 persist_policy=False,
                 workspace=str(session_cwd),
                 reason="Lane-owned SDK Keep blocked",
-                scope_contract_version=request["scope_contract_version"],
-                scope_contract_digest=request["scope_contract_digest"],
+                scope_contract_version=version,
+                scope_contract_digest=digest,
             )
             for iteration in range(2):
                 assert close_native_residents(guard_home=guard)
@@ -256,20 +316,22 @@ pi.on("tool_call", async (event, ctx) => {
             return
         apply_approval_resolution(
             store=store,
-            request_id=request["request_id"],
+            request_id=request_id,
             action="allow",
             scope="artifact",
             persist_policy=duration in {"persistent", "persistent-same-intent", "persistent-nonzero"},
             workspace=str(session_cwd),
             reason="Lane-owned SDK consent",
-            scope_contract_version=request["scope_contract_version"],
-            scope_contract_digest=request["scope_contract_digest"],
+            scope_contract_version=version,
+            scope_contract_digest=digest,
         )
+        if http_registry is not None and duration == "persistent-same-intent":
+            assert close_native_residents(guard_home=guard)
         if duration == "host-parent-death":
             configure("host-parent-death-retry")
             assert_sdk_host_death_cancels(
                 store=store,
-                operation_id=request["action_envelope_json"]["native_bash"]["review_lineage"]["operation_id"],
+                operation_id=native["review_lineage"]["operation_id"],
                 command=[bun, str(fixtures / "pi_family_bound_bash_sdk.ts"), str(sdk_root), str(configuration)],
                 environment=environment,
                 workspace=workspace,
@@ -303,12 +365,18 @@ pi.on("tool_call", async (event, ctx) => {
                 result, error = run(f"persistent-{iteration}")
                 assert error is None, error
                 assert not result.get("isError", False), result
+                assert result.get("details", {}).get("exitCode", 0) == 0, result
                 assert "local metadata" in report.read_text(), "a distinct invocation must execute rather than replay"
             assert store.list_approval_requests() == []
+            if http_registry is not None:
+                assert len(http_registry.requests) == 40
+                assert all(method == "GET" for method, _ in http_registry.requests)
             report.write_text("preserve persistent SDK report")
             update_guard_settings(guard, {"subprocess_action": "block"})
             refused("current-policy-denied", "bash_current_policy_denied")
             assert report.read_text() == "preserve persistent SDK report"
+            if http_registry is not None:
+                assert len(http_registry.requests) == 40, "current deny must precede every network effect"
             with store._connect() as connection:
                 assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 10
                 assert connection.execute("select count(*) from guard_local_once_approvals").fetchone()[0] == 0
@@ -319,6 +387,9 @@ pi.on("tool_call", async (event, ctx) => {
         assert not replay.get("isError", False)
         assert replay.get("details", {}).get("exitCode", 0) == 0
         assert report.read_text() == "preserve SDK report"
+        if http_registry is not None:
+            assert len(http_registry.requests) == 4
+            assert all(method == "GET" for method, _ in http_registry.requests)
         refused("fresh-operation", "native_bash_consent_required")
         assert report.read_text() == "preserve SDK report"
     finally:

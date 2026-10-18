@@ -148,6 +148,7 @@ fn bash_resident_inspection_preserves_helper_execution_spelling() {
         captured: RefCell::new(BTreeMap::new()),
         source_snapshots: RefCell::new(BTreeMap::new()),
         source_contents: RefCell::new(BTreeMap::new()),
+        network_destinations: RefCell::new(BTreeSet::new()),
     };
     let graph::Executable::Bash(helper) = graph::Resolver::resolve(
         &resolver,
@@ -417,6 +418,7 @@ fn bash_resident_inspection_shares_alias_bytes_and_obeys_effective_execute_acces
         captured: RefCell::new(BTreeMap::new()),
         source_snapshots: RefCell::new(BTreeMap::new()),
         source_contents: RefCell::new(BTreeMap::new()),
+        network_destinations: RefCell::new(BTreeSet::new()),
     };
     let original = graph::Resolver::resolve_source(&resolver, "./settings.sh").unwrap();
     let alias = graph::Resolver::resolve_source(&resolver, "./settings-alias.sh").unwrap();

@@ -61,6 +61,7 @@ pub enum NativeBashHostV1 {
 #[serde(rename_all = "kebab-case")]
 pub enum NativeBashAssuranceV1 {
     MacosReadonlyRootFramedOutputsV1,
+    MacosReadonlyRootHttpReadV1,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]

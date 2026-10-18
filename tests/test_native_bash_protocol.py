@@ -234,16 +234,21 @@ def test_replay_reports_completion_without_emitting_old_output():
     assert sink.render_result(result, output=output, errors=errors) == 125
 
 
-def test_prepare_requires_native_consent_flag_and_assurance():
+@pytest.mark.parametrize("assurance", ["macos-readonly-root-framed-outputs-v1", "macos-readonly-root-http-read-v1"])
+def test_prepare_requires_native_consent_flag_and_assurance(assurance):
     payload = {
         "artifact_id": bridge.ARTIFACT_ID,
         "artifact_hash": "guard-approval-context:v1:fixture",
         "assessment": [],
         "consent_required": False,
         "review": {"decision": {}, "receipt": {}},
-        "subject": {"schema": "guard.bash-subject.v1", "execution_assurance": "macos-readonly-root-framed-outputs-v1"},
+        "subject": {"schema": "guard.bash-subject.v1", "execution_assurance": assurance},
     }
     assert validate_prepared(payload) is payload
+    payload["subject"]["execution_assurance"] = "macos-readonly-root-unbounded-v1"
+    with pytest.raises(bridge.NativeBashError):
+        validate_prepared(payload)
+    payload["subject"]["execution_assurance"] = assurance
     payload["consent_required"] = 0
     with pytest.raises(bridge.NativeBashError):
         validate_prepared(payload)

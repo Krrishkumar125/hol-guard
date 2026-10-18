@@ -48,10 +48,12 @@ impl Resolver for FixtureResolver {
             "sort" | "head" => Ok(Executable::Native {
                 resolved_path: format!("/usr/bin/{command}"),
                 content_sha256: "1".repeat(64),
+                openssl_config: None,
             }),
             "rm" => Ok(Executable::Native {
                 resolved_path: "/bin/rm".into(),
                 content_sha256: "2".repeat(64),
+                openssl_config: None,
             }),
             _ => Err("bash_helper_unresolved"),
         }
@@ -254,6 +256,7 @@ fn frozen_native_call_preserves_original_argv_zero() {
             Ok(Executable::Native {
                 resolved_path: "/bin/bash".into(),
                 content_sha256: "a".repeat(64),
+                openssl_config: None,
             })
         }
     }

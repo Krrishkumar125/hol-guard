@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ..native_bash_protocol import ARTIFACT_ID, NativeBashError
-from ..native_bash_reply import validate_review_lineage
+from ..native_bash_reply import supported_execution_assurance, validate_review_lineage
 from ..native_decision_receipt import receipt_matches_edge, validate_native_decision_receipt
 
 
@@ -37,7 +37,7 @@ def valid_bound_bash_review(
         and review.get("receipt") == native_receipt
         and isinstance(subject, Mapping)
         and subject.get("schema") == "guard.bash-subject.v1"
-        and subject.get("execution_assurance") == "macos-readonly-root-framed-outputs-v1"
+        and supported_execution_assurance(subject.get("execution_assurance"))
         and host is not None
         and isinstance(context, Mapping)
         and context.get("host") == host

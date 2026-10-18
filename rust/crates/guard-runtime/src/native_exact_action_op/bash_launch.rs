@@ -99,6 +99,7 @@ pub(super) fn profile(captured: &CapturedBash) -> io::Result<String> {
     // macOS getcwd requires directory-data access as well as metadata. A
     // literal directory allows that lookup without allowing child file data.
     let cwd = literal(&captured.subject.context.cwd)?;
+    let network = super::bash_network::rules(&captured.network_destinations);
     Ok(format!(
         r#"(version 1)
 (deny default)
@@ -110,6 +111,7 @@ pub(super) fn profile(captured: &CapturedBash) -> io::Result<String> {
 (allow file-read-data (literal {cwd}))
 (allow file-map-executable (subpath "/System") (subpath "/usr/lib") {executables})
 (allow file-write* (literal "/dev/null") {outputs})
+{network}
 (allow sysctl-read)
 (allow mach-lookup)"#
     ))

@@ -7,6 +7,13 @@ import re
 from .native_bash_protocol import ARTIFACT_ID, NativeBashError
 
 
+def supported_execution_assurance(value: object) -> bool:
+    return isinstance(value, str) and value in {
+        "macos-readonly-root-framed-outputs-v1",
+        "macos-readonly-root-http-read-v1",
+    }
+
+
 def _require(condition: bool) -> None:
     if not condition:
         raise NativeBashError("native_bash_response_invalid")
@@ -28,7 +35,7 @@ def validate_prepared(payload: object) -> dict[str, object]:
     _require(isinstance(subject, dict))
     assert isinstance(subject, dict)
     _require(subject.get("schema") == "guard.bash-subject.v1")
-    _require(subject.get("execution_assurance") == "macos-readonly-root-framed-outputs-v1")
+    _require(supported_execution_assurance(subject.get("execution_assurance")))
     return payload
 
 

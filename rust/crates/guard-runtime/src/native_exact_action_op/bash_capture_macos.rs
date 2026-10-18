@@ -1,7 +1,7 @@
 //! Capture bytes through held filesystem handles; require system-root images.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -25,12 +25,17 @@ mod grant_tests;
 #[path = "bash_launch_tests.rs"]
 mod launch_tests;
 #[cfg(test)]
+#[path = "bash_network_tests.rs"]
+mod network_tests;
+#[cfg(test)]
 #[path = "bash_policy_tests.rs"]
 mod policy_tests;
 #[cfg(test)]
 #[path = "bash_capture_tests.rs"]
 mod tests;
 
+#[path = "bash_capture_native.rs"]
+mod native_image;
 #[path = "bash_capture_environment.rs"]
 mod startup_environment;
 use startup_environment::capture as environment;
@@ -59,6 +64,7 @@ struct Resolver<'a> {
     captured: RefCell<BTreeMap<(String, PathBuf), graph::Executable>>,
     source_snapshots: RefCell<BTreeMap<(String, PathBuf), graph::Code>>,
     source_contents: RefCell<BTreeMap<PathBuf, Arc<str>>>,
+    network_destinations: RefCell<BTreeSet<std::net::SocketAddrV4>>,
 }
 
 impl Resolver<'_> {
@@ -171,20 +177,6 @@ impl Resolver<'_> {
             source,
         })
     }
-
-    fn image(&self, path: &Path) -> Result<PinnedCommand> {
-        self.check()?;
-        let pinned = PinnedCommand::new(path, &[], self.cwd, &[])
-            .map_err(|_| "bash_system_image_unavailable")?;
-        if !pinned
-            .has_readonly_system_image()
-            .map_err(|_| "bash_system_image_unavailable")?
-        {
-            return Err("bash_system_image_not_immutable");
-        }
-        self.check()?;
-        Ok(pinned)
-    }
 }
 
 impl graph::Resolver for Resolver<'_> {
@@ -233,6 +225,13 @@ impl graph::Resolver for Resolver<'_> {
         let (spelling, path) = self.resolve_spelling(&argv[0])?;
         let key = (spelling.clone(), path.clone());
         let native = match path.to_str() {
+            Some("/usr/bin/curl") => {
+                let peers = super::super::bash_network::destinations(
+                    argv, self.names, self.cwd, self.home,
+                )?;
+                self.network_destinations.borrow_mut().extend(peers);
+                true
+            }
             Some("/usr/bin/sort") => argv.len() == 1,
             Some("/usr/bin/head") => {
                 argv.len() == 3
@@ -253,11 +252,7 @@ impl graph::Resolver for Resolver<'_> {
             return Err("bash_graph_bounds");
         }
         let captured = if native {
-            let pinned = self.image(&path)?;
-            graph::Executable::Native {
-                resolved_path: text(&path)?,
-                content_sha256: pinned.executable_digest,
-            }
+            native_image::capture(self, &path)?
         } else {
             if spelling.starts_with('-') || spelling.starts_with('+') {
                 return Err("bash_helper_interpreter_unproven");
@@ -287,6 +282,7 @@ pub(crate) struct CapturedBash {
     pub(crate) environment: BTreeMap<String, String>,
     pub(crate) report: Option<CapturedReport>,
     pub(crate) policy: Option<super::super::bash_policy::Assessment>,
+    pub(crate) network_destinations: BTreeSet<std::net::SocketAddrV4>,
 }
 
 pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubjectV1> {
@@ -339,6 +335,7 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
         captured: RefCell::new(BTreeMap::new()),
         source_snapshots: RefCell::new(BTreeMap::new()),
         source_contents: RefCell::new(BTreeMap::new()),
+        network_destinations: RefCell::new(BTreeSet::new()),
     };
     let model = parse_shell_command(
         &request.command,
@@ -478,6 +475,7 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
             resolved_outputs: &outputs,
         },
     )?;
+    let network_destinations = resolver.network_destinations.into_inner();
     Ok(CapturedBash {
         subject,
         graph,
@@ -485,5 +483,6 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
         environment,
         report,
         policy: None,
+        network_destinations,
     })
 }
