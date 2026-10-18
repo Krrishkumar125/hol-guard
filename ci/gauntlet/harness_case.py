@@ -19,6 +19,7 @@ from .approval_retry_bash import evidence as bash_lifecycle_evidence
 from .approval_retry_bash import stage as stage_bash_lifecycle
 from .approval_rows import approval_rows
 from .business_policy import BUSINESS_CASES, BUSINESS_CLI_CASES, bind_business_snapshot, install_business_policy
+from .case_helpers import fixture_system_context
 from .catalog import WATCH_COMMAND, WATCH_PROMPT, Scenario
 from .cleanup import cleanup_case_resources
 from .connector_fixtures import CONNECTOR_PROFILE, connector_checks, stage_connector_case, state_digest
@@ -39,7 +40,7 @@ from .host_process import clean_environment, realistic_environment, run_process
 from .input_evidence import redact_value
 from .provider import LoopbackCollector
 from .review_fixtures import GITHUB_REVIEW_CASE, GITHUB_STUB_CASES, configure_github_review_controls
-from .runner import FIXTURE_SYSTEM_CONTEXT, _fixture_replacements, _scenario_prompt, _watch_binding
+from .runner import _fixture_replacements, _scenario_prompt, _watch_binding
 from .script_cases import stage_script_cases
 from .supply_chain import stage_supply_chain
 
@@ -158,7 +159,7 @@ def run_harness_case(
             prompt, context = route_task(
                 scenario,
                 _scenario_prompt(rendered),
-                fixture_authorization(fixture, collector.url, rendered) + "\n" + FIXTURE_SYSTEM_CONTEXT,
+                fixture_authorization(fixture, collector.url, rendered) + "\n" + fixture_system_context(scenario),
             )
             case["task_route"] = "instructions" if prompt == NEUTRAL_PROMPT else "prompt"
             # Public, redacted targets the judge binds hook requests to.

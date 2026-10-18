@@ -18,20 +18,22 @@ from ci.native_runtime import probe_installed_pi_output as probe
 
 from .agent_configuration import write_agent_configuration
 from .agent_prompt import fixture_authorization
+from .approval_retry_omp import OmpReview
+from .approval_retry_omp import enabled as approval_retry_enabled
 from .approval_rows import approval_rows
 from .business_policy import BUSINESS_CASES, BUSINESS_CLI_CASES, bind_business_snapshot, install_business_policy
 from .case_helpers import (
-    FIXTURE_SYSTEM_CONTEXT,
     _fixture_replacements,
     _mixed_read_approval_targets,
     _scenario_prompt,
     _scenario_tools,
     _watch_binding,
+    fixture_system_context,
     read_case_logs,
     ready_watch_binding,
 )
 from .case_worker import SubprocessCaseWorker
-from .catalog import WATCH_COMMAND, WATCH_PROMPT, Scenario, catalog_digest, load_catalog
+from .catalog import CATALOG, WATCH_COMMAND, WATCH_PROMPT, Scenario, catalog_digest, load_catalog
 from .cleanup import cleanup_case_resources
 from .contained_core import request_proofs
 from .evidence import assess_case, sha256_bytes
@@ -110,6 +112,9 @@ def run_case(
         "timed_out": False,
         "cleanup_ok": False,
     }
+    review = None
+    if approval_retry_enabled(scenario):
+        case["profile"] = "approval-retry"
     daemon = None
     extension_receipt_ids: set[str] | None = None
     extension_receipt_writer: Any | None = None
@@ -118,6 +123,8 @@ def run_case(
     started = time.monotonic()
     replacements = _fixture_replacements(fixture)
     try:
+        if approval_retry_enabled(scenario):
+            review = OmpReview(scenario, fixture, case)
         with LoopbackCollector() as collector, InferenceRelay(canary=fixture.canary, **provider) as relay:
             replacements[collector.url] = "{{collector_url}}"
             rendered = scenario.render(
@@ -131,7 +138,7 @@ def run_case(
             )
             prompt = _scenario_prompt(rendered)
             authorization = fixture_authorization(fixture, collector.url, rendered) + (
-                "" if first_contact else "\n" + FIXTURE_SYSTEM_CONTEXT
+                "" if first_contact else "\n" + fixture_system_context(scenario)
             )
             case["prompt_sha256"] = sha256_bytes(prompt.encode())
             case["agent_context_sha256"] = sha256_bytes(authorization.encode())
@@ -260,15 +267,19 @@ def run_case(
                 position = command.index("--extension")
                 command[position:position] = ["--extension", str(HERE / "watch_scope.ts")]
                 case["watch_binding_before"] = ready_watch_binding(worker)
-            case["returncode"], case["timed_out"] = run_process(
-                command,
-                cwd=fixture.workspace,
-                env=environment,
-                output=raw_log,
-                error_output=error_log,
-                timeout=timeout + 15,
-            )
+            approver = review.approver(worker) if review is not None else None
+            with approver or contextlib.nullcontext():
+                case["returncode"], case["timed_out"] = run_process(
+                    command,
+                    cwd=fixture.workspace,
+                    env=environment,
+                    output=raw_log,
+                    error_output=error_log,
+                    timeout=timeout + 15,
+                )
             time.sleep(0.1)
+            if review is not None and approver is not None:
+                review.collect(case, worker, approver, replacements)
             if scenario.oracle == "watch-command":
                 case["watch_binding_after"] = _watch_binding(worker.store)
             case["approval_delta"] = worker.store.count_approval_requests(status=None) - before
@@ -366,10 +377,15 @@ def run_suite(
     slot_dir: Path | None = None,
     max_load: float | None = None,
     max_load_wait: float = 180.0,
+    profile: str = "core",
 ) -> dict[str, Any]:
     """Run the complete profile or explicitly label a targeted exploratory run."""
     if re.fullmatch(r"[0-9a-f]{40}", expected_source_sha) is None:
         raise ValueError("expected source SHA must be a full Git commit")
+    if profile not in {"core", "approval-retry"}:
+        raise ValueError("OMP session runner supports core and approval-retry profiles")
+    if profile == "approval-retry" and jobs != 1:
+        raise ValueError("approval-retry runs serially")
     jobs = validate_jobs(jobs)
     if KNOWN_GAPS.is_file():
         load_known_gaps()  # a malformed gap file aborts before any case runs
@@ -389,7 +405,10 @@ def run_suite(
     expected_version = package["dependencies"]["@oh-my-pi/pi-coding-agent"]
     if version != "omp/" + expected_version:
         raise RuntimeError("Oh My Pi version differs from the repository-pinned SDK")
-    catalog = load_catalog()
+    from .approval_retry import CATALOG as APPROVAL_RETRY_CATALOG
+
+    catalog_path = APPROVAL_RETRY_CATALOG if profile == "approval-retry" else CATALOG
+    catalog = load_catalog(catalog_path)
     if selected_ids and (set(selected_ids) - {scenario.id for scenario in catalog}):
         raise ValueError("unknown scenario selection")
     selected = tuple(s for s in catalog if not selected_ids or s.id in selected_ids)
@@ -403,6 +422,7 @@ def run_suite(
         "started_at": datetime.now(timezone.utc).isoformat(),
         "schema": "hol.guard-gauntlet.evidence.v1",
         "name": "Guard Gauntlet",
+        "profile": profile,
         **binding,
         "installed_source_sha": capabilities.build_sha,
         "native_binary_sha256": identity.sha256,
@@ -410,7 +430,7 @@ def run_suite(
         "guard_version": capabilities.runtime_version,
         "omp_version": version,
         "platform": platform.system().lower(),
-        "catalog_sha256": catalog_digest(),
+        "catalog_sha256": catalog_digest(catalog_path),
         "runner_files": {p.name: digest_file(p) for p in sorted(HERE.iterdir()) if p.is_file()},
         "sdk_lock_sha256": digest_file(REPO / "ci/pi-exact-continuation/package-lock.json"),
         "source_dirty": dirty,
@@ -513,14 +533,18 @@ def run_suite(
         report["full_profile"]
         and len(report["cases"]) == len(selected)
         and all(c["outcome"] == "pass" for c in report["cases"])
-        and not report["interruptions"]["benign_interruptions"]
+        and (profile == "approval-retry" or not report["interruptions"]["benign_interruptions"])
         and not stale_gaps(report["known_gaps"])
     )
     report["source_unchanged"] = source_identity(REPO, candidate_sha) == binding and report["runner_files"] == {
         p.name: digest_file(p) for p in sorted(HERE.iterdir()) if p.is_file()
     }
     report["merge_qualified"] = (
-        report["pass"] and not dirty and report["source_unchanged"] and source_sha == capabilities.build_sha
+        profile == "core"
+        and report["pass"]
+        and not dirty
+        and report["source_unchanged"]
+        and source_sha == capabilities.build_sha
     )
     (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     (output / "summary.md").write_text(render_summary_markdown(report, binding, capabilities.build_sha, version))

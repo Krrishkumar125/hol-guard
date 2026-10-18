@@ -848,15 +848,15 @@ def test_the_grant_reason_names_the_lane_not_the_product():
     assert is_review_reason(REVIEW_REASON)
 
 
-def test_the_lane_refuses_the_omp_runner(capsys: pytest.CaptureFixture[str]):
-    """The omp lane relays inference itself and has its own judge; this lane drives a real CLI."""
+def test_the_omp_lane_still_requires_a_live_inference_provider(capsys: pytest.CaptureFixture[str]):
+    """Adding consent support must not create a mock inference fallback."""
     from ci.gauntlet.__main__ import main
 
     assert (
         main(["run", "--profile", "approval-retry", "--expected-source-sha", "0" * 40, "--output", "/nonexistent/lane"])
         != 0
     )
-    assert "not the omp lane" in capsys.readouterr().err
+    assert "live provider URL, model and provider identity are required" in capsys.readouterr().err
 
 
 def test_the_lane_requires_a_full_installed_source_sha():

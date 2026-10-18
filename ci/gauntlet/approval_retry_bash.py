@@ -208,7 +208,12 @@ def assessment(
         return "not-exercised", "the script never reached an approval or protection decision"
     from .approval_retry import is_review_reason
 
-    if not is_review_reason(str(reviewed[0].get("reason_code") or "")):
+    first = reviewed[0]
+    owner_review = (
+        first.get("reason_code") == "native_bash_owner_required"
+        and first.get("execution_reason_code") == "native_bash_consent_required"
+    )
+    if not owner_review and not is_review_reason(str(first.get("reason_code") or "")):
         return "not-exercised", "the script never reached the approval path"
     if not lifecycle.get("report_exact", False):
         return "fail", "the physical report contains unexpected bytes"
@@ -250,7 +255,10 @@ def assessment(
     if current.deny_after_first_grant:
         later = script_decisions[script_decisions.index(reviewed[0]) + 1 :]
         hard = [
-            row for row in later if row.get("decision") != "allow" and row.get("reason_code") == "native_policy_block"
+            row
+            for row in later
+            if row.get("decision") != "allow"
+            and row.get("execution_reason_code", row.get("reason_code")) == "native_policy_block"
         ]
         if transition.get("policy_denied") is not True or not hard:
             return "fail", "current deny policy did not stop the approved script before effects"
