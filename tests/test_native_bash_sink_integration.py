@@ -43,7 +43,9 @@ class _Secrets:
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="native immutable Bash owner currently supports macOS")
 @pytest.mark.parametrize("duration,home_in_workspace", [
-    ("quiet", True), ("quiet-raced-block", True), ("once", False), ("once-default", False), ("persistent", False),
+    ("quiet", True), ("quiet-raced-block", True), ("once", False), ("once-default", False),
+    ("persistent", False), ("keep-blocked", False), ("keep-blocked-default", False),
+    ("keep-blocked-saved-allow", False),
 ])
 def test_real_sink_quiet_replay_and_current_persistence_review(
     native_context_digest, tmp_path, monkeypatch, home_in_workspace, duration,
@@ -97,6 +99,7 @@ def test_real_sink_quiet_replay_and_current_persistence_review(
             pending = store.list_approval_requests()
             assert len(pending) == 1
             prepared = prepared_evidence[-1]
+            prepared["review_lineage"] = pending[0]["action_envelope_json"]["native_bash"]["review_lineage"]
             altered = copy.deepcopy(prepared["review"]["decision"])
             altered["reason_code"] = "forged_review_reason"
             assert queue_native_pre_tool_review(
@@ -110,6 +113,61 @@ def test_real_sink_quiet_replay_and_current_persistence_review(
             queued = pending[0]
             assert queued["artifact_id"] == "native-bash-launch:v1"
             assert queued["action_envelope_json"]["native_bash"]["subject"]["schema"] == "guard.bash-subject.v1"
+            if duration.startswith("keep-blocked"):
+                lineage = queued["action_envelope_json"]["native_bash"]["review_lineage"]
+                assert lineage["operation_id"] == "sink-fixture-operation-1"
+                assert lineage["expires_at_ms"] - lineage["created_at_ms"] == 86_400_000
+                assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
+                                      operation_id="sink-fixture-operation-1", output=output, errors=errors) == 125
+                assert [row["request_id"] for row in store.list_approval_requests()] == [queued["request_id"]]
+                assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
+                                      operation_id="sink-existing-other-intent", output=output, errors=errors) == 125
+                other = [row for row in store.list_approval_requests() if row["request_id"] != queued["request_id"]]
+                assert len(other) == 1
+                other_id = other[0]["request_id"]
+                apply_approval_resolution(
+                    store=store, request_id=queued["request_id"], action="block", scope="artifact",
+                    workspace=str(project), reason="Lane-owned Keep blocked",
+                    persist_policy=None if duration == "keep-blocked-default" else False,
+                    scope_contract_version=queued["scope_contract_version"],
+                    scope_contract_digest=queued["scope_contract_digest"],
+                )
+                pending_after_block = [other_id]
+                if duration == "keep-blocked-saved-allow":
+                    apply_approval_resolution(
+                        store=store, request_id=other_id, action="allow", scope="artifact",
+                        workspace=str(project), reason="Lane-owned other intent exact-version allow",
+                        persist_policy=True,
+                        scope_contract_version=other[0]["scope_contract_version"],
+                        scope_contract_digest=other[0]["scope_contract_digest"],
+                    )
+                    pending_after_block = []
+                for iteration in range(2):
+                    assert close_native_residents(guard_home=guard)
+                    errors.seek(0)
+                    errors.truncate()
+                    assert run_bound_bash({**payload, "tool_call_id": f"reissued-{iteration}"},
+                                          store=store, workspace=project, harness="omp",
+                                          operation_id="sink-fixture-operation-1", output=output, errors=errors) == 125
+                    assert "native_bash_operation_kept_blocked" in errors.getvalue()
+                    assert "requires consent" not in errors.getvalue()
+                    assert [row["request_id"] for row in store.list_approval_requests()] == pending_after_block
+                assert not (home / "maintenance-report.tsv").exists()
+                if duration == "keep-blocked-saved-allow":
+                    assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
+                                          operation_id="sink-fresh-saved-allow", output=output, errors=errors) == 0
+                    assert "local metadata" in (home / "maintenance-report.tsv").read_text()
+                    assert store.list_approval_requests() == []
+                    return
+                assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
+                                      operation_id="sink-fixture-new-intent", output=output, errors=errors) == 125
+                assert len(store.list_approval_requests()) == 2
+                assert all(row["request_id"] != queued["request_id"] for row in store.list_approval_requests())
+                with store._connect() as connection:
+                    assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 0
+                    assert connection.execute("select count(*) from policy_decisions").fetchone()[0] == 0
+                    assert connection.execute("select count(*) from guard_local_once_approvals").fetchone()[0] == 0
+                return
             contract = request_scope_contract(queued)
             assert contract.can_run_once and contract.can_persist_exact_version
             # Resolve only the lane-owned row from this disposable store,
@@ -121,6 +179,12 @@ def test_real_sink_quiet_replay_and_current_persistence_review(
                 scope_contract_version=queued["scope_contract_version"],
                 scope_contract_digest=queued["scope_contract_digest"],
             )
+            if duration in {"once", "once-default"}:
+                assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
+                                      operation_id="sink-unrelated-operation", output=output, errors=errors) == 125
+                assert not (home / "maintenance-report.tsv").exists()
+                with store._connect() as connection:
+                    assert connection.execute("select claimed_at from guard_local_once_approvals").fetchone()[0] is None
             assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
                                   operation_id="sink-fixture-operation-1", output=output, errors=errors) == 0
             report = home / "maintenance-report.tsv"

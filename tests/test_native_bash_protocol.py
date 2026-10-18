@@ -31,6 +31,7 @@ def _result(request):
         "request_sha256": "sha256:" + bridge._canonical_request_sha256(request),
         "status": "ok", "code": "ok", "grant_claimed": False,
         "dispatch_acknowledged": True, "replayed": False, "payload": completion,
+        "review_lineage": None,
         "operation": {
             "operation_id": request["operation_id"], "artifact_hash": "guard-approval-context:v1:fixture",
             "authorization": "current_policy", "state": "completed", "dispatch_acknowledged": True,
@@ -66,6 +67,39 @@ def test_execute_uses_one_owned_client_and_preserves_program_failure(transport, 
     output, errors = io.StringIO(), io.StringIO()
     assert sink.render_result(result, output=output, errors=errors) == 7
     assert output.getvalue() == "result\n" and errors.getvalue() == "warning\n"
+
+
+def test_runtime_without_pending_lineage_capability_is_not_used(monkeypatch):
+    status = SimpleNamespace(available=True, compatible=True, identity=object(),
+                             capabilities=SimpleNamespace(features={bridge.FEATURE, "resident-protocol-v2"}))
+    monkeypatch.setattr(bridge, "native_runtime_status", lambda: status)
+    with pytest.raises(bridge.NativeBashError, match="native_bash_owner_unavailable"):
+        bridge.runtime_status()
+    status.capabilities.features.add("native-bash-review-lineage-v1")
+    assert bridge.runtime_status() is status
+
+
+@pytest.mark.parametrize("mutation", ["missing", "operation", "id", "expiry", "unknown", "grant"])
+def test_pending_review_cannot_masquerade_as_authorization(mutation):
+    request = _request()
+    result = _result(request)
+    result.update(status="error", code="native_bash_consent_required", payload=None,
+                  operation=None, dispatch_acknowledged=False, review_lineage={
+                      "schema": "guard-native-bash-review-lineage.v1", "lineage_id": "c" * 64,
+                      "operation_id": request["operation_id"], "artifact_hash": "guard-approval-context:v1:fixture",
+                      "created_at_ms": 1000, "expires_at_ms": 86_401_000,
+                  })
+    validate_executed(result, request)
+    if mutation == "missing":
+        result["review_lineage"] = None
+    elif mutation == "grant":
+        result["grant_claimed"] = True
+    else:
+        key, value = {"operation": ("operation_id", "another-operation-0001"), "id": ("lineage_id", "invalid"),
+                      "expiry": ("expires_at_ms", 1001), "unknown": ("allow", True)}[mutation]
+        result["review_lineage"][key] = value
+    with pytest.raises(bridge.NativeBashError):
+        validate_executed(result, request)
 
 
 @pytest.mark.parametrize("failure", ["timeout", "output", "containment", "exit", "binding"])

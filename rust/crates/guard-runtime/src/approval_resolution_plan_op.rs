@@ -347,8 +347,9 @@ fn evaluate(request: &ApprovalResolutionPlanRequestV1) -> Result<Value, String> 
         .clone()
         .filter(|hash| parse_context_token(&Value::String(hash.clone())).is_some());
     let exact_context_allow = allow && context_token.is_some();
-    let native_bash_once =
-        exact_context_allow && request_artifact_id.as_deref() == Some("native-bash-launch:v1");
+    let native_bash_operation_only = scope == "artifact"
+        && context_token.is_some()
+        && request_artifact_id.as_deref() == Some(guard_contracts::NATIVE_BASH_ARTIFACT_ID);
     let persist = request.persist_policy;
     let mut scoped_id = if matches!(scope, "artifact" | "harness" | "global") {
         request_artifact_id.clone()
@@ -437,7 +438,7 @@ fn evaluate(request: &ApprovalResolutionPlanRequestV1) -> Result<Value, String> 
     } else if persist.is_none()
         && scope == "artifact"
         && !request.temporary_mcp
-        && !native_bash_once
+        && !native_bash_operation_only
     {
         persistence = "once";
         let expires_at = once_expires_at(&request.resolved_at)?;
@@ -445,7 +446,7 @@ fn evaluate(request: &ApprovalResolutionPlanRequestV1) -> Result<Value, String> 
         if allow && request.requires_local_once {
             local_once_row = local_once(&scoped_hash, expires_at)?;
         }
-    } else if (persist == Some(false) || native_bash_once)
+    } else if (persist == Some(false) || native_bash_operation_only)
         && scope == "artifact"
         && exact_context_allow
         && !request.temporary_mcp
@@ -463,6 +464,7 @@ fn evaluate(request: &ApprovalResolutionPlanRequestV1) -> Result<Value, String> 
     let resolve_matching = !(!request.resolve_scope_matches
         || runtime_exact_scoped
         || exact_context_allow
+        || (native_bash_operation_only && persist != Some(true))
         || (allow && scope != "artifact"));
     let matching = if resolve_matching {
         let harness = if scope == "global" {

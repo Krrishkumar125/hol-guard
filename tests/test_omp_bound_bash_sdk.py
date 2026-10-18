@@ -29,7 +29,7 @@ from codex_plugin_scanner.guard.store import GuardStore
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="native Bash owner is macOS-only")
 
 
-@pytest.mark.parametrize("duration", ["once", "persistent"])
+@pytest.mark.parametrize("duration", ["once", "persistent", "keep-blocked"])
 @pytest.mark.parametrize("harness", ["omp", "pi"])
 def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     native_context_digest, tmp_path, monkeypatch, duration, harness,
@@ -97,7 +97,7 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     wrapper.chmod(0o700)
     routing = tmp_path / "routing.ts"
     routing.write_text("""
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -105,6 +105,9 @@ export const handlers = new Map();
 const pi = { on(name, callback) {
   const list = handlers.get(name) ?? []; list.push(callback); handlers.set(name, list);
 } };
+export function bindSession(manager) {
+  pi.appendEntry = (kind, data) => manager.appendCustomEntry(kind, data);
+}
 const toolCallIdKey = (value) => typeof value === 'string' ? value : null;
 const GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS = false;
 const GUARD_HOME_DIR_IS_DEFAULT = true;
@@ -122,7 +125,7 @@ pi.on("tool_call", async (event, ctx) => {
     hook_event_name: "PreToolUse", tool_name: event.toolName, tool_call_id: event.toolCallId,
     session_id: ctx.sessionManager.getSessionId(), tool_input: structuredClone(event.input),
   } };
-  const input = prepareContainedTestInput(response, snapshot);
+  const input = prepareContainedTestInput(response, snapshot, ctx);
   if (!input) return { block: true, reason: "missing protected owner delivery" };
   ROUTE_INPUT_RESULT
 });
@@ -139,6 +142,9 @@ pi.on("tool_call", async (event, ctx) => {
         configuration.write_text(json.dumps({
             "expectedVersion": expected, "routingModule": str(routing), "workspace": str(session_cwd),
             "callId": call_id, "input": original_input, "harness": harness,
+            "sessionFile": str(tmp_path / "sdk-session.jsonl"),
+            "newIntent": (call_id in {"fresh-operation", "current-policy-denied", "new-user-intent"}
+                          or call_id.startswith("persistent-")),
         }))
         completed = subprocess.run(
             [bun, str(fixtures / "pi_family_bound_bash_sdk.ts"), str(sdk_root), str(configuration)],
@@ -165,6 +171,25 @@ pi.on("tool_call", async (event, ctx) => {
         request = pending[0]
         subject = request["action_envelope_json"]["native_bash"]["subject"]
         assert subject["context"]["cwd"] == str(execution_cwd)
+        if duration == "keep-blocked":
+            apply_approval_resolution(
+                store=store, request_id=request["request_id"], action="block", scope="artifact",
+                persist_policy=False, workspace=str(session_cwd), reason="Lane-owned SDK Keep blocked",
+                scope_contract_version=request["scope_contract_version"],
+                scope_contract_digest=request["scope_contract_digest"],
+            )
+            for iteration in range(2):
+                assert close_native_residents(guard_home=guard)
+                refused(f"same-user-intent-reissue-{iteration}", "native_bash_operation_kept_blocked")
+                assert store.list_approval_requests() == []
+            assert not report.exists()
+            refused("new-user-intent", "native_bash_consent_required")
+            new_pending = store.list_approval_requests()
+            assert len(new_pending) == 1 and new_pending[0]["request_id"] != request["request_id"]
+            with store._connect() as connection:
+                assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 0
+                assert connection.execute("select count(*) from policy_decisions").fetchone()[0] == 0
+            return
         apply_approval_resolution(
             store=store, request_id=request["request_id"], action="allow", scope="artifact",
             persist_policy=duration == "persistent",

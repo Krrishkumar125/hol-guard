@@ -35,7 +35,7 @@ def runtime_status() -> NativeRuntimeStatus:
     if (
         not status.available or not status.compatible or status.identity is None
         or status.capabilities is None
-        or not {FEATURE, "resident-protocol-v2"}.issubset(status.capabilities.features)
+        or not {FEATURE, "native-bash-review-lineage-v1", "resident-protocol-v2"}.issubset(status.capabilities.features)
     ):
         raise NativeBashError("native_bash_owner_unavailable")
     return status
@@ -166,7 +166,7 @@ def execute(request: dict[str, object], *, guard_home: Path, cwd: Path) -> dict[
     result = decode(reply.stdout)
     validate_reply(
         result, request, kind="execute", statuses=frozenset({"ok", "error", "recorded"}),
-        extra=frozenset({"grant_claimed", "dispatch_acknowledged", "replayed", "operation"}),
+        extra=frozenset({"grant_claimed", "dispatch_acknowledged", "replayed", "operation", "review_lineage"}),
     )
     validate_executed(result, request)
     return result

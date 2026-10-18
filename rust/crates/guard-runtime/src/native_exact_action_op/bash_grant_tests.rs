@@ -84,6 +84,16 @@ fn once(
         .find(|value| value["id"] == crate::claim_reuse_then_tests::ONE_SHOT)
         .unwrap();
     let connection = seeded_store(&document["schema_sql"], &vector["seed"]);
+    // The production store always has the request table. These older claim
+    // vectors intentionally contain only grant tables, so supply that read
+    // surface explicitly instead of treating missing schema as no decision.
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS approval_requests(request_id TEXT PRIMARY KEY,
+         status TEXT, resolution_action TEXT, action_envelope_json TEXT, harness TEXT,
+         artifact_id TEXT, artifact_hash TEXT, workspace TEXT)",
+        )
+        .unwrap();
     let mut wire = vector["request"].clone();
     wire["schema"] = json!(guard_contracts::CLAIM_APPROVAL_REUSE_REQUEST_SCHEMA);
     wire["guard_home"] = json!(request.guard_home);

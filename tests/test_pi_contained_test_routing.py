@@ -26,7 +26,7 @@ def test_routing_is_active_for_pi_and_omp_and_does_not_change_frozen_previous(tm
         "display_name": "Oh My Pi",
     }
     active = managed_extension_source(**arguments)
-    assert "prepareContainedTestInput(response, snapshot)" in active
+    assert "prepareContainedTestInput(response, snapshot, ctx)" in active
     assert "cleanupContainedTestRequest(event.toolCallId, event.details)" in active
     assert "      return { input };\n" in active
     assert '"--harness", "pi"' not in active
@@ -34,7 +34,7 @@ def test_routing_is_active_for_pi_and_omp_and_does_not_change_frozen_previous(tm
     arguments.update(harness="pi", display_name="Pi")
     pi_source = managed_extension_source(**arguments)
     assert "prepareContainedTestInput" not in previous_managed_extension_source(**arguments)
-    assert "prepareContainedTestInput(response, snapshot)" in pi_source
+    assert "prepareContainedTestInput(response, snapshot, ctx)" in pi_source
     assert "cleanupContainedTestRequest(event.toolCallId, event.details)" in pi_source
     # Pi ignores a returned input; only an in-place mutation reaches the tool.
     assert "return { input };" not in pi_source

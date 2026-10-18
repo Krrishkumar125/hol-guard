@@ -42,7 +42,11 @@ from .sqlite_tuning import sqlite_operation_deadline_monotonic
 
 # ruff: noqa: F403,F405
 from .store_base import *
-from .store_bash_operation_schema import BASH_OPERATION_MIGRATION_VERSION, ensure_bash_operation_schema
+from .store_bash_operation_schema import (
+    BASH_OPERATION_MIGRATION_VERSION,
+    BASH_REVIEW_MIGRATION_VERSION,
+    ensure_bash_operation_schema,
+)
 from .store_command_activity_api_schema import ensure_command_activity_api_schema
 from .store_command_activity_display_schema import (
     COMMAND_ACTIVITY_DISPLAY_SCHEMA_MIGRATION_VERSION,
@@ -188,6 +192,7 @@ _REQUIRED_SCHEMA_MIGRATION_VERSIONS = (  # Keep retired-index databases on the p
     COMMAND_ACTIVITY_DISPLAY_SCHEMA_MIGRATION_VERSION,
     *store_native_decision_receipts.native_decision_receipt_migration_versions(),
     BASH_OPERATION_MIGRATION_VERSION,
+    BASH_REVIEW_MIGRATION_VERSION,
 )
 
 

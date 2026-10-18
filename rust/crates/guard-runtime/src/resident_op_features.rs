@@ -89,5 +89,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::NATIVE_BASH_SUBJECT_INSPECTION_FEATURE,
     #[cfg(target_os = "macos")]
     guard_contracts::NATIVE_BASH_OWNER_PROTOCOL_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_REVIEW_LINEAGE_FEATURE,
     guard_contracts::SKILL_WORKFLOW_PREFLIGHT_FEATURE,
 ];

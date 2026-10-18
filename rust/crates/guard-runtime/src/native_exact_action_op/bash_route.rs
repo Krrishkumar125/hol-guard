@@ -163,6 +163,7 @@ pub(crate) fn execute_request(
         dispatch_acknowledged: false,
         replayed: false,
         operation: None,
+        review_lineage: None,
         payload: None,
     };
     if request.schema == NATIVE_BASH_EXECUTE_REQUEST_SCHEMA
@@ -250,6 +251,7 @@ fn execute(
             });
         }
         Err(failure) => {
+            result.review_lineage = failure.review_lineage.map(|lineage| *lineage);
             result.grant_claimed = failure.grant_claimed;
             result.dispatch_acknowledged = failure.dispatch_acknowledged;
             result.operation = failure.operation.map(|operation| *operation);

@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 from ..approval_link_output import native_review_reason
 from ..models import GuardApprovalRequest
-from ..native_decision_receipt import receipt_matches_edge, validate_native_decision_receipt
 from ..native_hook_adapter import NativeHookAdapterError
 from .hook_fail_closed import canonical_harness, render_accepted_allow, render_pre_tool, render_pre_tool_review
 from .hook_native_exact_action import native_exact_action, native_review_binding
@@ -312,34 +311,25 @@ def queue_native_pre_tool_review(
     tool_name = _native_review_tool_name(payload)
     request_id = uuid.uuid4().hex
     artifact_id = _native_review_artifact_id(harness, tool_name)
+    queue_group_id = None if connector is None else connector.queue_group_id
     if bound_bash is not None:
-        review = bound_bash.get("review")
-        subject = bound_bash.get("subject")
-        context = subject.get("context") if isinstance(subject, Mapping) else None
-        receipt = validate_native_decision_receipt(native_receipt)
-        host = {"omp": "omp-input-rewrite-v1", "pi": "pi-input-mutation-v1"}.get(harness)
-        if (
-            bound_bash.get("artifact_id") != "native-bash-launch:v1"
-            or bound_bash.get("artifact_hash") != exact_token
-            or exact_token != review_binding
-            or not isinstance(exact_token, str)
-            or not exact_token.startswith("guard-approval-context:v1:")
-            or not isinstance(review, Mapping)
-            or review.get("decision") != native_result or review.get("receipt") != native_receipt
-            or not isinstance(subject, Mapping) or subject.get("schema") != "guard.bash-subject.v1"
-            or subject.get("execution_assurance") != "macos-readonly-root-framed-outputs-v1"
-            or host is None or not isinstance(context, Mapping) or context.get("host") != host
-            or receipt is None or not receipt_matches_edge({
-                "harness": harness, "event_name": "PreToolUse", "payload_kind": receipt["payload_kind"],
-                "result": native_result,
-            }, receipt)
+        from .native_review_bound_bash import valid_bound_bash_review
+
+        if not valid_bound_bash_review(
+            bound_bash, harness=harness, exact_token=exact_token, review_binding=review_binding,
+            decision=native_result, native_receipt=native_receipt,
         ):
             return None
         artifact_id = "native-bash-launch:v1"
+        lineage = bound_bash["review_lineage"]
+        assert isinstance(lineage, Mapping)
+        queue_group_id = f"native-bash-review:{lineage['lineage_id']}"
     if approval_center_url is None:
         approval_center_url = native_review_approval_center_url(store)
     approval_url = f"{approval_center_url}/requests/{request_id}"
     reason = str(native_result.get("reason") or "HOL Guard requires review before this action can execute.")
+    if bound_bash is not None:
+        reason += " Keep blocked applies to this request's retries for up to 24 hours; a new user request is separate."
     # The pause path already asked the resident for this binding. Asking again
     # repeats a resident round trip that can exhaust the hook deadline on Windows.
     binding = (
@@ -390,6 +380,7 @@ def queue_native_pre_tool_review(
             "schema": "guard-native-bash-review.v1",
             "artifact_id": artifact_id, "artifact_hash": exact_token,
             "subject": bound_bash["subject"],
+            "review_lineage": bound_bash["review_lineage"],
         }
     request = GuardApprovalRequest(
         request_id=request_id,
@@ -410,7 +401,7 @@ def queue_native_pre_tool_review(
         risk_summary=reason,
         action_envelope_json=action_envelope,
         raw_command_text=pre_tool_command(payload),
-        queue_group_id=None if connector is None else connector.queue_group_id,
+        queue_group_id=queue_group_id,
         extension_allow_hint=native_review_hint(
             store, payload, native_result, workspace, home_dir, deadline, connector
         ),

@@ -17,6 +17,8 @@ use super::PolicySnapshotStore;
 
 #[path = "policy_store_bash_admission.rs"]
 mod admission;
+#[path = "policy_store_bash_review.rs"]
+mod review;
 
 const PURPOSE: &str = "guard-native-bash-operation-v1";
 const MAX_RECORD_BYTES: usize = 16 * 1024;
@@ -54,6 +56,11 @@ impl<'store> BashOperationJournal<'store> {
             .map_err(|_| "native_bash_operation_store_unavailable")?;
         connection
             .execute_batch(SCHEMA)
+            .map_err(|_| "native_bash_operation_store_unavailable")?;
+        connection
+            .execute_batch(include_str!(
+                "../../../../src/codex_plugin_scanner/guard/schemas/native_bash_reviews_v1.sql"
+            ))
             .map_err(|_| "native_bash_operation_store_unavailable")?;
         let journal = Self {
             connection,
@@ -131,6 +138,14 @@ impl<'store> BashOperationJournal<'store> {
     }
 
     fn encode(&self, record: &NativeBashOperationV1) -> rusqlite::Result<(String, String)> {
+        self.seal(record, PURPOSE)
+    }
+
+    fn seal<T: serde::Serialize>(
+        &self,
+        record: &T,
+        purpose: &str,
+    ) -> rusqlite::Result<(String, String)> {
         self.require_authority()?;
         let payload = serde_json::to_value(record).map_err(|_| rusqlite::Error::InvalidQuery)?;
         let timestamp: String = self.connection.query_row(
@@ -142,7 +157,7 @@ impl<'store> BashOperationJournal<'store> {
             &payload,
             &self.store.verifier_key,
             &guard_policy_snapshot::verifier_key_id(&self.store.verifier_key),
-            PURPOSE,
+            purpose,
             &timestamp,
         )
         .map_err(|_| rusqlite::Error::InvalidQuery)?;
@@ -163,6 +178,7 @@ impl<'store> BashOperationJournal<'store> {
         claim: &ClaimApprovalReuseDecisionsRequestV1,
     ) -> Result<bool, String> {
         crate::claim_approval_reuse_op::claim_now_then(claim, &self.connection, &mut |_| {
+            self.require_review_authority(Some(claim))?;
             self.insert(Authorization::SavedGrant)
         })
         .map(|record| record.is_some())
@@ -179,6 +195,7 @@ impl<'store> BashOperationJournal<'store> {
             harness,
             project,
         )
+        .and_then(|()| self.require_review_authority(None))
         .and_then(|()| self.insert(Authorization::CurrentPolicy));
         match result {
             Ok(Some(())) => {

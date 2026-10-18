@@ -9,7 +9,7 @@ use guard_contained_process::{CapturedOutput, SourceLaunchGate};
 use guard_contracts::{
     ClaimApprovalReuseDecisionsRequestV1, ContextDigestComponentsV1, GuardHookEnvelopeV2,
     NativeBashAuthorizationKindV1, NativeBashAuthorizationV1, NativeBashCaptureV1,
-    NativeBashOperationV1, NativeBashSubjectV1,
+    NativeBashOperationV1, NativeBashReviewLineageV1, NativeBashSubjectV1,
 };
 use serde_json::json;
 
@@ -28,6 +28,7 @@ pub(crate) struct LaunchFailure {
     pub(crate) dispatch_acknowledged: bool,
     pub(crate) operation: Option<Box<NativeBashOperationV1>>,
     pub(crate) code: Option<&'static str>,
+    pub(crate) review_lineage: Option<Box<NativeBashReviewLineageV1>>,
 }
 
 impl From<io::Error> for LaunchFailure {
@@ -38,6 +39,7 @@ impl From<io::Error> for LaunchFailure {
             dispatch_acknowledged: false,
             operation: None,
             code: None,
+            review_lineage: None,
         }
     }
 }
@@ -157,6 +159,18 @@ pub(crate) fn execute_authorized(
             replayed: true,
         });
     }
+    match journal.review_kept_blocked() {
+        Ok(false) => {}
+        refusal => {
+            let mut failure: LaunchFailure = io::ErrorKind::PermissionDenied.into();
+            failure.code = Some(if refusal.is_ok() {
+                "native_bash_operation_kept_blocked"
+            } else {
+                "native_bash_review_lineage_unavailable"
+            });
+            return Err(failure);
+        }
+    }
     if let Some(claim) = claim {
         if !matches_grant(claim, &captured.subject, &request.harness, &expected) {
             return Err(io::ErrorKind::PermissionDenied.into());
@@ -168,6 +182,11 @@ pub(crate) fn execute_authorized(
     {
         let mut failure: LaunchFailure = io::ErrorKind::PermissionDenied.into();
         failure.code = Some("native_bash_consent_required");
+        failure.review_lineage = Some(Box::new(
+            journal
+                .pending_review(&request.harness, &captured.subject.context.project)
+                .map_err(|_| io::ErrorKind::PermissionDenied)?,
+        ));
         return Err(failure);
     }
     let claim = claim.cloned().map(|mut claim| {
@@ -192,6 +211,7 @@ pub(crate) fn execute_authorized(
                 dispatch_acknowledged: gate.dispatched,
                 operation: None,
                 code: Some("native_bash_completion_record_unavailable"),
+                review_lineage: None,
             })?;
             Ok(LaunchOutput {
                 output: Some(output),
@@ -213,6 +233,7 @@ pub(crate) fn execute_authorized(
             code: gate
                 .saved_authority_refused
                 .then_some("native_bash_saved_authority_changed"),
+            review_lineage: None,
         }),
     }
 }

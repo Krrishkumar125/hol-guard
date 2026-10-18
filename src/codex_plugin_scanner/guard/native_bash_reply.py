@@ -48,8 +48,35 @@ def _completion(value: object, *, summary: bool) -> None:
         _require(all(re.fullmatch(r"[0-9a-f]{64}", value[key]) is not None for key in suffix))
 
 
+def validate_review_lineage(lineage: object) -> dict[str, object]:
+    _require(isinstance(lineage, dict))
+    assert isinstance(lineage, dict)
+    _require(set(lineage) == {
+        "schema", "lineage_id", "operation_id", "artifact_hash", "created_at_ms", "expires_at_ms",
+    })
+    _require(lineage["schema"] == "guard-native-bash-review-lineage.v1")
+    _require(isinstance(lineage["lineage_id"], str)
+             and re.fullmatch(r"[0-9a-f]{64}", lineage["lineage_id"]) is not None)
+    _require(isinstance(lineage["operation_id"], str)
+             and re.fullmatch(r"[A-Za-z0-9_.:-]{16,128}", lineage["operation_id"]) is not None)
+    _require(_token(lineage["artifact_hash"]))
+    _require(type(lineage["created_at_ms"]) is int and type(lineage["expires_at_ms"]) is int
+             and lineage["created_at_ms"] >= 0
+             and lineage["expires_at_ms"] - lineage["created_at_ms"] == 86_400_000)
+    return lineage
+
+
 def validate_executed(result: dict[str, object], request: dict[str, object]) -> None:
     _require(all(type(result[key]) is bool for key in ("grant_claimed", "dispatch_acknowledged", "replayed")))
+    lineage = result["review_lineage"]
+    if lineage is not None:
+        lineage = validate_review_lineage(lineage)
+        _require(lineage["operation_id"] == request["operation_id"])
+        _require(result["status"] == "error" and result["code"] == "native_bash_consent_required"
+                 and not result["grant_claimed"] and not result["dispatch_acknowledged"]
+                 and not result["replayed"] and result["operation"] is None and result["payload"] is None)
+    elif result["code"] == "native_bash_consent_required":
+        _require(False)
     operation = result["operation"]
     if operation is not None:
         _require(isinstance(operation, dict))

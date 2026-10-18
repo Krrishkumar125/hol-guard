@@ -138,7 +138,8 @@ def run_bound_bash(
             from .bound_bash_review import queue_bound_bash_review
 
             queue_bound_bash_review(
-                prepared, payload, store=store, harness=harness, workspace=workspace,
+                {**prepared, "review_lineage": result["review_lineage"]}, payload,
+                store=store, harness=harness, workspace=workspace,
                 home=home, errors=errors or sys.stderr,
             )
         return render_result(result, output=output or sys.stdout, errors=errors or sys.stderr)
@@ -161,6 +162,12 @@ def render_result(result: dict[str, object], *, output: TextIO, errors: TextIO) 
         errors.write(str(payload["stderr"]))
     if result["status"] != "ok" or not isinstance(payload, dict):
         print(str(result["code"]), file=errors)
+        if result["code"] == "native_bash_operation_kept_blocked":
+            print("This user request remains blocked. Guard will not ask again for its retries. "
+                  "A new user request can be reviewed separately.", file=errors)
+        elif result["code"] == "native_bash_review_lineage_unavailable":
+            print("The pending review could not be verified. Keep this operation blocked and "
+                  "check the local review store before retrying.", file=errors)
         return 125
     return _exit_status(payload)
 

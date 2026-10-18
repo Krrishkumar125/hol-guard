@@ -1,5 +1,5 @@
 // Real pinned SDK hooks + Bash tools; no model, account or operator config.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -9,11 +9,22 @@ const sdk = join(sdkRoot, "node_modules", configuration.harness === "pi"
   ? "@earendil-works/pi-coding-agent" : "@oh-my-pi/pi-coding-agent");
 const version = JSON.parse(readFileSync(join(sdk, "package.json"), "utf8")).version;
 if (version !== configuration.expectedVersion) throw Error("unpinned OMP SDK");
-const { handlers } = await import(pathToFileURL(configuration.routingModule).href);
-const sessionManager = {
-  getCwd: () => configuration.workspace,
-  getSessionId: () => "bound-bash-sdk-fixture",
-};
+const { handlers, bindSession } = await import(pathToFileURL(configuration.routingModule).href);
+const sessionModule = configuration.harness === "pi"
+  ? join(sdk, "dist/core/session-manager.js") : join(sdk, "src/session/session-manager.ts");
+const { SessionManager } = await import(pathToFileURL(sessionModule).href);
+const restarting = existsSync(configuration.sessionFile);
+const sessionManager = restarting ? await SessionManager.open(configuration.sessionFile)
+  : SessionManager.inMemory(configuration.workspace);
+bindSession(sessionManager);
+const persistSession = () => writeFileSync(configuration.sessionFile,
+  [sessionManager.getHeader(), ...sessionManager.getEntries()].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+async function beginIntent(runner) {
+  if (!restarting || configuration.newIntent) {
+    await runner.emitInput("Lane-owned SDK user intent", undefined, "interactive");
+    sessionManager.appendMessage({ role: "user", content: "Lane-owned SDK user intent", timestamp: Date.now() });
+  }
+}
 const extension = {
   path: configuration.routingModule, resolvedPath: configuration.routingModule, handlers,
   flags: new Map(), commands: new Map(), shortcuts: new Map(), tools: new Map(),
@@ -24,6 +35,7 @@ if (configuration.harness === "pi") {
   const { AgentSession } = await load("agent-session.js");
   const { createBashTool } = await load("tools/bash.js");
   const runner = new ExtensionRunner([extension], {}, configuration.workspace, sessionManager, {});
+  await beginIntent(runner);
   const owner = { agent: {}, _extensionRunner: runner };
   AgentSession.prototype._installAgentToolHooks.call(owner);
   const args = structuredClone(configuration.input);
@@ -37,6 +49,7 @@ if (configuration.harness === "pi") {
   } catch (error) {
     console.log(JSON.stringify({ version, sdkError: String(error), originalInput: configuration.input }));
   }
+  persistSession();
   process.exit(0);
 }
 const load = (path: string) => import(pathToFileURL(join(sdk, "src", path)).href);
@@ -48,9 +61,10 @@ const settings = Settings.isolated();
 const runner = new ExtensionRunner(
   [extension], {}, configuration.workspace, sessionManager, {}, undefined, settings,
 );
+await beginIntent(runner);
 const tool = new BashTool({
   cwd: configuration.workspace, hasUI: false, settings, sessionManager,
-  getSessionId: sessionManager.getSessionId, getSessionFile: () => null,
+  getSessionId: () => sessionManager.getSessionId(), getSessionFile: () => null,
 });
 const wrapped = new ExtensionToolWrapper(tool, runner);
 const result = await withActiveSettings(settings, () => wrapped.execute(
@@ -58,3 +72,4 @@ const result = await withActiveSettings(settings, () => wrapped.execute(
 ));
 console.log(JSON.stringify({ version, result, originalInput: configuration.input }));
 await runner.shutdown();
+persistSession();

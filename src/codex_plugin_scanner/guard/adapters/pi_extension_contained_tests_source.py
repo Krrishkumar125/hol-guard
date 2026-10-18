@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-CONTAINED_TEST_HELPERS_SOURCE = r"""
+from .pi_extension_bound_bash_intent_source import BOUND_BASH_INTENT_SOURCE
+
+CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
   const boundBashHarness = "omp";
   const containedTestRequests = new Map<string, string>();
   const containedTestPresentations = new Map<string, { input: Record<string, unknown>; command: string }>();
@@ -86,11 +88,14 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
   function prepareContainedTestInput(
     response: GuardResponse,
     snapshot: ToolCallSnapshot,
+    ctx?: unknown,
   ): Record<string, unknown> | null {
     const profile = Reflect.get(response, "required_execution_profile");
     const input = snapshot.payload.tool_input;
     const key = toolCallIdKey(snapshot.payload.tool_call_id);
     const boundBash = profile === "native-bash-owner-v1" && response.reason_code === "native_bash_owner_required";
+    const boundBashIntent = boundBash && typeof snapshot.payload.session_id === "string"
+      ? boundBashIntentFor(ctx, snapshot.payload.session_id) : null;
     const profileMatches = (
       boundBash ||
       (profile === "python-eval-readonly-v1" &&
@@ -127,7 +132,8 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
         !windowsSink) ||
       (!windowsSink && (GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS || !GUARD_CLI_WRAPPER_COMMAND.startsWith("/"))) ||
       snapshot.payload.tool_name !== "bash" || !key || containedTestRequests.has(key) ||
-      (boundBash && (process.platform !== "darwin" || typeof snapshot.payload.session_id !== "string" ||
+      (boundBash && (!boundBashIntent || process.platform !== "darwin" ||
+        typeof snapshot.payload.session_id !== "string" ||
         snapshot.payload.session_id.length === 0)) ||
       !input || typeof input !== "object" || Array.isArray(input) ||
       typeof (input as Record<string, unknown>).command !== "string"
@@ -148,7 +154,8 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
       const digest = createHash("sha256").update(serialized, "utf8").digest("hex");
       const operationId = "bash-operation:" + createHash("sha256").update(JSON.stringify({
         schema: "guard-bash-tool-operation.v1", harness: boundBashHarness,
-        session: snapshot.payload.session_id, toolCall: key, cwd: snapshot.cwd,
+        session: snapshot.payload.session_id, intent: boundBashIntent, cwd: snapshot.cwd,
+        toolCwd: (input as Record<string, unknown>).cwd ?? null,
         command: (input as Record<string, unknown>).command,
       }), "utf8").digest("hex");
       const args = boundBash ? [
@@ -185,7 +192,7 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
 CONTAINED_TEST_BRANCH_SOURCE = r"""
     const requiredProfile = Reflect.get(response, "required_execution_profile");
     if (requiredProfile !== undefined) {
-      const input = prepareContainedTestInput(response, snapshot);
+      const input = prepareContainedTestInput(response, snapshot, ctx);
       if (!input) {
         const reason = "HOL Guard could not enforce the required protected test runner. Execution was not started.";
         ctx.ui.notify(reason, "warning");

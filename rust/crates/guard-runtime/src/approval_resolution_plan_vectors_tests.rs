@@ -115,3 +115,58 @@ fn malformed_tokens_are_not_context_tokens() {
     assert!(!valid("guard-approval-context:v1:A"));
     assert!(!valid("not-a-token"));
 }
+
+#[test]
+fn native_bash_unremembered_decisions_are_operation_scoped_even_for_older_callers() {
+    use guard_contracts::ContextDigestComponentsV1;
+    use serde_json::json;
+    let token = crate::context_digest::build_context_token(&ContextDigestComponentsV1 {
+        identity: json!({}),
+        content: json!({}),
+        capabilities: json!({}),
+        policy: json!({}),
+        sandbox: json!({}),
+        extension_control_digest: "a".repeat(64),
+    })
+    .unwrap();
+    let vectors = gunzip_json(VECTORS);
+    let mut wire = vectors["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["expected"]["status"] != "error")
+        .unwrap()["wire"]
+        .clone();
+    wire["schema"] = json!(APPROVAL_RESOLUTION_PLAN_REQUEST_SCHEMA);
+    let mut request: ApprovalResolutionPlanRequestV1 = serde_json::from_value(wire).unwrap();
+    request.scope = "artifact".into();
+    request.approval.harness = Some("omp".into());
+    request.approval.artifact_type = Some("tool_call".into());
+    request.approval.artifact_id = Some(guard_contracts::NATIVE_BASH_ARTIFACT_ID.into());
+    request.approval.artifact_hash = Some(token.clone());
+    request.native_exact_token = Some(token);
+    for action in ["allow", "block"] {
+        request.action = action.into();
+        for persist in [None, Some(false)] {
+            request.persist_policy = persist;
+            let plan = evaluate(&request).unwrap();
+            assert_eq!(
+                plan["persistence"],
+                if action == "allow" {
+                    "exact_once"
+                } else {
+                    "none"
+                }
+            );
+            assert!(
+                plan["matching"].is_null(),
+                "another user intent must remain pending"
+            );
+            if action == "block" {
+                assert!(plan["local_once"].is_null());
+            }
+        }
+        request.persist_policy = Some(true);
+        assert_eq!(evaluate(&request).unwrap()["persistence"], "persisted");
+    }
+}

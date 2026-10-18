@@ -11,6 +11,7 @@ use crate::{
 /// Native protocol support, not a host delivery or approval UI capability.
 pub const NATIVE_BASH_OWNER_PROTOCOL_FEATURE: &str = "native-bash-owner-protocol-v1";
 pub const NATIVE_BASH_ARTIFACT_ID: &str = "native-bash-launch:v1";
+pub const NATIVE_BASH_REVIEW_LINEAGE_FEATURE: &str = "native-bash-review-lineage-v1";
 pub const NATIVE_BASH_DELIVERY_REASON: &str = "native_bash_owner_required";
 pub const NATIVE_BASH_DELIVERY_PROFILE: &str = "native-bash-owner-v1";
 
@@ -164,7 +165,20 @@ pub struct NativeBashExecuteResultV1 {
     /// A replay reports authenticated state; stdout/stderr are not retained.
     pub replayed: bool,
     pub operation: Option<NativeBashOperationV1>,
+    /// Native-minted pending-operation identity, never execution permission.
+    pub review_lineage: Option<NativeBashReviewLineageV1>,
     pub payload: Option<NativeBashCompletedV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeBashReviewLineageV1 {
+    pub schema: String,
+    pub lineage_id: String,
+    pub operation_id: String,
+    pub artifact_hash: String,
+    pub created_at_ms: u64,
+    pub expires_at_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
