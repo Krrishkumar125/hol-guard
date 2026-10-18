@@ -157,6 +157,8 @@ pub(crate) fn execute_request(
         code: "native_bash_execute_request_invalid".into(),
         grant_claimed: false,
         dispatch_acknowledged: false,
+        replayed: false,
+        operation: None,
         payload: None,
     };
     if request.schema == NATIVE_BASH_EXECUTE_REQUEST_SCHEMA
@@ -165,6 +167,7 @@ pub(crate) fn execute_request(
         && request.timeout_ms > 0
         && request.timeout_ms <= NATIVE_BASH_EXECUTE_MAX_TIMEOUT_MS
         && request.capture.budget_ms > 0
+        && guard_contracts::native_bash_operation_id_is_valid(&request.operation_id)
     {
         execute(request, store, &mut result);
     }
@@ -185,12 +188,27 @@ fn execute(
         &request.envelope,
         store,
         &request.claim,
+        &request.operation_id,
         deadline,
         &AtomicBool::new(false),
     ) {
         Ok(launch) => {
             result.grant_claimed = launch.grant_claimed;
             result.dispatch_acknowledged = launch.dispatch_acknowledged;
+            result.replayed = launch.replayed;
+            result.operation = Some(launch.operation);
+            if launch.replayed {
+                result.status = "recorded".into();
+                result.code = if result.operation.as_ref().is_some_and(|operation| {
+                    operation.state == guard_contracts::NativeBashOperationStateV1::Completed
+                }) {
+                    "native_bash_already_completed_output_not_retained"
+                } else {
+                    "native_bash_operation_in_progress_or_uncertain"
+                }
+                .into();
+                return;
+            }
             result.status = if launch.dispatch_acknowledged {
                 "ok"
             } else {
@@ -203,7 +221,9 @@ fn execute(
                 "native_bash_launch_not_dispatched"
             }
             .into();
-            let output = launch.output;
+            let Some(output) = launch.output else {
+                return;
+            };
             result.payload = Some(guard_contracts::NativeBashCompletedV1 {
                 exit_code: output.exit_code,
                 stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -216,6 +236,7 @@ fn execute(
         Err(failure) => {
             result.grant_claimed = failure.grant_claimed;
             result.dispatch_acknowledged = failure.dispatch_acknowledged;
+            result.operation = failure.operation.map(|operation| *operation);
             result.code = if failure.grant_claimed {
                 "native_bash_launch_failed_after_claim"
             } else {

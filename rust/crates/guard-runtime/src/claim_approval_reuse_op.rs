@@ -59,12 +59,40 @@ fn evaluate(request: &ClaimApprovalReuseDecisionsRequestV1) -> Result<Value, Str
 /// preview timestamp carried by the transport. This still uses the same
 /// authenticated rows and atomic claim transaction.
 #[cfg(target_os = "macos")]
-pub(crate) fn claim_now(request: &ClaimApprovalReuseDecisionsRequestV1) -> Result<bool, String> {
-    let result = evaluate_with_clock(request, true)?;
-    result
-        .get("claimed")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| "native_claim_approval_reuse_store_error".to_owned())
+pub(crate) fn claim_now_then<T>(
+    request: &ClaimApprovalReuseDecisionsRequestV1,
+    connection: &rusqlite::Connection,
+    after: &mut dyn FnMut(&rusqlite::Connection) -> rusqlite::Result<Option<T>>,
+) -> Result<Option<T>, String> {
+    if request.schema != CLAIM_APPROVAL_REUSE_REQUEST_SCHEMA || request.decisions.is_empty() {
+        return Err("native_claim_approval_reuse_schema_mismatch".to_owned());
+    }
+    let integrity_key = decode_key(request.integrity_key_b64.as_deref());
+    let local_once_key = decode_key(request.local_once_integrity_key_b64.as_deref());
+    let evidence = crate::claim_reuse::ClaimEvidence {
+        integrity_state: request.integrity_state.as_ref(),
+        integrity_key: integrity_key.as_deref(),
+        integrity_key_id: request.integrity_key_id.as_deref(),
+        local_once_key: local_once_key.as_deref(),
+        local_once_key_id: request.local_once_integrity_key_id.as_deref(),
+        policy_bundle_identities: request.policy_bundle_decision_identities.as_deref(),
+    };
+    crate::claim_reuse::claim_approval_reuse_decisions_now_then(
+        connection,
+        &request.decisions,
+        &evidence,
+        &|connection, members| {
+            crate::claim_reuse_binding::evidence_is_bound(
+                connection,
+                members,
+                &evidence,
+                request.evidence_binding.as_ref(),
+            )
+        },
+        true,
+        after,
+    )
+    .map_err(|_| "native_claim_approval_reuse_store_error".to_owned())
 }
 
 fn evaluate_with_clock(

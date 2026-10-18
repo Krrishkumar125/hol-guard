@@ -4,6 +4,10 @@ use std::sync::atomic::Ordering;
 #[path = "policy_store_launch_fence.rs"]
 pub(crate) mod launch_fence;
 
+#[cfg(target_os = "macos")]
+#[path = "policy_store_bash_journal.rs"]
+pub(crate) mod bash_journal;
+
 pub(crate) struct ApprovalPolicyFence<'a> {
     pub(crate) generation: u64,
     pub(crate) policy_digest: &'a str,

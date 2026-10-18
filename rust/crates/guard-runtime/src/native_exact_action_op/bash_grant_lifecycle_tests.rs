@@ -54,6 +54,7 @@ fn bash_prelaunch_cancellation_leaves_once_consent_available() {
         &envelope,
         &store,
         &claim,
+        "cancelled-operation-0001",
         Instant::now() + Duration::from_secs(5),
         &AtomicBool::new(true)
     )

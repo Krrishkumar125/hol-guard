@@ -18,6 +18,13 @@ pub const NATIVE_BASH_LAUNCH_MAX_REQUEST_BYTES: usize = 512 * 1024;
 pub const NATIVE_BASH_PREPARE_MAX_BUDGET_MS: u64 = 5000;
 pub const NATIVE_BASH_EXECUTE_MAX_TIMEOUT_MS: u64 = 120_000;
 
+pub fn native_bash_operation_id_is_valid(value: &str) -> bool {
+    (16..=128).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:".contains(&byte))
+}
+
 /// Local sink input. The earlier hook's capture fields are intentions only;
 /// actual cwd, HOME, environment and mask are replaced in the sink process.
 #[derive(Debug, Serialize, Deserialize)]
@@ -75,6 +82,9 @@ pub struct NativeBashPrepareResultV1 {
 pub struct NativeBashExecuteRequestV1 {
     pub schema: String,
     pub request_id: String,
+    /// Stable logical operation identity. A new transport request must retain
+    /// this ID when recovering an uncertain reply. It is never consent.
+    pub operation_id: String,
     pub capture: NativeBashCaptureV1,
     pub envelope: GuardHookEnvelopeV2,
     pub claim: ClaimApprovalReuseDecisionsRequestV1,
@@ -105,5 +115,38 @@ pub struct NativeBashExecuteResultV1 {
     pub grant_claimed: bool,
     /// The native source protocol received S; absence means start is unproven.
     pub dispatch_acknowledged: bool,
+    /// A replay reports authenticated state; stdout/stderr are not retained.
+    pub replayed: bool,
+    pub operation: Option<NativeBashOperationV1>,
     pub payload: Option<NativeBashCompletedV1>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeBashOperationStateV1 {
+    Claimed,
+    Dispatched,
+    Completed,
+    Uncertain,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeBashCompletionSummaryV1 {
+    pub exit_code: Option<i32>,
+    pub output_limited: bool,
+    pub timed_out: bool,
+    pub cancelled: bool,
+    pub stdout_sha256: String,
+    pub stderr_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeBashOperationV1 {
+    pub operation_id: String,
+    pub artifact_hash: String,
+    pub state: NativeBashOperationStateV1,
+    pub dispatch_acknowledged: bool,
+    pub completion: Option<NativeBashCompletionSummaryV1>,
 }

@@ -8,12 +8,13 @@ use std::time::Instant;
 use guard_contained_process::{CapturedOutput, SourceLaunchGate};
 use guard_contracts::{
     ClaimApprovalReuseDecisionsRequestV1, ContextDigestComponentsV1, GuardHookEnvelopeV2,
-    NativeBashCaptureV1, NativeBashSubjectV1,
+    NativeBashCaptureV1, NativeBashOperationV1, NativeBashSubjectV1,
 };
 use serde_json::json;
 
 use crate::policy_enforcement::AdmittedPolicySnapshot;
 use crate::policy_store::{
+    policy_store_approval::bash_journal::BashOperationJournal,
     policy_store_approval::launch_fence::LaunchPolicyFence, PolicySnapshotStore,
 };
 
@@ -24,6 +25,7 @@ pub(crate) struct LaunchFailure {
     pub(crate) error: io::Error,
     pub(crate) grant_claimed: bool,
     pub(crate) dispatch_acknowledged: bool,
+    pub(crate) operation: Option<Box<NativeBashOperationV1>>,
 }
 
 impl From<io::Error> for LaunchFailure {
@@ -32,6 +34,7 @@ impl From<io::Error> for LaunchFailure {
             error,
             grant_claimed: false,
             dispatch_acknowledged: false,
+            operation: None,
         }
     }
 }
@@ -43,9 +46,11 @@ impl From<io::ErrorKind> for LaunchFailure {
 }
 
 pub(crate) struct LaunchOutput {
-    pub(crate) output: CapturedOutput,
+    pub(crate) output: Option<CapturedOutput>,
     pub(crate) grant_claimed: bool,
     pub(crate) dispatch_acknowledged: bool,
+    pub(crate) operation: NativeBashOperationV1,
+    pub(crate) replayed: bool,
 }
 
 pub(crate) fn binding(
@@ -83,6 +88,7 @@ pub(crate) fn execute_saved(
     envelope: &GuardHookEnvelopeV2,
     store: &PolicySnapshotStore,
     claim: &ClaimApprovalReuseDecisionsRequestV1,
+    operation_id: &str,
     deadline: Instant,
     cancel: &AtomicBool,
 ) -> Result<LaunchOutput, LaunchFailure> {
@@ -104,6 +110,20 @@ pub(crate) fn execute_saved(
         .map_err(|_| io::ErrorKind::PermissionDenied)?;
     let expected = binding(&captured.subject, fence.snapshot())
         .map_err(|_| io::ErrorKind::PermissionDenied)?;
+    let journal =
+        BashOperationJournal::open(store, claim, operation_id, &expected).map_err(refuse)?;
+    if let Some(operation) = journal
+        .read()
+        .map_err(|_| io::ErrorKind::PermissionDenied)?
+    {
+        return Ok(LaunchOutput {
+            output: None,
+            grant_claimed: true,
+            dispatch_acknowledged: operation.dispatch_acknowledged,
+            operation,
+            replayed: true,
+        });
+    }
     if !matches_grant(claim, &captured.subject, &request.harness, &expected) {
         return Err(io::ErrorKind::PermissionDenied.into());
     }
@@ -114,17 +134,33 @@ pub(crate) fn execute_saved(
         claim,
         claimed: false,
         dispatched: false,
+        journal: &journal,
     };
     match super::bash_launch::execute(captured, deadline, cancel, &mut gate) {
-        Ok(output) => Ok(LaunchOutput {
-            output,
-            grant_claimed: gate.claimed,
-            dispatch_acknowledged: gate.dispatched,
-        }),
+        Ok(output) => {
+            let operation = journal.completed(&output).map_err(|_| LaunchFailure {
+                error: io::ErrorKind::Other.into(),
+                grant_claimed: gate.claimed,
+                dispatch_acknowledged: gate.dispatched,
+                operation: None,
+            })?;
+            Ok(LaunchOutput {
+                output: Some(output),
+                grant_claimed: gate.claimed,
+                dispatch_acknowledged: gate.dispatched,
+                operation,
+                replayed: false,
+            })
+        }
         Err(error) => Err(LaunchFailure {
             error,
             grant_claimed: gate.claimed,
             dispatch_acknowledged: gate.dispatched,
+            operation: if gate.claimed {
+                journal.uncertain(gate.dispatched).ok().map(Box::new)
+            } else {
+                None
+            },
         }),
     }
 }
@@ -176,14 +212,15 @@ fn matches_grant(
         && (once || text("scope") == Some("artifact") && text("source") == Some("approval-gate"))
 }
 
-struct Gate<'store> {
+struct Gate<'store, 'journal> {
     fence: Option<LaunchPolicyFence<'store>>,
     claim: ClaimApprovalReuseDecisionsRequestV1,
     claimed: bool,
     dispatched: bool,
+    journal: &'journal BashOperationJournal<'journal>,
 }
 
-impl Gate<'_> {
+impl Gate<'_, '_> {
     fn authorize(&mut self) -> io::Result<()> {
         self.fence
             .as_ref()
@@ -191,7 +228,9 @@ impl Gate<'_> {
             .require_current()
             .map_err(|_| io::ErrorKind::PermissionDenied)?;
         if !self.claimed {
-            if !crate::claim_approval_reuse_op::claim_now(&self.claim)
+            if !self
+                .journal
+                .reserve(&self.claim)
                 .map_err(|_| io::ErrorKind::PermissionDenied)?
             {
                 return Err(io::ErrorKind::PermissionDenied.into());
@@ -206,7 +245,7 @@ impl Gate<'_> {
     }
 }
 
-impl SourceLaunchGate for Gate<'_> {
+impl SourceLaunchGate for Gate<'_, '_> {
     fn prepare_effects(&mut self) -> io::Result<()> {
         self.authorize()
     }
@@ -214,10 +253,16 @@ impl SourceLaunchGate for Gate<'_> {
         self.authorize()
     }
     fn released(&mut self) -> io::Result<()> {
-        if !self.claimed || self.fence.take().is_none() {
+        if !self.claimed || self.fence.is_none() {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
         self.dispatched = true;
+        // S was observed even if the durable update fails; never erase that
+        // fact or release a retry. The claimed row already blocks execution.
+        self.journal
+            .dispatched()
+            .map_err(|_| io::ErrorKind::Other)?;
+        self.fence.take();
         Ok(())
     }
 }

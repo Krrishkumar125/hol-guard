@@ -398,6 +398,26 @@ pub(crate) fn claim_approval_reuse_decisions_now(
     bound: &dyn Fn(&Connection, &[Member<'_>]) -> rusqlite::Result<bool>,
     consume_local_once: bool,
 ) -> rusqlite::Result<bool> {
+    claim_approval_reuse_decisions_now_then(
+        connection,
+        decisions,
+        evidence,
+        bound,
+        consume_local_once,
+        &mut |_| Ok(Some(())),
+    )
+    .map(|claimed| claimed.is_some())
+}
+
+/// Reserve an owning operation atomically with the launch-time grant claim.
+pub(crate) fn claim_approval_reuse_decisions_now_then<T>(
+    connection: &Connection,
+    decisions: &[Value],
+    evidence: &ClaimEvidence<'_>,
+    bound: &dyn Fn(&Connection, &[Member<'_>]) -> rusqlite::Result<bool>,
+    consume_local_once: bool,
+    after: &mut dyn FnMut(&Connection) -> rusqlite::Result<Option<T>>,
+) -> rusqlite::Result<Option<T>> {
     claim_with_clock(
         connection,
         decisions,
@@ -413,9 +433,8 @@ pub(crate) fn claim_approval_reuse_decisions_now(
         evidence,
         bound,
         consume_local_once,
-        &mut |_| Ok(Some(())),
+        after,
     )
-    .map(|claimed| claimed.is_some())
 }
 
 fn claim_with_clock<T>(

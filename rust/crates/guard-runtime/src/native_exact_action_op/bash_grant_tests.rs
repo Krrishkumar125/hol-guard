@@ -14,6 +14,8 @@ use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use std::sync::atomic::AtomicBool;
 
+#[path = "bash_grant_journal_tests.rs"]
+mod journal_tests;
 #[path = "bash_grant_lifecycle_tests.rs"]
 mod lifecycle_tests;
 #[path = "bash_grant_route_tests.rs"]
@@ -187,11 +189,17 @@ fn run(
         envelope,
         store,
         claim,
+        &format!("test-intent-{:016x}", next_intent()),
         Instant::now() + Duration::from_secs(5),
         &AtomicBool::new(false),
     )
-    .map(|result| result.output)
+    .map(|result| result.output.unwrap())
     .map_err(|failure| failure.error)
+}
+
+fn next_intent() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
 }
 
 fn persistent(

@@ -38,6 +38,7 @@ fn execution(
     NativeBashExecuteRequestV1 {
         schema: NATIVE_BASH_EXECUTE_REQUEST_SCHEMA.into(),
         request_id: "execute-bash-test".into(),
+        operation_id: "execute-bash-operation-test".into(),
         capture: request,
         envelope,
         claim,
@@ -91,8 +92,9 @@ fn bash_resident_prepare_does_not_claim_and_execute_acknowledges_one_real_launch
     assert!(!output.timed_out && !output.cancelled && !output.output_limited);
     let reviewed = std::fs::read(&report).unwrap();
     let second = execute(&execution, &store);
-    assert_eq!(second.status, "error");
-    assert!(!second.grant_claimed && !second.dispatch_acknowledged);
+    assert_eq!(second.status, "recorded");
+    assert!(second.grant_claimed && second.dispatch_acknowledged && second.replayed);
+    assert!(second.operation.unwrap().completion.is_some());
     assert!(second.payload.is_none());
     assert_eq!(std::fs::read(report).unwrap(), reviewed);
 }
@@ -119,6 +121,22 @@ fn bash_resident_routes_require_current_store_scope_and_known_schemas() {
     );
     let claim = once(&request, &store, "2050-01-01T00:00:00+00:00");
     let mut execution = execution(request.clone(), envelope.clone(), claim);
+    let mut missing_operation = serde_json::to_value(&execution).unwrap();
+    missing_operation
+        .as_object_mut()
+        .unwrap()
+        .remove("operation_id");
+    assert_eq!(
+        dispatch("native_bash_execute", missing_operation, Some(&store)).unwrap_err(),
+        "native_request_schema_unsupported"
+    );
+    let operation_id = execution.operation_id.clone();
+    for invalid in ["", "too-short", "operation with spaces-0001"] {
+        execution.operation_id = invalid.into();
+        let refused = execute(&execution, &store);
+        assert!(!refused.grant_claimed && refused.operation.is_none());
+    }
+    execution.operation_id = operation_id;
     let mut unknown = serde_json::to_value(&execution).unwrap();
     unknown["caller_subject"] = json!({"permission":"allow"});
     assert_eq!(
