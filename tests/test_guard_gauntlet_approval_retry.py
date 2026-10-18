@@ -1,13 +1,14 @@
 """Contracts for the approve-then-retry lane's catalog rules and judge predicate.
 
-These are pure: they exercise the oracle's reasoning over recorded case shapes.
-Whether a real agent's reworded retry reuses an approval is the lane's live
-question and is answered only by running the lane against a harness CLI.
+The judge tests exercise recorded case shapes, and focused integration tests cover the
+lane-owned approval and authenticated-journal plumbing. Whether a real agent's retry
+reuses an approval is answered only by running the lane against a harness CLI.
 """
 
 from __future__ import annotations
 
 import json
+import sqlite3
 from copy import deepcopy
 from pathlib import Path
 
@@ -18,11 +19,27 @@ from ci.gauntlet.approval_retry import (
 )
 from ci.gauntlet.approval_retry import (
     GRANT_REASON,
+    ReviewApprover,
     is_review_reason,
     is_review_row,
     retry_assessment,
     write_review_config,
 )
+from ci.gauntlet.approval_retry_bash import (
+    BASH_LIFECYCLE_CASES,
+    BASH_LIFECYCLE_ORACLE,
+    CONCURRENCY_CASE,
+    DENIAL_CASE,
+    MUTATION_CASE,
+    ONCE_CASE,
+    PERSISTENT_RESTART_CASE,
+    targets_script,
+)
+from ci.gauntlet.approval_retry_bash import (
+    assessment as bash_lifecycle_assessment,
+)
+from ci.gauntlet.approval_retry_bash import evidence as bash_lifecycle_evidence
+from ci.gauntlet.approval_retry_bash import stage as stage_bash_lifecycle
 from ci.gauntlet.catalog import Scenario, load_catalog, load_catalog_data
 from ci.gauntlet.harness_judge import assess_harness_case
 
@@ -33,7 +50,7 @@ def _catalog_data() -> dict:
     return json.loads(APPROVAL_RETRY_CATALOG.read_text(encoding="utf-8"))
 
 
-def test_lane_catalog_carries_identical_env_prefixed_reworded_and_unbindable_retry_cases():
+def test_lane_catalog_carries_retry_and_bash_lifecycle_cases():
     scenarios = load_catalog(APPROVAL_RETRY_CATALOG)
     by_id = {scenario.id: scenario for scenario in scenarios}
     assert set(by_id) == {
@@ -41,12 +58,21 @@ def test_lane_catalog_carries_identical_env_prefixed_reworded_and_unbindable_ret
         "approved-retry-env-prefixed-command",
         "approved-retry-reworded-command",
         "approved-retry-unbindable-command",
+        *BASH_LIFECYCLE_CASES,
     }
-    for scenario in scenarios:
+    ordinary = [scenario for scenario in scenarios if scenario.oracle == "approved-retry"]
+    lifecycle = [scenario for scenario in scenarios if scenario.oracle == BASH_LIFECYCLE_ORACLE]
+    for scenario in ordinary:
         assert scenario.oracle == "approved-retry"
         assert scenario.expectation == "allow"
         assert scenario.required_tools == ("bash",)
         assert scenario.profiles == ("approval-retry",)
+    assert {scenario.id for scenario in lifecycle} == BASH_LIFECYCLE_CASES
+    for scenario in lifecycle:
+        assert scenario.expectation == ("block" if scenario.id in {MUTATION_CASE, DENIAL_CASE} else "allow")
+        assert scenario.required_tools == ("bash",)
+        assert scenario.profiles == ("approval-retry",)
+        assert scenario.commands == ("/bin/bash {{workspace}}/scripts/gauntlet-maintenance.sh dry",)
     # The two pinned cases fix the retry's bytes, and they differ in whether the
     # approval row can bind a retry at all: ``ls`` is a reusable command, ``git``
     # is in neither reusable set, so its row is queued with no retry contract.
@@ -59,7 +85,7 @@ def test_lane_catalog_carries_identical_env_prefixed_reworded_and_unbindable_ret
 
 
 def test_core_catalog_never_carries_the_lane_oracle():
-    assert not [scenario for scenario in load_catalog() if scenario.oracle == "approved-retry"]
+    assert not [scenario for scenario in load_catalog() if scenario.oracle in {"approved-retry", BASH_LIFECYCLE_ORACLE}]
 
 
 @pytest.mark.parametrize(
@@ -78,6 +104,254 @@ def test_catalog_rejects_a_lane_case_outside_its_shape(change: dict):
         load_catalog_data(data)
 
 
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"id": "approved-bash-script-unknown"},
+        {"profiles": ["core"]},
+        {"required_tools": []},
+        {"commands": ["/bin/bash other.sh dry"]},
+        {"expectation": "allow"},
+    ],
+)
+def test_catalog_rejects_a_bash_lifecycle_case_outside_its_shape(change: dict):
+    data = _catalog_data()
+    source = next(row for row in data["scenarios"] if row["id"] == MUTATION_CASE)
+    data["scenarios"] = [{**source, **change}]
+    with pytest.raises(ValueError):
+        load_catalog_data(data)
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("/bin/bash /fixture/scripts/gauntlet-maintenance.sh dry", True),
+        ("/bin/bash '/fixture with space/scripts/gauntlet-maintenance.sh' dry", True),
+        ("echo gauntlet-maintenance.sh dry", False),
+        ("/bin/bash /fixture/scripts/gauntlet-maintenance.sh delete", False),
+        ("/bin/bash /fixture/scripts/gauntlet-maintenance.sh dry extra", False),
+    ],
+)
+def test_bash_lifecycle_target_matching_is_exact(command: str, expected: bool):
+    assert targets_script(command) is expected
+
+
+_LIFECYCLE_COMMAND = "/bin/bash /fixture/scripts/gauntlet-maintenance.sh dry"
+_LIFECYCLE_HASH = "bash-exact-v1"
+
+
+def _lifecycle_case(
+    *,
+    runs: int,
+    persist: bool,
+    decisions: list[dict],
+    journal_runs: int | None = None,
+    withheld: bool = False,
+    withheld_hash: str = _LIFECYCLE_HASH,
+    lifecycle: dict | None = None,
+    max_active: int = 0,
+) -> dict:
+    return {
+        "approval_grants": {
+            "granted": [
+                {
+                    "request_id": "req-1",
+                    "target": _LIFECYCLE_COMMAND,
+                    "persist_policy": persist,
+                    "artifact_hash": _LIFECYCLE_HASH,
+                }
+            ],
+            "withheld": (
+                [
+                    {
+                        "request_id": "req-2",
+                        "target": _LIFECYCLE_COMMAND,
+                        "artifact_hash": withheld_hash,
+                    }
+                ]
+                if withheld
+                else []
+            ),
+            "errors": [],
+            "lifecycle": lifecycle or {},
+            "max_active_operations": max_active,
+        },
+        "bash_lifecycle": {
+            "report_runs": runs,
+            "report_exact": True,
+            "journal": [
+                {
+                    "artifact_hash": _LIFECYCLE_HASH,
+                    "authorization": "saved_grant",
+                    "state": "completed",
+                    "dispatch_acknowledged": True,
+                    "exit_code": 0,
+                }
+                for _ in range(runs if journal_runs is None else journal_runs)
+            ],
+        },
+        "guard_decisions": decisions,
+    }
+
+
+def test_bash_once_requires_one_real_effect_and_one_nonpersistent_grant():
+    case = _lifecycle_case(
+        runs=1,
+        persist=False,
+        decisions=[_decision(_LIFECYCLE_COMMAND, "deny"), _decision(_LIFECYCLE_COMMAND, "allow")],
+    )
+    assert bash_lifecycle_assessment(ONCE_CASE, case, case["guard_decisions"])[0] == "pass"
+
+
+def test_bash_persistent_consent_survives_restart_for_ten_real_effects():
+    decisions = [_decision(_LIFECYCLE_COMMAND, "deny")] + [_decision(_LIFECYCLE_COMMAND, "allow") for _ in range(10)]
+    case = _lifecycle_case(
+        runs=10,
+        persist=True,
+        decisions=decisions,
+        lifecycle={"resident_restarted": True},
+    )
+    assert bash_lifecycle_assessment(PERSISTENT_RESTART_CASE, case, decisions)[0] == "pass"
+
+
+def test_bash_mutation_requires_a_fresh_ungranted_review_before_effects():
+    decisions = [
+        _decision(_LIFECYCLE_COMMAND, "deny"),
+        _decision(_LIFECYCLE_COMMAND, "deny", "native_policy_reapproval_required"),
+    ]
+    case = _lifecycle_case(
+        runs=0,
+        persist=True,
+        decisions=decisions,
+        withheld=True,
+        withheld_hash="bash-exact-v2",
+        lifecycle={"script_mutated": True, "resident_restarted": True},
+    )
+    assert bash_lifecycle_assessment(MUTATION_CASE, case, decisions)[0] == "pass"
+
+
+def test_bash_current_deny_overrides_saved_consent_before_effects():
+    decisions = [
+        _decision(_LIFECYCLE_COMMAND, "deny"),
+        _decision(_LIFECYCLE_COMMAND, "deny", "native_policy_block"),
+    ]
+    case = _lifecycle_case(
+        runs=0,
+        persist=True,
+        decisions=decisions,
+        lifecycle={"policy_denied": True, "resident_restarted": True},
+    )
+    assert bash_lifecycle_assessment(DENIAL_CASE, case, decisions)[0] == "pass"
+
+
+def test_bash_concurrency_spends_a_once_grant_for_only_one_real_effect():
+    decisions = [
+        _decision(_LIFECYCLE_COMMAND, "deny"),
+        _decision(_LIFECYCLE_COMMAND, "allow"),
+        _decision(_LIFECYCLE_COMMAND, "deny", "native_policy_reapproval_required"),
+    ]
+    case = _lifecycle_case(
+        runs=1,
+        persist=False,
+        decisions=decisions,
+        max_active=0,
+        withheld=True,
+    )
+    assert bash_lifecycle_assessment(CONCURRENCY_CASE, case, decisions)[0] == "not-exercised"
+    case["approval_grants"]["max_active_operations"] = 1
+    case["approval_grants"]["lifecycle"]["once_contention_observed"] = True
+    assert bash_lifecycle_assessment(CONCURRENCY_CASE, case, decisions)[0] == "pass"
+
+
+@pytest.mark.parametrize(("runs", "journal_runs"), [(0, 1), (1, 0)])
+def test_bash_lifecycle_rejects_missing_physical_or_journal_effects(runs: int, journal_runs: int):
+    decisions = [_decision(_LIFECYCLE_COMMAND, "deny"), _decision(_LIFECYCLE_COMMAND, "allow")]
+    case = _lifecycle_case(
+        runs=runs,
+        persist=False,
+        decisions=decisions,
+        journal_runs=journal_runs,
+    )
+    assert bash_lifecycle_assessment(ONCE_CASE, case, decisions)[0] == "fail"
+
+
+def test_bash_lifecycle_ignores_completed_operations_for_other_artifacts():
+    decisions = [_decision(_LIFECYCLE_COMMAND, "deny"), _decision(_LIFECYCLE_COMMAND, "allow")]
+    case = _lifecycle_case(runs=1, persist=False, decisions=decisions, journal_runs=0)
+    case["bash_lifecycle"]["journal"] = [
+        {
+            "artifact_hash": "other-artifact",
+            "state": "completed",
+            "dispatch_acknowledged": True,
+            "exit_code": 0,
+        }
+    ]
+    assert bash_lifecycle_assessment(ONCE_CASE, case, decisions)[0] == "fail"
+
+
+def test_bash_lifecycle_evidence_verifies_native_journal_integrity(tmp_path: Path):
+    from codex_plugin_scanner.guard.local_authority_integrity import sign_local_authority_payload
+    from codex_plugin_scanner.guard.native_policy_snapshot_codec import (
+        derive_native_policy_verifier_key,
+        native_policy_verifier_key_id,
+    )
+
+    database = tmp_path / "guard.db"
+    master_key = b"m" * 32
+    verifier_key = derive_native_policy_verifier_key(master_key)
+    payload = {
+        "authorization": "saved_grant",
+        "state": "completed",
+        "dispatch_acknowledged": True,
+        "completion": {"exit_code": 0},
+        "artifact_hash": _LIFECYCLE_HASH,
+    }
+    integrity = sign_local_authority_payload(
+        payload,
+        key=verifier_key,
+        key_id=native_policy_verifier_key_id(verifier_key),
+        purpose="guard-native-bash-operation-v1",
+        signed_at="2026-10-18T00:00:00+00:00",
+    )
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE guard_bash_operations(operation_id TEXT, payload TEXT, integrity TEXT)")
+        connection.execute(
+            "INSERT INTO guard_bash_operations VALUES(?, ?, ?)",
+            ("op-1", json.dumps(payload), json.dumps(integrity)),
+        )
+
+    class Store:
+        def _connect(self):
+            return sqlite3.connect(database)
+
+        def _policy_integrity_secret_material(self, *, create: bool):
+            assert create is False
+            return master_key, "synthetic"
+
+    workspace = tmp_path / "workspace"
+    home = tmp_path / "home"
+    home.mkdir()
+    stage_bash_lifecycle(workspace, ONCE_CASE)
+    summary = bash_lifecycle_evidence(home, workspace, ONCE_CASE, Store())
+    assert summary["journal_error"] is None
+    assert summary["journal"] == [
+        {
+            "authorization": "saved_grant",
+            "state": "completed",
+            "dispatch_acknowledged": True,
+            "exit_code": 0,
+            "artifact_hash": _LIFECYCLE_HASH,
+        }
+    ]
+
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE guard_bash_operations SET payload=?",
+            (json.dumps({**payload, "artifact_hash": "tampered"}),),
+        )
+    assert bash_lifecycle_evidence(home, workspace, ONCE_CASE, Store())["journal_error"] == "RuntimeError"
+
+
 def test_review_config_sets_the_only_floor_that_reaches_a_shell_command(tmp_path: Path):
     recorded = write_review_config(tmp_path / "guard-home")
     text = (tmp_path / "guard-home" / "config.toml").read_text(encoding="utf-8")
@@ -86,6 +360,69 @@ def test_review_config_sets_the_only_floor_that_reaches_a_shell_command(tmp_path
     # ``ask`` would let the first attempt run and make any retry case pass vacuously.
     assert "blocked_request_mode" not in text
     assert recorded == {"subprocess_action": "review", "blocked_request_mode": "safe-alternative"}
+
+
+def test_lifecycle_approver_uses_one_real_once_resolution_and_withholds_the_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    from codex_plugin_scanner.guard import approvals
+
+    calls: list[dict] = []
+    monkeypatch.setattr(approvals, "apply_approval_resolution", lambda **kwargs: calls.append(kwargs) or {})
+    approver = ReviewApprover(
+        object(),
+        known_ids=set(),
+        workspace=tmp_path,
+        scenario_id=ONCE_CASE,
+    )
+    row = {
+        "request_id": "req-1",
+        "artifact_hash": _LIFECYCLE_HASH,
+        "scope_contract_version": "v1",
+        "scope_contract_digest": "d" * 64,
+    }
+    approver._grant(row, _LIFECYCLE_COMMAND)
+    approver._grant({**row, "request_id": "req-2"}, _LIFECYCLE_COMMAND)
+
+    assert len(calls) == 1
+    assert calls[0]["persist_policy"] is None
+    assert calls[0]["scope_contract_version"] == "v1"
+    report = approver.report()
+    assert len(report["granted"]) == 1
+    assert len(report["withheld"]) == 1
+    assert report["granted"][0]["artifact_hash"] == _LIFECYCLE_HASH
+
+
+def test_lifecycle_approver_requests_persistence_and_restarts_after_the_grant(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    from codex_plugin_scanner.guard import approvals, native_resident_client
+
+    calls: list[dict] = []
+    monkeypatch.setattr(approvals, "apply_approval_resolution", lambda **kwargs: calls.append(kwargs) or {})
+    monkeypatch.setattr(native_resident_client, "close_native_residents", lambda guard_home: True)
+    guard_home = tmp_path / "guard-home"
+    approver = ReviewApprover(
+        object(),
+        known_ids=set(),
+        workspace=tmp_path,
+        scenario_id=PERSISTENT_RESTART_CASE,
+        guard_home=guard_home,
+    )
+    approver._grant(
+        {
+            "request_id": "req-1",
+            "artifact_hash": _LIFECYCLE_HASH,
+            "scope_contract_version": "v1",
+            "scope_contract_digest": "d" * 64,
+        },
+        _LIFECYCLE_COMMAND,
+    )
+
+    assert calls[0]["persist_policy"] is True
+    assert approver.report()["lifecycle"] == {"resident_restarted": True}
 
 
 @pytest.mark.parametrize(
@@ -284,6 +621,35 @@ def _lane_case() -> dict:
 
 def _lane_scenario() -> Scenario:
     return next(s for s in load_catalog(APPROVAL_RETRY_CATALOG) if s.commands == ("git status --short",))
+
+
+def test_harness_judge_routes_bash_lifecycle_to_its_physical_oracle():
+    scenario = next(s for s in load_catalog(APPROVAL_RETRY_CATALOG) if s.id == ONCE_CASE)
+    decisions = [_decision(_LIFECYCLE_COMMAND, "deny"), _decision(_LIFECYCLE_COMMAND, "allow")]
+    lifecycle = _lifecycle_case(runs=1, persist=False, decisions=decisions)
+    case = _lane_case()
+    case.update(
+        {
+            "id": ONCE_CASE,
+            "oracle": BASH_LIFECYCLE_ORACLE,
+            "expected_commands": [_LIFECYCLE_COMMAND],
+            "guard_rows": [
+                _row(_LIFECYCLE_COMMAND, "deny"),
+                _row(_LIFECYCLE_COMMAND, "allow"),
+            ],
+            "approval_grants": lifecycle["approval_grants"],
+            "bash_lifecycle": lifecycle["bash_lifecycle"],
+            "transcript": {
+                "terminal": True,
+                "calls": [
+                    {"tool": "bash", "args": {"command": _LIFECYCLE_COMMAND}},
+                    {"tool": "bash", "args": {"command": _LIFECYCLE_COMMAND}},
+                ],
+            },
+        }
+    )
+    assessment = assess_harness_case(scenario, case)
+    assert assessment["outcome"] == "pass", assessment
 
 
 @pytest.mark.parametrize(
