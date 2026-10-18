@@ -31,7 +31,8 @@ pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="native Bash ow
 
 
 @pytest.mark.parametrize(
-    "duration", ["once", "persistent", "persistent-same-intent", "keep-blocked", "host-parent-death"]
+    "duration",
+    ["once", "persistent", "persistent-same-intent", "persistent-nonzero", "keep-blocked", "host-parent-death"],
 )
 @pytest.mark.parametrize("harness", ["omp", "pi"])
 def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
@@ -64,6 +65,9 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
         target = execution_cwd / name
         target.write_bytes((fixtures / name).read_bytes())
         target.chmod(0o700)
+    if duration == "persistent-nonzero":
+        script = execution_cwd / "maintenance.sh"
+        script.write_text(script.read_text() + "\nexit 7\n")
     monkeypatch.chdir(workspace)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("LANG", "C")
@@ -182,7 +186,10 @@ pi.on("tool_call", async (event, ctx) => {
                     "sessionFile": str(tmp_path / "sdk-session.jsonl"),
                     "newIntent": (
                         call_id in {"fresh-operation", "current-policy-denied", "new-user-intent"}
-                        or (call_id.startswith("persistent-") and duration != "persistent-same-intent")
+                        or (
+                            call_id.startswith("persistent-")
+                            and duration not in {"persistent-same-intent", "persistent-nonzero"}
+                        )
                     ),
                 }
             )
@@ -250,7 +257,7 @@ pi.on("tool_call", async (event, ctx) => {
             request_id=request["request_id"],
             action="allow",
             scope="artifact",
-            persist_policy=duration in {"persistent", "persistent-same-intent"},
+            persist_policy=duration in {"persistent", "persistent-same-intent", "persistent-nonzero"},
             workspace=str(session_cwd),
             reason="Lane-owned SDK consent",
             scope_contract_version=request["scope_contract_version"],
@@ -268,6 +275,19 @@ pi.on("tool_call", async (event, ctx) => {
                 resume=resume_marker,
                 report=report,
             )
+        if duration == "persistent-nonzero":
+            for iteration in range(1, 4):
+                report.write_text(f"must refresh after exit 7, invocation {iteration}")
+                result, error = run("approved-retry" if iteration == 1 else f"persistent-{iteration}")
+                if harness == "pi":
+                    assert error is not None and error.endswith("Command exited with code 7"), error
+                else:
+                    assert error is None and result["details"]["exitCode"] == 7, result
+                assert "local metadata" in report.read_text(), "a completed failed call must not replay forever"
+            assert store.list_approval_requests() == []
+            with store._connect() as connection:
+                assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 3
+            return
         approved, error = run("approved-retry")
         assert error is None, error
         assert not approved.get("isError", False)

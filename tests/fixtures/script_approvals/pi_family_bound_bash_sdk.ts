@@ -60,7 +60,14 @@ if (configuration.harness === "pi") {
     if (hookResult) result = { ...result, ...hookResult };
     console.log(JSON.stringify({ version, result, acknowledgements, originalInput: configuration.input }));
   } catch (error) {
-    console.log(JSON.stringify({ version, sdkError: String(error), originalInput: configuration.input }));
+    // Match pi-agent-core's createErrorToolResult, then enter the actual
+    // AgentSession result hook just as finalizeExecutedToolCall does.
+    const result = { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], details: {} };
+    const hookResult = await owner.agent.afterToolCall({
+      toolCall: { id: configuration.callId, name: "bash" }, args, result, isError: true,
+    });
+    console.log(JSON.stringify({ version, result: { ...result, ...hookResult, isError: true },
+      sdkError: String(error), acknowledgements, originalInput: configuration.input }));
   }
   persistSession();
   process.exit(0);

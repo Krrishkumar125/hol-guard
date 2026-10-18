@@ -10,6 +10,24 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
   const boundBashInvocations = new Map<string, { operationId: string; cwd: string }>();
   const containedTestPresentations = new Map<string, { input: Record<string, unknown>; command: string }>();
 
+  function boundBashObservedExit(
+    event: { details?: unknown; isError?: boolean; content?: unknown },
+  ): number | undefined {
+    const details = event.details && typeof event.details === "object"
+      ? event.details as Record<string, unknown> : {};
+    if (typeof details.exitCode === "number") return details.exitCode;
+    if (event.isError === false) return 0;
+    // Pi's Bash tool throws this terminal diagnostic for a normal nonzero
+    // exit. It is only an observation: native signed completion must agree.
+    if ((boundBashHarness as string) !== "pi" || event.isError !== true ||
+        !Array.isArray(event.content)) return undefined;
+    const last = event.content[event.content.length - 1];
+    if (!last || last.type !== "text" || typeof last.text !== "string" ||
+        last.text.length > 1_048_576) return undefined;
+    const match = /(?:^|\n\n)Command exited with code ([1-9][0-9]{0,2})(?![\s\S])/.exec(last.text);
+    return match ? Number(match[1]) : undefined;
+  }
+
   pi.on("tool_result", async (event) => {
     const key = toolCallIdKey(event.toolCallId);
     const invocation = key ? boundBashInvocations.get(key) : undefined;
@@ -19,8 +37,7 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
         ? event.details as Record<string, unknown> : {};
       const job = observed.async;
       const background = job && typeof job === "object" && Reflect.get(job, "state") === "running";
-      const exitCode = typeof observed.exitCode === "number" ? observed.exitCode
-        : event.isError === false ? 0 : undefined;
+      const exitCode = boundBashObservedExit(event);
       if (!background && typeof exitCode === "number" && Number.isInteger(exitCode) &&
           exitCode >= 0 && exitCode <= 255) {
         const args = ["ack-bound-bash", "--harness", boundBashHarness,
