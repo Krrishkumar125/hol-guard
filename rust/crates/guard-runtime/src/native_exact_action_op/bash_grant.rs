@@ -8,7 +8,8 @@ use std::time::Instant;
 use guard_contained_process::{CapturedOutput, SourceLaunchGate};
 use guard_contracts::{
     ClaimApprovalReuseDecisionsRequestV1, ContextDigestComponentsV1, GuardHookEnvelopeV2,
-    NativeBashCaptureV1, NativeBashOperationV1, NativeBashSubjectV1,
+    NativeBashAuthorizationKindV1, NativeBashAuthorizationV1, NativeBashCaptureV1,
+    NativeBashOperationV1, NativeBashSubjectV1,
 };
 use serde_json::json;
 
@@ -26,6 +27,7 @@ pub(crate) struct LaunchFailure {
     pub(crate) grant_claimed: bool,
     pub(crate) dispatch_acknowledged: bool,
     pub(crate) operation: Option<Box<NativeBashOperationV1>>,
+    pub(crate) code: Option<&'static str>,
 }
 
 impl From<io::Error> for LaunchFailure {
@@ -35,6 +37,7 @@ impl From<io::Error> for LaunchFailure {
             grant_claimed: false,
             dispatch_acknowledged: false,
             operation: None,
+            code: None,
         }
     }
 }
@@ -83,6 +86,7 @@ pub(crate) fn binding(
 
 /// Internal owning entry point. Host adapters must still authenticate their
 /// final execution context before invoking it; no RPC capability is advertised.
+#[cfg(test)]
 pub(crate) fn execute_saved(
     request: &NativeBashCaptureV1,
     envelope: &GuardHookEnvelopeV2,
@@ -92,15 +96,43 @@ pub(crate) fn execute_saved(
     deadline: Instant,
     cancel: &AtomicBool,
 ) -> Result<LaunchOutput, LaunchFailure> {
+    execute_authorized(
+        request,
+        envelope,
+        store,
+        &NativeBashAuthorizationV1::SavedGrant {
+            claim: Box::new(claim.clone()),
+        },
+        operation_id,
+        deadline,
+        cancel,
+    )
+}
+
+pub(crate) fn execute_authorized(
+    request: &NativeBashCaptureV1,
+    envelope: &GuardHookEnvelopeV2,
+    store: &PolicySnapshotStore,
+    authorization: &NativeBashAuthorizationV1,
+    operation_id: &str,
+    deadline: Instant,
+    cancel: &AtomicBool,
+) -> Result<LaunchOutput, LaunchFailure> {
     let refuse = |_| io::Error::from(io::ErrorKind::PermissionDenied);
     store
         .require_guard_home(&request.guard_home)
         .map_err(refuse)?;
+    let claim = match authorization {
+        NativeBashAuthorizationV1::SavedGrant { claim } => {
+            store
+                .require_guard_home(&claim.guard_home)
+                .map_err(refuse)?;
+            Some(claim.as_ref())
+        }
+        NativeBashAuthorizationV1::CurrentPolicy { .. } => None,
+    };
     store
-        .require_guard_home(&claim.guard_home)
-        .map_err(refuse)?;
-    store
-        .require_store_path(&claim.store_path)
+        .require_store_path(authorization.store_path())
         .map_err(refuse)?;
     if !context_matches(request, envelope) {
         return Err(io::ErrorKind::PermissionDenied.into());
@@ -111,24 +143,37 @@ pub(crate) fn execute_saved(
     let expected = binding(&captured.subject, fence.snapshot())
         .map_err(|_| io::ErrorKind::PermissionDenied)?;
     let journal =
-        BashOperationJournal::open(store, claim, operation_id, &expected).map_err(refuse)?;
+        BashOperationJournal::open(store, authorization.store_path(), operation_id, &expected)
+            .map_err(refuse)?;
     if let Some(operation) = journal
         .read()
         .map_err(|_| io::ErrorKind::PermissionDenied)?
     {
         return Ok(LaunchOutput {
             output: None,
-            grant_claimed: true,
+            grant_claimed: operation.authorization == NativeBashAuthorizationKindV1::SavedGrant,
             dispatch_acknowledged: operation.dispatch_acknowledged,
             operation,
             replayed: true,
         });
     }
-    if !matches_grant(claim, &captured.subject, &request.harness, &expected) {
-        return Err(io::ErrorKind::PermissionDenied.into());
+    if let Some(claim) = claim {
+        if !matches_grant(claim, &captured.subject, &request.harness, &expected) {
+            return Err(io::ErrorKind::PermissionDenied.into());
+        }
+    } else if !captured
+        .policy
+        .as_ref()
+        .is_some_and(|policy| policy.allows_without_consent())
+    {
+        let mut failure: LaunchFailure = io::ErrorKind::PermissionDenied.into();
+        failure.code = Some("native_bash_consent_required");
+        return Err(failure);
     }
-    let mut claim = claim.clone();
-    claim.consume_local_once = true;
+    let claim = claim.cloned().map(|mut claim| {
+        claim.consume_local_once = true;
+        claim
+    });
     let mut gate = Gate {
         fence: Some(fence),
         claim,
@@ -140,13 +185,14 @@ pub(crate) fn execute_saved(
         Ok(output) => {
             let operation = journal.completed(&output).map_err(|_| LaunchFailure {
                 error: io::ErrorKind::Other.into(),
-                grant_claimed: gate.claimed,
+                grant_claimed: gate.grant_claimed(),
                 dispatch_acknowledged: gate.dispatched,
                 operation: None,
+                code: Some("native_bash_completion_record_unavailable"),
             })?;
             Ok(LaunchOutput {
                 output: Some(output),
-                grant_claimed: gate.claimed,
+                grant_claimed: gate.grant_claimed(),
                 dispatch_acknowledged: gate.dispatched,
                 operation,
                 replayed: false,
@@ -154,13 +200,14 @@ pub(crate) fn execute_saved(
         }
         Err(error) => Err(LaunchFailure {
             error,
-            grant_claimed: gate.claimed,
+            grant_claimed: gate.grant_claimed(),
             dispatch_acknowledged: gate.dispatched,
             operation: if gate.claimed {
                 journal.uncertain(gate.dispatched).ok().map(Box::new)
             } else {
                 None
             },
+            code: None,
         }),
     }
 }
@@ -214,13 +261,16 @@ fn matches_grant(
 
 struct Gate<'store, 'journal> {
     fence: Option<LaunchPolicyFence<'store>>,
-    claim: ClaimApprovalReuseDecisionsRequestV1,
+    claim: Option<ClaimApprovalReuseDecisionsRequestV1>,
     claimed: bool,
     dispatched: bool,
     journal: &'journal BashOperationJournal<'journal>,
 }
 
 impl Gate<'_, '_> {
+    fn grant_claimed(&self) -> bool {
+        self.claimed && self.claim.is_some()
+    }
     fn authorize(&mut self) -> io::Result<()> {
         self.fence
             .as_ref()
@@ -228,11 +278,16 @@ impl Gate<'_, '_> {
             .require_current()
             .map_err(|_| io::ErrorKind::PermissionDenied)?;
         if !self.claimed {
-            if !self
-                .journal
-                .reserve(&self.claim)
-                .map_err(|_| io::ErrorKind::PermissionDenied)?
-            {
+            let reserved = if let Some(claim) = &self.claim {
+                self.journal
+                    .reserve(claim)
+                    .map_err(|_| io::ErrorKind::PermissionDenied)?
+            } else {
+                self.journal
+                    .reserve_allowed()
+                    .map_err(|_| io::ErrorKind::PermissionDenied)?
+            };
+            if !reserved {
                 return Err(io::ErrorKind::PermissionDenied.into());
             }
             self.claimed = true;

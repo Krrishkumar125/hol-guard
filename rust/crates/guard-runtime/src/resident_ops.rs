@@ -665,7 +665,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
 /// The store an operation opens, for operations that carry an explicit path.
 fn operation_store_path(operation: &ResidentOperationV1) -> Option<&str> {
     match operation {
-        ResidentOperationV1::NativeBashExecute(request) => Some(&request.claim.store_path),
+        ResidentOperationV1::NativeBashExecute(request) => Some(request.authorization.store_path()),
         ResidentOperationV1::ApprovalReuseDiagnostic(request) => Some(&request.store_path),
         ResidentOperationV1::ClaimApprovalReuseDecisions(request) => Some(&request.store_path),
         ResidentOperationV1::GuardStore(request) => Some(&request.store_path),

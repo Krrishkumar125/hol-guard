@@ -2,6 +2,8 @@
 use super::*;
 #[path = "bash_grant_cancel_tests.rs"]
 mod cancel_tests;
+#[path = "bash_quiet_tests.rs"]
+mod quiet_tests;
 use guard_contracts::{
     NativeBashExecuteRequestV1, NativeBashExecuteResultV1, NativeBashPrepareRequestV1,
     NativeBashPrepareResultV1, NATIVE_BASH_EXECUTE_REQUEST_SCHEMA,
@@ -43,8 +45,19 @@ fn execution(
         operation_id: "execute-bash-operation-test".into(),
         capture: request,
         envelope,
-        claim,
+        authorization: guard_contracts::NativeBashAuthorizationV1::SavedGrant {
+            claim: Box::new(claim),
+        },
         timeout_ms: 5000,
+    }
+}
+
+fn saved_claim(
+    request: &mut NativeBashExecuteRequestV1,
+) -> &mut ClaimApprovalReuseDecisionsRequestV1 {
+    match &mut request.authorization {
+        guard_contracts::NativeBashAuthorizationV1::SavedGrant { claim } => claim,
+        _ => panic!("expected saved authorization"),
     }
 }
 
@@ -151,8 +164,8 @@ fn bash_resident_routes_require_current_store_scope_and_known_schemas() {
     execution.envelope.schema = "guard-hook-envelope.v99".into();
     assert!(!execute(&execution, &store).grant_claimed);
     execution.envelope = envelope;
-    let original = execution.claim.store_path.clone();
-    execution.claim.store_path = Path::new(&request.home_dir)
+    let original = saved_claim(&mut execution).store_path.clone();
+    saved_claim(&mut execution).store_path = Path::new(&request.home_dir)
         .join("guard.db")
         .to_str()
         .unwrap()
@@ -166,7 +179,7 @@ fn bash_resident_routes_require_current_store_scope_and_known_schemas() {
         .unwrap_err(),
         "native_guard_home_mismatch"
     );
-    execution.claim.store_path = original;
+    saved_claim(&mut execution).store_path = original;
     assert_eq!(
         execute(&execution, &store).payload.unwrap().exit_code,
         Some(0)

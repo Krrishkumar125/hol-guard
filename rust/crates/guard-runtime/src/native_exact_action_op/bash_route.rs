@@ -189,11 +189,11 @@ fn execute(
             return;
         }
     };
-    match super::bash_grant::execute_saved(
+    match super::bash_grant::execute_authorized(
         &request.capture,
         &request.envelope,
         store,
-        &request.claim,
+        &request.authorization,
         &request.operation_id,
         deadline,
         &registration.cancelled,
@@ -243,8 +243,12 @@ fn execute(
             result.grant_claimed = failure.grant_claimed;
             result.dispatch_acknowledged = failure.dispatch_acknowledged;
             result.operation = failure.operation.map(|operation| *operation);
-            result.code = if failure.grant_claimed {
+            result.code = if let Some(code) = failure.code {
+                code
+            } else if failure.grant_claimed {
                 "native_bash_launch_failed_after_claim"
+            } else if failure.dispatch_acknowledged || result.operation.is_some() {
+                "native_bash_launch_failed_after_authorization"
             } else {
                 match failure.error.kind() {
                     std::io::ErrorKind::TimedOut => "native_bash_launch_deadline_exceeded",

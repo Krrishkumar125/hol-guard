@@ -422,6 +422,11 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
             return Err("bash_process_descriptor_unproven");
         }
         let resolved = parent.join(path.file_name().ok_or("bash_output_path_invalid")?);
+        // Guard state is never an overridable report destination, including
+        // when an otherwise ordinary path aliases its configured home.
+        if resolved.starts_with(&guard_home) {
+            return Err("bash_output_guard_state_protected");
+        }
         if guard_command::bash_approval::is_descriptor_reference(&text(&resolved)?) {
             return Err("bash_process_descriptor_unproven");
         }

@@ -89,8 +89,35 @@ pub struct NativeBashExecuteRequestV1 {
     pub operation_id: String,
     pub capture: NativeBashCaptureV1,
     pub envelope: GuardHookEnvelopeV2,
-    pub claim: ClaimApprovalReuseDecisionsRequestV1,
+    pub authorization: NativeBashAuthorizationV1,
     pub timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum NativeBashAuthorizationV1 {
+    SavedGrant {
+        claim: Box<ClaimApprovalReuseDecisionsRequestV1>,
+    },
+    CurrentPolicy {
+        store_path: String,
+    },
+}
+
+impl NativeBashAuthorizationV1 {
+    pub fn store_path(&self) -> &str {
+        match self {
+            Self::SavedGrant { claim } => &claim.store_path,
+            Self::CurrentPolicy { store_path } => store_path,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeBashAuthorizationKindV1 {
+    SavedGrant,
+    CurrentPolicy,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -148,6 +175,7 @@ pub struct NativeBashCompletionSummaryV1 {
 pub struct NativeBashOperationV1 {
     pub operation_id: String,
     pub artifact_hash: String,
+    pub authorization: NativeBashAuthorizationKindV1,
     pub state: NativeBashOperationStateV1,
     pub dispatch_acknowledged: bool,
     pub completion: Option<NativeBashCompletionSummaryV1>,

@@ -3,8 +3,8 @@
 
 use guard_contained_process::CapturedOutput;
 use guard_contracts::{
-    ClaimApprovalReuseDecisionsRequestV1, NativeBashCompletionSummaryV1,
-    NativeBashOperationStateV1 as State, NativeBashOperationV1,
+    ClaimApprovalReuseDecisionsRequestV1, NativeBashAuthorizationKindV1 as Authorization,
+    NativeBashCompletionSummaryV1, NativeBashOperationStateV1 as State, NativeBashOperationV1,
 };
 use guard_policy_snapshot::local_authority_integrity::{
     sign_local_authority_payload, verify_local_authority_payload,
@@ -31,19 +31,17 @@ pub(crate) struct BashOperationJournal<'store> {
 impl<'store> BashOperationJournal<'store> {
     pub(crate) fn open(
         store: &'store PolicySnapshotStore,
-        claim: &ClaimApprovalReuseDecisionsRequestV1,
+        store_path: &str,
         operation_id: &'store str,
         artifact_hash: &'store str,
     ) -> Result<Self, String> {
         if !guard_contracts::native_bash_operation_id_is_valid(operation_id) {
             return Err("native_bash_operation_id_invalid".into());
         }
-        store.require_store_path(&claim.store_path)?;
-        let connection = Connection::open_with_flags(
-            &claim.store_path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
-        )
-        .map_err(|_| "native_bash_operation_store_unavailable")?;
+        store.require_store_path(store_path)?;
+        let connection =
+            Connection::open_with_flags(store_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)
+                .map_err(|_| "native_bash_operation_store_unavailable")?;
         connection
             .busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|_| "native_bash_operation_store_unavailable")?;
@@ -161,21 +159,51 @@ impl<'store> BashOperationJournal<'store> {
         &self,
         claim: &ClaimApprovalReuseDecisionsRequestV1,
     ) -> Result<bool, String> {
-        crate::claim_approval_reuse_op::claim_now_then(claim, &self.connection, &mut |connection| {
-            // This check is inside the grant's BEGIN IMMEDIATE. A competing
-            // persistent-grant retry cannot commit a second execution.
-            if self.read()?.is_some() { return Ok(None); }
-            let record = NativeBashOperationV1 {
-                operation_id: self.operation_id.into(), artifact_hash: self.artifact_hash.into(),
-                state: State::Claimed, dispatch_acknowledged: false, completion: None,
-            };
-            let (payload, integrity) = self.encode(&record)?;
-            connection.execute(
-                "INSERT INTO guard_bash_operations(operation_id,payload,integrity) VALUES(?1,?2,?3)",
-                params![self.operation_id, payload, integrity],
-            )?;
-            Ok(Some(()))
-        }).map(|record| record.is_some())
+        crate::claim_approval_reuse_op::claim_now_then(claim, &self.connection, &mut |_| {
+            self.insert(Authorization::SavedGrant)
+        })
+        .map(|record| record.is_some())
+    }
+
+    /// The fenced launch owner has established that every current decision
+    /// permits this action. No approval row is created, matched or consumed.
+    pub(crate) fn reserve_allowed(&self) -> rusqlite::Result<bool> {
+        self.connection.execute_batch("BEGIN IMMEDIATE")?;
+        match self.insert(Authorization::CurrentPolicy) {
+            Ok(Some(())) => {
+                self.connection.execute_batch("COMMIT")?;
+                Ok(true)
+            }
+            Ok(None) => {
+                self.connection.execute_batch("ROLLBACK")?;
+                Ok(false)
+            }
+            Err(error) => {
+                let _ = self.connection.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
+    }
+
+    fn insert(&self, authorization: Authorization) -> rusqlite::Result<Option<()>> {
+        // Always inside BEGIN IMMEDIATE, including the saved-grant claim.
+        if self.read()?.is_some() {
+            return Ok(None);
+        }
+        let record = NativeBashOperationV1 {
+            operation_id: self.operation_id.into(),
+            artifact_hash: self.artifact_hash.into(),
+            authorization,
+            state: State::Claimed,
+            dispatch_acknowledged: false,
+            completion: None,
+        };
+        let (payload, integrity) = self.encode(&record)?;
+        self.connection.execute(
+            "INSERT INTO guard_bash_operations(operation_id,payload,integrity) VALUES(?1,?2,?3)",
+            params![self.operation_id, payload, integrity],
+        )?;
+        Ok(Some(()))
     }
 
     pub(crate) fn dispatched(&self) -> rusqlite::Result<NativeBashOperationV1> {

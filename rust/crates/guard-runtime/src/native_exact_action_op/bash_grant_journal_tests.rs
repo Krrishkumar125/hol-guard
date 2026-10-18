@@ -104,7 +104,8 @@ fn bash_crash_after_reservation_or_dispatch_never_auto_reexecutes_after_restart(
         let (store, envelope) = policy_store(&request);
         let claim = once(&request, &store, "2050-01-01T00:00:00+00:00");
         let artifact = artifact(&request, &store);
-        let journal = BashOperationJournal::open(&store, &claim, OPERATION, &artifact).unwrap();
+        let journal =
+            BashOperationJournal::open(&store, &claim.store_path, OPERATION, &artifact).unwrap();
         assert!(journal.reserve(&claim).unwrap());
         if dispatched {
             journal.dispatched().unwrap();
@@ -136,7 +137,7 @@ fn bash_journal_insert_failure_rolls_back_once_claim_and_allows_same_intent_retr
     let (store, envelope) = policy_store(&request);
     let claim = once(&request, &store, "2050-01-01T00:00:00+00:00");
     let artifact = artifact(&request, &store);
-    drop(BashOperationJournal::open(&store, &claim, OPERATION, &artifact).unwrap());
+    drop(BashOperationJournal::open(&store, &claim.store_path, OPERATION, &artifact).unwrap());
     let connection = Connection::open(&claim.store_path).unwrap();
     connection
         .execute_batch(

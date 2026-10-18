@@ -14,7 +14,10 @@ pub(super) fn admitted(default: &str) -> crate::policy_enforcement::AdmittedPoli
 }
 
 pub(super) fn fixture() -> (tempfile::TempDir, NativeBashCaptureV1) {
-    let root = tempfile::tempdir().unwrap();
+    let root = tempfile::Builder::new()
+        .prefix("guard-bash-fixture-")
+        .tempdir()
+        .unwrap();
     let project = root.path().canonicalize().unwrap();
     let home = project.join("home");
     let guard_home = project.join("guard");
@@ -100,7 +103,7 @@ fn bash_launch_capture_rechecks_policy_without_mutating_outputs() {
         .unwrap()
         .decisions
         .iter()
-        .any(|decision| decision.minimum_action != "allow"));
+        .all(|decision| decision.minimum_action == "allow"));
     assert!(
         matches!(capture_for_launch(&request, &admitted("block")), Err(reason) if reason == "bash_current_policy_denied")
     );
