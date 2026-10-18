@@ -118,6 +118,37 @@ fn bash_broker_runs_the_captured_hardened_image_after_source_mutation() {
 }
 
 #[test]
+fn bash_broker_preserves_output_into_a_modeled_pipeline_consumer() {
+    let (_root, request) = tests::fixture();
+    let root = Path::new(&request.cwd);
+    hardened_helper(root, 0);
+    std::fs::write(
+        root.join("maintenance.sh"),
+        "compiled-helper value | /usr/bin/head -n 1\n",
+    )
+    .unwrap();
+    let captured = capture_for_launch(&request, &tests::admitted("allow")).unwrap();
+    assert_eq!(captured.graph.brokered_images.len(), 1);
+    let mut gate = Gate {
+        allow: true,
+        prepared: 0,
+        committed: 0,
+        released: 0,
+    };
+    let output = super::super::super::bash_launch::execute(
+        captured,
+        Instant::now() + Duration::from_secs(10),
+        &AtomicBool::new(false),
+        &mut gate,
+    )
+    .unwrap();
+    assert_eq!(output.exit_code, Some(0));
+    assert_eq!(output.stdout, b"argv0=compiled-helper arg=value\n");
+    assert_eq!(output.stderr, b"broker-stderr\n");
+    assert_eq!((gate.prepared, gate.committed, gate.released), (0, 1, 1));
+}
+
+#[test]
 fn bash_broker_cache_returns_the_final_pinned_image_identity() {
     let (_root, request) = tests::fixture();
     let cwd = Path::new(&request.cwd);
