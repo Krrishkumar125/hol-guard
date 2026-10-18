@@ -122,8 +122,14 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     assert json.loads(package.read_text())["version"] == expected
     status = runtime_status()
     assert status.identity is not None
-    workspace, home, guard = tmp_path / "project", tmp_path / "home", tmp_path / "guard"
+    workspace, guard = tmp_path / "project", tmp_path / "guard"
     execution_cwd = workspace / "subproject"
+    # Keep the synthetic HOME inside the verified execution cwd. On macOS
+    # pytest roots live below /private/var; a sibling HOME there is correctly
+    # treated as system-state-like rather than an ordinary user home, which
+    # would make this quiet-policy fixture ask for file-write consent for a
+    # path shape real user homes do not have.
+    home = execution_cwd / "home"
     execution_cwd.mkdir(parents=True)
     home.mkdir()
     fixtures = Path(__file__).parent / "fixtures" / "script_approvals"
@@ -148,7 +154,15 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     monkeypatch.setenv("LANG", "C")
     monkeypatch.setenv("PATH", f"{execution_cwd}:/usr/bin:/bin:{Path(bun).parent}")
     settings: dict[str, object] = {"blocked_request_mode": "ask"}
-    if duration != "quiet":
+    if duration == "quiet":
+        settings.update(
+            {
+                "default_action": "allow",
+                "subprocess_action": "allow",
+                "risk_actions": {"network_egress": "allow", "persistence": "allow"},
+            }
+        )
+    else:
         # Deliberate Ask must not depend on whether this machine classifies
         # the temporary report directory as a persistence location.
         settings["subprocess_action"] = "require-reapproval"
@@ -317,7 +331,6 @@ pi.on("tool_call", async (event, ctx) => {
 
     try:
         if duration == "quiet":
-            update_guard_settings(guard, {"subprocess_action": "allow", "risk_actions": {"persistence": "allow"}})
             report = home / "maintenance-report.tsv"
             assert close_native_residents(guard_home=guard)
             for iteration in range(1, 11):
