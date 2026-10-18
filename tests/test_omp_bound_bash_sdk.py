@@ -252,10 +252,11 @@ pi.on("tool_call", async (event, ctx) => {
         "LANG": "C",
         "TERM": "dumb",
         "PI_CODING_AGENT_DIR": str(tmp_path / "sdk-agent"),
-        "PYTHONPATH": str(repo / "src"),
         "HOL_GUARD_NATIVE": "force",
         "HOL_GUARD_NATIVE_BINARY": str(status.identity.path),
     }
+    if os.environ.get("HOL_GUARD_TEST_USE_INSTALLED") != "1":
+        environment["PYTHONPATH"] = str(repo / "src")
     configuration = tmp_path / "sdk.json"
 
     def configure(call_id):
