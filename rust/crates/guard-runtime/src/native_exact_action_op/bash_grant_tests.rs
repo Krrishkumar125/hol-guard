@@ -122,7 +122,7 @@ fn once(
         .to_owned();
     connection
         .execute(
-            "update guard_local_once_approvals set artifact_id='native-bash-launch:v1', \
+            "update guard_local_once_approvals set artifact_id=?6, \
          artifact_hash=?1, harness=?2, workspace=?3, expires_at=?4 where approval_id=?5",
             params![
                 binding,
@@ -132,7 +132,8 @@ fn once(
                 ))
                 .unwrap(),
                 expires,
-                id
+                id,
+                bash_grant::ARTIFACT
             ],
         )
         .unwrap();
@@ -198,7 +199,7 @@ fn once(
         "INSERT INTO approval_requests(request_id,status,resolution_action,action_envelope_json,
          harness,artifact_id,artifact_hash,workspace) VALUES(?1,'resolved','allow',?2,?3,?4,?5,?6)",
         params![claim.decisions[0]["request_id"].as_str().unwrap(),
-            json!({"native_bash":{"schema":"guard-native-bash-review.v1",
+            json!({"native_bash":{"schema":guard_contracts::NATIVE_BASH_REVIEW_DESCRIPTOR_SCHEMA,
                 "artifact_id":bash_grant::ARTIFACT,"artifact_hash":binding,"subject":captured.subject}}).to_string(),
             request.harness,bash_grant::ARTIFACT,binding,request.workspace],
     ).unwrap();
@@ -257,9 +258,9 @@ fn persistent(
     .unwrap();
     let id = claim.decisions[0]["decision_id"].as_i64().unwrap();
     connection.execute(
-        "update policy_decisions set artifact_id='native-bash-launch:v1',artifact_hash=?1, \
+        "update policy_decisions set artifact_id=?4,artifact_hash=?1, \
          harness=?2,workspace=null,scope='artifact',source='approval-gate',expires_at=null where decision_id=?3",
-        params![binding,request.harness,id],
+        params![binding,request.harness,id,bash_grant::ARTIFACT],
     ).unwrap();
     let sql = format!(
         "select {} from policy_decisions where decision_id=?1",

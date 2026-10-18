@@ -64,12 +64,14 @@ pub(crate) struct ScopeContract {
 pub(crate) struct View<'a> {
     pub(crate) item: &'a ApprovalScopeItemV1,
     pub(crate) envelope: Option<&'a Map<String, Value>>,
+    pub(crate) native_bash_owner_verified: bool,
 }
 
 impl<'a> View<'a> {
     pub(crate) fn new(item: &'a ApprovalScopeItemV1) -> Self {
         Self {
             item,
+            native_bash_owner_verified: false,
             envelope: item
                 .action_envelope_json
                 .as_ref()
@@ -267,6 +269,9 @@ pub(crate) fn allow_is_non_overridable(view: &View<'_>) -> bool {
 }
 
 fn native_retry_cannot_reuse_approval(view: &View<'_>) -> bool {
+    if native_bash_reserved(view) {
+        return !native_bash_eligible(view);
+    }
     let Some(artifact_id) = view.item.artifact_id.as_ref().and_then(Value::as_str) else {
         return false;
     };
@@ -281,6 +286,27 @@ fn native_retry_cannot_reuse_approval(view: &View<'_>) -> bool {
         .is_some_and(|hash| {
             crate::guard_store_native_review_consume::binding_pattern().is_match(hash)
         })
+}
+
+fn native_bash_reserved(view: &View<'_>) -> bool {
+    crate::native_bash_review_descriptor::reserved(
+        text(view.item.artifact_type.as_ref()),
+        text(view.item.artifact_id.as_ref()),
+        view.envelope.and_then(|map| map.get("native_bash")),
+    )
+}
+
+fn native_bash_eligible(view: &View<'_>) -> bool {
+    view.native_bash_owner_verified
+        && crate::native_bash_review_descriptor::eligible(
+            text(view.item.artifact_type.as_ref()),
+            text(view.item.artifact_id.as_ref()),
+            text(view.item.artifact_hash.as_ref()),
+            text(view.item.harness.as_ref()),
+            text(view.item.raw_command_text.as_ref()).or_else(|| envelope_text(view, "command")),
+            view.item.workspace_target.as_deref(),
+            view.envelope.and_then(|map| map.get("native_bash")),
+        )
 }
 
 fn is_context_token(value: &str) -> bool {
@@ -316,6 +342,9 @@ fn exact_action_once_only_reason(view: &View<'_>) -> Option<String> {
         );
     }
     match text(view.item.artifact_type.as_ref()) {
+        Some(guard_contracts::NATIVE_BASH_REVIEW_ARTIFACT_TYPE) => {
+            return Some("unproven_launch".into())
+        }
         Some("package_request") => return Some("package_action".to_owned()),
         Some("tool_call") => {}
         _ => return None,
@@ -340,6 +369,9 @@ fn exact_action_once_only_reason(view: &View<'_>) -> Option<String> {
 pub(crate) fn exact_action_allow_persistence_eligible(view: &View<'_>) -> bool {
     if allow_is_non_overridable(view) || unverified_provider_execution(view) {
         return false;
+    }
+    if native_bash_reserved(view) {
+        return native_bash_eligible(view);
     }
     let item = view.item;
     let artifact_id = text(item.artifact_id.as_ref());

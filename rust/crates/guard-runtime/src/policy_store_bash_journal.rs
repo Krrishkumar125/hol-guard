@@ -75,11 +75,14 @@ impl<'store> BashOperationJournal<'store> {
     }
 
     fn require_authority(&self) -> rusqlite::Result<()> {
-        if self
-            .store
+        Self::require_authority_for(self.store)
+    }
+
+    fn require_authority_for(store: &PolicySnapshotStore) -> rusqlite::Result<()> {
+        if store
             .authority_changed
             .load(std::sync::atomic::Ordering::SeqCst)
-            || !policy_store_authority::authority_unchanged_fenced(self.store)
+            || !policy_store_authority::authority_unchanged_fenced(store)
         {
             return Err(rusqlite::Error::InvalidQuery);
         }

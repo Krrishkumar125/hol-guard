@@ -50,6 +50,7 @@ REQUEST_FIELDS = (
 # the contract reads beside that digest. Anything else in the stored envelope
 # (tool bodies, file contents) is not authorization material.
 _ENVELOPE_KEYS = (
+    "native_bash",
     "schema_version",
     "harness",
     "event_name",

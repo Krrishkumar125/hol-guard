@@ -347,9 +347,7 @@ fn evaluate(request: &ApprovalResolutionPlanRequestV1) -> Result<Value, String> 
         .clone()
         .filter(|hash| parse_context_token(&Value::String(hash.clone())).is_some());
     let exact_context_allow = allow && context_token.is_some();
-    let native_bash_operation_only = scope == "artifact"
-        && context_token.is_some()
-        && request_artifact_id.as_deref() == Some(guard_contracts::NATIVE_BASH_ARTIFACT_ID);
+    let native_bash_operation_only = execution::operation_only(request, context_token.is_some());
     let persist = request.persist_policy;
     let mut scoped_id = if matches!(scope, "artifact" | "harness" | "global") {
         request_artifact_id.clone()

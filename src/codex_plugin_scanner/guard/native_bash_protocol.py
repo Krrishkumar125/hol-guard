@@ -14,6 +14,10 @@ from .native_execution import _resident_request
 from .native_runtime import NativeRuntimeStatus, _isolated_environment, native_runtime_status
 
 FEATURE = "native-bash-owner-protocol-v1"
+ARTIFACT_ID = "native-bash-owner:native-pretool:v1"
+ARTIFACT_TYPE = "native_bash_request"
+DESCRIPTOR_SCHEMA = "guard-native-bash-review.v2"
+DESCRIPTOR_FEATURE = "native-bash-review-descriptor-v1"
 MAX_REQUEST_BYTES = 512 * 1024
 _BASE = {"schema", "request_id", "request_sha256", "status", "code", "payload"}
 
@@ -33,9 +37,13 @@ def request_id() -> str:
 def runtime_status() -> NativeRuntimeStatus:
     status = native_runtime_status()
     if (
-        not status.available or not status.compatible or status.identity is None
+        not status.available
+        or not status.compatible
+        or status.identity is None
         or status.capabilities is None
-        or not {FEATURE, "native-bash-review-lineage-v1", "resident-protocol-v2"}.issubset(status.capabilities.features)
+        or not {FEATURE, DESCRIPTOR_FEATURE, "native-bash-review-lineage-v1", "resident-protocol-v2"}.issubset(
+            status.capabilities.features
+        )
     ):
         raise NativeBashError("native_bash_owner_unavailable")
     return status
@@ -75,15 +83,20 @@ def _invalid_constant(_value: str) -> None:
 
 
 def validate_reply(
-    result: dict[str, object], request: dict[str, object], *, kind: str,
-    extra: frozenset[str] = frozenset(), statuses: frozenset[str] = frozenset({"ok", "error", "unavailable"}),
+    result: dict[str, object],
+    request: dict[str, object],
+    *,
+    kind: str,
+    extra: frozenset[str] = frozenset(),
+    statuses: frozenset[str] = frozenset({"ok", "error", "unavailable"}),
 ) -> None:
     if (
         set(result) != _BASE | extra
         or result.get("schema") != f"guard-native-bash-{kind}-result.v1"
         or result.get("request_id") != request.get("request_id")
         or result.get("request_sha256") != "sha256:" + _canonical_request_sha256(request)
-        or not isinstance(result.get("status"), str) or result["status"] not in statuses
+        or not isinstance(result.get("status"), str)
+        or result["status"] not in statuses
         or not isinstance(result.get("code"), str)
         or re.fullmatch(r"[a-z][a-z0-9_]{0,127}", str(result["code"])) is None
         or (result["status"] == "ok") != (result["code"] == "ok")
@@ -96,13 +109,18 @@ def observe_host(capture: dict[str, object], *, cwd: Path) -> dict[str, object]:
     status = runtime_status()
     assert status.identity is not None
     request: dict[str, object] = {
-        "schema": "guard-native-bash-host-request.v1", "request_id": request_id(),
-        "capture": capture, "budget_ms": 5000,
+        "schema": "guard-native-bash-host-request.v1",
+        "request_id": request_id(),
+        "capture": capture,
+        "budget_ms": 5000,
     }
     reply = run_isolated_hook_process(
         [str(status.identity.path), "native-bash-host-context", "--stdin"],
-        input_text=encode(request), cwd=cwd, environment=dict(os.environ),
-        timeout_seconds=6, output_limit=MAX_REQUEST_BYTES,
+        input_text=encode(request),
+        cwd=cwd,
+        environment=dict(os.environ),
+        timeout_seconds=6,
+        output_limit=MAX_REQUEST_BYTES,
     )
     if reply.returncode != 0 or reply.timed_out or reply.output_limit_exceeded or reply.containment_failed:
         raise NativeBashError("native_bash_host_observation_unavailable")
@@ -126,10 +144,15 @@ def prepare(request: dict[str, object], *, guard_home: Path) -> dict[str, object
     status = runtime_status()
     _ = encode(request)
     result = _resident_request(
-        operation="native_bash_prepare", request=request, guard_home=guard_home,
-        timeout_seconds=6, required_feature=FEATURE,
-        response_schema="guard-native-bash-prepare-result.v1", status=status,
-        max_request_bytes=MAX_REQUEST_BYTES, record_success=False,
+        operation="native_bash_prepare",
+        request=request,
+        guard_home=guard_home,
+        timeout_seconds=6,
+        required_feature=FEATURE,
+        response_schema="guard-native-bash-prepare-result.v1",
+        status=status,
+        max_request_bytes=MAX_REQUEST_BYTES,
+        record_success=False,
     )
     if result is None:
         raise NativeBashError("native_bash_prepare_unavailable")
@@ -137,6 +160,37 @@ def prepare(request: dict[str, object], *, guard_home: Path) -> dict[str, object
     if result["status"] != "ok":
         raise NativeBashError(str(result["code"]))
     return validate_prepared(result["payload"])
+
+
+def verify_review_request(request: dict[str, object], *, guard_home: Path) -> None:
+    status = runtime_status()
+    _ = encode(request)
+    result = _resident_request(
+        operation="native_bash_review_check",
+        request=request,
+        guard_home=guard_home,
+        timeout_seconds=10,
+        required_feature=DESCRIPTOR_FEATURE,
+        response_schema="guard-native-bash-review-check-result.v1",
+        status=status,
+        max_request_bytes=MAX_REQUEST_BYTES,
+        record_success=False,
+    )
+    if result is None:
+        raise NativeBashError("native_bash_review_check_unavailable")
+    validate_reply(result, request, kind="review-check")
+    if result["status"] != "ok":
+        raise NativeBashError(str(result["code"]))
+    descriptor = request["descriptor"]
+    assert isinstance(descriptor, dict)
+    lineage = descriptor["review_lineage"]
+    assert isinstance(lineage, dict)
+    if result["payload"] != {
+        "approval_request_id": request["approval_request_id"],
+        "lineage_id": lineage["lineage_id"],
+        "artifact_hash": descriptor["artifact_hash"],
+    }:
+        raise NativeBashError("native_bash_review_check_invalid")
 
 
 def execute(request: dict[str, object], *, guard_home: Path, cwd: Path) -> dict[str, object]:
@@ -151,12 +205,17 @@ def execute(request: dict[str, object], *, guard_home: Path, cwd: Path) -> dict[
     # closes even if this Python sink is killed; the pooled helper cannot give
     # that guarantee while synchronously waiting for a long execution reply.
     envelope: dict[str, object] = {
-        "operation": "native_bash_execute", "request": request, "deadline_budget_ms": timeout_ms + 1000,
+        "operation": "native_bash_execute",
+        "request": request,
+        "deadline_budget_ms": timeout_ms + 1000,
     }
     reply = run_isolated_hook_process(
         [str(status.identity.path), "native-bash-execute-client", "--stdin", str(guard_home / "native-runtime")],
-        input_text=encode(envelope), cwd=cwd, environment=_isolated_environment(),
-        timeout_seconds=timeout_ms / 1000 + 2, output_limit=2 * 1024 * 1024,
+        input_text=encode(envelope),
+        cwd=cwd,
+        environment=_isolated_environment(),
+        timeout_seconds=timeout_ms / 1000 + 2,
+        output_limit=2 * 1024 * 1024,
         parent_liveness=True,
     )
     if reply.returncode != 0 or reply.timed_out or reply.output_limit_exceeded or reply.containment_failed:
@@ -165,7 +224,10 @@ def execute(request: dict[str, object], *, guard_home: Path, cwd: Path) -> dict[
         raise NativeBashError("native_bash_execution_reply_unavailable")
     result = decode(reply.stdout)
     validate_reply(
-        result, request, kind="execute", statuses=frozenset({"ok", "error", "recorded"}),
+        result,
+        request,
+        kind="execute",
+        statuses=frozenset({"ok", "error", "recorded"}),
         extra=frozenset({"grant_claimed", "dispatch_acknowledged", "replayed", "operation", "review_lineage"}),
     )
     validate_executed(result, request)

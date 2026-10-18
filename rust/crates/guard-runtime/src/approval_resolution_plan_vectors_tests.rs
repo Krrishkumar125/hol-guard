@@ -117,7 +117,7 @@ fn malformed_tokens_are_not_context_tokens() {
 }
 
 #[test]
-fn native_bash_unremembered_decisions_are_operation_scoped_even_for_older_callers() {
+fn native_bash_legacy_descriptors_cannot_save_consent_but_can_record_refusal() {
     use guard_contracts::ContextDigestComponentsV1;
     use serde_json::json;
     let token = crate::context_digest::build_context_token(&ContextDigestComponentsV1 {
@@ -145,28 +145,28 @@ fn native_bash_unremembered_decisions_are_operation_scoped_even_for_older_caller
     request.approval.artifact_id = Some(guard_contracts::NATIVE_BASH_ARTIFACT_ID.into());
     request.approval.artifact_hash = Some(token.clone());
     request.native_exact_token = Some(token);
-    for action in ["allow", "block"] {
-        request.action = action.into();
-        for persist in [None, Some(false)] {
-            request.persist_policy = persist;
-            let plan = evaluate(&request).unwrap();
-            assert_eq!(
-                plan["persistence"],
-                if action == "allow" {
-                    "exact_once"
-                } else {
-                    "none"
-                }
-            );
-            assert!(
-                plan["matching"].is_null(),
-                "another user intent must remain pending"
-            );
-            if action == "block" {
-                assert!(plan["local_once"].is_null());
-            }
-        }
-        request.persist_policy = Some(true);
-        assert_eq!(evaluate(&request).unwrap()["persistence"], "persisted");
+    request.action = "allow".into();
+    for persist in [None, Some(false), Some(true)] {
+        request.persist_policy = persist;
+        assert_eq!(
+            evaluate(&request),
+            Err("execution_binding_unavailable".into())
+        );
     }
+    request.action = "block".into();
+    for persist in [None, Some(false)] {
+        request.persist_policy = persist;
+        let plan = evaluate(&request).unwrap();
+        assert_eq!(plan["persistence"], "none");
+        assert!(
+            plan["matching"].is_null(),
+            "another user intent must remain pending"
+        );
+        assert!(plan["local_once"].is_null());
+    }
+    request.persist_policy = Some(true);
+    assert_eq!(
+        evaluate(&request),
+        Err("execution_binding_unavailable".into())
+    );
 }

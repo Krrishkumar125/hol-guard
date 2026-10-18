@@ -312,15 +312,21 @@ def queue_native_pre_tool_review(
     request_id = uuid.uuid4().hex
     artifact_id = _native_review_artifact_id(harness, tool_name)
     queue_group_id = None if connector is None else connector.queue_group_id
+    from ..native_bash_protocol import ARTIFACT_ID, ARTIFACT_TYPE, DESCRIPTOR_SCHEMA
+
     if bound_bash is not None:
         from .native_review_bound_bash import valid_bound_bash_review
 
         if not valid_bound_bash_review(
-            bound_bash, harness=harness, exact_token=exact_token, review_binding=review_binding,
-            decision=native_result, native_receipt=native_receipt,
+            bound_bash,
+            harness=harness,
+            exact_token=exact_token,
+            review_binding=review_binding,
+            decision=native_result,
+            native_receipt=native_receipt,
         ):
             return None
-        artifact_id = "native-bash-launch:v1"
+        artifact_id = ARTIFACT_ID
         lineage = bound_bash["review_lineage"]
         assert isinstance(lineage, Mapping)
         queue_group_id = f"native-bash-review:{lineage['lineage_id']}"
@@ -377,8 +383,9 @@ def queue_native_pre_tool_review(
         action_envelope[ONCE_ONLY_REASON_KEY] = once_only_reason
     if bound_bash is not None:
         action_envelope["native_bash"] = {
-            "schema": "guard-native-bash-review.v1",
-            "artifact_id": artifact_id, "artifact_hash": exact_token,
+            "schema": DESCRIPTOR_SCHEMA,
+            "artifact_id": artifact_id,
+            "artifact_hash": exact_token,
             "subject": bound_bash["subject"],
             "review_lineage": bound_bash["review_lineage"],
         }
@@ -396,7 +403,7 @@ def queue_native_pre_tool_review(
         review_command=f"hol-guard approvals approve {request_id}",
         approval_url=approval_url,
         workspace=str(workspace) if workspace is not None else None,
-        artifact_type="tool_call",
+        artifact_type=ARTIFACT_TYPE if bound_bash is not None else "tool_call",
         launch_target=launch_target,
         risk_summary=reason,
         action_envelope_json=action_envelope,

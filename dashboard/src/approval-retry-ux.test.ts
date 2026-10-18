@@ -11,7 +11,7 @@ import {
   retryCannotReuseApprovalHint,
 } from "./approval-retry-guidance";
 import { GuardRequestResolutionError } from "./guard-api";
-import { bulkApprovalRiskTier, groupDuplicates } from "./queue-state";
+import { bulkApprovalRiskTier, groupDuplicates, isBulkApprovableGroup } from "./queue-state";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { approvalGateRefreshNeeded, resolvedStateForItem } from "./review-decision-state";
@@ -349,5 +349,42 @@ const runYourselfMarkup = renderToStaticMarkup(createElement(ReviewRunYourself, 
 assert(runYourselfMarkup.includes("Run this yourself"), "the review names the action the user should take");
 assert(runYourselfMarkup.includes("FOO=1 ./scripts/release.sh production"), "the review shows the command to run");
 assert(!/>\s*Approve/.test(runYourselfMarkup), "the run-yourself panel offers no approval button");
+
+// Native Bash keeps its own type; server-derived scope capabilities govern all
+// decisions, including stale UI submissions and the bulk selector.
+const nativeOwner = {
+  ...bound,
+  artifact_type: "native_bash_request",
+  artifact_id: "native-bash-owner:native-pretool:v1",
+  artifact_hash: "guard-approval-context:v1:reviewed-fixture",
+  exact_action_persistence_eligible: true,
+  scope_restrictions: ["reusable_allow_is_action_bound"],
+};
+assert(requestSupportsScope(nativeOwner, "allow", "artifact"), "verified native owner offers once");
+assert(!requestSupportsScope(nativeOwner, "allow", "workspace"), "native owner cannot widen project scope");
+const nativeOnce = buildDecisionPayload({ item: nativeOwner, action: "allow", scope: "artifact", reason: "once" });
+assert(nativeOnce.persist_policy !== true, "native once does not remember consent");
+const nativeAlways = buildDecisionPayload({
+  item: nativeOwner, action: "allow", scope: "artifact", reason: "version", persistExactAction: true,
+});
+assert(nativeAlways.persist_policy === true, "native version requires explicit persistent duration");
+const unavailableOwner = {
+  ...nativeOwner,
+  exact_action_persistence_eligible: false,
+  allowed_scopes_by_action: { allow: [], block: ["artifact" as const] },
+  scope_restrictions: ["retry_cannot_reuse_approval"],
+};
+assert(!requestSupportsScope(unavailableOwner, "allow", "artifact"), "unverified native owner offers no execution");
+assert(requestSupportsScope(unavailableOwner, "block", "artifact"), "unverified owner still permits refusal");
+for (const persistExactAction of [false, true]) {
+  let refused = false;
+  try {
+    buildDecisionPayload({ item: unavailableOwner, action: "allow", scope: "artifact", reason: "stale", persistExactAction });
+  } catch { refused = true; }
+  assert(refused, "stale native owner selection cannot build any allow duration");
+}
+const nativeRefusal = buildDecisionPayload({ item: unavailableOwner, action: "block", scope: "artifact", reason: "keep" });
+assert(nativeRefusal.persist_policy !== true, "native Keep blocked does not become a remembered deny");
+assert(!isBulkApprovableGroup(groupDuplicates([unavailableOwner])[0]), "bulk excludes an unavailable native owner");
 
 console.log("approval-retry-ux tests passed");

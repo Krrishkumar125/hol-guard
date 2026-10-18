@@ -10,6 +10,23 @@ use crate::guard_store_native_review_consume::binding_pattern;
 /// `_APPROVAL_ONCE_POLICY_TTL`: 15 minutes.
 const ONCE_TTL_MICROS: i64 = 15 * 60 * 1_000_000;
 
+pub(super) fn operation_only(
+    request: &ApprovalResolutionPlanRequestV1,
+    context_bound: bool,
+) -> bool {
+    let approval = &request.approval;
+    request.scope == "artifact"
+        && (request.action != "allow" || context_bound)
+        && crate::native_bash_review_descriptor::reserved(
+            approval.artifact_type.as_deref(),
+            approval.artifact_id.as_deref(),
+            approval
+                .envelope
+                .as_ref()
+                .and_then(|envelope| envelope.native_bash.as_ref()),
+        )
+}
+
 pub(super) fn once_expires_at(resolved_at: &str) -> Result<String, String> {
     add_seconds_isoformat(resolved_at, ONCE_TTL_MICROS).ok_or_else(|| super::INVALID.to_owned())
 }
@@ -25,6 +42,32 @@ pub(super) fn wrapper_strings(chain: &[Option<String>]) -> Vec<Value> {
 
 pub(super) fn require_binding(request: &ApprovalResolutionPlanRequestV1) -> Result<(), String> {
     let approval = &request.approval;
+    let descriptor = approval
+        .envelope
+        .as_ref()
+        .and_then(|envelope| envelope.native_bash.as_ref());
+    if (request.action == "allow" || request.persist_policy == Some(true))
+        && crate::native_bash_review_descriptor::reserved(
+            approval.artifact_type.as_deref(),
+            approval.artifact_id.as_deref(),
+            descriptor,
+        )
+    {
+        return if request.scope == "artifact"
+            && crate::native_bash_review_descriptor::eligible(
+                approval.artifact_type.as_deref(),
+                approval.artifact_id.as_deref(),
+                approval.artifact_hash.as_deref(),
+                approval.harness.as_deref(),
+                approval.raw_command_text.as_deref(),
+                approval.config_path.as_deref(),
+                descriptor,
+            ) {
+            Ok(())
+        } else {
+            Err("execution_binding_unavailable".into())
+        };
+    }
     if request.action != "allow"
         || !approval
             .artifact_id

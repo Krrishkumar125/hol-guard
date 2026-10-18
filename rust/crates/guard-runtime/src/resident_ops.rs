@@ -257,6 +257,10 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                 let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
                 crate::native_exact_action_op::prepare_bash_request(&request, store)
             }
+            ResidentOperationV1::NativeBashReviewCheck(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::check_bash_review(&request, store)
+            }
             ResidentOperationV1::NativeBashExecute(request) => {
                 let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
                 crate::native_exact_action_op::execute_bash_request(&request, store, cancellation)
@@ -315,7 +319,7 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                 crate::hook_render_op::evaluate_hook_render_request(&request)
             }
             ResidentOperationV1::ApprovalScope(request) => {
-                crate::approval_scope_op::evaluate_approval_scope_request(&request)
+                crate::approval_scope_op::evaluate_approval_scope_request(&request, policy_store)
             }
             ResidentOperationV1::ApprovalResolutionPlan(request) => {
                 crate::approval_resolution_plan_op::evaluate_approval_resolution_plan_request(
@@ -326,7 +330,7 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                 crate::claim_approval_reuse_op::evaluate_claim_approval_reuse_request(&request)
             }
             ResidentOperationV1::GuardStore(request) => {
-                crate::guard_store_op::evaluate_guard_store_request(&request)
+                crate::guard_store_op::evaluate_guard_store_request_with_owner(&request, policy_store)
             }
             ResidentOperationV1::ApprovalGate(request) => {
                 crate::approval_gate_op::evaluate_approval_gate_request(&request)
@@ -611,6 +615,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::NativeBashPrepare(request) => Some(&request.capture.guard_home),
         ResidentOperationV1::NativeBashExecute(request) => Some(&request.capture.guard_home),
         ResidentOperationV1::NativeBashCancel(request) => Some(&request.guard_home),
+        ResidentOperationV1::NativeBashReviewCheck(request) => Some(&request.guard_home),
         ResidentOperationV1::ArchiveAcquisition(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirect(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirectEvidenceDrain(request) => Some(&request.guard_home),
@@ -674,6 +679,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
 fn operation_store_path(operation: &ResidentOperationV1) -> Option<&str> {
     match operation {
         ResidentOperationV1::NativeBashExecute(request) => Some(request.authorization.store_path()),
+        ResidentOperationV1::NativeBashReviewCheck(request) => Some(&request.store_path),
         ResidentOperationV1::ApprovalReuseDiagnostic(request) => Some(&request.store_path),
         ResidentOperationV1::ClaimApprovalReuseDecisions(request) => Some(&request.store_path),
         ResidentOperationV1::GuardStore(request) => Some(&request.store_path),

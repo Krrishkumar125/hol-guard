@@ -158,6 +158,8 @@ mod native_bash_subject;
 pub use native_bash_subject::*;
 mod native_bash_launch;
 pub use native_bash_launch::*;
+mod native_bash_review;
+pub use native_bash_review::*;
 
 mod workflow_capability;
 pub use workflow_capability::*;

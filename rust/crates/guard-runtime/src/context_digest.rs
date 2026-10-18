@@ -43,6 +43,21 @@ fn component_hash(component: &str, value: &Value) -> Result<String, &'static str
     component_hash_with(component, |out| write_canonical_json(value, out))
 }
 
+pub(crate) fn component_matches(token: &str, component: &str, value: &Value) -> bool {
+    let Some(token) = parse_context_token(&Value::String(token.to_owned())) else {
+        return false;
+    };
+    let actual = match component {
+        "identity" => token.identity,
+        "content" => token.content,
+        "capabilities" => token.capabilities,
+        "policy" => token.policy,
+        "sandbox" => token.sandbox,
+        _ => return false,
+    };
+    component_hash(component, value).is_ok_and(|expected| expected == actual)
+}
+
 fn component_hash_with(
     component: &str,
     write_value: impl FnOnce(&mut Vec<u8>) -> Result<(), &'static str>,

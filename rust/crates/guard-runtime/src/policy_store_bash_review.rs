@@ -22,15 +22,81 @@ struct Record {
 }
 
 impl BashOperationJournal<'_> {
+    pub(crate) fn verify_pending_request(
+        &self,
+        request_id: &str,
+        harness: &str,
+        command: &str,
+        descriptor: &guard_contracts::NativeBashReviewDescriptorV1,
+    ) -> rusqlite::Result<()> {
+        self.review_transaction(|| {
+            let Some(mut record) = self.read_review()? else {
+                return Err(rusqlite::Error::InvalidQuery);
+            };
+            if record.blocked
+                || record.lineage != descriptor.review_lineage
+                || record.harness != harness
+                || record.project != descriptor.subject.context.project
+            {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            let row: Option<(String, String, String)> = self
+                .connection
+                .query_row(
+                    "SELECT artifact_type,raw_command_text,
+                 CASE WHEN length(action_envelope_json)<=1048576 THEN action_envelope_json END
+                 FROM approval_requests WHERE request_id=?1 AND status='pending'",
+                    [request_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .optional()?;
+            let Some((kind, stored_command, envelope)) = row else {
+                return Err(rusqlite::Error::InvalidQuery);
+            };
+            let envelope: serde_json::Value =
+                serde_json::from_str(&envelope).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            let stored: guard_contracts::NativeBashReviewDescriptorV1 = serde_json::from_value(
+                envelope
+                    .get("native_bash")
+                    .cloned()
+                    .ok_or(rusqlite::Error::InvalidQuery)?,
+            )
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+            if kind != guard_contracts::NATIVE_BASH_REVIEW_ARTIFACT_TYPE
+                || stored_command != command
+                || stored != *descriptor
+            {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            if self.refresh_review(&mut record)? != Some((request_id.into(), "pending".into())) {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            Ok(())
+        })
+    }
+
     fn read_review(&self) -> rusqlite::Result<Option<Record>> {
-        self.require_authority()?;
-        let row: Option<(Option<String>, Option<String>)> = self
-            .connection
+        Self::read_review_in(
+            &self.connection,
+            self.store,
+            self.operation_id,
+            self.artifact_hash,
+        )
+    }
+
+    fn read_review_in(
+        connection: &rusqlite::Connection,
+        store: &crate::policy_store::PolicySnapshotStore,
+        operation_id: &str,
+        artifact_hash: &str,
+    ) -> rusqlite::Result<Option<Record>> {
+        Self::require_authority_for(store)?;
+        let row: Option<(Option<String>, Option<String>)> = connection
             .query_row(
                 "SELECT CASE WHEN length(payload)<=16384 THEN payload END,
              CASE WHEN length(integrity)<=4096 THEN integrity END
              FROM guard_bash_reviews WHERE operation_id=?1",
-                [self.operation_id],
+                [operation_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
@@ -44,11 +110,11 @@ impl BashOperationJournal<'_> {
         let invalid = |_| rusqlite::Error::InvalidQuery;
         let payload = serde_json::from_str(&payload).map_err(invalid)?;
         let integrity = serde_json::from_str(&integrity).map_err(invalid)?;
-        let key_id = guard_policy_snapshot::verifier_key_id(&self.store.verifier_key);
+        let key_id = guard_policy_snapshot::verifier_key_id(&store.verifier_key);
         if verify_local_authority_payload(
             &payload,
             &integrity,
-            Some(&self.store.verifier_key),
+            Some(&store.verifier_key),
             Some(&key_id),
             PURPOSE,
         )
@@ -61,8 +127,8 @@ impl BashOperationJournal<'_> {
         let now = crate::policy_store::now_ms().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let lineage = &record.lineage;
         if lineage.schema != SCHEMA
-            || lineage.operation_id != self.operation_id
-            || lineage.artifact_hash != self.artifact_hash
+            || lineage.operation_id != operation_id
+            || lineage.artifact_hash != artifact_hash
             || lineage.lineage_id.len() != 64
             || !lineage
                 .lineage_id
@@ -75,6 +141,77 @@ impl BashOperationJournal<'_> {
             return Err(rusqlite::Error::InvalidQuery);
         }
         Ok(Some(record))
+    }
+
+    pub(crate) fn descriptor_is_backed(
+        connection: &rusqlite::Connection,
+        store: &crate::policy_store::PolicySnapshotStore,
+        request_id: &str,
+        harness: &str,
+        command: &str,
+        descriptor: &guard_contracts::NativeBashReviewDescriptorV1,
+    ) -> rusqlite::Result<bool> {
+        let Some(record) = Self::read_review_in(
+            connection,
+            store,
+            &descriptor.review_lineage.operation_id,
+            &descriptor.artifact_hash,
+        )?
+        else {
+            return Ok(false);
+        };
+        if record.blocked
+            || record.lineage != descriptor.review_lineage
+            || record.harness != harness
+            || record.project != descriptor.subject.context.project
+            || record
+                .request_id
+                .as_deref()
+                .is_some_and(|id| id != request_id)
+        {
+            return Ok(false);
+        }
+        let matches: i64 = connection.query_row(
+            "SELECT count(*) FROM (SELECT 1 FROM approval_requests WHERE harness=?1 AND artifact_id=?2
+             AND artifact_hash=?3 AND workspace IS ?4
+             AND json_extract(action_envelope_json,'$.native_bash.review_lineage.lineage_id')=?5 LIMIT 2)",
+            params![harness,guard_contracts::NATIVE_BASH_ARTIFACT_ID,descriptor.artifact_hash,record.project,
+                descriptor.review_lineage.lineage_id], |row| row.get(0),
+        )?;
+        if matches != 1 {
+            return Ok(false);
+        }
+        let row: Option<(String, String, String)> = connection
+            .query_row(
+                "SELECT artifact_type,raw_command_text,
+             CASE WHEN length(action_envelope_json)<=1048576 THEN action_envelope_json END
+             FROM approval_requests WHERE request_id=?1 AND status='pending' AND harness=?2
+             AND artifact_id=?3 AND artifact_hash=?4 AND workspace IS ?5",
+                params![
+                    request_id,
+                    harness,
+                    guard_contracts::NATIVE_BASH_ARTIFACT_ID,
+                    descriptor.artifact_hash,
+                    record.project
+                ],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        let Some((kind, stored_command, envelope)) = row else {
+            return Ok(false);
+        };
+        let envelope: serde_json::Value =
+            serde_json::from_str(&envelope).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let stored: guard_contracts::NativeBashReviewDescriptorV1 = serde_json::from_value(
+            envelope
+                .get("native_bash")
+                .cloned()
+                .ok_or(rusqlite::Error::InvalidQuery)?,
+        )
+        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        Ok(kind == guard_contracts::NATIVE_BASH_REVIEW_ARTIFACT_TYPE
+            && stored_command == command
+            && stored == *descriptor)
     }
 
     fn write_review(&self, record: &Record) -> rusqlite::Result<()> {

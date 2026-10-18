@@ -20,8 +20,10 @@ mod bash_launch;
 mod bash_policy;
 #[cfg(target_os = "macos")]
 mod bash_review;
+mod bash_review_check;
 mod bash_route;
 pub(crate) use bash_cancel_route::cancel_request as cancel_bash_request;
+pub(crate) use bash_review_check::check as check_bash_review;
 pub(crate) use bash_route::observe_host_bytes as observe_bash_host_bytes;
 pub(crate) use bash_route::{
     execute_request as execute_bash_request, prepare_request as prepare_bash_request,
@@ -44,6 +46,7 @@ mod git_push;
 #[allow(dead_code)]
 mod git_windows;
 mod launch;
+pub(crate) use launch::is_safe_single_invocation;
 #[cfg(windows)]
 mod launch_windows;
 mod launcher_sets;

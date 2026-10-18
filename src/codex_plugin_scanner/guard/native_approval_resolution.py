@@ -56,13 +56,16 @@ def _envelope(value: object) -> dict[str, object] | None:
         return None
     payload = value.get("raw_payload_redacted")
     mode = payload if isinstance(payload, Mapping) else {}
-    return {
+    result: dict[str, object] = {
         "raw_command_text": _text(value.get("raw_command_text")),
         "command": _text(value.get("command")),
         "wrapper_chain": _chain(value.get("wrapper_chain")),
         "permission_mode": _text(mode.get("permission_mode")),
         "permission_mode_camel": _text(mode.get("permissionMode")),
     }
+    if "native_bash" in value:
+        result["native_bash"] = value["native_bash"]
+    return result
 
 
 def _browser_intent(value: object) -> dict[str, object] | None:

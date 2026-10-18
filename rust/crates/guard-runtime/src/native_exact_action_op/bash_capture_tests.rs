@@ -8,6 +8,9 @@ const SCRIPT: &str = include_str!("../../../../../tests/fixtures/script_approval
 const HELPER: &str =
     include_str!("../../../../../tests/fixtures/script_approvals/fixture-registry");
 
+#[path = "bash_review_descriptor_tests.rs"]
+mod review_descriptor_tests;
+
 pub(super) fn admitted(default: &str) -> crate::policy_enforcement::AdmittedPolicySnapshot {
     use crate::policy_enforcement::tests::{policy, snapshot};
     crate::policy_enforcement::AdmittedPolicySnapshot::new(snapshot(policy(default))).unwrap()

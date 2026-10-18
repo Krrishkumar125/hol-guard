@@ -4,14 +4,19 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from ..native_bash_protocol import NativeBashError
+from ..native_bash_protocol import ARTIFACT_ID, NativeBashError
 from ..native_bash_reply import validate_review_lineage
 from ..native_decision_receipt import receipt_matches_edge, validate_native_decision_receipt
 
 
 def valid_bound_bash_review(
-    prepared: Mapping[str, object], *, harness: str, exact_token: object,
-    review_binding: object, decision: Mapping[str, object], native_receipt: object,
+    prepared: Mapping[str, object],
+    *,
+    harness: str,
+    exact_token: object,
+    review_binding: object,
+    decision: Mapping[str, object],
+    native_receipt: object,
 ) -> bool:
     review = prepared.get("review")
     subject = prepared.get("subject")
@@ -23,16 +28,27 @@ def valid_bound_bash_review(
     except NativeBashError:
         return False
     return (
-        prepared.get("artifact_id") == "native-bash-launch:v1"
+        prepared.get("artifact_id") == ARTIFACT_ID
         and prepared.get("artifact_hash") == exact_token == review_binding == lineage["artifact_hash"]
-        and isinstance(exact_token, str) and exact_token.startswith("guard-approval-context:v1:")
-        and isinstance(review, Mapping) and review.get("decision") == decision
+        and isinstance(exact_token, str)
+        and exact_token.startswith("guard-approval-context:v1:")
+        and isinstance(review, Mapping)
+        and review.get("decision") == decision
         and review.get("receipt") == native_receipt
-        and isinstance(subject, Mapping) and subject.get("schema") == "guard.bash-subject.v1"
+        and isinstance(subject, Mapping)
+        and subject.get("schema") == "guard.bash-subject.v1"
         and subject.get("execution_assurance") == "macos-readonly-root-framed-outputs-v1"
-        and host is not None and isinstance(context, Mapping) and context.get("host") == host
-        and receipt is not None and receipt_matches_edge({
-            "harness": harness, "event_name": "PreToolUse", "payload_kind": receipt["payload_kind"],
-            "result": decision,
-        }, receipt)
+        and host is not None
+        and isinstance(context, Mapping)
+        and context.get("host") == host
+        and receipt is not None
+        and receipt_matches_edge(
+            {
+                "harness": harness,
+                "event_name": "PreToolUse",
+                "payload_kind": receipt["payload_kind"],
+                "result": decision,
+            },
+            receipt,
+        )
     )

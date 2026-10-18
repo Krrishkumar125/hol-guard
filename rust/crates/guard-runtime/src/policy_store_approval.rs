@@ -20,6 +20,10 @@ pub(crate) struct ApprovalPolicyFence<'a> {
 }
 
 impl PolicySnapshotStore {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn approval_database_path(&self) -> std::path::PathBuf {
+        std::path::Path::new(&self.expected_guard_home).join("guard.db")
+    }
     /// Fence an approval challenge to the resident's current authenticated
     /// snapshot. The callback runs while the state mutex is held, so action
     /// reconstruction and binding derivation cannot observe a policy push in

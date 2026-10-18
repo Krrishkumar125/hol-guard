@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .native_bash_protocol import NativeBashError
+from .native_bash_protocol import ARTIFACT_ID, NativeBashError
 
 
 def _require(condition: bool) -> None:
@@ -16,7 +16,7 @@ def validate_prepared(payload: object) -> dict[str, object]:
     _require(isinstance(payload, dict))
     assert isinstance(payload, dict)
     _require(set(payload) == {"subject", "artifact_id", "artifact_hash", "assessment", "consent_required", "review"})
-    _require(payload["artifact_id"] == "native-bash-launch:v1")
+    _require(payload["artifact_id"] == ARTIFACT_ID)
     _require(_token(payload["artifact_hash"]))
     _require(type(payload["consent_required"]) is bool and isinstance(payload["assessment"], list))
     review = payload["review"]
@@ -51,18 +51,32 @@ def _completion(value: object, *, summary: bool) -> None:
 def validate_review_lineage(lineage: object) -> dict[str, object]:
     _require(isinstance(lineage, dict))
     assert isinstance(lineage, dict)
-    _require(set(lineage) == {
-        "schema", "lineage_id", "operation_id", "artifact_hash", "created_at_ms", "expires_at_ms",
-    })
+    _require(
+        set(lineage)
+        == {
+            "schema",
+            "lineage_id",
+            "operation_id",
+            "artifact_hash",
+            "created_at_ms",
+            "expires_at_ms",
+        }
+    )
     _require(lineage["schema"] == "guard-native-bash-review-lineage.v1")
-    _require(isinstance(lineage["lineage_id"], str)
-             and re.fullmatch(r"[0-9a-f]{64}", lineage["lineage_id"]) is not None)
-    _require(isinstance(lineage["operation_id"], str)
-             and re.fullmatch(r"[A-Za-z0-9_.:-]{16,128}", lineage["operation_id"]) is not None)
+    _require(
+        isinstance(lineage["lineage_id"], str) and re.fullmatch(r"[0-9a-f]{64}", lineage["lineage_id"]) is not None
+    )
+    _require(
+        isinstance(lineage["operation_id"], str)
+        and re.fullmatch(r"[A-Za-z0-9_.:-]{16,128}", lineage["operation_id"]) is not None
+    )
     _require(_token(lineage["artifact_hash"]))
-    _require(type(lineage["created_at_ms"]) is int and type(lineage["expires_at_ms"]) is int
-             and lineage["created_at_ms"] >= 0
-             and lineage["expires_at_ms"] - lineage["created_at_ms"] == 86_400_000)
+    _require(
+        type(lineage["created_at_ms"]) is int
+        and type(lineage["expires_at_ms"]) is int
+        and lineage["created_at_ms"] >= 0
+        and lineage["expires_at_ms"] - lineage["created_at_ms"] == 86_400_000
+    )
     return lineage
 
 
@@ -72,30 +86,48 @@ def validate_executed(result: dict[str, object], request: dict[str, object]) -> 
     if lineage is not None:
         lineage = validate_review_lineage(lineage)
         _require(lineage["operation_id"] == request["operation_id"])
-        _require(result["status"] == "error" and result["code"] == "native_bash_consent_required"
-                 and not result["grant_claimed"] and not result["dispatch_acknowledged"]
-                 and not result["replayed"] and result["operation"] is None and result["payload"] is None)
+        _require(
+            result["status"] == "error"
+            and result["code"] == "native_bash_consent_required"
+            and not result["grant_claimed"]
+            and not result["dispatch_acknowledged"]
+            and not result["replayed"]
+            and result["operation"] is None
+            and result["payload"] is None
+        )
     elif result["code"] == "native_bash_consent_required":
         _require(False)
     operation = result["operation"]
     if operation is not None:
         _require(isinstance(operation, dict))
         assert isinstance(operation, dict)
-        _require(set(operation) == {
-            "operation_id", "artifact_hash", "authorization", "state", "dispatch_acknowledged", "completion",
-        })
+        _require(
+            set(operation)
+            == {
+                "operation_id",
+                "artifact_hash",
+                "authorization",
+                "state",
+                "dispatch_acknowledged",
+                "completion",
+            }
+        )
         _require(operation["operation_id"] == request["operation_id"])
         authorization = request["authorization"]
         _require(isinstance(authorization, dict))
         assert isinstance(authorization, dict)
-        _require(isinstance(operation["authorization"], str)
-                 and operation["authorization"] in {"saved_grant", "current_policy"})
+        _require(
+            isinstance(operation["authorization"], str)
+            and operation["authorization"] in {"saved_grant", "current_policy"}
+        )
         if result["replayed"]:
             _require(result["grant_claimed"] == (operation["authorization"] == "saved_grant"))
         else:
             _require(operation["authorization"] == authorization["kind"])
-        _require(isinstance(operation["state"], str)
-                 and operation["state"] in {"claimed", "dispatched", "completed", "uncertain"})
+        _require(
+            isinstance(operation["state"], str)
+            and operation["state"] in {"claimed", "dispatched", "completed", "uncertain"}
+        )
         _require(type(operation["dispatch_acknowledged"]) is bool)
         _require(operation["dispatch_acknowledged"] == result["dispatch_acknowledged"])
         _require(_token(operation["artifact_hash"]))
@@ -109,8 +141,12 @@ def validate_executed(result: dict[str, object], request: dict[str, object]) -> 
         _require(isinstance(operation, dict) and operation["state"] == "completed" and result["payload"] is not None)
     elif result["status"] == "recorded":
         _require(result["replayed"] is True and operation is not None and result["payload"] is None)
-        _require(result["code"] in {
-            "native_bash_already_completed_output_not_retained", "native_bash_operation_in_progress_or_uncertain",
-        })
+        _require(
+            result["code"]
+            in {
+                "native_bash_already_completed_output_not_retained",
+                "native_bash_operation_in_progress_or_uncertain",
+            }
+        )
     else:
         _require(result["replayed"] is False)

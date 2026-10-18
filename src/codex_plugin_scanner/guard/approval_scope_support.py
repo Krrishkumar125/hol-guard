@@ -113,7 +113,11 @@ class ApprovalScopeContract:
         }
 
 
-def _native_scopes(requests: Sequence[Mapping[str, object]]) -> list[tuple[ApprovalScopeContract, str | None]]:
+def _native_scopes(
+    requests: Sequence[Mapping[str, object]],
+    *,
+    guard_home: Path | None = None,
+) -> list[tuple[ApprovalScopeContract, str | None]]:
     # Imported here: the resident transport pulls in the native runtime, which
     # hook hot paths that only need the package scope helpers must not load.
     from .native_approval_scope import REQUEST_FIELDS, ApprovalScopeUnavailableError, native_approval_scopes
@@ -122,9 +126,14 @@ def _native_scopes(requests: Sequence[Mapping[str, object]]) -> list[tuple[Appro
     for request in requests:
         item: dict[str, object] = {field: _json_boundary_value(request.get(field)) for field in REQUEST_FIELDS}
         item["workspace_target"] = _derived_workspace_scope_target(request)
+        if request.get("artifact_type") == "native_bash_request" and request.get("request_id") is not None:
+            item["request_id"] = _json_boundary_value(request["request_id"])
         items.append(item)
     contracts: list[tuple[ApprovalScopeContract, str | None]] = []
-    for native in native_approval_scopes(items):
+    scopes = (
+        native_approval_scopes(items) if guard_home is None else native_approval_scopes(items, guard_home=guard_home)
+    )
+    for native in scopes:
         contract = _contract_from_native(native.contract)
         if contract is None:
             raise ApprovalScopeUnavailableError
@@ -209,7 +218,11 @@ def _contract_from_native(payload: Mapping[str, object]) -> ApprovalScopeContrac
     return contract
 
 
-def request_scope_contracts(requests: Sequence[Mapping[str, object]]) -> list[ApprovalScopeContract]:
+def request_scope_contracts(
+    requests: Sequence[Mapping[str, object]],
+    *,
+    guard_home: Path | None = None,
+) -> list[ApprovalScopeContract]:
     """Derive the current action-aware scope contract of each request in the resident.
 
     Reusable allow scopes are exposed only when Guard can persist an
@@ -218,11 +231,12 @@ def request_scope_contracts(requests: Sequence[Mapping[str, object]]) -> list[Ap
     Raises ``ApprovalScopeUnavailableError`` when the resident cannot answer.
     """
 
-    return [contract for contract, _token in _native_scopes(requests)]
+    scopes = _native_scopes(requests) if guard_home is None else _native_scopes(requests, guard_home=guard_home)
+    return [contract for contract, _token in scopes]
 
 
-def request_scope_contract(request: Mapping[str, object]) -> ApprovalScopeContract:
-    return request_scope_contracts([request])[0]
+def request_scope_contract(request: Mapping[str, object], *, guard_home: Path | None = None) -> ApprovalScopeContract:
+    return request_scope_contracts([request], guard_home=guard_home)[0]
 
 
 def scope_payload_for_request(request: Mapping[str, object], contract: ApprovalScopeContract) -> dict[str, object]:
@@ -261,23 +275,32 @@ def apply_scope_surfaces(payload: dict[str, object]) -> None:
         }
 
 
-def request_scope_contract_payloads(requests: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+def request_scope_contract_payloads(
+    requests: Sequence[Mapping[str, object]],
+    *,
+    guard_home: Path | None = None,
+) -> list[dict[str, object]]:
     payloads: list[dict[str, object]] = []
-    for request, contract in zip(requests, request_scope_contracts(requests), strict=True):
+    for request, contract in zip(requests, request_scope_contracts(requests, guard_home=guard_home), strict=True):
         payloads.append(scope_payload_for_request(request, contract))
     return payloads
 
 
-def request_scope_contract_payload(request: Mapping[str, object]) -> dict[str, object]:
-    return request_scope_contract_payloads([request])[0]
+def request_scope_contract_payload(
+    request: Mapping[str, object], *, guard_home: Path | None = None
+) -> dict[str, object]:
+    return request_scope_contract_payloads([request], guard_home=guard_home)[0]
 
 
 def request_scope_observation(
     request: Mapping[str, object],
+    *,
+    guard_home: Path | None = None,
 ) -> tuple[ApprovalScopeContract, str | None]:
     """Derive one request's contract and exact-action token in one resident call."""
 
-    return _native_scopes([request])[0]
+    scopes = _native_scopes([request]) if guard_home is None else _native_scopes([request], guard_home=guard_home)
+    return scopes[0]
 
 
 def resolve_request_scope_selection(

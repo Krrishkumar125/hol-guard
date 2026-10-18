@@ -248,7 +248,7 @@ fn request(
         ("derive_scope".to_owned(), Value::Bool(true)),
         ("cwd".to_owned(), Value::from(cwd)),
     ]);
-    get_approval_request(connection, guard_home, &Args(&args))
+    get_approval_request(connection, guard_home, &Args(&args), None)
 }
 
 /// The id of the newest pending payload among the first candidates that is
@@ -263,7 +263,7 @@ fn next_pending(
         ("exclude_ids".to_owned(), Value::from(excluded.to_vec())),
         ("cwd".to_owned(), Value::from(cwd)),
     ]);
-    let next = get_next_pending_request(connection, guard_home, &Args(&args))?;
+    let next = get_next_pending_request(connection, guard_home, &Args(&args), None)?;
     Ok(next.get("request_id").cloned().unwrap_or(Value::Null))
 }
 
