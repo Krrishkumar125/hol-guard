@@ -20563,6 +20563,12 @@ function TabBar(props) {
     tab.value
   )) });
 }
+function reviewDecisionShortcutAllowed(isComposing) {
+  return !isComposing;
+}
+function shouldSubmitApprovalProof(key, isComposing, submitDisabled) {
+  return key === "Enter" && !isComposing && !submitDisabled;
+}
 function approvalGateLockRemainingSeconds(gate, nowMs = Date.now()) {
   if (gate?.enabled === false) return 0;
   if (!gate?.locked_until) return 0;
@@ -20790,7 +20796,7 @@ function ApprovalProofInline(props) {
   );
   const handleKeyDown = reactExports.useCallback(
     (event) => {
-      if (event.key === "Enter" && !submitDisabled) {
+      if (shouldSubmitApprovalProof(event.key, event.nativeEvent.isComposing, submitDisabled)) {
         event.preventDefault();
         props.onSubmit();
       }
@@ -32110,7 +32116,7 @@ function useReviewDecisionResolve(params) {
   }, [handleRequestResolve]);
   reactExports.useEffect(() => {
     function handleKeyDown(event) {
-      if (decisionBusy || pendingAction !== null || extensionDialogActive || resolved !== null || resolutionBlockReason !== null) {
+      if (!reviewDecisionShortcutAllowed(event.isComposing) || decisionBusy || pendingAction !== null || extensionDialogActive || resolved !== null || resolutionBlockReason !== null) {
         return;
       }
       const target2 = event.target;

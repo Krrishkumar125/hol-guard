@@ -324,6 +324,8 @@ for (const totpEnabled of [false, true]) {
       await proof.press("Enter");
       expect(bodies).toHaveLength(0);
       await proof.fill(totpEnabled ? "123456" : "test-password");
+      await proof.dispatchEvent("keydown", { key: "Enter", bubbles: true, isComposing: true });
+      expect(bodies).toHaveLength(0);
       await proof.press("Enter");
       await expect.poll(() => bodies.length).toBe(1);
       await expect(cancel).toBeDisabled();
@@ -400,6 +402,11 @@ test("keyboard approval uses gate settings that arrive after request detail", as
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   );
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true, isComposing: true }));
+  });
+  await expect(page.getByRole("dialog", { name: "Approval password required" })).toHaveCount(0);
+  expect(resolutionBodies).toHaveLength(0);
   await page.keyboard.press("a");
 
   await expect(page.getByRole("dialog", { name: "Approval password required" })).toBeVisible();

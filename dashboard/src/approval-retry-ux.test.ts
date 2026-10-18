@@ -17,12 +17,19 @@ import { approvalGateRefreshNeeded, resolvedStateForItem } from "./review-decisi
 import { allowButtonLabel, ReviewScopeControls } from "./review-scope-controls";
 import { buildDecisionPayload, requestSupportsScope } from "./approval-scopes";
 import { buildBulkRiskDisclosure } from "./queue-bulk-risk-disclosure";
+import { reviewDecisionShortcutAllowed, shouldSubmitApprovalProof } from "./approval-keyboard";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
 }
+
+assert(!reviewDecisionShortcutAllowed(true), "IME composition suppresses review decision shortcuts");
+assert(reviewDecisionShortcutAllowed(false), "ordinary review decision shortcuts remain enabled");
+assert(!shouldSubmitApprovalProof("Enter", true, false), "IME Enter does not submit approval proof");
+assert(shouldSubmitApprovalProof("Enter", false, false), "ordinary Enter submits enabled approval proof");
+assert(!shouldSubmitApprovalProof("Enter", false, true), "disabled approval proof remains disabled");
 
 function nativeBashRequest(requestId: string, command: string, restrictions: string[]) {
   return normalizeApprovalRequest({
