@@ -15,7 +15,7 @@ import pytest
 
 from codex_plugin_scanner.guard.adapters.pi_extension_bound_bash_source import _ENVIRONMENT_NAMES
 from codex_plugin_scanner.guard.adapters.pi_extension_contained_tests_source import CONTAINED_TEST_HELPERS_SOURCE
-from codex_plugin_scanner.guard.approvals import apply_approval_resolution
+from codex_plugin_scanner.guard.approvals import ApprovalRequestAlreadyResolvedError, apply_approval_resolution
 from codex_plugin_scanner.guard.config import update_guard_settings
 from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker
 from codex_plugin_scanner.guard.hook_execution_environment import (
@@ -52,6 +52,8 @@ def http_registry(request):
         "persistent-nonzero",
         "keep-blocked",
         "host-parent-death",
+        "pending-helper-change",
+        "pending-script-change",
         "network-once",
         "network-persistent-same-intent",
         "network-quiet",
@@ -280,6 +282,30 @@ pi.on("tool_call", async (event, ctx) => {
         assert not report.exists()
         pending = store.list_approval_requests()
         assert len(pending) == 1
+        if duration.startswith("pending-"):
+            previous = pending[0]
+            previous_id = previous["request_id"]
+            assert isinstance(previous_id, str)
+            target = execution_cwd / ("fixture-registry" if duration == "pending-helper-change" else "maintenance.sh")
+            target.write_text(target.read_text() + "\n# reviewed version changed before execution\n")
+            refused("changed-pending", "native_bash_consent_required")
+            pending = store.list_approval_requests()
+            assert len(pending) == 1
+            assert pending[0]["request_id"] != previous_id
+            assert pending[0]["artifact_hash"] != previous["artifact_hash"]
+            expired = store.get_approval_request(previous_id)
+            assert expired is not None and expired["status"] == "expired"
+            assert not report.exists()
+            with pytest.raises(ApprovalRequestAlreadyResolvedError):
+                apply_approval_resolution(
+                    store=store,
+                    request_id=previous_id,
+                    action="allow",
+                    scope="artifact",
+                    persist_policy=False,
+                    workspace=str(session_cwd),
+                    reason="Lane-owned stale version must not authorize execution",
+                )
         request = pending[0]
         request_id = request["request_id"]
         version, digest = request["scope_contract_version"], request["scope_contract_digest"]

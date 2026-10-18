@@ -14,6 +14,7 @@ import pytest
 
 from codex_plugin_scanner.guard.approval_scope_support import request_scope_contract
 from codex_plugin_scanner.guard.approvals import apply_approval_resolution
+from codex_plugin_scanner.guard.config import update_guard_settings
 from codex_plugin_scanner.guard.native_approval_resolution import (
     ApprovalResolutionPlanUnavailableError,
     native_approval_resolution_plan,
@@ -40,6 +41,7 @@ def pending(native_context_digest, tmp_path, monkeypatch):
     monkeypatch.chdir(project)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("PATH", f"{project}:/usr/bin:/bin")
+    update_guard_settings(guard, {"subprocess_action": "require-reapproval"})
     store = GuardStore(guard, prime_policy_integrity=False)
     store._policy_integrity_secret_store = _Secrets()
     payload = {

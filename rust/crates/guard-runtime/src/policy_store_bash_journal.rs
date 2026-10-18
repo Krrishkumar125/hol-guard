@@ -241,7 +241,7 @@ impl<'store> BashOperationJournal<'store> {
     fn insert(&self, authorization: Authorization) -> rusqlite::Result<Option<()>> {
         // Always inside BEGIN IMMEDIATE, including the saved-grant claim.
         if let Some(invocation) = &self.invocation {
-            invocation.require_reservable(self)?;
+            invocation.reserve(self)?;
         }
         if self.read()?.is_some() {
             return Ok(None);

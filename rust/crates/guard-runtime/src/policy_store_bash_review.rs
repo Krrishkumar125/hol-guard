@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use super::BashOperationJournal;
 
+#[path = "policy_store_bash_supersession.rs"]
+mod supersession;
+
 const PURPOSE: &str = "guard-native-bash-review-lineage-v1";
 const SCHEMA: &str = "guard-native-bash-review-lineage.v1";
 const LIFETIME_MS: u64 = 24 * 60 * 60 * 1000;
@@ -19,6 +22,8 @@ struct Record {
     project: String,
     request_id: Option<String>,
     blocked: bool,
+    #[serde(default)]
+    superseded: bool,
 }
 
 impl BashOperationJournal<'_> {
@@ -126,7 +131,8 @@ impl BashOperationJournal<'_> {
         let record: Record = serde_json::from_value(payload).map_err(invalid)?;
         let now = crate::policy_store::now_ms().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let lineage = &record.lineage;
-        if lineage.schema != SCHEMA
+        if record.superseded
+            || lineage.schema != SCHEMA
             || lineage.operation_id != operation_id
             || lineage.artifact_hash != artifact_hash
             || lineage.lineage_id.len() != 64
@@ -222,7 +228,7 @@ impl BashOperationJournal<'_> {
         self.connection.execute(
             "INSERT INTO guard_bash_reviews(operation_id,payload,integrity) VALUES(?1,?2,?3)
              ON CONFLICT(operation_id) DO UPDATE SET payload=excluded.payload,integrity=excluded.integrity",
-            params![self.operation_id, payload, integrity],
+            params![record.lineage.operation_id, payload, integrity],
         )?;
         Ok(())
     }
@@ -274,6 +280,7 @@ impl BashOperationJournal<'_> {
                 project: project.into(),
                 request_id: None,
                 blocked: false,
+                superseded: false,
             };
             self.write_review(&record)?;
             Ok(record.lineage)
@@ -298,7 +305,7 @@ impl BashOperationJournal<'_> {
                 params![
                     record.harness,
                     guard_contracts::NATIVE_BASH_ARTIFACT_ID,
-                    self.artifact_hash,
+                    record.lineage.artifact_hash,
                     record.project,
                     record.lineage.lineage_id
                 ],
@@ -338,7 +345,7 @@ impl BashOperationJournal<'_> {
             || envelope
                 .pointer("/native_bash/artifact_hash")
                 .and_then(serde_json::Value::as_str)
-                != Some(self.artifact_hash)
+                != Some(record.lineage.artifact_hash.as_str())
         {
             return Err(rusqlite::Error::InvalidQuery);
         }

@@ -25,6 +25,8 @@ struct Record {
     generation: u64,
     operation_id: String,
     artifact_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reserved: Option<bool>,
     completed: bool,
     acknowledged: bool,
     calls: BTreeMap<String, u64>,
@@ -102,6 +104,7 @@ fn read(journal: &BashOperationJournal<'_>, base_id: &str) -> rusqlite::Result<O
                 || *generation > record.generation
         })
         || record.acknowledged && !record.completed
+        || record.completed && record.reserved == Some(false)
     {
         return Err(invalid());
     }
@@ -157,7 +160,7 @@ impl BashOperationJournal<'_> {
             return Err(invalid());
         }
         let call_digest = call_digest(call_id)?;
-        transaction(self, || {
+        let allocated = transaction(self, || {
             let mut record = read(self, base_id)?.unwrap_or_else(|| Record {
                 schema: PURPOSE.into(),
                 base_id: base_id.into(),
@@ -166,12 +169,45 @@ impl BashOperationJournal<'_> {
                 generation: 0,
                 operation_id: operation_id(base_id, 0),
                 artifact_hash: self.artifact_hash.into(),
+                reserved: Some(false),
                 completed: false,
                 acknowledged: false,
                 calls: BTreeMap::new(),
             });
             if record.harness != harness || record.project != project {
                 return Err(invalid());
+            }
+            if record.artifact_hash != self.artifact_hash
+                && record.reserved == Some(false)
+                && !record.completed
+                && !record.acknowledged
+            {
+                if record
+                    .calls
+                    .get(&call_digest)
+                    .is_some_and(|generation| *generation != record.generation)
+                {
+                    return Err(invalid());
+                }
+                if !self.retire_unstarted_review(
+                    &record.operation_id,
+                    &record.artifact_hash,
+                    harness,
+                    project,
+                )? {
+                    // Keep the authenticated denial learned from the inbox,
+                    // even though this attempt cannot receive a new version.
+                    return Ok(None);
+                }
+                let previous = record.generation;
+                record.generation = previous.checked_add(1).ok_or_else(invalid)?;
+                record.operation_id = operation_id(base_id, record.generation);
+                record.artifact_hash = self.artifact_hash.into();
+                for generation in record.calls.values_mut() {
+                    if *generation == previous {
+                        *generation = record.generation;
+                    }
+                }
             }
             let generation = if let Some(generation) = record.calls.get(&call_digest) {
                 *generation
@@ -186,6 +222,7 @@ impl BashOperationJournal<'_> {
                     record.generation = record.generation.checked_add(1).ok_or_else(invalid)?;
                     record.operation_id = operation_id(base_id, record.generation);
                     record.artifact_hash = self.artifact_hash.into();
+                    record.reserved = Some(false);
                     record.completed = false;
                     record.acknowledged = false;
                 }
@@ -196,15 +233,16 @@ impl BashOperationJournal<'_> {
                 record.generation
             };
             write(self, &record)?;
-            Ok((
+            Ok(Some((
                 operation_id(base_id, generation),
                 Some(Invocation {
                     base_id: base_id.into(),
                     call_digest,
                     generation,
                 }),
-            ))
-        })
+            )))
+        })?;
+        allocated.ok_or_else(invalid)
     }
 
     pub(crate) fn attach_invocation(&mut self, invocation: Option<Invocation>) {
@@ -278,15 +316,15 @@ impl Invocation {
         Ok(record)
     }
 
-    pub(super) fn require_reservable(
-        &self,
-        journal: &BashOperationJournal<'_>,
-    ) -> rusqlite::Result<()> {
-        let record = self.current(journal)?;
-        if record.completed || record.acknowledged {
+    pub(super) fn reserve(&self, journal: &BashOperationJournal<'_>) -> rusqlite::Result<()> {
+        let mut record = self.current(journal)?;
+        if record.reserved != Some(false) || record.completed || record.acknowledged {
             return Err(invalid());
         }
-        Ok(())
+        // Sealed in the SAME transaction as reservation and any once claim.
+        // A missing operation row can never be mistaken for an unstarted run.
+        record.reserved = Some(true);
+        write(journal, &record)
     }
 
     pub(super) fn complete(&self, journal: &BashOperationJournal<'_>) -> rusqlite::Result<()> {

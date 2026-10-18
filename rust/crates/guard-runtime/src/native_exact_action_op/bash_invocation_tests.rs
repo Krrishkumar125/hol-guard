@@ -142,3 +142,209 @@ fn bash_sdk_unsigned_lifetime_edit_cannot_enable_a_new_invocation() {
         "preserve after forged acknowledgement"
     );
 }
+
+fn pending_inbox(
+    execution: &NativeBashExecuteRequestV1,
+    original: &guard_contracts::NativeBashReviewLineageV1,
+) -> Connection {
+    let connection = Connection::open(execution.authorization.store_path()).unwrap();
+    // This low-level fixture normally contains only grant tables. A real
+    // pending review also has the production inbox read/expiry surface.
+    connection.execute_batch(
+        "CREATE TABLE approval_requests(request_id TEXT PRIMARY KEY,status TEXT,
+         resolution_action TEXT,resolution_scope TEXT,resolved_at TEXT,reason TEXT,
+         action_envelope_json TEXT,harness TEXT,artifact_id TEXT,artifact_hash TEXT,workspace TEXT)",
+    ).unwrap();
+    connection
+        .execute(
+            "INSERT INTO approval_requests(request_id,status,action_envelope_json,harness,
+         artifact_id,artifact_hash,workspace) VALUES('pending-version','pending',?1,?2,?3,?4,?5)",
+            params![
+                json!({"native_bash":{"review_lineage":original,
+            "artifact_hash":original.artifact_hash}})
+                .to_string(),
+                execution.capture.harness,
+                bash_grant::ARTIFACT,
+                original.artifact_hash,
+                execution.capture.workspace
+            ],
+        )
+        .unwrap();
+    connection
+}
+
+#[test]
+fn bash_pending_helper_change_gets_fresh_review_and_can_follow_current_allow_policy() {
+    pending_helper_change("sdk-call-0");
+    pending_helper_change("sdk-reissued-after-helper-change");
+}
+
+fn pending_helper_change(changed_call: &str) {
+    let (_root, request) = tests::fixture();
+    let (store, mut envelope) = policy_store(&request);
+    execution_floor(&store, &mut envelope, "require-reapproval");
+    let mut execution = invocation(&request, &envelope);
+    let initial = execute(&execution, &store);
+    assert_eq!(initial.code, "native_bash_consent_required");
+    let original = initial.review_lineage.unwrap();
+    let connection = pending_inbox(&execution, &original);
+    let helper = Path::new(&request.cwd).join("fixture-registry");
+    let mut source = std::fs::read_to_string(&helper).unwrap();
+    source.push_str("\nprintf 'updated metadata\\n'\n");
+    std::fs::write(helper, source).unwrap();
+    execution.tool_call_id = Some(changed_call.into());
+    let changed = execute(&execution, &store);
+    assert_eq!(
+        changed.code, "native_bash_consent_required",
+        "changed pending inputs must reach a fresh review: {}",
+        changed.code
+    );
+    assert!(!changed.dispatch_acknowledged && !changed.grant_claimed);
+    let updated = changed.review_lineage.unwrap();
+    assert_ne!(updated.artifact_hash, original.artifact_hash);
+    assert_ne!(updated.lineage_id, original.lineage_id);
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT status FROM approval_requests WHERE request_id='pending-version'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap(),
+        "expired"
+    );
+    let retired =
+        crate::policy_store::policy_store_approval::bash_journal::BashOperationJournal::open(
+            &store,
+            execution.authorization.store_path(),
+            &original.operation_id,
+            &original.artifact_hash,
+        )
+        .unwrap();
+    assert!(retired
+        .pending_review(&request.harness, &request.workspace)
+        .is_err());
+    drop(retired);
+    let report = Path::new(&request.home_dir).join("maintenance-report.tsv");
+    assert!(!report.exists());
+    execution.tool_call_id = Some("sdk-unchanged-pending-reissue".into());
+    let repeated = execute(&execution, &store);
+    assert_eq!(repeated.code, "native_bash_consent_required");
+    assert_eq!(repeated.review_lineage.unwrap(), updated);
+
+    // Current policy can allow the new code without resurrecting the old
+    // pending review or accepting any saved consent for its previous bytes.
+    execution_floor(&store, &mut execution.envelope, "allow");
+    execution.tool_call_id = Some("sdk-now-policy-allowed".into());
+    let allowed = execute(&execution, &store);
+    assert_eq!(allowed.status, "ok", "{}", allowed.code);
+    assert!(!allowed.grant_claimed && allowed.dispatch_acknowledged);
+    assert!(std::fs::read_to_string(report)
+        .unwrap()
+        .contains("updated metadata"));
+    assert!(ack(&execution, &store, 0).acknowledged);
+}
+
+#[test]
+fn bash_pending_helper_change_cannot_erase_keep_blocked_when_the_inbox_row_disappears() {
+    let (_root, request) = tests::fixture();
+    let (store, mut envelope) = policy_store(&request);
+    execution_floor(&store, &mut envelope, "require-reapproval");
+    let mut execution = invocation(&request, &envelope);
+    let original = execute(&execution, &store).review_lineage.unwrap();
+    let connection = pending_inbox(&execution, &original);
+    connection
+        .execute(
+            "UPDATE approval_requests SET status='resolved',resolution_action='block'",
+            [],
+        )
+        .unwrap();
+    let helper = Path::new(&request.cwd).join("fixture-registry");
+    let changed = std::fs::read_to_string(&helper).unwrap() + "\n# changed version\n";
+    std::fs::write(helper, changed).unwrap();
+    execution.tool_call_id = Some("sdk-changed-after-keep-blocked".into());
+    assert!(execute(&execution, &store).review_lineage.is_none());
+    connection
+        .execute("DELETE FROM approval_requests", [])
+        .unwrap();
+    let retried = execute(&execution, &store);
+    assert_ne!(retried.status, "ok");
+    assert!(!retried.dispatch_acknowledged && !retried.grant_claimed);
+    assert!(
+        retried.review_lineage.is_none(),
+        "a missing inbox row must not erase the observed denial"
+    );
+    assert!(!Path::new(&request.home_dir)
+        .join("maintenance-report.tsv")
+        .exists());
+}
+
+#[test]
+fn bash_pending_helper_change_cannot_renew_a_reserved_run_after_its_journal_row_is_lost() {
+    use crate::policy_store::policy_store_approval::bash_journal::BashOperationJournal;
+    for dispatched in [false, true] {
+        let (_root, request) = tests::fixture();
+        let (store, envelope) = policy_store(&request);
+        let mut execution = invocation(&request, &envelope);
+        let snapshot = store.current_admitted_snapshot().unwrap();
+        let captured = capture_for_launch(&request, &snapshot).unwrap();
+        let hash = bash_grant::binding(&captured.subject, &snapshot).unwrap();
+        let allocator = BashOperationJournal::open(
+            &store,
+            execution.authorization.store_path(),
+            &execution.operation_id,
+            &hash,
+        )
+        .unwrap();
+        let (operation_id, lifetime) = allocator
+            .allocate_invocation(
+                &request.harness,
+                &request.workspace,
+                execution.tool_call_id.as_deref(),
+            )
+            .unwrap();
+        let mut journal = BashOperationJournal::open(
+            &store,
+            execution.authorization.store_path(),
+            &operation_id,
+            &hash,
+        )
+        .unwrap();
+        journal.attach_invocation(lifetime);
+        let lineage = journal
+            .pending_review(&request.harness, &request.workspace)
+            .unwrap();
+        let connection = pending_inbox(&execution, &lineage);
+        connection
+            .execute(
+                "UPDATE approval_requests SET status='resolved',resolution_action='allow'",
+                [],
+            )
+            .unwrap();
+        assert!(journal
+            .reserve_allowed(&request.harness, &request.workspace)
+            .unwrap());
+        if dispatched {
+            journal.dispatched().unwrap();
+        }
+        drop(journal);
+        drop(allocator);
+        connection
+            .execute(
+                "DELETE FROM guard_bash_operations WHERE operation_id=?1",
+                [operation_id],
+            )
+            .unwrap();
+        let helper = Path::new(&request.cwd).join("fixture-registry");
+        let changed = std::fs::read_to_string(&helper).unwrap() + "\n# changed version\n";
+        std::fs::write(helper, changed).unwrap();
+        execution.tool_call_id = Some("sdk-after-reservation-row-loss".into());
+        let result = execute(&execution, &store);
+        assert_ne!(result.status, "ok");
+        assert!(!result.dispatch_acknowledged && !result.grant_claimed);
+        assert!(result.review_lineage.is_none());
+        assert!(!Path::new(&request.home_dir)
+            .join("maintenance-report.tsv")
+            .exists());
+    }
+}
