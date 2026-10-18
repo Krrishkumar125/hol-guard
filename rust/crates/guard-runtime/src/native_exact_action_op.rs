@@ -16,6 +16,8 @@ mod bash_host;
 mod bash_launch;
 #[cfg(target_os = "macos")]
 mod bash_policy;
+#[cfg(target_os = "macos")]
+mod bash_review;
 mod bash_route;
 pub(crate) use bash_cancel_route::cancel_request as cancel_bash_request;
 pub(crate) use bash_route::observe_host_bytes as observe_bash_host_bytes;

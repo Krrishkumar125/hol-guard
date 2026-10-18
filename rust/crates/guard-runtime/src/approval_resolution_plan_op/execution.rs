@@ -1,7 +1,7 @@
 //! Execution delivery required before a resolution plan may save consent.
 
 use guard_contracts::ApprovalResolutionPlanRequestV1;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::context_digest::parse_context_token;
 use crate::guard_store_json::add_seconds_isoformat;
@@ -12,6 +12,15 @@ const ONCE_TTL_MICROS: i64 = 15 * 60 * 1_000_000;
 
 pub(super) fn once_expires_at(resolved_at: &str) -> Result<String, String> {
     add_seconds_isoformat(resolved_at, ONCE_TTL_MICROS).ok_or_else(|| super::INVALID.to_owned())
+}
+
+pub(super) fn wrapper_strings(chain: &[Option<String>]) -> Vec<Value> {
+    chain
+        .iter()
+        .filter_map(|item| item.as_deref())
+        .filter(|item| !item.is_empty())
+        .map(|item| json!(item))
+        .collect()
 }
 
 pub(super) fn require_binding(request: &ApprovalResolutionPlanRequestV1) -> Result<(), String> {

@@ -6,16 +6,14 @@ import logging
 import sqlite3
 import uuid
 from collections.abc import Mapping
-from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..approval_link_output import native_review_reason
 from ..models import GuardApprovalRequest
-from ..native_decision_receipt import validate_native_decision_receipt
+from ..native_decision_receipt import receipt_matches_edge, validate_native_decision_receipt
 from ..native_hook_adapter import NativeHookAdapterError
-from ..runtime.actions import normalize_harness_payload
 from .hook_fail_closed import canonical_harness, render_accepted_allow, render_pre_tool, render_pre_tool_review
 from .hook_native_exact_action import native_exact_action, native_review_binding
 from .hook_native_local_cli import native_local_cli_grant_response
@@ -35,6 +33,8 @@ from .hook_native_saved_approval import (
     native_saved_review_response,
 )
 from .hook_request_parsing import pre_tool_command, pre_tool_input
+from .native_review_action_envelope import native_review_action_envelope as _native_review_action_envelope
+from .native_review_action_envelope import native_review_tool_name as _native_review_tool_name
 from .native_review_allow_hint import native_review_hint
 from .native_review_connector import (
     connector_agent_reason,
@@ -298,6 +298,7 @@ def queue_native_pre_tool_review(
     approval_center_url: str | None = None,
     review_binding: str | None | TokenUnset = TOKEN_UNSET,
     connector: SetupConnector | None = None,
+    bound_bash: Mapping[str, object] | None = None,
 ) -> dict[str, object] | None:
     try:
         native_review_policy_binding(harness=harness, native_result=native_result, verified_receipt=native_receipt)
@@ -311,6 +312,30 @@ def queue_native_pre_tool_review(
     tool_name = _native_review_tool_name(payload)
     request_id = uuid.uuid4().hex
     artifact_id = _native_review_artifact_id(harness, tool_name)
+    if bound_bash is not None:
+        review = bound_bash.get("review")
+        subject = bound_bash.get("subject")
+        context = subject.get("context") if isinstance(subject, Mapping) else None
+        receipt = validate_native_decision_receipt(native_receipt)
+        host = {"omp": "omp-input-rewrite-v1", "pi": "pi-input-mutation-v1"}.get(harness)
+        if (
+            bound_bash.get("artifact_id") != "native-bash-launch:v1"
+            or bound_bash.get("artifact_hash") != exact_token
+            or exact_token != review_binding
+            or not isinstance(exact_token, str)
+            or not exact_token.startswith("guard-approval-context:v1:")
+            or not isinstance(review, Mapping)
+            or review.get("decision") != native_result or review.get("receipt") != native_receipt
+            or not isinstance(subject, Mapping) or subject.get("schema") != "guard.bash-subject.v1"
+            or subject.get("execution_assurance") != "macos-readonly-root-framed-outputs-v1"
+            or host is None or not isinstance(context, Mapping) or context.get("host") != host
+            or receipt is None or not receipt_matches_edge({
+                "harness": harness, "event_name": "PreToolUse", "payload_kind": receipt["payload_kind"],
+                "result": native_result,
+            }, receipt)
+        ):
+            return None
+        artifact_id = "native-bash-launch:v1"
     if approval_center_url is None:
         approval_center_url = native_review_approval_center_url(store)
     approval_url = f"{approval_center_url}/requests/{request_id}"
@@ -360,6 +385,12 @@ def queue_native_pre_tool_review(
             action_envelope[EXACT_ACTION_IDENTITY_KIND_KEY] = "tool-target"
     elif once_only_reason is not None:
         action_envelope[ONCE_ONLY_REASON_KEY] = once_only_reason
+    if bound_bash is not None:
+        action_envelope["native_bash"] = {
+            "schema": "guard-native-bash-review.v1",
+            "artifact_id": artifact_id, "artifact_hash": exact_token,
+            "subject": bound_bash["subject"],
+        }
     request = GuardApprovalRequest(
         request_id=request_id,
         harness=harness,
@@ -443,51 +474,6 @@ def record_claude_permission_notice_for_native_review(
         artifact=artifact,
         artifact_hash=binding or artifact_id,
     )
-
-
-def _native_review_action_envelope(
-    *,
-    harness: str,
-    payload: Mapping[str, object],
-    native_receipt: Mapping[str, object] | None = None,
-    workspace: Path | None,
-    guard_home: Path | None = None,
-    home_dir: Path | None,
-    deadline: float | None = None,
-) -> dict[str, object] | None:
-    """Store the canonical redacted envelope used by live revalidation."""
-
-    try:
-        envelope = (
-            normalize_harness_payload(
-                harness,
-                "PreToolUse",
-                dict(payload),
-                workspace=workspace,
-                home_dir=home_dir,
-                guard_home=guard_home,
-                deadline=deadline,
-            )
-            .with_pre_execution_result("review")
-            .to_dict()
-        )
-    except ValueError:
-        return None
-    validated = validate_native_decision_receipt(native_receipt)
-    if validated is None or "origin_authentication" not in validated:
-        return envelope
-    # Keep only the validated aggregate receipt. Never carry raw hook input
-    # through the presentation envelope, and do not alias nested mappings.
-    envelope["native_origin_receipt"] = deepcopy(validated)
-    return envelope
-
-
-def _native_review_tool_name(payload: Mapping[str, object]) -> str:
-    for key in ("tool_name", "toolName", "tool"):
-        value = payload.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return "tool"
 
 
 def _native_review_launch_target(payload: Mapping[str, object]) -> str:

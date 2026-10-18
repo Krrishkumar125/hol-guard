@@ -256,10 +256,11 @@ fn matches_grant(
         ));
     // Existing artifact-scope rows have workspace=null. Their expected native
     // context token still binds the exact captured project/host/cwd/home; a
-    // global or different project's token cannot match it. Once rows retain
-    // the independent workspace key and may never omit that binding.
-    let workspace_matches = project_matches
-        || persistent && decision.get("workspace") == Some(&serde_json::Value::Null);
+    // global or different project's token cannot match it. Artifact-scope
+    // inbox resolutions also use null for once rows; the same expected token
+    // binds their project and the authenticated claim still spends them once.
+    let workspace_matches =
+        project_matches || decision.get("workspace") == Some(&serde_json::Value::Null);
     once != persistent
         && text("action") == Some("allow")
         && text("harness") == Some(harness)

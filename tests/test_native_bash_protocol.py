@@ -131,6 +131,7 @@ def test_replay_reports_completion_without_emitting_old_output():
 def test_prepare_requires_native_consent_flag_and_assurance():
     payload = {"artifact_id": "native-bash-launch:v1", "artifact_hash": "guard-approval-context:v1:fixture",
                "assessment": [], "consent_required": False,
+               "review": {"decision": {}, "receipt": {}},
                "subject": {"schema": "guard.bash-subject.v1",
                            "execution_assurance": "macos-readonly-root-framed-outputs-v1"}}
     assert validate_prepared(payload) is payload

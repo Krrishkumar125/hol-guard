@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ClaimApprovalReuseDecisionsRequestV1, GuardHookEnvelopeV2, NativeBashCaptureV1,
-    NativeBashSubjectV1, PreToolResultV1,
+    NativeBashSubjectV1, NativeHookDecisionReceiptV1, PreToolResultV1,
 };
 
 /// Native protocol support, not a host delivery or approval UI capability.
@@ -70,6 +70,16 @@ pub struct NativeBashPreparedV1 {
     pub artifact_hash: String,
     pub assessment: Vec<PreToolResultV1>,
     pub consent_required: bool,
+    pub review: NativeBashReviewV1,
+}
+
+/// A current native judgment and receipt for the actual sink's envelope.
+/// This is review evidence, not consent or a dispatch acknowledgment.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeBashReviewV1 {
+    pub decision: PreToolResultV1,
+    pub receipt: NativeHookDecisionReceiptV1,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -48,7 +48,7 @@ def _authorization(
     workspace_matches = (
         isinstance(decision_workspace, str)
         and decision_workspace in {str(workspace), _workspace_policy_key(str(workspace))}
-    ) or (not decision.get("approval_id") and decision_workspace is None)
+    ) or ("workspace" in decision and decision_workspace is None)
     if (
         (not decision.get("approval_id") and decision.get("scope") != "artifact")
         or decision.get("artifact_id") != prepared["artifact_id"]
@@ -128,6 +128,13 @@ def run_bound_bash(
             "operation_id": operation_id, "capture": capture, "envelope": envelope,
             "authorization": authorization, "timeout_ms": timeout_seconds * 1000,
         }, guard_home=Path(store.guard_home), cwd=cwd)
+        if result["status"] == "error" and result["code"] == "native_bash_consent_required":
+            from .bound_bash_review import queue_bound_bash_review
+
+            queue_bound_bash_review(
+                prepared, payload, store=store, harness=harness, workspace=workspace,
+                home=home, errors=errors or sys.stderr,
+            )
         return render_result(result, output=output or sys.stdout, errors=errors or sys.stderr)
     finally:
         worker.close()

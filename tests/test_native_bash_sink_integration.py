@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import io
 import json
 import sys
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from codex_plugin_scanner.guard.approval_scope_support import request_scope_contract
+from codex_plugin_scanner.guard.approvals import apply_approval_resolution
 from codex_plugin_scanner.guard.cli.commands_dispatch_local import _run_guard_execute_bound_bash_command
+from codex_plugin_scanner.guard.daemon.hook_native_review_approval import queue_native_pre_tool_review
 from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker
-from codex_plugin_scanner.guard.models import PolicyDecision
 from codex_plugin_scanner.guard.native_bash_protocol import runtime_status
 from codex_plugin_scanner.guard.native_resident_client import close_native_residents
 from codex_plugin_scanner.guard.runtime import bound_bash_sink
@@ -38,7 +40,9 @@ class _Secrets:
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="native immutable Bash owner currently supports macOS")
-@pytest.mark.parametrize("duration,home_in_workspace", [("quiet", True), ("once", False), ("persistent", False)])
+@pytest.mark.parametrize("duration,home_in_workspace", [
+    ("quiet", True), ("once", False), ("once-default", False), ("persistent", False),
+])
 def test_real_sink_quiet_replay_and_current_persistence_review(
     native_context_digest, tmp_path, monkeypatch, home_in_workspace, duration,
 ):
@@ -73,49 +77,53 @@ def test_real_sink_quiet_replay_and_current_persistence_review(
     output, errors = io.StringIO(), io.StringIO()
     try:
         if not home_in_workspace:
+            prepared_evidence = []
+            native_prepare = bound_bash_sink.prepare
+
+            def capture_prepared(*args, **kwargs):
+                prepared = native_prepare(*args, **kwargs)
+                prepared_evidence.append(prepared)
+                return prepared
+
+            monkeypatch.setattr(bound_bash_sink, "prepare", capture_prepared)
             assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
                                   operation_id="sink-fixture-operation-1", output=output, errors=errors) == 125
             assert "native_bash_consent_required" in errors.getvalue()
             assert not (home / "maintenance-report.tsv").exists()
             with store._connect() as connection:
                 assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 0
-            native_prepare = bound_bash_sink.prepare
-            minted = []
-
-            def lane_prepare(*args, **kwargs):
-                prepared = native_prepare(*args, **kwargs)
-                assert prepared["consent_required"]
-                if not minted:
-                    # Lane-owned test consent, scoped solely to this disposable
-                    # store and the native-prepared subject. No approval endpoint
-                    # or operator's live Guard request is accessed.
-                    now = datetime.now(timezone.utc)
-                    if duration == "once":
-                        approval = store.record_local_once_approval(
-                            request_id="sink-once-fixture-request", harness="omp", publisher=None,
-                            artifact_id=prepared["artifact_id"], artifact_hash=prepared["artifact_hash"],
-                            workspace=str(project), action="allow", created_at=now.isoformat(),
-                            expires_at=(now + timedelta(minutes=5)).isoformat(),
-                        )
-                    else:
-                        store.ensure_policy_integrity_ready_for_write(now=now.isoformat())
-                        store.upsert_policy(PolicyDecision(
-                            harness="omp", scope="artifact", action="allow", workspace=str(project),
-                            artifact_id=prepared["artifact_id"], artifact_hash=prepared["artifact_hash"],
-                            reason="Lane-owned exact version consent", source="approval-gate",
-                        ), now.isoformat())
-                        approval = "persistent-fixture"
-                    assert approval is not None
-                    minted.append(approval)
-                return prepared
-
-            monkeypatch.setattr(bound_bash_sink, "prepare", lane_prepare)
+            pending = store.list_approval_requests()
+            assert len(pending) == 1
+            prepared = prepared_evidence[-1]
+            altered = copy.deepcopy(prepared["review"]["decision"])
+            altered["reason_code"] = "forged_review_reason"
+            assert queue_native_pre_tool_review(
+                store, harness="omp", payload=payload, native_result=altered,
+                native_receipt=prepared["review"]["receipt"], workspace=project, guard_home=guard,
+                home_dir=home, exact_token=prepared["artifact_hash"], review_binding=prepared["artifact_hash"],
+                bound_bash=prepared,
+            ) is None
+            assert len(store.list_approval_requests()) == 1
+            monkeypatch.setattr(bound_bash_sink, "prepare", native_prepare)
+            queued = pending[0]
+            assert queued["artifact_id"] == "native-bash-launch:v1"
+            assert queued["action_envelope_json"]["native_bash"]["subject"]["schema"] == "guard.bash-subject.v1"
+            contract = request_scope_contract(queued)
+            assert contract.can_run_once and contract.can_persist_exact_version
+            # Resolve only the lane-owned row from this disposable store,
+            # using the normal resolution/contract/integrity machinery.
+            apply_approval_resolution(
+                store=store, request_id=queued["request_id"], action="allow", scope="artifact",
+                workspace=str(project), reason="Lane-owned script consent",
+                persist_policy=None if duration == "once-default" else duration == "persistent",
+                scope_contract_version=queued["scope_contract_version"],
+                scope_contract_digest=queued["scope_contract_digest"],
+            )
             assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
                                   operation_id="sink-fixture-operation-1", output=output, errors=errors) == 0
             report = home / "maintenance-report.tsv"
             assert "local metadata" in report.read_text()
             if duration == "persistent":
-                monkeypatch.setattr(bound_bash_sink, "prepare", native_prepare)
                 for iteration in range(2, 11):
                     if iteration in {2, 6, 10}:
                         assert close_native_residents(guard_home=guard)
@@ -124,7 +132,6 @@ def test_real_sink_quiet_replay_and_current_persistence_review(
                     assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
                                           operation_id=f"sink-fixture-operation-{iteration}",
                                           output=output, errors=errors) == 0
-                assert len(minted) == 1
                 report.write_text("preserved after persistent runs")
                 helper = project / "fixture-registry"
                 helper.write_text(helper.read_text() + "\nprintf changed\n")
@@ -137,8 +144,11 @@ def test_real_sink_quiet_replay_and_current_persistence_review(
                     assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 10
                 return
             with store._connect() as connection:
-                row = connection.execute("select claimed_at from guard_local_once_approvals").fetchone()
-                assert row[0] is not None
+                row = connection.execute(
+                    "select claimed_at, request_id from guard_local_once_approvals"
+                ).fetchone()
+                assert row[0] is not None and row[1] == queued["request_id"]
+                assert connection.execute("select count(*) from policy_decisions").fetchone()[0] == 0
             report.write_text("preserved once report")
             assert close_native_residents(guard_home=guard)
             assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
@@ -147,7 +157,6 @@ def test_real_sink_quiet_replay_and_current_persistence_review(
             assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
                                   operation_id="sink-fixture-operation-2", output=output, errors=errors) == 125
             assert report.read_text() == "preserved once report"
-            assert len(minted) == 1
             with store._connect() as connection:
                 assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 1
             return

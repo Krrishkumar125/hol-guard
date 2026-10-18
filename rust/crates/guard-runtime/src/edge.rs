@@ -226,7 +226,7 @@ fn authoritative_event(envelope: &GuardHookEnvelopeV2) -> Result<String, String>
     Ok(declared)
 }
 
-fn payload_kind(payload: &Value) -> Result<GuardHookPayloadKindV2, String> {
+pub(crate) fn payload_kind(payload: &Value) -> Result<GuardHookPayloadKindV2, String> {
     let Some(record) = payload.as_object() else {
         return Err("native_hook_payload_invalid".to_owned());
     };

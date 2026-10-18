@@ -117,12 +117,14 @@ fn prepare(
     let assessment = captured
         .policy
         .ok_or_else(|| "native_bash_assessment_missing".to_owned())?;
+    let review = super::bash_review::review(&assessment, &request.envelope, fence.snapshot())?;
     Ok(NativeBashPreparedV1 {
         subject: captured.subject,
         artifact_id: super::bash_grant::ARTIFACT.into(),
         artifact_hash,
         consent_required: !assessment.allows_without_consent(),
         assessment: assessment.decisions,
+        review,
     })
 }
 

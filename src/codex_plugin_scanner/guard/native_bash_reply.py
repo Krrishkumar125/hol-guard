@@ -15,10 +15,15 @@ def _require(condition: bool) -> None:
 def validate_prepared(payload: object) -> dict[str, object]:
     _require(isinstance(payload, dict))
     assert isinstance(payload, dict)
-    _require(set(payload) == {"subject", "artifact_id", "artifact_hash", "assessment", "consent_required"})
+    _require(set(payload) == {"subject", "artifact_id", "artifact_hash", "assessment", "consent_required", "review"})
     _require(payload["artifact_id"] == "native-bash-launch:v1")
     _require(_token(payload["artifact_hash"]))
     _require(type(payload["consent_required"]) is bool and isinstance(payload["assessment"], list))
+    review = payload["review"]
+    _require(isinstance(review, dict))
+    assert isinstance(review, dict)
+    _require(set(review) == {"decision", "receipt"})
+    _require(isinstance(review["decision"], dict) and isinstance(review["receipt"], dict))
     subject = payload["subject"]
     _require(isinstance(subject, dict))
     assert isinstance(subject, dict)
