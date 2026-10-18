@@ -150,7 +150,8 @@ def test_forged_or_unavailable_review_cannot_offer_or_write_execution_consent(pe
     assert not (home / "maintenance-report.tsv").exists()
 
 
-def test_previous_native_executable_cannot_offer_or_write_new_descriptor_consent(pending):
+@pytest.mark.parametrize("refusal_duration", [None, False])
+def test_previous_native_executable_cannot_offer_or_write_new_descriptor_consent(pending, refusal_duration):
     previous = os.environ.get("HOL_GUARD_TEST_PREVIOUS_NATIVE_BINARY")
     if previous is None:
         pytest.skip("set HOL_GUARD_TEST_PREVIOUS_NATIVE_BINARY for the executable compatibility lane")
@@ -199,6 +200,18 @@ try:
         for table in ('policy_decisions', 'guard_local_once_approvals', 'guard_bash_operations'):
             assert connection.execute('select count(*) from ' + table).fetchone()[0] == 0
     assert store.get_approval_request(request['request_id'])['status'] == 'pending'
+    apply_approval_resolution(
+        store=store, request_id=request['request_id'], action='block', scope='artifact',
+        workspace=request['workspace'], reason='Lane-owned compatibility refusal',
+        persist_policy=configuration['refusal_duration'],
+        scope_contract_version=request['scope_contract_version'],
+        scope_contract_digest=request['scope_contract_digest'],
+    )
+    resolved = store.get_approval_request(request['request_id'])
+    assert resolved['status'] == 'resolved' and resolved['resolution_action'] == 'block'
+    with store._connect() as connection:
+        for table in ('policy_decisions', 'guard_local_once_approvals', 'guard_bash_operations'):
+            assert connection.execute('select count(*) from ' + table).fetchone()[0] == 0
 finally:
     assert close_native_residents(guard_home=store.guard_home)
 print('previous executable withheld both execution durations and wrote no consent')
@@ -211,7 +224,13 @@ print('previous executable withheld both execution durations and wrote no consen
     }
     completed = subprocess.run(
         [sys.executable, "-c", child],
-        input=json.dumps({"guard_home": str(store.guard_home), "request_id": original["request_id"]}),
+        input=json.dumps(
+            {
+                "guard_home": str(store.guard_home),
+                "request_id": original["request_id"],
+                "refusal_duration": refusal_duration,
+            }
+        ),
         env=environment,
         text=True,
         capture_output=True,
@@ -219,6 +238,45 @@ print('previous executable withheld both execution durations and wrote no consen
     )
     assert completed.returncode == 0, completed.stderr[-2000:]
     assert "wrote no consent" in completed.stdout
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "bash",
+        "cwd": original["workspace"],
+        "tool_input": {"command": original["raw_command_text"]},
+    }
+    errors = io.StringIO()
+    assert (
+        run_bound_bash(
+            payload,
+            store=store,
+            workspace=Path(original["workspace"]),
+            harness="omp",
+            operation_id="descriptor-fixture-operation",
+            output=io.StringIO(),
+            errors=errors,
+        )
+        == 125
+    )
+    assert "native_bash_operation_kept_blocked" in errors.getvalue()
+    assert store.list_approval_requests() == []
+    assert not (_home / "maintenance-report.tsv").exists()
+    fresh_errors = io.StringIO()
+    assert (
+        run_bound_bash(
+            payload,
+            store=store,
+            workspace=Path(original["workspace"]),
+            harness="omp",
+            operation_id="fresh-descriptor-fixture-operation",
+            output=io.StringIO(),
+            errors=fresh_errors,
+        )
+        == 125
+    )
+    assert "native_bash_consent_required" in fresh_errors.getvalue()
+    requests = store.list_approval_requests()
+    assert len(requests) == 1 and requests[0]["request_id"] != original["request_id"]
+    assert not (_home / "maintenance-report.tsv").exists()
 
 
 def test_native_resolution_rejects_legacy_server_envelope_even_with_real_exact_token(pending):
@@ -244,6 +302,98 @@ def test_native_resolution_rejects_legacy_server_envelope_even_with_real_exact_t
         assert plan["persistence"] == "none"
         assert plan["local_once"] is None and plan["matching"] is None
     assert store.get_approval_request(original["request_id"])["status"] == "pending"
+    with store._connect() as connection:
+        assert connection.execute("select count(*) from policy_decisions").fetchone()[0] == 0
+        assert connection.execute("select count(*) from guard_local_once_approvals").fetchone()[0] == 0
+
+
+def test_remote_review_binding_uses_native_owner_home_once(pending, monkeypatch):
+    from codex_plugin_scanner.guard import native_approval_scope
+    from codex_plugin_scanner.guard.review_contracts import (
+        build_local_review_request_claim,
+        validate_remote_approval_request_binding,
+    )
+    from codex_plugin_scanner.guard.review_oauth_binding import GuardReviewOAuthMetadata
+
+    store, request, _baseline, _home = pending
+    oauth = GuardReviewOAuthMetadata(
+        device_id="fixture-device",
+        dpop_thumbprint=None,
+        grant_id="fixture-grant",
+        installation_id="fixture-installation",
+        machine_id="fixture-machine",
+        runtime_id="fixture-runtime",
+        workspace_id="fixture-workspace",
+    )
+    claim = build_local_review_request_claim(request_row=request, oauth=oauth, store=store)
+    envelope = {
+        **claim,
+        "sourceClaimHash": claim["claimHash"],
+        "receiptId": "fixture-receipt",
+        "nonce": f"{claim['nonce']}:fixture-receipt",
+        "reviewerRole": "owner",
+        "reviewerUserId": "fixture-reviewer",
+        "scope": "artifact",
+        "decision": "allow_once",
+    }
+    homes = []
+
+    def require_owner_home(guard_home):
+        assert guard_home == store.guard_home, "native review must not use a default or another owner's home"
+        homes.append(guard_home)
+        return guard_home
+
+    monkeypatch.setattr(native_approval_scope, "_resolve_digest_home", require_owner_home)
+    # The signed-envelope verifier is exercised separately; this binding stage
+    # must use the real pending owner record and must not itself grant execution.
+    validate_remote_approval_request_binding(
+        envelope=envelope,
+        request_row=request,
+        oauth=oauth,
+        store=store,
+    )
+    assert homes == [store.guard_home]
+    assert store.get_approval_request(request["request_id"])["status"] == "pending"
+    with store._connect() as connection:
+        assert connection.execute("select count(*) from policy_decisions").fetchone()[0] == 0
+        assert connection.execute("select count(*) from guard_local_once_approvals").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("mutation", ["policy", "once", "siblings", "action"])
+def test_refusal_rejects_native_plan_that_would_write_more_than_the_pending_refusal(pending, monkeypatch, mutation):
+    from codex_plugin_scanner.guard import native_approval_resolution
+
+    store, request, baseline, _home = pending
+    transport = native_approval_resolution._resident_request
+
+    def unexpected_plan(**arguments):
+        response = transport(**arguments)
+        assert isinstance(response, dict) and isinstance(response.get("payload"), dict)
+        plan = response["payload"]
+        if mutation == "policy":
+            plan["persistence"] = "persisted"
+        elif mutation == "once":
+            plan["local_once"] = {"approval_id": "unexpected-once"}
+        elif mutation == "siblings":
+            plan["matching"] = {"harness": "omp", "scope": "artifact"}
+        else:
+            plan["decision"]["action"] = "allow"
+        return response
+
+    monkeypatch.setattr(native_approval_resolution, "_resident_request", unexpected_plan)
+    with pytest.raises(ApprovalResolutionPlanUnavailableError):
+        apply_approval_resolution(
+            store=store,
+            request_id=request["request_id"],
+            action="block",
+            scope="artifact",
+            workspace=request["workspace"],
+            reason="Lane-owned refusal authority regression",
+            persist_policy=False,
+            scope_contract_version=baseline.version,
+            scope_contract_digest=baseline.digest,
+        )
+    assert store.get_approval_request(request["request_id"])["status"] == "pending"
     with store._connect() as connection:
         assert connection.execute("select count(*) from policy_decisions").fetchone()[0] == 0
         assert connection.execute("select count(*) from guard_local_once_approvals").fetchone()[0] == 0
