@@ -14,6 +14,8 @@ pub const NATIVE_BASH_EXECUTE_REQUEST_SCHEMA: &str = "guard-native-bash-execute-
 pub const NATIVE_BASH_EXECUTE_RESULT_SCHEMA: &str = "guard-native-bash-execute-result.v1";
 pub const NATIVE_BASH_HOST_REQUEST_SCHEMA: &str = "guard-native-bash-host-request.v1";
 pub const NATIVE_BASH_HOST_RESULT_SCHEMA: &str = "guard-native-bash-host-result.v1";
+pub const NATIVE_BASH_CANCEL_REQUEST_SCHEMA: &str = "guard-native-bash-cancel-request.v1";
+pub const NATIVE_BASH_CANCEL_RESULT_SCHEMA: &str = "guard-native-bash-cancel-result.v1";
 pub const NATIVE_BASH_LAUNCH_MAX_REQUEST_BYTES: usize = 512 * 1024;
 pub const NATIVE_BASH_PREPARE_MAX_BUDGET_MS: u64 = 5000;
 pub const NATIVE_BASH_EXECUTE_MAX_TIMEOUT_MS: u64 = 120_000;
@@ -149,4 +151,25 @@ pub struct NativeBashOperationV1 {
     pub state: NativeBashOperationStateV1,
     pub dispatch_acknowledged: bool,
     pub completion: Option<NativeBashCompletionSummaryV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeBashCancelRequestV1 {
+    pub schema: String,
+    pub request_id: String,
+    pub guard_home: String,
+    pub operation_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeBashCancelResultV1 {
+    pub schema: String,
+    pub request_id: String,
+    pub request_sha256: String,
+    pub status: String,
+    pub code: String,
+    /// A live owner was signalled. Only its final response proves teardown.
+    pub cancel_requested: bool,
 }

@@ -253,6 +253,10 @@ pub(crate) fn evaluate_resident_bytes(
                 let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
                 crate::native_exact_action_op::execute_bash_request(&request, store)
             }
+            ResidentOperationV1::NativeBashCancel(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::cancel_bash_request(&request, store)
+            }
             ResidentOperationV1::CommandEffectDecide(request) => {
                 crate::command_effect::evaluate_command_effect_request(&request)
             }
@@ -598,6 +602,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
     match operation {
         ResidentOperationV1::NativeBashPrepare(request) => Some(&request.capture.guard_home),
         ResidentOperationV1::NativeBashExecute(request) => Some(&request.capture.guard_home),
+        ResidentOperationV1::NativeBashCancel(request) => Some(&request.guard_home),
         ResidentOperationV1::ArchiveAcquisition(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirect(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirectEvidenceDrain(request) => Some(&request.guard_home),

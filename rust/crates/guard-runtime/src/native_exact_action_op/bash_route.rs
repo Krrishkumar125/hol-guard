@@ -180,9 +180,15 @@ fn execute(
     store: &PolicySnapshotStore,
     result: &mut NativeBashExecuteResultV1,
 ) {
-    use std::sync::atomic::AtomicBool;
     use std::time::{Duration, Instant};
     let deadline = Instant::now() + Duration::from_millis(request.timeout_ms);
+    let registration = match store.bash_launches().register(&request.operation_id) {
+        Ok(registration) => registration,
+        Err(reason) => {
+            result.code = reason;
+            return;
+        }
+    };
     match super::bash_grant::execute_saved(
         &request.capture,
         &request.envelope,
@@ -190,7 +196,7 @@ fn execute(
         &request.claim,
         &request.operation_id,
         deadline,
-        &AtomicBool::new(false),
+        &registration.cancelled,
     ) {
         Ok(launch) => {
             result.grant_claimed = launch.grant_claimed;

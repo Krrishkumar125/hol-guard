@@ -1,5 +1,7 @@
 //! Resident dispatch proof, separate from the authenticated socket/host lanes.
 use super::*;
+#[path = "bash_grant_cancel_tests.rs"]
+mod cancel_tests;
 use guard_contracts::{
     NativeBashExecuteRequestV1, NativeBashExecuteResultV1, NativeBashPrepareRequestV1,
     NativeBashPrepareResultV1, NATIVE_BASH_EXECUTE_REQUEST_SCHEMA,

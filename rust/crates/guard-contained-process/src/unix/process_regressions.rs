@@ -307,7 +307,7 @@ fn cancellation_after_parent_setup_refuses_fork() {
             Isolation::default(),
         )
         .unwrap_err();
-    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(error.kind(), io::ErrorKind::Interrupted);
     assert_not_launched(root.path());
 }
 

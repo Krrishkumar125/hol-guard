@@ -49,10 +49,16 @@ impl RequestWindow<'_> {
     }
 
     pub(super) fn require_launch(&self) -> io::Result<()> {
-        if self.stopped() {
+        if self.cancel.load(Ordering::Acquire) {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "process cancelled before launch",
+            ));
+        }
+        if Instant::now() >= self.deadline {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                "process deadline or cancellation before launch",
+                "process deadline before launch",
             ));
         }
         Ok(())

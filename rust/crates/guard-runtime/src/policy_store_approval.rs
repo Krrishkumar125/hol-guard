@@ -8,6 +8,10 @@ pub(crate) mod launch_fence;
 #[path = "policy_store_bash_journal.rs"]
 pub(crate) mod bash_journal;
 
+#[cfg(target_os = "macos")]
+#[path = "policy_store_bash_cancellation.rs"]
+pub(crate) mod bash_cancellation;
+
 pub(crate) struct ApprovalPolicyFence<'a> {
     pub(crate) generation: u64,
     pub(crate) policy_digest: &'a str,

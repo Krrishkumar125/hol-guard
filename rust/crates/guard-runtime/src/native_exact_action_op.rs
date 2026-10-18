@@ -6,6 +6,7 @@
 //! judged it. A proof that fails is a successful reply carrying the once-only
 //! reason, so only a malformed request is an `error`.
 
+mod bash_cancel_route;
 pub(crate) mod bash_capture;
 #[cfg(target_os = "macos")]
 mod bash_grant;
@@ -16,6 +17,7 @@ mod bash_launch;
 #[cfg(target_os = "macos")]
 mod bash_policy;
 mod bash_route;
+pub(crate) use bash_cancel_route::cancel_request as cancel_bash_request;
 pub(crate) use bash_route::observe_host_bytes as observe_bash_host_bytes;
 pub(crate) use bash_route::{
     execute_request as execute_bash_request, prepare_request as prepare_bash_request,
