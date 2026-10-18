@@ -10,6 +10,8 @@ use crate::{
 
 /// Native protocol support, not a host delivery or approval UI capability.
 pub const NATIVE_BASH_OWNER_PROTOCOL_FEATURE: &str = "native-bash-owner-protocol-v1";
+pub const NATIVE_BASH_DELIVERY_REASON: &str = "native_bash_owner_required";
+pub const NATIVE_BASH_DELIVERY_PROFILE: &str = "native-bash-owner-v1";
 
 pub const NATIVE_BASH_PREPARE_REQUEST_SCHEMA: &str = "guard-native-bash-prepare-request.v1";
 pub const NATIVE_BASH_PREPARE_RESULT_SCHEMA: &str = "guard-native-bash-prepare-result.v1";

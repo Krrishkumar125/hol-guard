@@ -8,6 +8,8 @@
 
 mod bash_cancel_route;
 pub(crate) mod bash_capture;
+mod bash_delivery;
+pub(crate) use bash_delivery::require_owner as require_bash_owner;
 #[cfg(target_os = "macos")]
 mod bash_grant;
 #[cfg(target_os = "macos")]

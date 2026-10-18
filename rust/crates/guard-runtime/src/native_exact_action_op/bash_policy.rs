@@ -40,58 +40,60 @@ pub(crate) fn assess(
         .source_for_launch()
         .map_err(|_| "bash_policy_unbound_graph".to_owned())?;
     let mut decisions = Vec::with_capacity(1 + graph.invocations.len() + graph.writes.len());
-    let mut judge = |payload: serde_json::Value, captured_operation: bool| -> Result<(), String> {
-        if Instant::now() >= deadline {
-            return Err("bash_policy_deadline_exceeded".into());
-        }
-        let mut intrinsic = evaluate_pre_tool_envelope_with_execution_context(
-            &request.harness,
-            "PreToolUse",
-            &payload,
-            snapshot.command_extensions.as_ref(),
-            Some(deadline),
-            PathContext {
-                home_dir: Some(&request.home_dir),
-                cwd: Some(&request.cwd),
-                shell_home_matches: true,
-                ..PathContext::default()
-            },
-            Some(&request.execution_environment),
-        );
-        // Only generic lack-of-proof/containment requirements are discharged. The
-        // caller holds this closed graph's immutable code and effect boundary;
-        // every reachable operation is judged independently below. Specific
-        // command/extension risks and sensitive-target reviews remain intact.
-        if captured_operation
-            && intrinsic.action.action_type == PreToolActionTypeV1::Command
-            && !intrinsic.action.sensitive_target
-            && matches!(
-                (
-                    intrinsic.minimum_action.as_str(),
-                    intrinsic.reason_code.as_str()
-                ),
-                ("review", "native_command_review_required")
-                    | ("sandbox-required", "native_workspace_containment_required")
-                    | (
-                        "review",
-                        "native_workspace_containment_executable_outside_roots"
-                    )
-            )
-        {
-            intrinsic.minimum_action = "allow".into();
-            intrinsic.policy_action = "allow".into();
-            intrinsic.decision = "allow".into();
-            intrinsic.explicitly_benign = true;
-            intrinsic.reason_code = "native_captured_bash_operation".into();
-            intrinsic.reason =
-                "This operation is bound to the captured Bash graph and its declared effects."
-                    .into();
-        }
-        // Apply installed policy AFTER the native graph proof. An explicit
-        // execution Ask/deny or matching extension restriction still wins.
-        decisions.push(apply_pre_tool_policy(snapshot, &payload, intrinsic)?);
-        Ok(())
-    };
+    let mut judge =
+        |mut payload: serde_json::Value, captured_operation: bool| -> Result<(), String> {
+            if Instant::now() >= deadline {
+                return Err("bash_policy_deadline_exceeded".into());
+            }
+            payload["cwd"] = json!(request.cwd);
+            let mut intrinsic = evaluate_pre_tool_envelope_with_execution_context(
+                &request.harness,
+                "PreToolUse",
+                &payload,
+                snapshot.command_extensions.as_ref(),
+                Some(deadline),
+                PathContext {
+                    home_dir: Some(&request.home_dir),
+                    cwd: Some(&request.cwd),
+                    shell_home_matches: true,
+                    ..PathContext::default()
+                },
+                Some(&request.execution_environment),
+            );
+            // Only generic lack-of-proof/containment requirements are discharged. The
+            // caller holds this closed graph's immutable code and effect boundary;
+            // every reachable operation is judged independently below. Specific
+            // command/extension risks and sensitive-target reviews remain intact.
+            if captured_operation
+                && intrinsic.action.action_type == PreToolActionTypeV1::Command
+                && !intrinsic.action.sensitive_target
+                && matches!(
+                    (
+                        intrinsic.minimum_action.as_str(),
+                        intrinsic.reason_code.as_str()
+                    ),
+                    ("review", "native_command_review_required")
+                        | ("sandbox-required", "native_workspace_containment_required")
+                        | (
+                            "review",
+                            "native_workspace_containment_executable_outside_roots"
+                        )
+                )
+            {
+                intrinsic.minimum_action = "allow".into();
+                intrinsic.policy_action = "allow".into();
+                intrinsic.decision = "allow".into();
+                intrinsic.explicitly_benign = true;
+                intrinsic.reason_code = "native_captured_bash_operation".into();
+                intrinsic.reason =
+                    "This operation is bound to the captured Bash graph and its declared effects."
+                        .into();
+            }
+            // Apply installed policy AFTER the native graph proof. An explicit
+            // execution Ask/deny or matching extension restriction still wins.
+            decisions.push(apply_pre_tool_policy(snapshot, &payload, intrinsic)?);
+            Ok(())
+        };
     judge(command_payload(&request.command), true)?;
     for invocation in &graph.invocations {
         let command = invocation

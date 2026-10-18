@@ -361,6 +361,11 @@ fn evaluate_validated_envelope(
             } else {
                 native
             };
+            let evaluated = crate::native_exact_action_op::require_bash_owner(
+                &envelope,
+                policy_snapshot,
+                evaluated,
+            );
             let value = serde_json::to_value(evaluated)
                 .map_err(|_| "native_hook_edge_response_invalid".to_owned())?;
             validate_pre_tool_result(&value)?;

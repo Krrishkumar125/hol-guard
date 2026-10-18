@@ -92,6 +92,12 @@ def run_bound_bash(
     if not isinstance(command, str) or not command:
         raise NativeBashError("native_bash_sink_request_invalid")
     cwd = Path.cwd().resolve(strict=True)
+    # The host has already applied a tool-level cwd. Do not interpret it twice
+    # or judge the launch against the earlier session directory's overlays.
+    payload = {
+        **payload, "cwd": str(cwd),
+        "tool_input": {key: value for key, value in tool_input.items() if key != "cwd"},
+    }
     capture = observe_host({
         "harness": harness, "command": command, "cwd": str(cwd),
         "workspace": str(workspace.resolve(strict=True)), "home_dir": "",
@@ -103,9 +109,9 @@ def run_bound_bash(
         }, "budget_ms": 5000,
     }, cwd=cwd)
     home = Path(str(capture["home_dir"]))
-    worker = HookWorker(store=store, workspace=workspace, home_dir=home, wait_for_native_policy=False)
+    worker = HookWorker(store=store, workspace=cwd, home_dir=home, wait_for_native_policy=False)
     try:
-        snapshot = worker.prepare_workspace_policy(workspace, deadline=time.monotonic() + 25)
+        snapshot = worker.prepare_workspace_policy(cwd, deadline=time.monotonic() + 25)
         if snapshot is None:
             raise NativeBashError("native_bash_policy_not_ready")
         encoded = _encode_hook_envelope(

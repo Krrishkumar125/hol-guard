@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..codex_hook_windows_job import windows_system_executable_path
 from ..daemon.manager import GUARD_DAEMON_COMPATIBILITY_VERSION
+from .pi_extension_bound_bash_source import with_bound_bash_host_observation
 from .pi_extension_runtime_ownership import resolve_pi_extension_runtime_ownership
 from .pi_extension_source_body import build_extension_source_body
 from .pi_extension_source_header import build_extension_source_header
@@ -60,7 +61,7 @@ def managed_extension_source(
     harness: str = "pi",
     display_name: str = "Pi",
 ) -> str:
-    return render_extension_source_variant_v1(
+    source = render_extension_source_variant_v1(
         guard_home=guard_home,
         home_dir=home_dir,
         settings_path=settings_path,
@@ -73,3 +74,4 @@ def managed_extension_source(
         platform_name=os.name,
         variant=_ACTIVE_SOURCE_VARIANT_V1,
     )
+    return with_bound_bash_host_observation(source, harness=harness)
