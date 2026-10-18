@@ -6,6 +6,7 @@
 //! judged it. A proof that fails is a successful reply carrying the once-only
 //! reason, so only a malformed request is an `error`.
 
+mod bash_activity;
 mod bash_cancel_route;
 pub(crate) mod bash_capture;
 mod bash_delivery;
@@ -22,6 +23,7 @@ mod bash_policy;
 mod bash_review;
 mod bash_review_check;
 mod bash_route;
+pub(crate) use bash_activity::evaluate as bash_activity_request;
 pub(crate) use bash_cancel_route::cancel_request as cancel_bash_request;
 pub(crate) use bash_review_check::check as check_bash_review;
 pub(crate) use bash_route::observe_host_bytes as observe_bash_host_bytes;

@@ -232,3 +232,40 @@ def execute(request: dict[str, object], *, guard_home: Path, cwd: Path) -> dict[
     )
     validate_executed(result, request)
     return result
+
+
+def activity(operation_id: str, *, guard_home: Path) -> dict[str, object]:
+    """Observe active ownership; absence does not prove completion or consent."""
+    request: dict[str, object] = {
+        "schema": "guard-native-bash-activity-request.v1",
+        "request_id": request_id(),
+        "guard_home": str(guard_home),
+        "operation_id": operation_id,
+    }
+    result = _resident_request(
+        operation="native_bash_activity",
+        request=request,
+        guard_home=guard_home,
+        timeout_seconds=2,
+        required_feature="native-bash-activity-v1",
+        response_schema="guard-native-bash-activity-result.v1",
+        status=runtime_status(),
+        max_request_bytes=16 * 1024,
+        record_success=False,
+    )
+    if result is None:
+        raise NativeBashError("native_bash_activity_unavailable")
+    validate_reply(result, request, kind="activity")
+    payload = result["payload"]
+    if result["status"] != "ok":
+        raise NativeBashError(str(result["code"]))
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"operation_id", "active", "cancellation_requested"}
+        or payload.get("operation_id") != operation_id
+        or type(payload.get("active")) is not bool
+        or type(payload.get("cancellation_requested")) is not bool
+        or (payload["cancellation_requested"] and not payload["active"])
+    ):
+        raise NativeBashError("native_bash_activity_invalid")
+    return payload

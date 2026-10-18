@@ -81,6 +81,21 @@ impl Launches {
         Ok(cancellation.is_some())
     }
 
+    pub(crate) fn activity(&self, operation_id: &str) -> Result<(bool, bool), String> {
+        if !guard_contracts::native_bash_operation_id_is_valid(operation_id) {
+            return Err("native_bash_operation_id_invalid".into());
+        }
+        let state = self
+            .0
+            .lock()
+            .map_err(|_| "native_bash_cancellation_unavailable")?;
+        let cancellation = state.active.get(operation_id);
+        Ok((
+            cancellation.is_some(),
+            cancellation.is_some_and(|flag| flag.load(Ordering::Acquire)),
+        ))
+    }
+
     pub(crate) fn shutdown(&self) {
         // Poisoning must not leave children running during owner teardown.
         let mut state = self.0.lock().unwrap_or_else(|error| error.into_inner());
@@ -128,14 +143,32 @@ mod tests {
     fn registration_is_exclusive_bounded_and_released_on_drop() {
         let owner = Launches::default();
         let first = owner.register("operation-first-0001").unwrap();
+        assert_eq!(
+            owner.activity("operation-first-0001").unwrap(),
+            (true, false)
+        );
+        assert!(!first.cancelled.load(Ordering::Acquire));
+        assert_eq!(
+            owner.activity("operation-unknown-0004").unwrap(),
+            (false, false)
+        );
+        assert!(owner.activity("invalid").is_err());
         assert!(owner.register("operation-first-0001").is_err());
         let second = owner.register("operation-second-0002").unwrap();
         assert!(owner.register("operation-third-0003").is_err());
         assert!(!owner.cancel("operation-unknown-0004").unwrap());
         assert!(owner.cancel("operation-first-0001").unwrap());
         assert!(first.cancelled.load(Ordering::Acquire));
+        assert_eq!(
+            owner.activity("operation-first-0001").unwrap(),
+            (true, true)
+        );
         assert!(!second.cancelled.load(Ordering::Acquire));
         drop(first);
+        assert_eq!(
+            owner.activity("operation-first-0001").unwrap(),
+            (false, false)
+        );
         let replacement = owner.register("operation-first-0001").unwrap();
         assert!(!replacement.cancelled.load(Ordering::Acquire));
         owner.shutdown();
