@@ -4,6 +4,8 @@ use super::*;
 mod cancel_tests;
 #[path = "bash_quiet_tests.rs"]
 mod quiet_tests;
+#[path = "bash_transport_tests.rs"]
+mod transport_tests;
 use guard_contracts::{
     NativeBashExecuteRequestV1, NativeBashExecuteResultV1, NativeBashPrepareRequestV1,
     NativeBashPrepareResultV1, NATIVE_BASH_EXECUTE_REQUEST_SCHEMA,

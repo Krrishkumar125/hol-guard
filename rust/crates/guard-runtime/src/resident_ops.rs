@@ -19,6 +19,14 @@ pub(crate) fn evaluate_resident_bytes(
     bytes: &[u8],
     policy_store: Option<&PolicySnapshotStore>,
 ) -> Result<Vec<u8>, String> {
+    evaluate_resident_bytes_with_cancellation(bytes, policy_store, None)
+}
+
+pub(crate) fn evaluate_resident_bytes_with_cancellation(
+    bytes: &[u8],
+    policy_store: Option<&PolicySnapshotStore>,
+    cancellation: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<Vec<u8>, String> {
     let value = strict_json_value(bytes)?;
     if matches!(
         value.get("operation").and_then(Value::as_str),
@@ -251,7 +259,7 @@ pub(crate) fn evaluate_resident_bytes(
             }
             ResidentOperationV1::NativeBashExecute(request) => {
                 let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                crate::native_exact_action_op::execute_bash_request(&request, store)
+                crate::native_exact_action_op::execute_bash_request(&request, store, cancellation)
             }
             ResidentOperationV1::NativeBashCancel(request) => {
                 let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;

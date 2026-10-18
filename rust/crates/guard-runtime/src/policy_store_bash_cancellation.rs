@@ -25,9 +25,18 @@ pub(crate) struct Registration<'owner> {
 }
 
 impl Launches {
+    #[cfg(test)]
     pub(crate) fn register<'a>(
         &'a self,
         operation_id: &'a str,
+    ) -> Result<Registration<'a>, String> {
+        self.register_with_cancellation(operation_id, Arc::new(AtomicBool::new(false)))
+    }
+
+    pub(crate) fn register_with_cancellation<'a>(
+        &'a self,
+        operation_id: &'a str,
+        cancelled: Arc<AtomicBool>,
     ) -> Result<Registration<'a>, String> {
         if !guard_contracts::native_bash_operation_id_is_valid(operation_id) {
             return Err("native_bash_operation_id_invalid".into());
@@ -45,7 +54,6 @@ impl Launches {
         if state.active.len() >= MAX_ACTIVE {
             return Err("native_bash_launch_capacity".into());
         }
-        let cancelled = Arc::new(AtomicBool::new(false));
         state
             .active
             .insert(operation_id.into(), Arc::clone(&cancelled));
@@ -54,6 +62,11 @@ impl Launches {
             operation_id,
             cancelled,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn active_cancellation(&self, operation_id: &str) -> Option<Arc<AtomicBool>> {
+        self.0.lock().unwrap().active.get(operation_id).cloned()
     }
 
     pub(crate) fn cancel(&self, operation_id: &str) -> Result<bool, String> {

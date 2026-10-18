@@ -146,6 +146,7 @@ fn failure_status(code: &str) -> &'static str {
 pub(crate) fn execute_request(
     request: &NativeBashExecuteRequestV1,
     store: &PolicySnapshotStore,
+    cancellation: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<Vec<u8>, String> {
     let request_sha256 = request_digest_with_limit(request, NATIVE_BASH_LAUNCH_MAX_REQUEST_BYTES)
         .map_err(|_| "native_bash_request_too_large".to_owned())?;
@@ -169,7 +170,7 @@ pub(crate) fn execute_request(
         && request.capture.budget_ms > 0
         && guard_contracts::native_bash_operation_id_is_valid(&request.operation_id)
     {
-        execute(request, store, &mut result);
+        execute(request, store, &mut result, cancellation);
     }
     crate::encode_response(&result)
 }
@@ -179,10 +180,16 @@ fn execute(
     request: &NativeBashExecuteRequestV1,
     store: &PolicySnapshotStore,
     result: &mut NativeBashExecuteResultV1,
+    cancellation: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) {
     use std::time::{Duration, Instant};
     let deadline = Instant::now() + Duration::from_millis(request.timeout_ms);
-    let registration = match store.bash_launches().register(&request.operation_id) {
+    let cancellation = cancellation
+        .unwrap_or_else(|| std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    let registration = match store
+        .bash_launches()
+        .register_with_cancellation(&request.operation_id, cancellation)
+    {
         Ok(registration) => registration,
         Err(reason) => {
             result.code = reason;
@@ -267,6 +274,7 @@ fn execute(
     _: &NativeBashExecuteRequestV1,
     _: &PolicySnapshotStore,
     result: &mut NativeBashExecuteResultV1,
+    _: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) {
     result.status = "unavailable".into();
     result.code = "bash_execution_binding_unavailable_platform".into();
