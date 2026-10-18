@@ -14,7 +14,7 @@ import { bulkApprovalRiskTier, groupDuplicates, isBulkApprovableGroup } from "./
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { approvalGateRefreshNeeded, resolvedStateForItem } from "./review-decision-state";
-import { ReviewScopeControls } from "./review-scope-controls";
+import { allowButtonLabel, ReviewScopeControls } from "./review-scope-controls";
 import { buildDecisionPayload, requestSupportsScope } from "./approval-scopes";
 import { buildBulkRiskDisclosure } from "./queue-bulk-risk-disclosure";
 
@@ -339,6 +339,34 @@ const nativeOwner = {
   exact_action_persistence_eligible: true,
   scope_restrictions: ["reusable_allow_is_action_bound"],
 };
+const nativeScopeControls = renderToStaticMarkup(
+  createElement(ReviewScopeControls, {
+    commonScopeOptions: [],
+    broaderScopeOptions: [],
+    advancedScopeOptions: [],
+    blockScopeOptions: [],
+    hasAllowScope: true,
+    taskCapabilityCopy: null,
+    exactActionPersistenceEligible: true,
+    versionBoundScript: true,
+    rememberExactAction: false,
+    allowScope: "artifact",
+    blockScope: "artifact",
+    onAllowScopeChange: () => undefined,
+    onBlockScopeChange: () => undefined,
+    onRememberExactActionChange: () => undefined,
+  }),
+);
+assert(nativeScopeControls.includes("Run once"), "native Bash offers a working Run once duration");
+assert(
+  nativeScopeControls.includes("Always allow this version in this project"),
+  "native Bash names the exact-version project choice",
+);
+assert(
+  allowButtonLabel("artifact", true, false) === "Run once" &&
+    allowButtonLabel("artifact", true, true) === "Always allow this version in this project",
+  "native Bash submit labels match the selected duration",
+);
 assert(requestSupportsScope(nativeOwner, "allow", "artifact"), "verified native owner offers once");
 assert(!requestSupportsScope(nativeOwner, "allow", "workspace"), "native owner cannot widen project scope");
 const nativeOnce = buildDecisionPayload({ item: nativeOwner, action: "allow", scope: "artifact", reason: "once" });

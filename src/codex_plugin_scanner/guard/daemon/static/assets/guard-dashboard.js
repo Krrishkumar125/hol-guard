@@ -13304,6 +13304,15 @@ function normalizeDecisionScope(item, action, scope) {
 const ONCE_ONLY_REASON_COPY = {
   no_command_identity: "Always allow is unavailable: this tool call has no stable command or file to remember. You can allow it once.",
   mutable_launcher: "Always allow is unavailable: this program can run other code or config, so Guard cannot prove what it will do next time. You can allow it once.",
+  node_package_manifest_unproven: "Guard could not verify an installed package's resolution settings. Repair or reinstall the package before remembering this command.",
+  node_package_entrypoint_unproven: "Guard could not bind the installed package entry point to the code it loads. This command cannot be remembered.",
+  node_package_exports_unproven: "Guard cannot yet verify this package's export conditions or path patterns. This command cannot be remembered.",
+  node_package_native_addon_unproven: "Guard has not bound the compiled dependency this package would load. This command cannot be remembered.",
+  node_runtime_package_mutation_unproven: "Guard has not verified that later package loads are protected from this program's file writes. This command cannot be remembered.",
+  runner_code_closure_unproven: "Guard could not bind all code loaded by this package runner and its command. This command cannot be remembered.",
+  python_runtime_module_unproven: "Guard could not bind the installed Python implementation this program imports. This command cannot be remembered.",
+  python_runtime_bootstrap_unproven: "Guard could not bind this Python runtime's startup code and native libraries. This command cannot be remembered.",
+  script_execution_binding_unavailable: "This app cannot run a verified snapshot of this script through this approval. Keep it blocked until a supported execution route is available.",
   compound_command: "Always allow is unavailable: this command chains steps that Guard cannot verify one by one. You can allow it once.",
   guard_control: "Changes to Guard itself are always reviewed. You can allow this one time.",
   package_action: "Package installs and updates are always reviewed. You can allow this one time.",
@@ -14693,6 +14702,9 @@ function isPackageDependencyMutationRequest(request2) {
   );
 }
 function plainEnglishRequestTitle(request2) {
+  if (request2.artifact_type === "native_bash_request") {
+    return "Run this script?";
+  }
   const category = detectCategory({
     ...request2,
     timestamp: request2.created_at,
@@ -30248,7 +30260,8 @@ function ReviewScopeControls(props) {
         checked: props.rememberExactAction,
         onChange: props.onRememberExactActionChange,
         oneTimeRetryBlocked: props.oneTimeRetryBlocked === true,
-        retryWindowMinutes: props.retryWindowMinutes ?? 15
+        retryWindowMinutes: props.retryWindowMinutes ?? 15,
+        versionBoundScript: props.versionBoundScript === true
       }
     ),
     props.broaderScopeOptions.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("details", { className: "rounded-xl border border-brand-blue/15 bg-brand-blue/[0.03] p-3", children: [
@@ -30314,7 +30327,7 @@ function ExactActionPersistenceChoice(props) {
             className: "sr-only"
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-sm font-semibold text-brand-dark", children: "This time" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-sm font-semibold text-brand-dark", children: props.versionBoundScript ? "Run once" : "This time" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block text-xs text-muted-foreground", children: `Retry within ${props.retryWindowMinutes} minutes.` })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: exactActionChoiceClassName(props.checked), children: [
@@ -30329,8 +30342,8 @@ function ExactActionPersistenceChoice(props) {
             className: "sr-only"
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-sm font-semibold text-brand-dark", children: "Always allow exact action" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block text-xs text-muted-foreground", children: "Changed commands still need review." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-sm font-semibold text-brand-dark", children: props.versionBoundScript ? "Always allow this version in this project" : "Always allow exact action" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block text-xs text-muted-foreground", children: props.versionBoundScript ? "Guard checks code, arguments, dependencies, and policy before every run. Changes need review." : "Changed commands still need review." })
       ] })
     ] })
   ] });
@@ -30359,8 +30372,11 @@ function ScopeChoiceButton(props) {
     }
   );
 }
-function allowButtonLabel(scope) {
+function allowButtonLabel(scope, versionBoundScript = false, persistExactAction = false) {
   if (scope === "artifact") {
+    if (versionBoundScript) {
+      return persistExactAction ? "Always allow this version in this project" : "Run once";
+    }
     return "Allow just this once";
   }
   if (scope === "workspace") {
@@ -32312,6 +32328,7 @@ function ReviewDecisionCard(props) {
     );
   }
   const nativeDisplayOnly = item.native_business_review_display_only === true;
+  const versionBoundScript = item.artifact_type === "native_bash_request";
   const plainTitle = nativeDisplayOnly ? item.artifact_name : plainEnglishRequestTitle(item);
   const harnessName = harnessDisplayName(item.harness);
   const whatWouldHappen = nativeDisplayOnly ? null : buildWhatWouldHappen(item);
@@ -32329,10 +32346,10 @@ function ReviewDecisionCard(props) {
   }
   const persistExactAllow = item !== null && willPersistExactAction(item, "allow", allowScope, rememberExactAction);
   const persistExactBlock = item !== null && willPersistExactAction(item, "block", blockScope, watchOnlyObservation);
-  let resolvedAllowButtonLabel = allowButtonLabel(allowScope);
+  let resolvedAllowButtonLabel = allowButtonLabel(allowScope, versionBoundScript, persistExactAllow);
   if (watchOnlyObservation) {
     resolvedAllowButtonLabel = "Keep allowing";
-  } else if (persistExactAllow) {
+  } else if (persistExactAllow && !versionBoundScript) {
     resolvedAllowButtonLabel = "Approve and remember";
   } else if (retryCannotReuseApproval(item)) {
     resolvedAllowButtonLabel = "Choose an available approval duration";
@@ -32439,6 +32456,7 @@ function ReviewDecisionCard(props) {
           hasAllowScope,
           taskCapabilityCopy,
           exactActionPersistenceEligible: item.exact_action_persistence_eligible === true,
+          versionBoundScript,
           rememberExactAction,
           oneTimeRetryBlocked: retryCannotReuseApproval(item),
           retryWindowMinutes: oneTimeRetryWindowMinutes(item),
