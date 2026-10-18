@@ -9,7 +9,7 @@ use super::reasons::{Proof, SENSITIVE_PATH, UNPROVEN_LAUNCH};
 const UNPROVEN: &str = "runner_code_closure_unproven";
 const MAX_SOURCE: u64 = 2 * 1024 * 1024;
 
-fn version_identity(value: Value) -> Value {
+pub(super) fn version_identity(value: Value) -> Value {
     match value {
         Value::Object(map) => {
             let stat = map.get("path").is_some_and(Value::is_string)
@@ -87,7 +87,7 @@ fn script(path: &str, expected: &str, args: &[String], cwd: &str, ctx: &Ctx) -> 
     let code = if super::node_script::NODE_LAUNCHERS.contains(&name.as_str()) {
         super::node_script::node_script(arguments, cwd, ctx).map_err(closure_error)?
     } else if super::launcher_sets::is_python_launcher(&name) {
-        super::python_script::python_script(arguments, cwd, ctx, &interpreter["executable"])
+        super::python_script::observe(arguments, cwd, ctx, &interpreter["executable"])
             .map_err(closure_error)?
     } else if matches!(name.as_str(), "sh" | "bash")
         && arguments.first() == Some(&resolved)

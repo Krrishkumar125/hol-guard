@@ -24,7 +24,7 @@ use super::node_script::node_script;
 use super::node_script::NODE_LAUNCHERS;
 use super::operands::{argument_value, file_operand_hashes};
 #[cfg(not(windows))]
-use super::python_script::python_script;
+use super::python_script::observe as python_script;
 #[cfg(windows)]
 use super::reasons::GIT_HELPER_CONFIG;
 use super::reasons::{

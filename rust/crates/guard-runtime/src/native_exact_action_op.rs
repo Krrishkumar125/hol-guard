@@ -52,6 +52,7 @@ mod git_push;
 #[allow(dead_code)]
 mod git_windows;
 mod launch;
+mod launch_evidence;
 pub(crate) use launch::is_safe_single_invocation;
 #[cfg(windows)]
 mod launch_windows;
@@ -88,8 +89,9 @@ use context::{Engines, ResidentEngines};
 
 pub(crate) fn evaluate_native_exact_action_request(
     request: &NativeExactActionRequestV1,
+    guard_home: Option<&std::path::Path>,
 ) -> Result<Vec<u8>, String> {
-    evaluate_with(request, &ResidentEngines)
+    evaluate_with(request, &ResidentEngines { guard_home })
 }
 
 fn evaluate_with(
@@ -112,14 +114,36 @@ fn evaluate_with(
     })
 }
 
-/// The persistent exact-action token of `query`, or the reason the action
-/// stays one-time, for a resident caller that already holds the query.
+/// The exact-action context token or its refusal for a resident caller.
+/// The separate delivery contract decides whether a once retry is executable.
 pub(crate) fn exact_action_token(query: &NativeExactActionQueryV1) -> Result<String, &'static str> {
+    exact_action_token_with(query, &ResidentEngines { guard_home: None })
+}
+
+pub(crate) fn exact_action_token_for_home(
+    query: &NativeExactActionQueryV1,
+    guard_home: &std::path::Path,
+) -> Result<String, &'static str> {
+    if !guard_home.is_absolute() {
+        return exact_action_token(query);
+    }
+    exact_action_token_with(
+        query,
+        &ResidentEngines {
+            guard_home: Some(guard_home),
+        },
+    )
+}
+
+fn exact_action_token_with(
+    query: &NativeExactActionQueryV1,
+    engines: &dyn Engines,
+) -> Result<String, &'static str> {
     let NativeExactActionQueryV1::ExactAction { budget_ms, .. } = query else {
         return Err("native_exact_action_query_invalid");
     };
     let budget = Duration::from_millis((*budget_ms).min(NATIVE_EXACT_ACTION_MAX_BUDGET_MS));
-    token::exact_action(query, Instant::now() + budget, &ResidentEngines)
+    token::exact_action(query, Instant::now() + budget, engines)
 }
 
 /// The review identity the daemon binds an approve-once retry of `query` to
@@ -148,7 +172,7 @@ pub(crate) fn review_binding_for(
             payload_cwd.as_deref(),
             workspace.as_deref(),
             execution_environment,
-            &ResidentEngines,
+            &ResidentEngines { guard_home: None },
         )
     };
     binding::review_binding(
@@ -193,6 +217,9 @@ fn decide(
         return Err("native_exact_action_schema_mismatch");
     }
     Ok(match &request.query {
+        NativeExactActionQueryV1::LaunchEvidence { action } => {
+            launch_evidence::observe(action, engines)?
+        }
         NativeExactActionQueryV1::BashSubject { capture } => match bash_capture::inspect(capture) {
             Ok(subject) => NativeExactActionPayloadV1::BashSubject {
                 subject: Some(Box::new(subject)),

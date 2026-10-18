@@ -30,7 +30,7 @@ const GUARD_CONTROL_ACTION_TYPES: [&str; 4] = [
     "guard_control_operation",
     "guard-control-operation",
 ];
-const ONCE_ONLY_REASONS: [&str; 11] = [
+const ONCE_ONLY_REASONS: [&str; 20] = [
     "no_command_identity",
     "mutable_launcher",
     "compound_command",
@@ -42,6 +42,15 @@ const ONCE_ONLY_REASONS: [&str; 11] = [
     "broad_scope",
     "destructive_command",
     "git_helper_config",
+    "node_package_manifest_unproven",
+    "node_package_entrypoint_unproven",
+    "node_package_exports_unproven",
+    "node_package_native_addon_unproven",
+    "node_runtime_package_mutation_unproven",
+    "runner_code_closure_unproven",
+    "python_runtime_module_unproven",
+    "python_runtime_bootstrap_unproven",
+    "script_execution_binding_unavailable",
 ];
 const GITHUB_WORKFLOW_RECORD_SOURCE: &str = "github_workflow_approval_record";
 
@@ -272,6 +281,9 @@ fn native_retry_cannot_reuse_approval(view: &View<'_>) -> bool {
     if native_bash_reserved(view) {
         return !native_bash_eligible(view);
     }
+    if envelope_text(view, "once_only_reason") == Some("script_execution_binding_unavailable") {
+        return true;
+    }
     let Some(artifact_id) = view.item.artifact_id.as_ref().and_then(Value::as_str) else {
         return false;
     };
@@ -368,6 +380,9 @@ fn exact_action_once_only_reason(view: &View<'_>) -> Option<String> {
 
 pub(crate) fn exact_action_allow_persistence_eligible(view: &View<'_>) -> bool {
     if allow_is_non_overridable(view) || unverified_provider_execution(view) {
+        return false;
+    }
+    if envelope_text(view, "once_only_reason") == Some("script_execution_binding_unavailable") {
         return false;
     }
     if native_bash_reserved(view) {

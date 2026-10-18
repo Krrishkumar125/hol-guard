@@ -24,6 +24,12 @@ use super::python_source::{scan, Import, Replaces};
 use super::reasons::{Proof, MUTABLE_LAUNCHER, SENSITIVE_PATH};
 use startup::runs_in_place;
 
+#[cfg(not(windows))]
+#[path = "python_bootstrap.rs"]
+mod bootstrap;
+#[cfg(not(windows))]
+pub(super) use bootstrap::observe;
+
 /// Single-letter options that run the script without loading other code.
 /// `I` and `P` also keep the script's directory off the module path.
 const INERT_FLAGS: &str = "bBdEIOPqsSuv";
@@ -374,13 +380,30 @@ impl Graph<'_> {
     }
 }
 
-/// The bound module graph of `python <script>`, or the reason it stays
-/// once-only. `executable` is the interpreter's verified launch identity.
+fn script_path(script: &str, cwd: &str) -> Proof<String> {
+    let candidate = if fs_path::is_abs(script) {
+        script.to_owned()
+    } else {
+        fs_path::join(cwd, script)
+    };
+    if !fs_path::is_file(&candidate) {
+        return Err(MUTABLE_LAUNCHER);
+    }
+    let resolved = fs_path::resolve_strict(&candidate).ok_or(MUTABLE_LAUNCHER)?;
+    if !fs_path::name(&resolved).ends_with(".py") {
+        return Err(MUTABLE_LAUNCHER);
+    }
+    Ok(resolved)
+}
+
+/// Source graph only. `observe` adds bootstrap and native loader observations.
+/// Neither graph proves dynamic code closure or grants execution.
 pub(super) fn python_script(
     arguments: &[String],
     cwd: &str,
     ctx: &Ctx,
     executable: &Value,
+    runtime_sources: &[String],
 ) -> Proof<Value> {
     let (script, mut options) = script_argument(arguments).ok_or(MUTABLE_LAUNCHER)?;
     for (name, value) in ctx.env {
@@ -403,18 +426,7 @@ pub(super) fn python_script(
             options.no_user_site = true;
         }
     }
-    let candidate = if fs_path::is_abs(script) {
-        script.to_owned()
-    } else {
-        fs_path::join(cwd, script)
-    };
-    if !fs_path::is_file(&candidate) {
-        return Err(MUTABLE_LAUNCHER);
-    }
-    let resolved = fs_path::resolve_strict(&candidate).ok_or(MUTABLE_LAUNCHER)?;
-    if !fs_path::name(&resolved).ends_with(".py") {
-        return Err(MUTABLE_LAUNCHER);
-    }
+    let resolved = script_path(script, cwd)?;
     let mut graph = Graph {
         ctx,
         cwd,
@@ -437,6 +449,9 @@ pub(super) fn python_script(
         total: 0,
     };
     // Python never runs cached bytecode for the script itself.
+    for source in runtime_sources {
+        graph.add_bytecode(source)?;
+    }
     graph.queue.push_back(resolved.clone());
     let (mut writes, mut replaces) = graph.drain(&resolved)?;
     if !options.no_site {

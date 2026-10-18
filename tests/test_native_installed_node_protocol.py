@@ -17,12 +17,13 @@ from codex_plugin_scanner.guard import native_resident_decision
 from codex_plugin_scanner.guard.daemon import hook_native_exact_action as bridge
 
 
-def test_manifest_only_runtime_is_refused_by_the_real_transport_gate(tmp_path, monkeypatch):
+@pytest.mark.parametrize("previous", ["native-exact-action-v1", "native-exact-action-v2", "native-exact-action-v3"])
+def test_older_identity_runtime_is_refused_by_the_real_transport_gate(tmp_path, monkeypatch, previous):
     status = SimpleNamespace(
         available=True,
         compatible=True,
         identity=object(),
-        capabilities=SimpleNamespace(features={"resident-protocol-v2", "native-exact-action-v1"}),
+        capabilities=SimpleNamespace(features={"resident-protocol-v2", previous}),
     )
     monkeypatch.setattr(native_resident_decision, "native_runtime_status", lambda: status)
     monkeypatch.setattr(native_resident_decision, "ensure_resident_prerequisite", lambda _home: True)
@@ -41,6 +42,8 @@ def test_manifest_only_runtime_is_refused_by_the_real_transport_gate(tmp_path, m
         "node_runtime_package_mutation_unproven",
         "runner_code_closure_unproven",
         "python_runtime_module_unproven",
+        "python_runtime_bootstrap_unproven",
+        "script_execution_binding_unavailable",
     ],
 )
 def test_specific_installed_code_uncertainty_is_preserved_without_accepting_arbitrary_reasons(reason):
@@ -82,7 +85,7 @@ def test_real_resident_binds_installed_node_code_and_preserves_specific_uncertai
         command = f"{shlex.quote(node)} report.mjs"
 
         def identity():
-            return bridge.native_exact_action(
+            evidence, reason = bridge.native_launch_evidence(
                 harness="claude-code",
                 tool_name="Bash",
                 payload={"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)},
@@ -91,6 +94,12 @@ def test_real_resident_binds_installed_node_code_and_preserves_specific_uncertai
                 workspace=project,
                 home_dir=home,
             )
+
+            if evidence is None:
+                return None, reason
+            assert evidence["code_identity_complete"] is False
+            assert evidence["can_run_once"] is False and evidence["can_persist"] is False
+            return evidence["inventory_sha256"], reason
 
         before, reason = identity()
         assert before is not None and reason is None
@@ -113,8 +122,16 @@ def test_real_resident_binds_installed_node_code_and_preserves_specific_uncertai
         assert identity() == (None, "node_package_exports_unproven")
 
 
-def test_actual_previous_runtime_cannot_supply_manifest_only_identity(tmp_path):
-    previous = os.environ.get("HOL_GUARD_TEST_PREVIOUS_NATIVE_BINARY")
+@pytest.mark.parametrize(
+    "variable,feature",
+    [
+        ("HOL_GUARD_TEST_PREVIOUS_NATIVE_BINARY", "native-exact-action-v1"),
+        ("HOL_GUARD_TEST_PREVIOUS_V2_NATIVE_BINARY", "native-exact-action-v2"),
+        ("HOL_GUARD_TEST_PREVIOUS_V3_NATIVE_BINARY", "native-exact-action-v3"),
+    ],
+)
+def test_actual_previous_runtime_cannot_supply_incomplete_identity(tmp_path, variable, feature):
+    previous = os.environ.get(variable)
     if previous is None:
         pytest.skip("select the previous native executable for capability compatibility")
     assert Path(previous).is_absolute() and Path(previous).is_file()
@@ -127,22 +144,22 @@ from codex_plugin_scanner.guard.native_resident_client import close_native_resid
 home = Path(sys.argv[1])
 status = native_runtime_status()
 assert status.available and status.compatible and status.capabilities is not None
-assert 'native-exact-action-v1' in status.capabilities.features
-assert 'native-exact-action-v2' not in status.capabilities.features
+assert sys.argv[2] in status.capabilities.features
+assert 'native-exact-action-v4' not in status.capabilities.features
 try:
     try:
         _answer({'kind':'exact_action'}, home)
     except NativeExactActionError as error:
         assert str(error) == 'native_exact_action_unavailable'
     else:
-        raise AssertionError('manifest-only runtime supplied a stronger identity')
+        raise AssertionError('previous runtime supplied a stronger identity')
 finally:
     assert close_native_residents(guard_home=home)
 print('previous runtime withheld exact identity')
 """
     environment = {**os.environ, "HOL_GUARD_NATIVE": "force", "HOL_GUARD_NATIVE_BINARY": previous}
     completed = subprocess.run(
-        [sys.executable, "-c", child, str(tmp_path / "old-native")],
+        [sys.executable, "-c", child, str(tmp_path / "old-native"), feature],
         env=environment,
         text=True,
         capture_output=True,
@@ -153,9 +170,10 @@ print('previous runtime withheld exact identity')
 
 
 @pytest.mark.usefixtures("package_intent_native")
-def test_reusable_runner_identity_binds_installed_helper_code(native_context_digest, tmp_path, monkeypatch):
+def test_runner_inventory_observes_installed_helper_code(native_context_digest, tmp_path, monkeypatch):
     del native_context_digest
-    from tests.test_native_review_exact_action_always import _token, _wrangler_workspace
+    from tests.native_launch_evidence_helpers import _inventory
+    from tests.test_native_review_exact_action_always import _wrangler_workspace
 
     project = _wrangler_workspace(tmp_path, monkeypatch)
     (tmp_path / "home").mkdir()
@@ -168,11 +186,11 @@ def test_reusable_runner_identity_binds_installed_helper_code(native_context_dig
     )
     helper = package / "bin" / "helper.js"
     helper.write_text("export default 'safe';\n")
-    before = _token("npx wrangler --version", project)
+    before = _inventory("npx wrangler --version", project)
     metadata = helper.stat()
     helper.write_text("export default 'evil';\n")
     os.utime(helper, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
-    after = _token("npx wrangler --version", project)
+    after = _inventory("npx wrangler --version", project)
     # Either the complete runner is unproven, or its reviewed code must change
     # identity. A manifest/bin-only reusable token is never sufficient.
     assert before is None or after != before, "runner consent ignored changed installed executable code"
@@ -187,10 +205,11 @@ def test_runner_code_refuses_unproven_manager_without_losing_verified_fixture(
     manager_kind,
 ):
     del native_context_digest
-    from tests.test_native_review_exact_action_always import _token, _wrangler_workspace
+    from tests.native_launch_evidence_helpers import _inventory
+    from tests.test_native_review_exact_action_always import _wrangler_workspace
 
     project = _wrangler_workspace(tmp_path, monkeypatch)
-    assert _token("npx wrangler --version", project) is not None
+    assert _inventory("npx wrangler --version", project) is not None
     manager = tmp_path / "manager-bin" / "npx"
     if manager_kind == "bare-launcher":
         source = manager.read_bytes()
@@ -200,14 +219,14 @@ def test_runner_code_refuses_unproven_manager_without_losing_verified_fixture(
     else:
         # An executable image hash cannot prove its dynamically loaded code.
         manager.resolve().write_bytes(Path("/usr/bin/true").read_bytes())
-    assert _token("npx wrangler --version", project) is None
+    assert _inventory("npx wrangler --version", project) is None
 
 
 @pytest.mark.usefixtures("package_intent_native")
 @pytest.mark.parametrize("changed", ["manager", "bin"])
 @pytest.mark.parametrize("shebang", ["absolute", "env"])
 @pytest.mark.parametrize("shim", [False, True])
-def test_closed_runner_code_binds_manager_and_bin_helpers(
+def test_runner_inventory_observes_manager_and_bin_helpers(
     native_context_digest,
     tmp_path,
     monkeypatch,
@@ -220,7 +239,7 @@ def test_closed_runner_code_binds_manager_and_bin_helpers(
     if node is None:
         pytest.skip("select the Node executable for runner code-identity integration")
     assert Path(node).is_absolute() and Path(node).is_file()
-    from tests.test_native_review_exact_action_always import _token
+    from tests.native_launch_evidence_helpers import _inventory
 
     parent = Path(__file__).resolve().parents[1] / "rust" / "target" / "runner-wire-tests"
     parent.mkdir(parents=True, exist_ok=True)
@@ -265,12 +284,12 @@ def test_closed_runner_code_binds_manager_and_bin_helpers(
         manager_helper = manager / "helper.mjs"
         manager_helper.write_text("export default 'safe';\n")
         monkeypatch.setenv("PATH", os.pathsep.join((str(manager), str(Path(node).parent), "/usr/bin", "/bin")))
-        before = _token("npx wrangler --version", project)
+        before = _inventory("npx wrangler --version", project)
         assert before is not None, "a verifiable runner must retain a reusable code identity"
         manager_entry.touch()
         cli.touch()
         (project / "unrelated.txt").write_text("ordinary project data")
-        assert _token("npx wrangler --version", project) == before, "timestamps are not executable versions"
+        assert _inventory("npx wrangler --version", project) == before, "timestamps are not executable versions"
 
         # Independent fixture execution confirms both selected helpers really
         # run; this bypasses no Guard grant and is not owning-delivery proof.
@@ -291,7 +310,7 @@ def test_closed_runner_code_binds_manager_and_bin_helpers(
         metadata = selected.stat()
         selected.write_text("export default 'evil';\n")
         os.utime(selected, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
-        after = _token("npx wrangler --version", project)
+        after = _inventory("npx wrangler --version", project)
         assert after is not None and after != before
         assert "evil" in execute()
         preload = project / "preload.mjs"
@@ -300,5 +319,7 @@ def test_closed_runner_code_binds_manager_and_bin_helpers(
             f"import {{writeFileSync}} from 'node:fs'; writeFileSync({json.dumps(str(sentinel))}, 'unexpected');\n"
         )
         monkeypatch.setenv("NODE_OPTIONS", f"--import={preload}")
-        assert _token("npx wrangler --version", project) is None, "unbound startup code cannot borrow runner consent"
+        assert _inventory("npx wrangler --version", project) is None, (
+            "unbound startup code prevents a complete observation"
+        )
         assert not sentinel.exists(), "identity analysis must not execute preload code"

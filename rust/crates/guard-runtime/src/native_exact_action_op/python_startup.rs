@@ -26,6 +26,10 @@ pub(super) fn runtime_library(executable: &Value, home: Option<&str>) -> Proof<V
     Layout::of(executable, false, home).map(|layout| layout.library)
 }
 
+pub(super) fn runtime_native_library(image: &str, version: &str) -> Proof<Option<String>> {
+    layout::library_of_native_image(image, version)
+}
+
 /// Whether the import system runs the cached bytecode at `pyc` in place of a
 /// source with `source` metadata. A hash-based file is bound whether or not
 /// Python checks its hash; a timestamp file only when it records the

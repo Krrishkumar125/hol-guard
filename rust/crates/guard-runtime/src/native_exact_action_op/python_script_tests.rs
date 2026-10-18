@@ -132,7 +132,7 @@ fn bind_with(
         engines: &Fixed,
     };
     let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
-    python_script(&args, project.cwd(), &ctx, executable)
+    python_script(&args, project.cwd(), &ctx, executable, &[])
 }
 
 fn launch(project: &Project, command: &str) -> Result<Value, &'static str> {
@@ -468,12 +468,18 @@ fn code_the_graph_cannot_bind_keeps_the_launch_once_only() {
 }
 
 #[test]
-fn only_a_single_python_launch_gets_a_script_identity() {
+fn metadata_only_python_images_cannot_get_a_closed_launch_identity() {
     let project = report_project();
-    let launched = launch(&project, "python3 scripts/report.py").unwrap();
-    assert_eq!(launched["kind"], "python-script");
-    assert!(launch(&project, "python scripts/report.py").is_ok());
-    assert!(launch(&project, "python3.12 scripts/report.py").is_ok());
+    for command in [
+        "python3 scripts/report.py",
+        "python scripts/report.py",
+        "python3.12 scripts/report.py",
+    ] {
+        assert_eq!(
+            launch(&project, command),
+            Err("python_runtime_bootstrap_unproven")
+        );
+    }
     assert_eq!(launch(&project, "python3 -c 1"), Err("mutable_launcher"));
     assert_eq!(
         launch(&project, "cd scripts && python3 report.py"),

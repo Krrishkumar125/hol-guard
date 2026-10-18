@@ -441,7 +441,10 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                 crate::daemon_handler_op::evaluate_daemon_handler_request(&request)
             }
             ResidentOperationV1::NativeExactAction(request) => {
-                crate::native_exact_action_op::evaluate_native_exact_action_request(&request)
+                crate::native_exact_action_op::evaluate_native_exact_action_request(
+                    &request,
+                    policy_store.map(PolicySnapshotStore::guard_home),
+                )
             }
             ResidentOperationV1::DaemonRoute(request) => {
                 crate::daemon_route_op::evaluate_daemon_route_request(&request)
