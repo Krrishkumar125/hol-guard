@@ -43,6 +43,41 @@ def http_registry(request):
         yield registry
 
 
+def _compile_hardened_helper(directory: Path, marker: str) -> Path:
+    source = directory / "compiled-helper.c"
+    image = directory / "compiled-helper"
+    source.write_text(
+        "#include <stdio.h>\n"
+        "int main(int argc, char **argv) {\n"
+        f'  printf("{marker} argv0=%s arg=%s\\n", argv[0], argc > 1 ? argv[1] : "");\n'
+        "  return 0;\n"
+        "}\n"
+    )
+    subprocess.run(
+        ["/usr/bin/clang", "-O0", "-Wl,-no_uuid", str(source), "-o", str(image)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [
+            "/usr/bin/codesign",
+            "--force",
+            "--sign",
+            "-",
+            "--options",
+            "runtime",
+            "--identifier",
+            "guard.bash-broker-sdk-test",
+            str(image),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return image
+
+
 @pytest.mark.parametrize(
     "duration",
     [
@@ -57,6 +92,9 @@ def http_registry(request):
         "network-once",
         "network-persistent-same-intent",
         "network-quiet",
+        "compiled-once",
+        "compiled-persistent-same-intent",
+        "compiled-pending-helper-change",
     ],
 )
 @pytest.mark.parametrize("harness", ["omp", "pi"])
@@ -69,7 +107,8 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     http_registry,
 ):
     del native_context_digest
-    duration = duration.removeprefix("network-")
+    compiled = duration.startswith("compiled-")
+    duration = duration.removeprefix("network-").removeprefix("compiled-")
     repo = Path(__file__).resolve().parents[1]
     sdk_root = repo / "ci" / "pi-exact-continuation"
     package_name = "@earendil-works/pi-coding-agent" if harness == "pi" else "@oh-my-pi/pi-coding-agent"
@@ -92,6 +131,10 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
         target = execution_cwd / name
         target.write_bytes((fixtures / name).read_bytes())
         target.chmod(0o700)
+    compiled_marker = "compiled-v1"
+    if compiled:
+        _compile_hardened_helper(execution_cwd, compiled_marker)
+        (execution_cwd / "maintenance.sh").write_text("#!/bin/bash\ncompiled-helper value\n")
     if http_registry is not None:
         (execution_cwd / "fixture-registry").write_text(http_registry.helper())
         for name in tuple(os.environ):
@@ -263,6 +306,10 @@ pi.on("tool_call", async (event, ctx) => {
         else:
             assert result["details"]["exitCode"] == 125, result
 
+    def assert_compiled_output(result, marker):
+        text = "\n".join(block.get("text", "") for block in result.get("content", []))
+        assert f"{marker} argv0=compiled-helper arg=value" in text, text
+
     try:
         if duration == "quiet":
             update_guard_settings(guard, {"subprocess_action": "allow", "risk_actions": {"persistence": "allow"}})
@@ -286,8 +333,14 @@ pi.on("tool_call", async (event, ctx) => {
             previous = pending[0]
             previous_id = previous["request_id"]
             assert isinstance(previous_id, str)
-            target = execution_cwd / ("fixture-registry" if duration == "pending-helper-change" else "maintenance.sh")
-            target.write_text(target.read_text() + "\n# reviewed version changed before execution\n")
+            if compiled:
+                compiled_marker = "compiled-v2"
+                _compile_hardened_helper(execution_cwd, compiled_marker)
+            else:
+                target = execution_cwd / (
+                    "fixture-registry" if duration == "pending-helper-change" else "maintenance.sh"
+                )
+                target.write_text(target.read_text() + "\n# reviewed version changed before execution\n")
             refused("changed-pending", "native_bash_consent_required")
             pending = store.list_approval_requests()
             assert len(pending) == 1
@@ -316,6 +369,12 @@ pi.on("tool_call", async (event, ctx) => {
         assert isinstance(native, dict)
         subject = native["subject"]
         assert subject["context"]["cwd"] == str(execution_cwd)
+        if compiled:
+            assert subject["execution_assurance"] == "macos-hardened-broker-v1"
+            assert any(
+                item["kind"] == "native" and item["resolved_path"] == str(execution_cwd / "compiled-helper")
+                for item in subject["code_inputs"]
+            )
         if duration == "keep-blocked":
             apply_approval_resolution(
                 store=store,
@@ -351,7 +410,7 @@ pi.on("tool_call", async (event, ctx) => {
             scope_contract_version=version,
             scope_contract_digest=digest,
         )
-        if http_registry is not None and duration == "persistent-same-intent":
+        if duration == "persistent-same-intent" and (http_registry is not None or compiled):
             assert close_native_residents(guard_home=guard)
         if duration == "host-parent-death":
             configure("host-parent-death-retry")
@@ -382,7 +441,10 @@ pi.on("tool_call", async (event, ctx) => {
         assert error is None, error
         assert not approved.get("isError", False)
         assert approved.get("details", {}).get("exitCode", 0) == 0
-        assert "local metadata" in report.read_text()
+        if compiled:
+            assert_compiled_output(approved, compiled_marker)
+        else:
+            assert "local metadata" in report.read_text()
         if duration in {"persistent", "persistent-same-intent"}:
             for iteration in range(2, 11):
                 (execution_cwd / "maintenance.sh").touch()
@@ -392,7 +454,14 @@ pi.on("tool_call", async (event, ctx) => {
                 assert error is None, error
                 assert not result.get("isError", False), result
                 assert result.get("details", {}).get("exitCode", 0) == 0, result
-                assert "local metadata" in report.read_text(), "a distinct invocation must execute rather than replay"
+                if compiled:
+                    assert_compiled_output(result, compiled_marker)
+                else:
+                    assert "local metadata" in report.read_text(), (
+                        "a distinct invocation must execute rather than replay"
+                    )
+            if compiled:
+                assert close_native_residents(guard_home=guard)
             assert store.list_approval_requests() == []
             if http_registry is not None:
                 assert len(http_registry.requests) == 40
