@@ -287,6 +287,11 @@ const onceOnlyRequest = (reason: string | null): GuardApprovalRequest => ({
 for (const [reason, fragment] of [
   ["no_command_identity", "no stable command or file"],
   ["mutable_launcher", "run other code or config"],
+  ["node_package_manifest_unproven", "resolution settings"],
+  ["node_package_entrypoint_unproven", "package entry point"],
+  ["node_package_exports_unproven", "export conditions or path patterns"],
+  ["node_package_native_addon_unproven", "compiled dependency"],
+  ["node_runtime_package_mutation_unproven", "later package loads"],
   ["compound_command", "chains steps"],
   ["guard_control", "Changes to Guard itself"],
   ["package_action", "Package installs and updates"],

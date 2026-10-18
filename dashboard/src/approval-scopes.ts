@@ -228,6 +228,16 @@ const ONCE_ONLY_REASON_COPY: Record<string, string> = {
     "Always allow is unavailable: this tool call has no stable command or file to remember. You can allow it once.",
   mutable_launcher:
     "Always allow is unavailable: this program can run other code or config, so Guard cannot prove what it will do next time. You can allow it once.",
+  node_package_manifest_unproven:
+    "Guard could not verify an installed package's resolution settings. Repair or reinstall the package before remembering this command.",
+  node_package_entrypoint_unproven:
+    "Guard could not bind the installed package entry point to the code it loads. This command cannot be remembered.",
+  node_package_exports_unproven:
+    "Guard cannot yet verify this package's export conditions or path patterns. This command cannot be remembered.",
+  node_package_native_addon_unproven:
+    "Guard has not bound the compiled dependency this package would load. This command cannot be remembered.",
+  node_runtime_package_mutation_unproven:
+    "Guard has not verified that later package loads are protected from this program's file writes. This command cannot be remembered.",
   compound_command:
     "Always allow is unavailable: this command chains steps that Guard cannot verify one by one. You can allow it once.",
   guard_control: "Changes to Guard itself are always reviewed. You can allow this one time.",

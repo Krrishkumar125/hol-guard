@@ -18,7 +18,9 @@ pub const NATIVE_EXACT_ACTION_REQUEST_SCHEMA: &str = "guard-native-exact-action-
 /// Schema discriminator for the result.
 pub const NATIVE_EXACT_ACTION_RESULT_SCHEMA: &str = "guard-native-exact-action-result.v1";
 /// Capability advertised by the runtime when this operation is available.
-pub const NATIVE_EXACT_ACTION_FEATURE: &str = "native-exact-action-v1";
+pub const NATIVE_EXACT_ACTION_FEATURE: &str = "native-exact-action-v2";
+/// Old clients retain the same wire schema; the stronger proof is compatible.
+pub const NATIVE_EXACT_ACTION_LEGACY_FEATURE: &str = "native-exact-action-v1";
 /// Largest canonical request serialization the op will accept.
 pub const NATIVE_EXACT_ACTION_MAX_BYTES: usize = 256 * 1024;
 /// Longest filesystem budget a request may ask for.

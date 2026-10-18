@@ -27,7 +27,7 @@ from ..runtime.extension_control_runtime import current_extension_control_bindin
 from .hook_native_review_binding import native_review_policy_binding
 from .hook_request_parsing import pre_tool_command, pre_tool_input
 
-NATIVE_EXACT_ACTION_FEATURE = "native-exact-action-v1"
+NATIVE_EXACT_ACTION_FEATURE = "native-exact-action-v2"
 UNPROVEN_LAUNCH = "unproven_launch"
 _LOGGER = logging.getLogger(__name__)
 _TIMEOUT_SECONDS = 6.0
@@ -51,6 +51,11 @@ _ONCE_ONLY_REASONS = frozenset(
         "broad_scope",
         "destructive_command",
         "git_helper_config",
+        "node_package_manifest_unproven",
+        "node_package_entrypoint_unproven",
+        "node_package_exports_unproven",
+        "node_package_native_addon_unproven",
+        "node_runtime_package_mutation_unproven",
     }
 )
 
