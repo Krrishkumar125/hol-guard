@@ -54,8 +54,12 @@ int main(int argc, char **argv) {{
 }
 
 fn hardened_helper_source(root: &Path, program: &str) -> PathBuf {
-    let source = root.join("compiled-helper.c");
-    let image = root.join("compiled-helper");
+    hardened_named_helper_source(root, "compiled-helper", program)
+}
+
+fn hardened_named_helper_source(root: &Path, name: &str, program: &str) -> PathBuf {
+    let source = root.join(format!("{name}.c"));
+    let image = root.join(name);
     std::fs::write(&source, program).unwrap();
     let mut compile = Command::new("/usr/bin/clang");
     compile
@@ -118,6 +122,73 @@ fn bash_broker_runs_the_captured_hardened_image_after_source_mutation() {
     assert_eq!(output.stdout, b"argv0=compiled-helper arg=value\n");
     assert_eq!(output.stderr, b"broker-stderr\n");
     assert_eq!((gate.prepared, gate.committed, gate.released), (0, 1, 1));
+}
+
+#[test]
+fn bash_broker_routes_compiled_cli_output_only_through_the_held_report() {
+    let (_root, request) = tests::fixture();
+    let root = Path::new(&request.cwd);
+    let helper = hardened_named_helper_source(
+        root,
+        "fixture-registry",
+        r#"#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int main(int argc, char **argv) {
+  char direct[4096];
+  if (snprintf(direct, sizeof direct, "%s/maintenance-report.tsv", getenv("HOME")) >= (int)sizeof direct) return 92;
+  FILE *unowned = fopen(direct, "w");
+  if (unowned != NULL) {
+    fputs("unowned write\n", unowned);
+    fclose(unowned);
+    return 90;
+  }
+  if (argc != 3 || (strcmp(argv[2], "alpha") != 0 && strcmp(argv[2], "beta") != 0)) return 64;
+  if (strcmp(argv[1], "list") == 0) {
+    printf("%s/current\n%s/obsolete\n", argv[2], argv[2]);
+    return 0;
+  }
+  if (strcmp(argv[1], "inspect") == 0) {
+    printf("%s\tlocal metadata\n", argv[2]);
+    return 0;
+  }
+  return 64;
+}
+"#,
+    );
+    let captured = capture_for_launch(&request, &tests::admitted("allow")).unwrap();
+    assert_eq!(captured.graph.brokered_images.len(), 1);
+    assert_eq!(captured.brokered_commands.len(), 4);
+    std::fs::write(
+        &helper,
+        "#!/bin/bash\nprintf attacked > \"$HOME/maintenance-report.tsv\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut gate = Gate {
+        allow: true,
+        prepared: 0,
+        committed: 0,
+        released: 0,
+    };
+    let output = super::super::super::bash_launch::execute(
+        captured,
+        Instant::now() + Duration::from_secs(10),
+        &AtomicBool::new(false),
+        &mut gate,
+    )
+    .unwrap();
+    assert_eq!(output.exit_code, Some(0));
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
+    assert_eq!((gate.prepared, gate.committed, gate.released), (1, 1, 1));
+    assert_eq!(
+        std::fs::read_to_string(
+            Path::new(&request.home_dir).join("maintenance-report.tsv")
+        )
+        .unwrap(),
+        "alpha/current\nalpha/obsolete\nalpha\tlocal metadata\nbeta/current\nbeta/obsolete\nbeta\tlocal metadata\n"
+    );
 }
 
 #[test]

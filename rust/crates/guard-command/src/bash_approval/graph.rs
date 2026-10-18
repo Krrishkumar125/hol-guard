@@ -149,7 +149,7 @@ struct Builder<'a> {
     snapshots: BTreeMap<String, String>,
     native_images: BTreeMap<String, String>,
     brokered_images: BTreeMap<String, String>,
-    broker_ids: BTreeMap<(String, Vec<String>), u16>,
+    broker_ids: BTreeMap<(String, usize, usize), u16>,
     invocations: Vec<Invocation>,
     writes: Vec<OutputEffect>,
     output_fds: Option<&'a BTreeMap<String, u32>>,
@@ -417,7 +417,16 @@ impl Builder<'_> {
                                     line: operation.line,
                                 });
                             }
-                            let key = (resolved_path.clone(), operation.argv.clone());
+                            // The wire ID identifies the immutable source call site.
+                            // Literal loop iterations can have different analyzed argv,
+                            // while the native plan still binds each exact invocation in
+                            // order. A per-argv ID would make one frozen source span
+                            // context-dependent and therefore impossible to render.
+                            let key = (
+                                code.resolved_path.clone(),
+                                operation.command_start,
+                                operation.command_end,
+                            );
                             let next =
                                 u16::try_from(self.broker_ids.len()).map_err(|_| Uncertainty {
                                     reason: "bash_broker_invocation_bounds",

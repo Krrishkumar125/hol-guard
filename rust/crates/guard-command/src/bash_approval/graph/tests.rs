@@ -124,6 +124,38 @@ fn brokered_native_call_binds_the_system_stdin_encoder() {
         .contains("__guard_broker_call 0 1 value"));
 }
 
+#[test]
+fn brokered_native_literal_loop_reuses_one_frozen_call_site() {
+    let graph = build(
+        Code {
+            original_path: "/script.sh".into(),
+            resolved_path: "/script.sh".into(),
+            source: "for item in alpha beta; do compiled list \"$item\"; done".into(),
+        },
+        &["/script.sh".into()],
+        &BTreeMap::new(),
+        &FixtureResolver,
+        Instant::now() + Duration::from_secs(1),
+    )
+    .unwrap();
+    assert_eq!(
+        graph
+            .invocations
+            .iter()
+            .filter_map(|invocation| invocation.broker_id)
+            .collect::<Vec<_>>(),
+        [0, 0]
+    );
+    assert_eq!(
+        graph
+            .source_for_launch()
+            .unwrap()
+            .matches("__guard_broker_call 0 0")
+            .count(),
+        1
+    );
+}
+
 fn graph(mode: &str) -> Graph {
     build(
         Code {
