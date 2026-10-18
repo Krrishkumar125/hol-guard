@@ -210,6 +210,8 @@ pi.on("tool_call", async (event, ctx) => {
         assert decoded["version"] == expected and decoded["originalInput"] == original_input
         if call_id == "approved-retry":
             assert decoded.get("acknowledgements") == [{"code": 0, "stderr": ""}], decoded
+            text = "\n".join(block.get("text", "") for block in decoded.get("result", {}).get("content", []))
+            assert "getcwd: cannot access parent directories" not in text, text
         return decoded.get("result"), decoded.get("sdkError")
 
     def refused(call_id, code):

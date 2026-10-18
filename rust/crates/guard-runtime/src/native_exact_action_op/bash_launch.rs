@@ -75,7 +75,7 @@ pub(crate) fn execute(
     )
 }
 
-fn profile(captured: &CapturedBash) -> io::Result<String> {
+pub(super) fn profile(captured: &CapturedBash) -> io::Result<String> {
     let literal = |value: &str| serde_json::to_string(value).map_err(io::Error::other);
     let mut executables = vec![captured
         .interpreter
@@ -96,6 +96,9 @@ fn profile(captured: &CapturedBash) -> io::Result<String> {
         .map(|output| literal(&output.resolved_path).map(|path| format!("(literal {path})")))
         .collect::<io::Result<Vec<_>>>()?
         .join(" ");
+    // macOS getcwd requires directory-data access as well as metadata. A
+    // literal directory allows that lookup without allowing child file data.
+    let cwd = literal(&captured.subject.context.cwd)?;
     Ok(format!(
         r#"(version 1)
 (deny default)
@@ -104,6 +107,7 @@ fn profile(captured: &CapturedBash) -> io::Result<String> {
 (allow process-exec {executables})
 (allow file-read* (subpath "/System") (subpath "/usr/lib") (subpath "/usr/share/locale") (subpath "/dev") {executables})
 (allow file-read-metadata)
+(allow file-read-data (literal {cwd}))
 (allow file-map-executable (subpath "/System") (subpath "/usr/lib") {executables})
 (allow file-write* (literal "/dev/null") {outputs})
 (allow sysctl-read)
