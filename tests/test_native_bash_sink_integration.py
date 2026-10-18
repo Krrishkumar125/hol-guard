@@ -180,6 +180,19 @@ def test_real_sink_quiet_replay_and_current_persistence_review(
                 scope_contract_digest=queued["scope_contract_digest"],
             )
             if duration in {"once", "once-default"}:
+                with store._connect() as connection:
+                    pending_record = tuple(connection.execute(
+                        "select operation_id,payload,integrity from guard_bash_reviews where operation_id=?",
+                        ("sink-fixture-operation-1",),
+                    ).fetchone())
+                    connection.execute("delete from guard_bash_reviews where operation_id=?", (pending_record[0],))
+                assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
+                                      operation_id="sink-fixture-operation-1", output=output, errors=errors) == 125
+                assert not (home / "maintenance-report.tsv").exists()
+                with store._connect() as connection:
+                    assert connection.execute("select claimed_at from guard_local_once_approvals").fetchone()[0] is None
+                    assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 0
+                    connection.execute("insert into guard_bash_reviews values (?,?,?)", pending_record)
                 assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
                                       operation_id="sink-unrelated-operation", output=output, errors=errors) == 125
                 assert not (home / "maintenance-report.tsv").exists()

@@ -49,6 +49,7 @@ fn bash_prelaunch_cancellation_leaves_once_consent_available() {
     let (_root, request) = tests::fixture();
     let (store, envelope) = policy_store(&request);
     let claim = once(&request, &store, "2050-01-01T00:00:00+00:00");
+    seed_once_review(&request, &store, &claim, "cancelled-operation-0001");
     assert!(bash_grant::execute_saved(
         &request,
         &envelope,
@@ -63,7 +64,15 @@ fn bash_prelaunch_cancellation_leaves_once_consent_available() {
         .join("maintenance-report.tsv")
         .exists());
     assert_eq!(
-        run(&request, &store, &envelope, &claim).unwrap().exit_code,
+        run_operation(
+            &request,
+            &store,
+            &envelope,
+            &claim,
+            "cancelled-operation-0001"
+        )
+        .unwrap()
+        .exit_code,
         Some(0)
     );
 }
@@ -86,7 +95,13 @@ fn bash_current_hard_deny_wins_and_harmless_republication_preserves_the_grant() 
             .unwrap();
         envelope.policy_generation = generation;
         envelope.policy_snapshot = serde_json::to_value(snapshot).unwrap();
-        let result = run(&request, &store, &envelope, &claim);
+        let result = run_operation(
+            &request,
+            &store,
+            &envelope,
+            &claim,
+            "policy-reissued-operation-0001",
+        );
         if action == "block" {
             assert!(result.is_err());
             assert!(!Path::new(&request.home_dir)

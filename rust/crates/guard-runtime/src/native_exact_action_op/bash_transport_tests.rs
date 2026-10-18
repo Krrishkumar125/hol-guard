@@ -84,6 +84,7 @@ fn authenticated_bash_disconnect_before_launch_preserves_once_and_live_reissue_r
     let (store, envelope) = policy_store(&request);
     let claim = once(&request, &store, "2050-01-01T00:00:00+00:00");
     let execution = execution(request, envelope, claim.clone());
+    seed_once_review(&execution.capture, &store, &claim, &execution.operation_id);
     let store = Arc::new(store);
     let fence = store.fence_for_launch(&execution.envelope).unwrap();
     let admission = crate::resident_transport::start_resident_workers(

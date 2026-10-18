@@ -67,6 +67,10 @@ fn execute(
     request: &NativeBashExecuteRequestV1,
     store: &PolicySnapshotStore,
 ) -> NativeBashExecuteResultV1 {
+    if let guard_contracts::NativeBashAuthorizationV1::SavedGrant { claim } = &request.authorization
+    {
+        seed_once_review(&request.capture, store, claim, &request.operation_id);
+    }
     serde_json::from_slice(
         &dispatch(
             "native_bash_execute",

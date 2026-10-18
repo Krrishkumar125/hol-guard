@@ -115,12 +115,7 @@ fn bash_explicit_ask_still_needs_consent_and_saved_once_authorizes_the_real_laun
         .join("maintenance-report.tsv")
         .exists());
     let lineage = result.review_lineage.unwrap();
-    Connection::open(&claim.store_path).unwrap().execute(
-        "INSERT INTO approval_requests VALUES(?1,'resolved','allow',?2,?3,?4,?5,?6)",
-        rusqlite::params![claim.decisions[0]["request_id"].as_str().unwrap(),
-            json!({"native_bash":{"artifact_hash":lineage.artifact_hash,"review_lineage":lineage}}).to_string(),
-            request.harness,guard_contracts::NATIVE_BASH_ARTIFACT_ID,lineage.artifact_hash,request.workspace],
-    ).unwrap();
+    assert_eq!(lineage.operation_id, unapproved.operation_id);
     let mut approved = execution(request, envelope, claim);
     approved.operation_id = unapproved.operation_id;
     let result = execute(&approved, &store);

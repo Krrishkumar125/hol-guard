@@ -235,27 +235,16 @@ impl BashOperationJournal<'_> {
             return Err(rusqlite::Error::InvalidQuery);
         }
         let Some(mut record) = self.read_review()? else {
-            // A real owner review's once grant cannot be moved to another
-            // operation by changing only the caller's deduplication id.
-            if let Some(claim) = claim {
-                for decision in &claim.decisions {
-                    if decision
+            if claim.is_some_and(|claim| {
+                claim.decisions.iter().any(|decision| {
+                    decision
                         .get("approval_id")
                         .is_some_and(serde_json::Value::is_string)
-                    {
-                        let request_id = decision
-                            .get("request_id")
-                            .and_then(serde_json::Value::as_str)
-                            .ok_or(rusqlite::Error::InvalidQuery)?;
-                        let native_review: bool = self.connection.query_row(
-                            "SELECT EXISTS(SELECT 1 FROM approval_requests WHERE request_id=?1 AND artifact_id=?2)",
-                            params![request_id, guard_contracts::NATIVE_BASH_ARTIFACT_ID], |row| row.get(0),
-                        )?;
-                        if native_review {
-                            return Err(rusqlite::Error::InvalidQuery);
-                        }
-                    }
-                }
+                })
+            }) {
+                // No legacy-row, missing-schema or synthetic-claim fallback.
+                // Every once grant belongs to a native pending operation.
+                return Err(rusqlite::Error::InvalidQuery);
             }
             return Ok(());
         };

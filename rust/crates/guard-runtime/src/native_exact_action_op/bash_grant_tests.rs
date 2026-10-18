@@ -18,8 +18,11 @@ use std::sync::atomic::AtomicBool;
 mod journal_tests;
 #[path = "bash_grant_lifecycle_tests.rs"]
 mod lifecycle_tests;
+#[path = "bash_grant_review_fixture.rs"]
+mod review_fixture;
 #[path = "bash_grant_route_tests.rs"]
 mod route_tests;
+use review_fixture::{run_operation, seed_once_review};
 
 fn policy_store(request: &NativeBashCaptureV1) -> (PolicySnapshotStore, GuardHookEnvelopeV2) {
     let root = Path::new(&request.guard_home);
@@ -191,6 +194,14 @@ fn once(
     decision["_approval_authority_revision"] =
         json!(crate::claim_reuse::approval_authority_revision(&connection).unwrap());
     claim.decisions = vec![decision];
+    connection.execute(
+        "INSERT INTO approval_requests(request_id,status,resolution_action,action_envelope_json,
+         harness,artifact_id,artifact_hash,workspace) VALUES(?1,'resolved','allow',?2,?3,?4,?5,?6)",
+        params![claim.decisions[0]["request_id"].as_str().unwrap(),
+            json!({"native_bash":{"schema":"guard-native-bash-review.v1",
+                "artifact_id":bash_grant::ARTIFACT,"artifact_hash":binding,"subject":captured.subject}}).to_string(),
+            request.harness,bash_grant::ARTIFACT,binding,request.workspace],
+    ).unwrap();
     connection
         .execute("vacuum into ?1", [&claim.store_path])
         .unwrap();
@@ -203,17 +214,13 @@ fn run(
     envelope: &GuardHookEnvelopeV2,
     claim: &ClaimApprovalReuseDecisionsRequestV1,
 ) -> std::io::Result<guard_contained_process::CapturedOutput> {
-    bash_grant::execute_saved(
+    run_operation(
         request,
-        envelope,
         store,
+        envelope,
         claim,
         &format!("test-intent-{:016x}", next_intent()),
-        Instant::now() + Duration::from_secs(5),
-        &AtomicBool::new(false),
     )
-    .map(|result| result.output.unwrap())
-    .map_err(|failure| failure.error)
 }
 
 fn next_intent() -> u64 {
@@ -396,13 +403,28 @@ fn bash_changed_helper_does_not_spend_the_saved_once_grant() {
     let helper = Path::new(&request.cwd).join("fixture-registry");
     let original = std::fs::read(&helper).unwrap();
     std::fs::write(&helper, "#!/bin/bash\nprintf changed\n").unwrap();
-    assert!(run(&request, &store, &envelope, &claim).is_err());
+    assert!(run_operation(
+        &request,
+        &store,
+        &envelope,
+        &claim,
+        "helper-reissued-operation-0001"
+    )
+    .is_err());
     assert!(!Path::new(&request.home_dir)
         .join("maintenance-report.tsv")
         .exists());
     std::fs::write(&helper, original).unwrap();
     assert_eq!(
-        run(&request, &store, &envelope, &claim).unwrap().exit_code,
+        run_operation(
+            &request,
+            &store,
+            &envelope,
+            &claim,
+            "helper-reissued-operation-0001"
+        )
+        .unwrap()
+        .exit_code,
         Some(0)
     );
 }

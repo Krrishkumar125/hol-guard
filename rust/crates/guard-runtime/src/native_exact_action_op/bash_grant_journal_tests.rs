@@ -11,6 +11,7 @@ fn execute(
     envelope: &GuardHookEnvelopeV2,
     claim: &ClaimApprovalReuseDecisionsRequestV1,
 ) -> std::result::Result<bash_grant::LaunchOutput, bash_grant::LaunchFailure> {
+    seed_once_review(request, store, claim, OPERATION);
     bash_grant::execute_saved(
         request,
         envelope,
@@ -26,6 +27,70 @@ fn artifact(request: &NativeBashCaptureV1, store: &PolicySnapshotStore) -> Strin
     let snapshot = store.current_admitted_snapshot().unwrap();
     let captured = capture_for_launch(request, &snapshot).unwrap();
     bash_grant::binding(&captured.subject, &snapshot).unwrap()
+}
+
+#[test]
+fn two_reissues_of_one_reviewed_once_operation_produce_one_physical_append() {
+    let (_root, request) = tests::fixture();
+    std::fs::write(
+        Path::new(&request.cwd).join("maintenance.sh"),
+        ": >> \"$HOME/dispatch-count.txt\"\nprintf executed >> \"$HOME/dispatch-count.txt\"\n",
+    )
+    .unwrap();
+    let (store, envelope) = policy_store(&request);
+    let claim = once(&request, &store, "2050-01-01T00:00:00+00:00");
+    seed_once_review(&request, &store, &claim, OPERATION);
+    let store = Arc::new(store);
+    let barrier = Arc::new(std::sync::Barrier::new(2));
+    let workers = (0..2)
+        .map(|_| {
+            let (request, envelope, claim, store, barrier) = (
+                request.clone(),
+                envelope.clone(),
+                claim.clone(),
+                store.clone(),
+                barrier.clone(),
+            );
+            std::thread::spawn(move || {
+                barrier.wait();
+                bash_grant::execute_saved(
+                    &request,
+                    &envelope,
+                    &store,
+                    &claim,
+                    OPERATION,
+                    Instant::now() + Duration::from_secs(5),
+                    &AtomicBool::new(false),
+                )
+                .unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    let answers = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(answers.iter().filter(|answer| !answer.replayed).count(), 1);
+    assert_eq!(
+        answers
+            .iter()
+            .filter(|answer| answer.output.is_some())
+            .count(),
+        1
+    );
+    assert_eq!(
+        std::fs::read(Path::new(&request.home_dir).join("dispatch-count.txt")).unwrap(),
+        b"executed"
+    );
+    let connection = Connection::open(&claim.store_path).unwrap();
+    let spends: i64 = connection
+        .query_row(
+            "SELECT count(*) FROM guard_events WHERE event_name='approval.local_once_applied'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(spends, 1);
 }
 
 #[test]
@@ -104,6 +169,7 @@ fn bash_crash_after_reservation_or_dispatch_never_auto_reexecutes_after_restart(
         let (store, envelope) = policy_store(&request);
         let claim = once(&request, &store, "2050-01-01T00:00:00+00:00");
         let artifact = artifact(&request, &store);
+        seed_once_review(&request, &store, &claim, OPERATION);
         let journal =
             BashOperationJournal::open(&store, &claim.store_path, OPERATION, &artifact).unwrap();
         assert!(journal.reserve(&claim).unwrap());

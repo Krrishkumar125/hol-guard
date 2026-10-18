@@ -182,3 +182,22 @@ fn final_once_claim_must_belong_to_the_linked_review_request() {
     assert!(journal.require_review_authority(Some(&claim)).is_err());
     journal.connection.execute_batch("ROLLBACK").unwrap();
 }
+
+#[test]
+fn absent_native_lineage_never_admits_a_once_claim() {
+    let (_root, store, path) = store();
+    let journal = BashOperationJournal::open(&store, &path, OPERATION, HASH).unwrap();
+    let claim: ClaimApprovalReuseDecisionsRequestV1 = serde_json::from_value(json!({
+        "schema":guard_contracts::CLAIM_APPROVAL_REUSE_REQUEST_SCHEMA,"request_id":"claim-test",
+        "guard_home":store.expected_guard_home,"store_path":path,
+        "now":"2026-10-18T00:00:00Z","consume_local_once":true,
+        "decisions":[{"approval_id":"legacy-once","request_id":"missing-request"}],
+    }))
+    .unwrap();
+    // There is deliberately no approval_requests table, native request row,
+    // native pending record, or caller capability that could supply lineage.
+    journal.connection.execute_batch("BEGIN IMMEDIATE").unwrap();
+    assert!(journal.require_review_authority(Some(&claim)).is_err());
+    journal.connection.execute_batch("ROLLBACK").unwrap();
+    assert!(journal.read().unwrap().is_none());
+}
