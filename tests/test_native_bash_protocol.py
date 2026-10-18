@@ -162,7 +162,7 @@ def test_quiet_policy_does_not_mint_or_claim_consent(store, tmp_path):
     store._claim_integrity_evidence.assert_not_called()
 
 
-@pytest.mark.parametrize("failure", ["consent", "block", "integrity", "degraded"])
+@pytest.mark.parametrize("failure", ["block", "integrity", "degraded"])
 def test_sink_never_launders_missing_consent_or_saved_blocks(store, tmp_path, failure):
     lookup = store.resolve_policy_decision_lookup.return_value
     if failure == "block":
@@ -172,8 +172,26 @@ def test_sink_never_launders_missing_consent_or_saved_blocks(store, tmp_path, fa
     elif failure == "degraded":
         lookup["trust_status"] = {"remembered_rules": "disabled_degraded"}
     with pytest.raises(bridge.NativeBashError):
-        sink._authorization(store, _prepared(failure == "consent"), harness="omp", workspace=tmp_path)
+        sink._authorization(store, _prepared(True), harness="omp", workspace=tmp_path)
     store._claim_integrity_evidence.assert_not_called()
+
+
+def test_missing_consent_reaches_native_journal_without_fabricating_a_grant(store, tmp_path):
+    result = sink._authorization(store, _prepared(True), harness="omp", workspace=tmp_path)
+    assert result == {"kind": "current_policy", "store_path": str(store.path)}
+    store._claim_integrity_evidence.assert_not_called()
+
+
+def test_replay_can_report_previously_spent_once_authority_to_an_unprivileged_query():
+    request = _request()
+    result = _result(request)
+    result.update(status="recorded", code="native_bash_already_completed_output_not_retained",
+                  replayed=True, grant_claimed=True, payload=None)
+    result["operation"]["authorization"] = "saved_grant"
+    validate_executed(result, request)
+    result["grant_claimed"] = False
+    with pytest.raises(bridge.NativeBashError):
+        validate_executed(result, request)
 
 
 def test_once_evidence_is_handed_to_native_without_spending_it(store, tmp_path):

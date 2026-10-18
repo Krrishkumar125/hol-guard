@@ -56,7 +56,12 @@ def validate_executed(result: dict[str, object], request: dict[str, object]) -> 
         authorization = request["authorization"]
         _require(isinstance(authorization, dict))
         assert isinstance(authorization, dict)
-        _require(operation["authorization"] == authorization["kind"])
+        _require(isinstance(operation["authorization"], str)
+                 and operation["authorization"] in {"saved_grant", "current_policy"})
+        if result["replayed"]:
+            _require(result["grant_claimed"] == (operation["authorization"] == "saved_grant"))
+        else:
+            _require(operation["authorization"] == authorization["kind"])
         _require(isinstance(operation["state"], str)
                  and operation["state"] in {"claimed", "dispatched", "completed", "uncertain"})
         _require(type(operation["dispatch_acknowledged"]) is bool)

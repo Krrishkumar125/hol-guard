@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
 from ..native_bash_protocol import NativeBashError, execute, observe_host, prepare, request_id
+from ..store_base import _workspace_policy_key
 
 if TYPE_CHECKING:
     from ..store import GuardStore
@@ -36,16 +37,24 @@ def _authorization(
         raise NativeBashError("native_bash_saved_decision_unreadable")
     decision = lookup.get("decision")
     if decision is None:
-        if prepared["consent_required"]:
-            raise NativeBashError("native_bash_consent_required")
+        # A once grant may already be spent by this operation. Let the native
+        # owner read its authenticated journal before assessing fresh consent.
+        # Without a matching record it refuses a consent-required launch before
+        # reservation/effects; this variant never substitutes for a grant.
         return {"kind": "current_policy", "store_path": str(store.path)}
     if not isinstance(decision, dict) or decision.get("action") != "allow":
         raise NativeBashError("native_bash_saved_decision_blocked")
+    decision_workspace = decision.get("workspace")
+    workspace_matches = (
+        isinstance(decision_workspace, str)
+        and decision_workspace in {str(workspace), _workspace_policy_key(str(workspace))}
+    ) or (not decision.get("approval_id") and decision_workspace is None)
     if (
         (not decision.get("approval_id") and decision.get("scope") != "artifact")
         or decision.get("artifact_id") != prepared["artifact_id"]
         or decision.get("artifact_hash") != prepared["artifact_hash"]
-        or decision.get("harness") != harness or decision.get("workspace") != str(workspace)
+        or decision.get("harness") != harness
+        or not workspace_matches
     ):
         raise NativeBashError("native_bash_saved_decision_mismatch")
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")

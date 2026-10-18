@@ -111,7 +111,16 @@ fn once(
         .execute(
             "update guard_local_once_approvals set artifact_id='native-bash-launch:v1', \
          artifact_hash=?1, harness=?2, workspace=?3, expires_at=?4 where approval_id=?5",
-            params![binding, request.harness, request.workspace, expires, id],
+            params![
+                binding,
+                request.harness,
+                crate::policy_decision_lookup_op::computed_workspace_policy_key(Some(
+                    &request.workspace
+                ))
+                .unwrap(),
+                expires,
+                id
+            ],
         )
         .unwrap();
     let sql = format!(
@@ -232,8 +241,8 @@ fn persistent(
     let id = claim.decisions[0]["decision_id"].as_i64().unwrap();
     connection.execute(
         "update policy_decisions set artifact_id='native-bash-launch:v1',artifact_hash=?1, \
-         harness=?2,workspace=?3,scope='artifact',source='approval-gate',expires_at=null where decision_id=?4",
-        params![binding,request.harness,request.workspace,id],
+         harness=?2,workspace=null,scope='artifact',source='approval-gate',expires_at=null where decision_id=?3",
+        params![binding,request.harness,id],
     ).unwrap();
     let sql = format!(
         "select {} from policy_decisions where decision_id=?1",

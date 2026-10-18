@@ -250,12 +250,22 @@ fn matches_grant(
         .get("decision_id")
         .and_then(|value| value.as_i64())
         .is_some();
+    let project_matches = crate::policy_decision_lookup_op::workspace_policy_key(text("workspace"))
+        == crate::policy_decision_lookup_op::computed_workspace_policy_key(Some(
+            subject.context.project.as_str(),
+        ));
+    // Existing artifact-scope rows have workspace=null. Their expected native
+    // context token still binds the exact captured project/host/cwd/home; a
+    // global or different project's token cannot match it. Once rows retain
+    // the independent workspace key and may never omit that binding.
+    let workspace_matches = project_matches
+        || persistent && decision.get("workspace") == Some(&serde_json::Value::Null);
     once != persistent
         && text("action") == Some("allow")
         && text("harness") == Some(harness)
         && text("artifact_id") == Some(ARTIFACT)
         && text("artifact_hash") == Some(expected)
-        && text("workspace") == Some(subject.context.project.as_str())
+        && workspace_matches
         && (once || text("scope") == Some("artifact") && text("source") == Some("approval-gate"))
 }
 
