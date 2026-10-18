@@ -19,7 +19,7 @@ use crate::policy_store::{
     policy_store_approval::launch_fence::LaunchPolicyFence, PolicySnapshotStore,
 };
 
-pub(super) const ARTIFACT: &str = "native-bash-launch:v1";
+pub(super) const ARTIFACT: &str = guard_contracts::NATIVE_BASH_ARTIFACT_ID;
 
 #[derive(Debug)]
 pub(crate) struct LaunchFailure {
@@ -180,6 +180,9 @@ pub(crate) fn execute_authorized(
         claimed: false,
         dispatched: false,
         journal: &journal,
+        harness: request.harness.clone(),
+        project: captured.subject.context.project.clone(),
+        saved_authority_refused: false,
     };
     match super::bash_launch::execute(captured, deadline, cancel, &mut gate) {
         Ok(output) => {
@@ -207,7 +210,9 @@ pub(crate) fn execute_authorized(
             } else {
                 None
             },
-            code: None,
+            code: gate
+                .saved_authority_refused
+                .then_some("native_bash_saved_authority_changed"),
         }),
     }
 }
@@ -276,6 +281,9 @@ struct Gate<'store, 'journal> {
     claimed: bool,
     dispatched: bool,
     journal: &'journal BashOperationJournal<'journal>,
+    harness: String,
+    project: String,
+    saved_authority_refused: bool,
 }
 
 impl Gate<'_, '_> {
@@ -294,9 +302,13 @@ impl Gate<'_, '_> {
                     .reserve(claim)
                     .map_err(|_| io::ErrorKind::PermissionDenied)?
             } else {
-                self.journal
-                    .reserve_allowed()
-                    .map_err(|_| io::ErrorKind::PermissionDenied)?
+                match self.journal.reserve_allowed(&self.harness, &self.project) {
+                    Ok(reserved) => reserved,
+                    Err(_) => {
+                        self.saved_authority_refused = true;
+                        return Err(io::ErrorKind::PermissionDenied.into());
+                    }
+                }
             };
             if !reserved {
                 return Err(io::ErrorKind::PermissionDenied.into());

@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,7 @@ from codex_plugin_scanner.guard.approvals import apply_approval_resolution
 from codex_plugin_scanner.guard.cli.commands_dispatch_local import _run_guard_execute_bound_bash_command
 from codex_plugin_scanner.guard.daemon.hook_native_review_approval import queue_native_pre_tool_review
 from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker
+from codex_plugin_scanner.guard.models import PolicyDecision
 from codex_plugin_scanner.guard.native_bash_protocol import runtime_status
 from codex_plugin_scanner.guard.native_resident_client import close_native_residents
 from codex_plugin_scanner.guard.runtime import bound_bash_sink
@@ -41,7 +43,7 @@ class _Secrets:
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="native immutable Bash owner currently supports macOS")
 @pytest.mark.parametrize("duration,home_in_workspace", [
-    ("quiet", True), ("once", False), ("once-default", False), ("persistent", False),
+    ("quiet", True), ("quiet-raced-block", True), ("once", False), ("once-default", False), ("persistent", False),
 ])
 def test_real_sink_quiet_replay_and_current_persistence_review(
     native_context_digest, tmp_path, monkeypatch, home_in_workspace, duration,
@@ -159,6 +161,26 @@ def test_real_sink_quiet_replay_and_current_persistence_review(
             assert report.read_text() == "preserved once report"
             with store._connect() as connection:
                 assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 1
+            return
+        if duration == "quiet-raced-block":
+            native_execute = bound_bash_sink.execute
+
+            def insert_block_after_python_lookup(request, **kwargs):
+                assert request["authorization"]["kind"] == "current_policy"
+                store.upsert_policy(
+                    PolicyDecision(harness="omp", scope="artifact", action="block",
+                                   artifact_id="native-bash-launch:v1", reason="Lane-owned concurrent block"),
+                    datetime.now(timezone.utc).isoformat(),
+                )
+                return native_execute(request, **kwargs)
+
+            monkeypatch.setattr(bound_bash_sink, "execute", insert_block_after_python_lookup)
+            assert run_bound_bash(payload, store=store, workspace=project, harness="omp",
+                                  operation_id="sink-fixture-raced-block", output=output, errors=errors) == 125
+            assert "native_bash_saved_authority_changed" in errors.getvalue()
+            assert not (home / "maintenance-report.tsv").exists()
+            with store._connect() as connection:
+                assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 0
             return
         request_directory = tmp_path / "hol-guard-contained-test-sink-fixture"
         request_directory.mkdir(mode=0o700)

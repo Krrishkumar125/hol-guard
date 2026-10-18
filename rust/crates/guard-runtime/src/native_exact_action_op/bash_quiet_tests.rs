@@ -7,7 +7,18 @@ fn quiet(
     envelope: &GuardHookEnvelopeV2,
 ) -> NativeBashExecuteRequestV1 {
     let store_path = Path::new(&request.guard_home).join("guard.db");
-    Connection::open(&store_path).unwrap();
+    let connection = Connection::open(&store_path).unwrap();
+    let initialized: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='policy_decisions')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    drop(connection);
+    if !initialized {
+        crate::policy_decision_lookup_op::tests::seed_store(&store_path);
+    }
     NativeBashExecuteRequestV1 {
         schema: NATIVE_BASH_EXECUTE_REQUEST_SCHEMA.into(),
         request_id: "quiet-request-0001".into(),
@@ -59,13 +70,13 @@ fn bash_realistic_dry_report_runs_ten_times_across_resident_restarts_without_con
         .unwrap()
         .contains("beta\tlocal metadata"));
     let connection = Connection::open(execution.authorization.store_path()).unwrap();
-    let consent_tables: i64 = connection.query_row(
-        "SELECT count(*) FROM sqlite_schema WHERE name IN ('guard_local_once_approvals','policy_decisions')",
+    let consent_rows: i64 = connection.query_row(
+        "SELECT (SELECT count(*) FROM guard_local_once_approvals) + (SELECT count(*) FROM policy_decisions)",
         [], |row| row.get(0),
     ).unwrap();
     assert_eq!(
-        consent_tables, 0,
-        "quiet launches must not need a consent store"
+        consent_rows, 0,
+        "quiet launches must not create or need consent rows"
     );
     assert_eq!(
         connection

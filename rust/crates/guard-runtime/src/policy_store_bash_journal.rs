@@ -15,6 +15,9 @@ use serde_json::{json, Value};
 use super::policy_store_authority;
 use super::PolicySnapshotStore;
 
+#[path = "policy_store_bash_admission.rs"]
+mod admission;
+
 const PURPOSE: &str = "guard-native-bash-operation-v1";
 const MAX_RECORD_BYTES: usize = 16 * 1024;
 const SCHEMA: &str = include_str!(
@@ -166,10 +169,18 @@ impl<'store> BashOperationJournal<'store> {
     }
 
     /// The fenced launch owner has established that every current decision
-    /// permits this action. No approval row is created, matched or consumed.
-    pub(crate) fn reserve_allowed(&self) -> rusqlite::Result<bool> {
+    /// permits this action. Re-read saved authority under the same write lock
+    /// as reservation; no approval row is created or consumed here.
+    pub(crate) fn reserve_allowed(&self, harness: &str, project: &str) -> rusqlite::Result<bool> {
         self.connection.execute_batch("BEGIN IMMEDIATE")?;
-        match self.insert(Authorization::CurrentPolicy) {
+        let result = admission::require_no_saved_decision(
+            &self.connection,
+            self.artifact_hash,
+            harness,
+            project,
+        )
+        .and_then(|()| self.insert(Authorization::CurrentPolicy));
+        match result {
             Ok(Some(())) => {
                 self.connection.execute_batch("COMMIT")?;
                 Ok(true)
