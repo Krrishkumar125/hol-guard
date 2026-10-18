@@ -41,7 +41,9 @@ const INERT_OPTIONS: [&str; 10] = [
 ];
 /// Preload code or move package lookup outside the bound tree.
 const LOADER_ENVIRONMENT: [&str; 2] = ["NODE_OPTIONS", "NODE_PATH"];
-const SOURCE_EXTENSIONS: [&str; 6] = ["js", "mjs", "cjs", "ts", "mts", "cts"];
+// Node also loads an existing extensionless source file (notably bin shims).
+// This does not permit guessing an extension for an exports target.
+const SOURCE_EXTENSIONS: [&str; 7] = ["", "js", "mjs", "cjs", "ts", "mts", "cts"];
 /// CommonJS file resolution order; `.node` (a native addon) is refused.
 const REQUIRE_SUFFIXES: [&str; 4] = ["", ".js", ".json", ".node"];
 const MAX_MODULES: usize = 64;

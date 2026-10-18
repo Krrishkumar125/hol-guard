@@ -39,6 +39,7 @@ def test_manifest_only_runtime_is_refused_by_the_real_transport_gate(tmp_path, m
         "node_package_exports_unproven",
         "node_package_native_addon_unproven",
         "node_runtime_package_mutation_unproven",
+        "runner_code_closure_unproven",
     ],
 )
 def test_specific_installed_code_uncertainty_is_preserved_without_accepting_arbitrary_reasons(reason):
@@ -148,3 +149,155 @@ print('previous runtime withheld exact identity')
     )
     assert completed.returncode == 0, completed.stderr[-2000:]
     assert completed.stdout.strip() == "previous runtime withheld exact identity"
+
+
+@pytest.mark.usefixtures("package_intent_native")
+def test_reusable_runner_identity_binds_installed_helper_code(native_context_digest, tmp_path, monkeypatch):
+    del native_context_digest
+    from tests.test_native_review_exact_action_always import _token, _wrangler_workspace
+
+    project = _wrangler_workspace(tmp_path, monkeypatch)
+    (tmp_path / "home").mkdir()
+    package = project / "node_modules" / "wrangler"
+    (package / "package.json").write_text(
+        '{"name":"wrangler","version":"4.1.0","type":"module","bin":{"wrangler":"bin/wrangler.js"}}'
+    )
+    (package / "bin" / "wrangler.js").write_text(
+        "#!/usr/bin/env node\nimport value from './helper.js'; console.log(value);\n"
+    )
+    helper = package / "bin" / "helper.js"
+    helper.write_text("export default 'safe';\n")
+    before = _token("npx wrangler --version", project)
+    metadata = helper.stat()
+    helper.write_text("export default 'evil';\n")
+    os.utime(helper, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+    after = _token("npx wrangler --version", project)
+    # Either the complete runner is unproven, or its reviewed code must change
+    # identity. A manifest/bin-only reusable token is never sufficient.
+    assert before is None or after != before, "runner consent ignored changed installed executable code"
+
+
+@pytest.mark.usefixtures("package_intent_native")
+@pytest.mark.parametrize("manager_kind", ["bare-launcher", "native-image"])
+def test_runner_code_refuses_unproven_manager_without_losing_verified_fixture(
+    native_context_digest,
+    tmp_path,
+    monkeypatch,
+    manager_kind,
+):
+    del native_context_digest
+    from tests.test_native_review_exact_action_always import _token, _wrangler_workspace
+
+    project = _wrangler_workspace(tmp_path, monkeypatch)
+    assert _token("npx wrangler --version", project) is not None
+    manager = tmp_path / "manager-bin" / "npx"
+    if manager_kind == "bare-launcher":
+        source = manager.read_bytes()
+        manager.unlink()  # Only this test's synthetic symlink.
+        manager.write_bytes(source)
+        manager.chmod(0o755)
+    else:
+        # An executable image hash cannot prove its dynamically loaded code.
+        manager.resolve().write_bytes(Path("/usr/bin/true").read_bytes())
+    assert _token("npx wrangler --version", project) is None
+
+
+@pytest.mark.usefixtures("package_intent_native")
+@pytest.mark.parametrize("changed", ["manager", "bin"])
+@pytest.mark.parametrize("shebang", ["absolute", "env"])
+@pytest.mark.parametrize("shim", [False, True])
+def test_closed_runner_code_binds_manager_and_bin_helpers(
+    native_context_digest,
+    tmp_path,
+    monkeypatch,
+    changed,
+    shebang,
+    shim,
+):
+    del native_context_digest
+    node = os.environ.get("HOL_GUARD_TEST_NODE_BINARY")
+    if node is None:
+        pytest.skip("select the Node executable for runner code-identity integration")
+    assert Path(node).is_absolute() and Path(node).is_file()
+    from tests.test_native_review_exact_action_always import _token
+
+    parent = Path(__file__).resolve().parents[1] / "rust" / "target" / "runner-wire-tests"
+    parent.mkdir(parents=True, exist_ok=True)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("NODE_OPTIONS", raising=False)
+    monkeypatch.delenv("NODE_PATH", raising=False)
+    with tempfile.TemporaryDirectory(prefix="closed-", dir=parent) as directory:
+        project = Path(directory).resolve()
+        (project / "package.json").write_text('{"name":"demo","type":"module"}')
+        package = project / "node_modules" / "wrangler"
+        (package / "bin").mkdir(parents=True)
+        (package / "package.json").write_text(
+            '{"name":"wrangler","version":"4.1.0","type":"module","bin":{"wrangler":"bin/cli.js"}}'
+        )
+        cli = package / "bin" / "cli.js"
+        header = f"#!{node}" if shebang == "absolute" else "#!/usr/bin/env node"
+        cli.write_text(f"{header}\nimport value from './helper.js'; console.log(value);\n")
+        cli.chmod(0o700)
+        bin_helper = package / "bin" / "helper.js"
+        bin_helper.write_text("export default 'safe';\n")
+        bins = project / "node_modules" / ".bin"
+        bins.mkdir()
+        selected_bin = bins / "wrangler"
+        if shim:
+            selected_bin.write_text(f"{header}\nimport '../wrangler/bin/cli.js';\n")
+            selected_bin.chmod(0o700)
+        else:
+            selected_bin.symlink_to(Path("..") / "wrangler" / "bin" / "cli.js")
+        manager = project / "manager"
+        manager.mkdir()
+        manager_entry = manager / "npx.mjs"
+        # A small synthetic manager whose complete code can be bound. This
+        # is not qualification of the real npm/npx manager implementation.
+        manager_entry.write_text(
+            f"{header}\nimport value from './helper.mjs';\n"
+            f"import {json.dumps(str(selected_bin))};\nconsole.log(value);\n"
+        )
+        manager_entry.chmod(0o700)
+        (manager / "npx").symlink_to("npx.mjs")
+        manager_helper = manager / "helper.mjs"
+        manager_helper.write_text("export default 'safe';\n")
+        monkeypatch.setenv("PATH", os.pathsep.join((str(manager), str(Path(node).parent), "/usr/bin", "/bin")))
+        before = _token("npx wrangler --version", project)
+        assert before is not None, "a verifiable runner must retain a reusable code identity"
+        manager_entry.touch()
+        cli.touch()
+        (project / "unrelated.txt").write_text("ordinary project data")
+        assert _token("npx wrangler --version", project) == before, "timestamps are not executable versions"
+
+        # Independent fixture execution confirms both selected helpers really
+        # run; this bypasses no Guard grant and is not owning-delivery proof.
+        def execute():
+            result = subprocess.run(
+                [str(manager / "npx"), "wrangler", "--version"],
+                cwd=project,
+                env={"PATH": os.environ["PATH"], "HOME": str(home)},
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert result.returncode == 0, result.stderr
+            return result.stdout
+
+        assert execute() == "safe\nsafe\n"
+        selected = manager_helper if changed == "manager" else bin_helper
+        metadata = selected.stat()
+        selected.write_text("export default 'evil';\n")
+        os.utime(selected, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+        after = _token("npx wrangler --version", project)
+        assert after is not None and after != before
+        assert "evil" in execute()
+        preload = project / "preload.mjs"
+        sentinel = project / "unexpected-preload"
+        preload.write_text(
+            f"import {{writeFileSync}} from 'node:fs'; writeFileSync({json.dumps(str(sentinel))}, 'unexpected');\n"
+        )
+        monkeypatch.setenv("NODE_OPTIONS", f"--import={preload}")
+        assert _token("npx wrangler --version", project) is None, "unbound startup code cannot borrow runner consent"
+        assert not sentinel.exists(), "identity analysis must not execute preload code"

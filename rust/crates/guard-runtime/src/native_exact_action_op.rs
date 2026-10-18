@@ -38,6 +38,8 @@ mod env_launch;
 mod fs_path;
 #[cfg(windows)]
 mod fs_path_windows;
+#[cfg(not(windows))]
+mod runner_code;
 // Windows launches refuse git (`launch.rs`), so its config digest is unreached
 // there; `git_windows` still supplies the homes the loader binding reads.
 #[cfg_attr(windows, allow(dead_code))]

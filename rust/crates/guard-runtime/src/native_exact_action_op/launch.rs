@@ -246,8 +246,9 @@ fn platform_segment(
             runner_local_bin(command, name, arguments, cwd, ctx, true)
         };
         let local_bin = local_bin.ok_or(MUTABLE_LAUNCHER)?;
+        let code = super::runner_code::bind(&local_bin, name, arguments, cwd, ctx)?;
         return Ok(
-            json!({"kind": "runner-local-bin", "runner": name, "local_bin": local_bin, "operands": operands}),
+            json!({"kind": "runner-local-bin", "runner": name, "local_bin": local_bin, "code":code, "operands": operands}),
         );
     }
     if NODE_LAUNCHERS.contains(&name) && !compound {

@@ -17,6 +17,8 @@ use serde_json::{json, Value};
 
 use super::context::{Engines, EvidenceFile, LocalExecution};
 use super::{decide, token};
+#[path = "native_exact_action_v2_vectors.rs"]
+mod v2_vectors;
 
 const VECTORS: &[u8] = include_bytes!("../tests/fixtures/native_exact_action_vectors.json.gz");
 
@@ -226,7 +228,7 @@ fn run_case(case: &Value) -> Result<(), String> {
         root,
         intent: concrete["intent"].clone(),
     };
-    let expected = &concrete["expected"];
+    let expected = v2_vectors::expected(&concrete);
     let payload = decide(&request, &engines).map_err(|code| format!("error {code}"))?;
     match payload {
         NativeExactActionPayloadV1::BashSubject { .. } => {
@@ -285,6 +287,7 @@ fn run_case(case: &Value) -> Result<(), String> {
 #[test]
 fn matches_vectors_recorded_from_python() {
     let cases = load();
+    v2_vectors::validate(&cases);
     assert!(cases.len() > 600, "fixture shrank to {}", cases.len());
     let failures: Vec<String> = cases
         .iter()

@@ -292,6 +292,7 @@ for (const [reason, fragment] of [
   ["node_package_exports_unproven", "export conditions or path patterns"],
   ["node_package_native_addon_unproven", "compiled dependency"],
   ["node_runtime_package_mutation_unproven", "later package loads"],
+  ["runner_code_closure_unproven", "package runner and its command"],
   ["compound_command", "chains steps"],
   ["guard_control", "Changes to Guard itself"],
   ["package_action", "Package installs and updates"],

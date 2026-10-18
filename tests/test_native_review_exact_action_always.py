@@ -56,7 +56,12 @@ def _wrangler_workspace(root: Path, monkeypatch: pytest.MonkeyPatch, *, version:
         link.symlink_to(Path("..") / "wrangler" / "bin" / "wrangler.js")
     manager_dir = root / "manager-bin"
     for name in ("npx", "bunx"):
-        _write_executable(manager_dir / name, name)
+        # Keep the manager's source type explicit after canonical resolution.
+        # A bare launcher-named file is intentionally not a code proof.
+        _write_executable(manager_dir / f"{name}.sh", name)
+        manager = manager_dir / name
+        if not manager.is_symlink():
+            manager.symlink_to(f"{name}.sh")
     monkeypatch.setenv("PATH", os.pathsep.join((str(manager_dir), "/usr/bin", "/bin")))
     return workspace.resolve()
 
