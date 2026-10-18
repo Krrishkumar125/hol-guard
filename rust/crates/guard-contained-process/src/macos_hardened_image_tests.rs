@@ -1,7 +1,8 @@
 use crate::{Isolation, PinnedCommand};
 use std::ffi::OsStr;
 use std::fs;
-use std::io;
+use std::io::{self, Read, Write};
+use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -200,6 +201,53 @@ fn hardened_image_cannot_execute_generated_code() {
     assert!(output.stdout.is_empty());
     assert!(output.stderr.is_empty());
     assert!(!output.timed_out && !output.cancelled && !output.output_limited);
+}
+
+#[test]
+fn same_inode_rewrite_after_final_binding_is_killed() {
+    let (_temporary, image) = fixture(true, false, false);
+    let (_changed_temporary, changed) = fixture(true, false, true);
+    let command = PinnedCommand::new(&image, &[], image.parent().unwrap(), &[]).unwrap();
+    let target = command.effective_executable_path().to_owned();
+    let mut sockets = [-1; 2];
+    assert_eq!(
+        unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sockets.as_mut_ptr()) },
+        0
+    );
+    let child_socket = unsafe { fs::File::from_raw_fd(sockets[0]) };
+    let mut controller = unsafe { fs::File::from_raw_fd(sockets[1]) };
+    let attacker = std::thread::spawn(move || {
+        let mut marker = [0u8];
+        controller.read_exact(&mut marker).unwrap();
+        assert_eq!(marker, [1]);
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o700)).unwrap();
+        let replacement = fs::read(changed).unwrap();
+        let mut target_file = fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&target)
+            .unwrap();
+        target_file.write_all(&replacement).unwrap();
+        target_file.sync_all().unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o500)).unwrap();
+        controller.write_all(&marker).unwrap();
+    });
+    crate::unix::hardened_spawn::enable_resume_probe();
+    let mut isolation = isolation(&command);
+    isolation.inherited_files.push(child_socket);
+    let output = command
+        .capture_hardened_image(
+            b"",
+            4096,
+            Instant::now() + Duration::from_secs(10),
+            &AtomicBool::new(false),
+            isolation,
+        )
+        .unwrap();
+    attacker.join().unwrap();
+    assert_eq!(output.exit_code, Some(-libc::SIGKILL));
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
 }
 
 #[test]

@@ -4,6 +4,12 @@ use std::os::unix::ffi::OsStrExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+pub(crate) enum CaptureMode<'a> {
+    Standard(Option<crate::source_launch::SourceGate<'a>>),
+    #[cfg(target_os = "macos")]
+    Hardened,
+}
+
 pub(super) fn cstring(bytes: impl Into<Vec<u8>>) -> io::Result<CString> {
     CString::new(bytes)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in process argument"))
@@ -151,6 +157,8 @@ pub(super) struct ChildSetup<'a> {
     pub(super) hardened_binding: Option<crate::macos_code_image::Binding>,
     #[cfg(target_os = "macos")]
     pub(super) hardened_attributes: Option<&'a libc::posix_spawnattr_t>,
+    #[cfg(all(test, target_os = "macos"))]
+    pub(super) hardened_resume_probe: bool,
 }
 
 #[cfg(target_os = "macos")]
@@ -335,6 +343,8 @@ impl ChildSetup<'_> {
                     4,
                     self.deadline,
                     binding,
+                    #[cfg(test)]
+                    self.hardened_resume_probe,
                 );
             }
         }

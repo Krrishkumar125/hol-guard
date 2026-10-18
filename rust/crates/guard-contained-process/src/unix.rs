@@ -22,8 +22,9 @@ mod supervisor;
 
 mod finalize;
 #[cfg(target_os = "macos")]
-mod hardened_spawn;
+pub(crate) mod hardened_spawn;
 mod launch;
+pub(crate) use launch::CaptureMode;
 mod owner;
 #[path = "unix/io.rs"]
 mod process_io;
@@ -37,12 +38,6 @@ pub(crate) use process_io::{nonblocking as control_nonblocking, pipe as control_
 #[cfg(test)]
 #[path = "unix/process_regressions.rs"]
 pub(crate) mod process_regressions;
-
-pub(crate) enum CaptureMode<'a> {
-    Standard(Option<crate::source_launch::SourceGate<'a>>),
-    #[cfg(target_os = "macos")]
-    Hardened,
-}
 
 pub(crate) fn capture(
     command: PinnedCommand,
@@ -191,6 +186,10 @@ pub(crate) fn capture(
             hardened_binding: hardened.as_ref().map(hardened_spawn::Prepared::binding),
             #[cfg(target_os = "macos")]
             hardened_attributes: hardened.as_ref().map(hardened_spawn::Prepared::attributes),
+            #[cfg(all(test, target_os = "macos"))]
+            hardened_resume_probe: hardened
+                .as_ref()
+                .is_some_and(hardened_spawn::Prepared::resume_probe),
         };
         unsafe {
             setup.exec();

@@ -2,6 +2,21 @@ use crate::{macos_code_image::Binding, PinnedCommand};
 use std::ffi::CString;
 use std::io;
 
+#[cfg(test)]
+thread_local! {
+    static RESUME_PROBE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn enable_resume_probe() {
+    RESUME_PROBE.with(|enabled| {
+        assert!(
+            !enabled.replace(true),
+            "hardened resume probe already enabled"
+        );
+    });
+}
+
 struct Attributes(libc::posix_spawnattr_t);
 
 impl Attributes {
@@ -32,13 +47,19 @@ impl Attributes {
 pub(super) struct Prepared {
     binding: Binding,
     attributes: Attributes,
+    #[cfg(test)]
+    resume_probe: bool,
 }
 
 impl Prepared {
     pub(super) fn prepare(command: &PinnedCommand) -> io::Result<Self> {
+        #[cfg(test)]
+        let resume_probe = RESUME_PROBE.with(|enabled| enabled.replace(false));
         Ok(Self {
             binding: command.image.hardened_binding(&command.executable_digest)?,
             attributes: Attributes::prepare()?,
+            #[cfg(test)]
+            resume_probe,
         })
     }
 
@@ -48,6 +69,11 @@ impl Prepared {
 
     pub(super) fn attributes(&self) -> &libc::posix_spawnattr_t {
         self.attributes.raw()
+    }
+
+    #[cfg(test)]
+    pub(super) fn resume_probe(&self) -> bool {
+        self.resume_probe
     }
 }
 
@@ -135,6 +161,7 @@ pub(super) unsafe fn release_and_wait(
     error_fd: i32,
     deadline: &super::launch::LaunchDeadline,
     binding: Binding,
+    #[cfg(test)] resume_probe: bool,
 ) -> ! {
     if child <= 0 {
         unsafe { fail(error_fd, 0, 12) };
@@ -161,8 +188,21 @@ pub(super) unsafe fn release_and_wait(
     }
     if unsafe { deadline.expired() }
         || !unsafe { crate::macos_code_image::dynamic_matches(child, binding) }
-        || unsafe { libc::kill(child, libc::SIGCONT) } != 0
     {
+        unsafe { fail(error_fd, child, 14) };
+    }
+    #[cfg(test)]
+    if resume_probe {
+        let marker = [1u8];
+        let mut released = [0u8];
+        if unsafe { libc::write(6, marker.as_ptr().cast(), marker.len()) } != 1
+            || unsafe { libc::read(6, released.as_mut_ptr().cast(), released.len()) } != 1
+            || released != marker
+        {
+            unsafe { fail(error_fd, child, 14) };
+        }
+    }
+    if unsafe { libc::kill(child, libc::SIGCONT) } != 0 {
         unsafe { fail(error_fd, child, 14) };
     }
     unsafe { libc::close(error_fd) };
