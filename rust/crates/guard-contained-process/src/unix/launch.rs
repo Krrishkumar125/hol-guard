@@ -147,6 +147,10 @@ pub(super) struct ChildSetup<'a> {
     pub(super) report: i32,
     #[cfg(target_os = "macos")]
     pub(super) image_path: &'a std::ffi::CString,
+    #[cfg(target_os = "macos")]
+    pub(super) hardened_binding: Option<crate::macos_code_image::Binding>,
+    #[cfg(target_os = "macos")]
+    pub(super) hardened_attributes: Option<&'a libc::posix_spawnattr_t>,
 }
 
 #[cfg(target_os = "macos")]
@@ -309,6 +313,29 @@ impl ChildSetup<'_> {
         if unsafe { self.deadline.expired() } {
             unsafe {
                 child_failure(4, 10);
+            }
+        }
+        #[cfg(target_os = "macos")]
+        if let (Some(binding), Some(attributes)) = (self.hardened_binding, self.hardened_attributes)
+        {
+            let child = unsafe {
+                super::hardened_spawn::spawn(
+                    self.image_path,
+                    self.argv,
+                    self.env,
+                    attributes,
+                    binding,
+                    self.deadline,
+                )
+            };
+            unsafe {
+                super::hardened_spawn::release_and_wait(
+                    child,
+                    self.launch,
+                    4,
+                    self.deadline,
+                    binding,
+                );
             }
         }
         let initialized = 0i32.to_ne_bytes();

@@ -20,6 +20,8 @@ pub mod deferred_output;
 pub mod host_owner;
 pub mod probe;
 pub use probe::main as probe_main;
+#[cfg(target_os = "macos")]
+mod macos_code_image;
 pub mod runtime_files;
 pub mod runtime_resources;
 #[cfg(unix)]
@@ -243,7 +245,15 @@ impl PinnedCommand {
             ));
         }
         #[cfg(unix)]
-        return unix::capture(self, input, cap, deadline, cancel, isolation, None);
+        return unix::capture(
+            self,
+            input,
+            cap,
+            deadline,
+            cancel,
+            isolation,
+            unix::CaptureMode::Standard(None),
+        );
         #[cfg(windows)]
         return windows::capture(self, input, cap, deadline, cancel, isolation);
         #[cfg(not(any(unix, windows)))]
@@ -251,6 +261,41 @@ impl PinnedCommand {
             io::ErrorKind::Unsupported,
             "no handle-bound process kernel",
         ))
+    }
+
+    /// Launch a signed macOS executable only after the kernel has suspended
+    /// the exact CodeDirectory reviewed from this pinned image. The sandbox is
+    /// mandatory and the signature must enable hardened runtime without any
+    /// entitlements.
+    #[cfg(target_os = "macos")]
+    pub fn capture_hardened_image(
+        self,
+        input: &[u8],
+        cap: usize,
+        deadline: Instant,
+        cancel: &AtomicBool,
+        isolation: Isolation,
+    ) -> io::Result<CapturedOutput> {
+        if cap == 0
+            || input.len() > 256 * 1024 * 1024
+            || isolation.seatbelt.is_none()
+            || !isolation.deferred_outputs.is_empty()
+            || isolation.creation_mask.is_some()
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid hardened process isolation",
+            ));
+        }
+        unix::capture(
+            self,
+            input,
+            cap,
+            deadline,
+            cancel,
+            isolation,
+            unix::CaptureMode::Hardened,
+        )
     }
 }
 
@@ -275,5 +320,7 @@ pub use windows::readonly::{run_readonly_snapshot, BuildRun, ReadonlySnapshotRun
 #[cfg(windows)]
 pub use windows::AppContainer;
 
+#[cfg(all(test, target_os = "macos"))]
+mod macos_hardened_image_tests;
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests;

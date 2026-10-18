@@ -20,6 +20,9 @@ pub(crate) use resources::process_ceiling;
 #[path = "macos_supervisor.rs"]
 mod supervisor;
 
+mod finalize;
+#[cfg(target_os = "macos")]
+mod hardened_spawn;
 mod launch;
 mod owner;
 #[path = "unix/io.rs"]
@@ -33,7 +36,13 @@ use process_io::{check_protocol_budget, drain, nonblocking, pipe, write_without_
 pub(crate) use process_io::{nonblocking as control_nonblocking, pipe as control_pipe};
 #[cfg(test)]
 #[path = "unix/process_regressions.rs"]
-mod process_regressions;
+pub(crate) mod process_regressions;
+
+pub(crate) enum CaptureMode<'a> {
+    Standard(Option<crate::source_launch::SourceGate<'a>>),
+    #[cfg(target_os = "macos")]
+    Hardened,
+}
 
 pub(crate) fn capture(
     command: PinnedCommand,
@@ -42,8 +51,13 @@ pub(crate) fn capture(
     deadline: Instant,
     cancel: &AtomicBool,
     isolation: Isolation,
-    source_gate: Option<crate::source_launch::SourceGate<'_>>,
+    mode: CaptureMode<'_>,
 ) -> io::Result<CapturedOutput> {
+    let (source_gate, hardened) = match mode {
+        CaptureMode::Standard(gate) => (gate, None),
+        #[cfg(target_os = "macos")]
+        CaptureMode::Hardened => (None, Some(hardened_spawn::Prepared::prepare(&command)?)),
+    };
     crate::source_launch::validate_deferred_outputs(&isolation, source_gate.as_ref())?;
     let window = RequestWindow { deadline, cancel };
     window.require_launch()?;
@@ -173,6 +187,10 @@ pub(crate) fn capture(
             report: foreign_report_write.as_raw_fd(),
             #[cfg(target_os = "macos")]
             image_path: &image_path,
+            #[cfg(target_os = "macos")]
+            hardened_binding: hardened.as_ref().map(hardened_spawn::Prepared::binding),
+            #[cfg(target_os = "macos")]
+            hardened_attributes: hardened.as_ref().map(hardened_spawn::Prepared::attributes),
         };
         unsafe {
             setup.exec();
@@ -203,6 +221,7 @@ pub(crate) fn capture(
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
     let mut error_bytes = Vec::new();
+    let mut initialized = false;
     let mut completion_fd = Some(completion_read);
     let mut completion = Vec::new();
     #[cfg(target_os = "macos")]
@@ -418,6 +437,7 @@ pub(crate) fn capture(
             ));
         }
         if error_bytes == [0, 0, 0, 0] && !output_limited && status.is_none() {
+            initialized = true;
             transfer.release(
                 &mut stdin,
                 error_fd.is_none() && launch_write.is_none(),
@@ -457,35 +477,15 @@ pub(crate) fn capture(
     if owner.has_custody() {
         owner.reap()?;
     }
-    check_protocol_budget(protocol_limited)?;
-    if error_bytes != [0, 0, 0, 0] && !cancelled && !timed_out {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "native child did not confirm initialization",
-        ));
-    }
-    #[cfg(target_os = "macos")]
-    let status = if foreign_report_size == 4 {
-        Some(i32::from_ne_bytes(foreign_report))
-    } else if cancelled || timed_out || output_limited {
-        None
-    } else {
-        return Err(io::Error::other(
-            "native supervisor did not report foreign completion",
-        ));
-    };
-    let code = status.and_then(|status| {
-        if libc::WIFEXITED(status) {
-            Some(libc::WEXITSTATUS(status))
-        } else if libc::WIFSIGNALED(status) {
-            Some(-libc::WTERMSIG(status))
-        } else {
-            None
-        }
-    });
-    let code = code.filter(|_| !cancelled && !timed_out && !output_limited);
-    Ok(CapturedOutput {
-        exit_code: code,
+    finalize::finish(finalize::State {
+        initialized,
+        protocol_limited,
+        #[cfg(not(target_os = "macos"))]
+        status,
+        #[cfg(target_os = "macos")]
+        foreign_report,
+        #[cfg(target_os = "macos")]
+        foreign_report_size,
         stdout,
         stderr,
         timed_out,

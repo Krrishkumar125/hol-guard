@@ -91,10 +91,10 @@ impl PinnedCommand {
             deadline,
             cancel,
             isolation,
-            Some(SourceGate {
+            crate::unix::CaptureMode::Standard(Some(SourceGate {
                 gate,
                 frame_before_commit: false,
-            }),
+            })),
         )
     }
 
@@ -138,10 +138,10 @@ impl PinnedCommand {
             deadline,
             cancel,
             isolation,
-            Some(SourceGate {
+            crate::unix::CaptureMode::Standard(Some(SourceGate {
                 gate: &mut acknowledged,
                 frame_before_commit: true,
-            }),
+            })),
         )
     }
 }
