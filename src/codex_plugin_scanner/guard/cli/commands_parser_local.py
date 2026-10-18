@@ -64,6 +64,7 @@ def _configure_guard_local_parsers(
     bound_bash_parser.add_argument("--request-file", required=True)
     bound_bash_parser.add_argument("--request-sha256", required=True)
     bound_bash_parser.add_argument("--operation-id", required=True)
+    bound_bash_parser.add_argument("--host-owner-pid", type=int)
     bound_bash_parser.add_argument("--timeout-seconds", type=int, default=120)
 
     start_parser = guard_subparsers.add_parser("start", help="Show the first Guard steps for a local harness")

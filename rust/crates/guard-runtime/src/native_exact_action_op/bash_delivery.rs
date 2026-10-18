@@ -9,6 +9,7 @@ use guard_contracts::{GuardHookEnvelopeV2, PreToolResultV1};
 struct HostDelivery {
     schema: String,
     host: String,
+    owner_pid: u32,
     environment: std::collections::BTreeMap<String, String>,
     file_creation_mask: u32,
 }
@@ -67,7 +68,10 @@ pub(crate) fn require_owner(
     let Ok(stamp) = serde_json::from_value::<HostDelivery>(stamp.clone()) else {
         return unavailable(result, "bash_host_observation_invalid");
     };
-    if stamp.schema != "guard-native-bash-host-delivery.v1" || stamp.host != expected_host {
+    if stamp.schema != "guard-native-bash-host-delivery.v2"
+        || stamp.host != expected_host
+        || stamp.owner_pid <= 1
+    {
         return unavailable(result, "bash_host_delivery_unavailable");
     }
     let (Some(snapshot), Some(environment), Some(cwd)) = (

@@ -4,7 +4,7 @@ use crate::{NativeBashReviewLineageV1, NativeBashSubjectV1};
 use serde::{Deserialize, Serialize};
 
 pub const NATIVE_BASH_REVIEW_ARTIFACT_TYPE: &str = "native_bash_request";
-pub const NATIVE_BASH_REVIEW_DESCRIPTOR_SCHEMA: &str = "guard-native-bash-review.v2";
+pub const NATIVE_BASH_REVIEW_DESCRIPTOR_SCHEMA: &str = "guard-native-bash-review.v3";
 pub const NATIVE_BASH_REVIEW_DESCRIPTOR_FEATURE: &str = "native-bash-review-descriptor-v1";
 pub const NATIVE_BASH_REVIEW_CHECK_REQUEST_SCHEMA: &str =
     "guard-native-bash-review-check-request.v1";

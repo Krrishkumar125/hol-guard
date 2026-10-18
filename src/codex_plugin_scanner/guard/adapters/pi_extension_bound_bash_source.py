@@ -20,9 +20,10 @@ def with_bound_bash_host_observation(source: str, *, harness: str) -> str:
     stamp = (
         "  // A preview stamp grants no permission. The execution sink observes its own context.\n"
         "  const boundBashHost = process.platform === 'darwin' &&\n"
+        "    Number.isSafeInteger(process.pid) && process.pid > 1 &&\n"
         "    payload.hook_event_name === 'PreToolUse' && payload.tool_name === 'bash' &&\n"
         "    !GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS && GUARD_CLI_WRAPPER_COMMAND.startsWith('/')\n"
-        "    ? { schema: 'guard-native-bash-host-delivery.v1',\n"
+        "    ? { schema: 'guard-native-bash-host-delivery.v2', owner_pid: process.pid,\n"
         f"        host: {json.dumps(host)}, file_creation_mask: process.umask(),\n"
         "        environment: Object.fromEntries(\n"
         f"          {json.dumps(_ENVIRONMENT_NAMES)}.filter((name) =>\n"

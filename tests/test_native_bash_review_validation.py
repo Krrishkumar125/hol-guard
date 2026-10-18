@@ -72,6 +72,7 @@ def pending(native_context_digest, tmp_path, monkeypatch):
     "mutation",
     [
         "legacy",
+        "previous-owner",
         "wrong-type",
         "missing",
         "unknown-field",
@@ -91,6 +92,8 @@ def test_forged_or_unavailable_review_cannot_offer_or_write_execution_consent(pe
     artifact_id, artifact_type = original["artifact_id"], original["artifact_type"]
     if mutation == "legacy":
         artifact_id, artifact_type = "native-bash-launch:v1", "tool_call"
+    elif mutation == "previous-owner":
+        artifact_id = "native-bash-owner:native-pretool:v1"
     elif mutation == "wrong-type":
         artifact_type = "tool_call"
     elif mutation == "missing":
@@ -162,7 +165,9 @@ def test_previous_native_executable_cannot_offer_or_write_new_descriptor_consent
 import json, sys
 from pathlib import Path
 from codex_plugin_scanner.guard.approvals import apply_approval_resolution
-from codex_plugin_scanner.guard.native_bash_protocol import DESCRIPTOR_FEATURE, NativeBashError, runtime_status
+from codex_plugin_scanner.guard.native_bash_protocol import (
+    DESCRIPTOR_FEATURE, HOST_LIVENESS_FEATURE, NativeBashError, runtime_status,
+)
 from codex_plugin_scanner.guard.native_runtime import native_runtime_status
 from codex_plugin_scanner.guard.native_resident_client import close_native_residents
 from codex_plugin_scanner.guard.store import GuardStore
@@ -170,19 +175,19 @@ from tests.test_native_bash_sink_integration import _Secrets
 configuration = json.load(sys.stdin)
 status = native_runtime_status()
 assert status.available and status.compatible and status.capabilities is not None
-assert DESCRIPTOR_FEATURE not in status.capabilities.features
+assert not {DESCRIPTOR_FEATURE, HOST_LIVENESS_FEATURE}.issubset(status.capabilities.features)
 try:
     runtime_status()
 except NativeBashError as error:
     assert str(error) == 'native_bash_owner_unavailable'
 else:
-    raise AssertionError('new client accepted a runtime without descriptor support')
+    raise AssertionError('new client accepted a runtime without the current owner delivery')
 store = GuardStore(Path(configuration['guard_home']), prime_policy_integrity=False)
 store._policy_integrity_secret_store = _Secrets()
 try:
     request = store.get_approval_request(configuration['request_id'])
-    assert request['execution_approval']['can_run_once'] is False
-    assert request['execution_approval']['can_persist_exact_version'] is False
+    assert request['execution_approval']['can_run_once'] is False, 'older delivery exposed Run once'
+    assert request['execution_approval']['can_persist_exact_version'] is False, 'older delivery exposed Always'
     assert request['allowed_scopes_by_action']['allow'] == []
     for duration in (None, False, True):
         try:

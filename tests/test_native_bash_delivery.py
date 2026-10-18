@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="native Bash ow
 
 @pytest.mark.parametrize("harness", ["omp", "pi"])
 @pytest.mark.parametrize("case", [
-    "owner", "old-client", "wrong-host", "hard-deny", "unbound-helper", "delete-mode", "ordinary",
+    "owner", "old-client", "old-owner", "wrong-host", "hard-deny", "unbound-helper", "delete-mode", "ordinary",
 ])
 def test_native_hook_routes_only_supported_bound_owners(native_context_digest, tmp_path, monkeypatch, harness, case):
     del native_context_digest
@@ -55,7 +55,7 @@ def test_native_hook_routes_only_supported_bound_owners(native_context_digest, t
             "tool_input": {"command": f"/bin/bash '{project / 'maintenance.sh'}' dry"},
             HOOK_EXECUTION_ENVIRONMENT_KEY: collect_hook_execution_environment(),
             "guard_bound_bash_host": {
-                "schema": "guard-native-bash-host-delivery.v1",
+                "schema": "guard-native-bash-host-delivery.v2", "owner_pid": os.getpid(),
                 "host": "omp-input-rewrite-v1" if harness == "omp" else "pi-input-mutation-v1",
                 "environment": {name: os.environ[name] for name in _ENVIRONMENT_NAMES if os.environ.get(name)},
                 "file_creation_mask": 0o022,
@@ -63,6 +63,9 @@ def test_native_hook_routes_only_supported_bound_owners(native_context_digest, t
         }
         if case == "old-client":
             del payload["guard_bound_bash_host"]
+        elif case == "old-owner":
+            payload["guard_bound_bash_host"]["schema"] = "guard-native-bash-host-delivery.v1"
+            del payload["guard_bound_bash_host"]["owner_pid"]
         elif case == "wrong-host":
             payload["guard_bound_bash_host"]["host"] = "unsupported-host"
         elif case == "delete-mode":
@@ -84,7 +87,7 @@ def test_native_hook_routes_only_supported_bound_owners(native_context_digest, t
             assert response.get("required_execution_profile") != "native-bash-owner-v1"
             if case == "hard-deny":
                 assert response["policy_action"] == "block"
-            elif case in {"wrong-host", "unbound-helper", "delete-mode"}:
+            elif case in {"old-owner", "wrong-host", "unbound-helper", "delete-mode"}:
                 assert response["policy_action"] == "block"
                 assert response["reason_code"] == "native_bash_owner_unavailable"
                 assert "required_execution_profile" not in response

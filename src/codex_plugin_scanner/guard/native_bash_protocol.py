@@ -14,10 +14,12 @@ from .native_execution import _resident_request
 from .native_runtime import NativeRuntimeStatus, _isolated_environment, native_runtime_status
 
 FEATURE = "native-bash-owner-protocol-v1"
-ARTIFACT_ID = "native-bash-owner:native-pretool:v1"
+ARTIFACT_ID = "native-bash-owner:native-pretool:v2"
+LEGACY_ARTIFACT_IDS = ("native-bash-launch:v1", "native-bash-owner:native-pretool:v1")
 ARTIFACT_TYPE = "native_bash_request"
-DESCRIPTOR_SCHEMA = "guard-native-bash-review.v2"
+DESCRIPTOR_SCHEMA = "guard-native-bash-review.v3"
 DESCRIPTOR_FEATURE = "native-bash-review-descriptor-v1"
+HOST_LIVENESS_FEATURE = "native-bash-host-liveness-v1"
 MAX_REQUEST_BYTES = 512 * 1024
 _BASE = {"schema", "request_id", "request_sha256", "status", "code", "payload"}
 
@@ -41,9 +43,13 @@ def runtime_status() -> NativeRuntimeStatus:
         or not status.compatible
         or status.identity is None
         or status.capabilities is None
-        or not {FEATURE, DESCRIPTOR_FEATURE, "native-bash-review-lineage-v1", "resident-protocol-v2"}.issubset(
-            status.capabilities.features
-        )
+        or not {
+            FEATURE,
+            DESCRIPTOR_FEATURE,
+            HOST_LIVENESS_FEATURE,
+            "native-bash-review-lineage-v1",
+            "resident-protocol-v2",
+        }.issubset(status.capabilities.features)
     ):
         raise NativeBashError("native_bash_owner_unavailable")
     return status
@@ -193,7 +199,13 @@ def verify_review_request(request: dict[str, object], *, guard_home: Path) -> No
         raise NativeBashError("native_bash_review_check_invalid")
 
 
-def execute(request: dict[str, object], *, guard_home: Path, cwd: Path) -> dict[str, object]:
+def execute(
+    request: dict[str, object],
+    *,
+    guard_home: Path,
+    cwd: Path,
+    host_owner_pid: int | None = None,
+) -> dict[str, object]:
     from .native_bash_reply import validate_executed
 
     status = runtime_status()
@@ -201,6 +213,8 @@ def execute(request: dict[str, object], *, guard_home: Path, cwd: Path) -> dict[
     timeout_ms = request.get("timeout_ms")
     if type(timeout_ms) is not int or not 1 <= timeout_ms <= 120_000:
         raise NativeBashError("native_bash_timeout_invalid")
+    if host_owner_pid is not None and (type(host_owner_pid) is not int or not 2 <= host_owner_pid <= 2_147_483_647):
+        raise NativeBashError("native_bash_host_owner_invalid")
     # A dedicated Rust client owns this connection. The inherited parent pipe
     # closes even if this Python sink is killed; the pooled helper cannot give
     # that guarantee while synchronously waiting for a long execution reply.
@@ -209,8 +223,11 @@ def execute(request: dict[str, object], *, guard_home: Path, cwd: Path) -> dict[
         "request": request,
         "deadline_budget_ms": timeout_ms + 1000,
     }
+    command = [str(status.identity.path), "native-bash-execute-client", "--stdin", str(guard_home / "native-runtime")]
+    if host_owner_pid is not None:
+        command.extend(["--host-owner-pid", str(host_owner_pid)])
     reply = run_isolated_hook_process(
-        [str(status.identity.path), "native-bash-execute-client", "--stdin", str(guard_home / "native-runtime")],
+        command,
         input_text=encode(envelope),
         cwd=cwd,
         environment=_isolated_environment(),

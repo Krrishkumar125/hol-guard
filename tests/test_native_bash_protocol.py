@@ -89,6 +89,23 @@ def test_execute_uses_one_owned_client_and_preserves_program_failure(transport, 
     assert output.getvalue() == "result\n" and errors.getvalue() == "warning\n"
 
 
+def test_host_supervision_is_a_transport_option_outside_the_permission_request(transport, tmp_path):
+    runner, request = transport
+    before = copy.deepcopy(request)
+    bridge.execute(request, guard_home=tmp_path, cwd=tmp_path, host_owner_pid=1234)
+    args, options = runner.call_args
+    assert args[0][-2:] == ["--host-owner-pid", "1234"]
+    assert json.loads(options["input_text"])["request"] == before == request
+
+
+@pytest.mark.parametrize("pid", [0, 1, -1, True, 2_147_483_648, "1234"])
+def test_invalid_host_locator_never_starts_a_client(transport, tmp_path, pid):
+    runner, request = transport
+    with pytest.raises(bridge.NativeBashError, match="native_bash_host_owner_invalid"):
+        bridge.execute(request, guard_home=tmp_path, cwd=tmp_path, host_owner_pid=pid)
+    runner.assert_not_called()
+
+
 def test_runtime_without_pending_lineage_capability_is_not_used(monkeypatch):
     status = SimpleNamespace(
         available=True,
@@ -103,6 +120,9 @@ def test_runtime_without_pending_lineage_capability_is_not_used(monkeypatch):
     with pytest.raises(bridge.NativeBashError, match="native_bash_owner_unavailable"):
         bridge.runtime_status()
     status.capabilities.features.add(bridge.DESCRIPTOR_FEATURE)
+    with pytest.raises(bridge.NativeBashError, match="native_bash_owner_unavailable"):
+        bridge.runtime_status()
+    status.capabilities.features.add(bridge.HOST_LIVENESS_FEATURE)
     assert bridge.runtime_status() is status
 
 

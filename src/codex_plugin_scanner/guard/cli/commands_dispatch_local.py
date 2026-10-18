@@ -196,6 +196,7 @@ def _run_guard_execute_bound_bash_command(
         return run_bound_bash(
             payload, store=store, workspace=workspace, harness=str(args.harness),
             operation_id=str(args.operation_id), timeout_seconds=args.timeout_seconds,
+            host_owner_pid=getattr(args, "host_owner_pid", None),
         )
     except NativeBashError as error:
         print(error.code, file=sys.stderr)

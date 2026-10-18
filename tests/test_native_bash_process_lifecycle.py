@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
+import os
 import selectors
 import sqlite3
 import subprocess
@@ -18,6 +20,7 @@ import pytest
 from codex_plugin_scanner.guard.approvals import apply_approval_resolution
 from codex_plugin_scanner.guard.cli.commands_dispatch_local import _run_guard_execute_bound_bash_command
 from codex_plugin_scanner.guard.native_bash_protocol import activity
+from codex_plugin_scanner.guard.runtime.bound_bash_sink import run_bound_bash
 from tests.test_native_bash_review_validation import pending as pending
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="native Bash owner currently supports macOS")
@@ -165,3 +168,66 @@ raise SystemExit(_run_guard_execute_bound_bash_command(
         if process.poll() is None:
             process.kill()
         process.communicate(timeout=5)
+
+
+@pytest.mark.parametrize("owner", ["python-ancestor", "unrelated-child"])
+def test_native_host_locator_refusal_is_specific_and_leaves_once_unspent(pending, owner):
+    store, request, contract, home = pending
+    workspace = Path(request["workspace"])
+    apply_approval_resolution(
+        store=store,
+        request_id=request["request_id"],
+        action="allow",
+        scope="artifact",
+        workspace=str(workspace),
+        reason="Lane-owned host locator refusal",
+        persist_policy=False,
+        scope_contract_version=contract.version,
+        scope_contract_digest=contract.digest,
+    )
+    unrelated = subprocess.Popen(["/bin/sleep", "30"]) if owner == "unrelated-child" else None
+    try:
+        pid = unrelated.pid if unrelated is not None else os.getpid()
+        payload = {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "bash",
+            "cwd": str(workspace),
+            "tool_input": {"command": request["raw_command_text"]},
+        }
+        errors = io.StringIO()
+        assert (
+            run_bound_bash(
+                payload,
+                store=store,
+                workspace=workspace,
+                harness="omp",
+                operation_id="descriptor-fixture-operation",
+                host_owner_pid=pid,
+                output=io.StringIO(),
+                errors=errors,
+            )
+            == 125
+        )
+        assert "native_bash_host_owner_unavailable" in errors.getvalue()
+        assert not (home / "maintenance-report.tsv").exists()
+        with store._connect() as connection:
+            assert connection.execute("select claimed_at from guard_local_once_approvals").fetchone()[0] is None
+            assert connection.execute("select count(*) from guard_bash_operations").fetchone()[0] == 0
+        # A direct CLI caller retains its separate inherited-pipe supervision.
+        assert (
+            run_bound_bash(
+                payload,
+                store=store,
+                workspace=workspace,
+                harness="omp",
+                operation_id="descriptor-fixture-operation",
+                output=io.StringIO(),
+                errors=io.StringIO(),
+            )
+            == 0
+        )
+        assert "local metadata" in (home / "maintenance-report.tsv").read_text()
+    finally:
+        if unrelated is not None:
+            unrelated.kill()
+            unrelated.wait(timeout=3)

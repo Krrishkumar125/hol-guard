@@ -159,8 +159,15 @@ pub(super) fn run() -> Result<(), String> {
             write_bytes_response(&request)
         }
         #[cfg(target_os = "macos")]
+        [command, flag, state_dir, owner_flag, owner_pid]
+            if command == "native-bash-execute-client" && flag == "--stdin" && owner_flag == "--host-owner-pid" => {
+            let pid = owner_pid.parse::<u32>().map_err(|_| "native_bash_host_owner_unavailable")?;
+            let response = native_bash_client::run(std::path::Path::new(state_dir), read_stdin_bounded()?, Some(pid))?;
+            write_bytes_response(&response)
+        }
+        #[cfg(target_os = "macos")]
         [command, flag, state_dir] if command == "native-bash-execute-client" && flag == "--stdin" => {
-            let response = native_bash_client::run(std::path::Path::new(state_dir), read_stdin_bounded()?)?;
+            let response = native_bash_client::run(std::path::Path::new(state_dir), read_stdin_bounded()?, None)?;
             write_bytes_response(&response)
         }
         [command, flag, state_dir]

@@ -25,14 +25,19 @@ from codex_plugin_scanner.guard.hook_execution_environment import (
 from codex_plugin_scanner.guard.native_bash_protocol import runtime_status
 from codex_plugin_scanner.guard.native_resident_client import close_native_residents
 from codex_plugin_scanner.guard.store import GuardStore
+from tests.omp_bound_bash_lifecycle import assert_sdk_host_death_cancels, pause_native_execute_source
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="native Bash owner is macOS-only")
 
 
-@pytest.mark.parametrize("duration", ["once", "persistent", "keep-blocked"])
+@pytest.mark.parametrize("duration", ["once", "persistent", "keep-blocked", "host-parent-death"])
 @pytest.mark.parametrize("harness", ["omp", "pi"])
 def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
-    native_context_digest, tmp_path, monkeypatch, duration, harness,
+    native_context_digest,
+    tmp_path,
+    monkeypatch,
+    duration,
+    harness,
 ):
     del native_context_digest
     repo = Path(__file__).resolve().parents[1]
@@ -73,30 +78,43 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
         assert worker.prepare_workspace_policy(session_cwd, deadline=time.monotonic() + 25) is not None
         response = worker.review_http_payload(
             payload={
-                "hook_event_name": "PreToolUse", "tool_name": "bash", "tool_input": original_input,
-                "session_id": "bound-bash-sdk-fixture", "tool_call_id": "initial-call",
+                "hook_event_name": "PreToolUse",
+                "tool_name": "bash",
+                "tool_input": original_input,
+                "session_id": "bound-bash-sdk-fixture",
+                "tool_call_id": "initial-call",
                 HOOK_EXECUTION_ENVIRONMENT_KEY: collect_hook_execution_environment(),
                 "guard_bound_bash_host": {
-                    "schema": "guard-native-bash-host-delivery.v1",
+                    "schema": "guard-native-bash-host-delivery.v2",
+                    "owner_pid": os.getpid(),
                     "host": "omp-input-rewrite-v1" if harness == "omp" else "pi-input-mutation-v1",
                     "environment": {name: os.environ[name] for name in _ENVIRONMENT_NAMES if os.environ.get(name)},
                     "file_creation_mask": 0o022,
                 },
-            }, params={}, default_harness=harness, workspace=session_cwd, home_dir=home, guard_home=guard,
+            },
+            params={},
+            default_harness=harness,
+            workspace=session_cwd,
+            home_dir=home,
+            guard_home=guard,
         )
         assert response["required_execution_profile"] == "native-bash-owner-v1"
     finally:
         worker.close()
     wrapper = tmp_path / "guard-cli"
+    ready_marker, resume_marker = tmp_path / "cli-ready", tmp_path / "cli-resume"
+    pause_source = pause_native_execute_source(ready_marker, resume_marker) if duration == "host-parent-death" else ""
     wrapper.write_text(
         f"#!{sys.executable}\nimport os, sys\nsys.path.insert(0, {str(repo / 'src')!r})\n"
         "os.environ['HOL_GUARD_NATIVE'] = 'force'\n"
         f"os.environ['HOL_GUARD_NATIVE_BINARY'] = {str(status.identity.path)!r}\n"
-        "from codex_plugin_scanner.cli import main\nraise SystemExit(main())\n"
+        + pause_source
+        + "from codex_plugin_scanner.cli import main\nraise SystemExit(main())\n"
     )
     wrapper.chmod(0o700)
     routing = tmp_path / "routing.ts"
-    routing.write_text("""
+    routing.write_text(
+        """
 import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -114,10 +132,12 @@ const GUARD_HOME_DIR_IS_DEFAULT = true;
 const GUARD_HOME_DIR = "";
 const GUARD_CONTAINED_SINK_COMMAND = [];
 const GUARD_CONTAINED_REQUEST_ROOT = "";
-""" + f"const GUARD_CLI_WRAPPER_COMMAND = {json.dumps(str(wrapper))};\n"
+"""
+        + f"const GUARD_CLI_WRAPPER_COMMAND = {json.dumps(str(wrapper))};\n"
         + f"const GUARD_HOME = {json.dumps(str(guard))};\n"
-        + CONTAINED_TEST_HELPERS_SOURCE.replace('const boundBashHarness = "omp";',
-                                                f'const boundBashHarness = "{harness}";')
+        + CONTAINED_TEST_HELPERS_SOURCE.replace(
+            'const boundBashHarness = "omp";', f'const boundBashHarness = "{harness}";'
+        )
         + f"const response = {json.dumps(response)};\n"
         + """
 pi.on("tool_call", async (event, ctx) => {
@@ -129,26 +149,51 @@ pi.on("tool_call", async (event, ctx) => {
   if (!input) return { block: true, reason: "missing protected owner delivery" };
   ROUTE_INPUT_RESULT
 });
-""".replace("ROUTE_INPUT_RESULT", "Object.assign(event.input, input); return undefined;"
-             if harness == "pi" else "return { input };"))
+""".replace(
+            "ROUTE_INPUT_RESULT",
+            "Object.assign(event.input, input); return undefined;" if harness == "pi" else "return { input };",
+        )
+    )
     environment = {
-        "HOME": str(home), "PATH": os.environ["PATH"], "LANG": "C", "TERM": "dumb",
-        "PI_CODING_AGENT_DIR": str(tmp_path / "sdk-agent"), "PYTHONPATH": str(repo / "src"),
-        "HOL_GUARD_NATIVE": "force", "HOL_GUARD_NATIVE_BINARY": str(status.identity.path),
+        "HOME": str(home),
+        "PATH": os.environ["PATH"],
+        "LANG": "C",
+        "TERM": "dumb",
+        "PI_CODING_AGENT_DIR": str(tmp_path / "sdk-agent"),
+        "PYTHONPATH": str(repo / "src"),
+        "HOL_GUARD_NATIVE": "force",
+        "HOL_GUARD_NATIVE_BINARY": str(status.identity.path),
     }
     configuration = tmp_path / "sdk.json"
 
+    def configure(call_id):
+        configuration.write_text(
+            json.dumps(
+                {
+                    "expectedVersion": expected,
+                    "routingModule": str(routing),
+                    "workspace": str(session_cwd),
+                    "callId": call_id,
+                    "input": original_input,
+                    "harness": harness,
+                    "sessionFile": str(tmp_path / "sdk-session.jsonl"),
+                    "newIntent": (
+                        call_id in {"fresh-operation", "current-policy-denied", "new-user-intent"}
+                        or call_id.startswith("persistent-")
+                    ),
+                }
+            )
+        )
+
     def run(call_id):
-        configuration.write_text(json.dumps({
-            "expectedVersion": expected, "routingModule": str(routing), "workspace": str(session_cwd),
-            "callId": call_id, "input": original_input, "harness": harness,
-            "sessionFile": str(tmp_path / "sdk-session.jsonl"),
-            "newIntent": (call_id in {"fresh-operation", "current-policy-denied", "new-user-intent"}
-                          or call_id.startswith("persistent-")),
-        }))
+        configure(call_id)
         completed = subprocess.run(
             [bun, str(fixtures / "pi_family_bound_bash_sdk.ts"), str(sdk_root), str(configuration)],
-            cwd=workspace, env=environment, text=True, capture_output=True, timeout=60,
+            cwd=workspace,
+            env=environment,
+            text=True,
+            capture_output=True,
+            timeout=60,
         )
         assert completed.returncode == 0, completed.stderr[-2000:]
         decoded = json.loads(completed.stdout)
@@ -173,8 +218,13 @@ pi.on("tool_call", async (event, ctx) => {
         assert subject["context"]["cwd"] == str(execution_cwd)
         if duration == "keep-blocked":
             apply_approval_resolution(
-                store=store, request_id=request["request_id"], action="block", scope="artifact",
-                persist_policy=False, workspace=str(session_cwd), reason="Lane-owned SDK Keep blocked",
+                store=store,
+                request_id=request["request_id"],
+                action="block",
+                scope="artifact",
+                persist_policy=False,
+                workspace=str(session_cwd),
+                reason="Lane-owned SDK Keep blocked",
                 scope_contract_version=request["scope_contract_version"],
                 scope_contract_digest=request["scope_contract_digest"],
             )
@@ -191,12 +241,28 @@ pi.on("tool_call", async (event, ctx) => {
                 assert connection.execute("select count(*) from policy_decisions").fetchone()[0] == 0
             return
         apply_approval_resolution(
-            store=store, request_id=request["request_id"], action="allow", scope="artifact",
+            store=store,
+            request_id=request["request_id"],
+            action="allow",
+            scope="artifact",
             persist_policy=duration == "persistent",
-            workspace=str(session_cwd), reason="Lane-owned SDK consent",
+            workspace=str(session_cwd),
+            reason="Lane-owned SDK consent",
             scope_contract_version=request["scope_contract_version"],
             scope_contract_digest=request["scope_contract_digest"],
         )
+        if duration == "host-parent-death":
+            configure("host-parent-death-retry")
+            assert_sdk_host_death_cancels(
+                store=store,
+                operation_id=request["action_envelope_json"]["native_bash"]["review_lineage"]["operation_id"],
+                command=[bun, str(fixtures / "pi_family_bound_bash_sdk.ts"), str(sdk_root), str(configuration)],
+                environment=environment,
+                workspace=workspace,
+                ready=ready_marker,
+                resume=resume_marker,
+                report=report,
+            )
         approved, error = run("approved-retry")
         assert error is None, error
         assert not approved.get("isError", False)

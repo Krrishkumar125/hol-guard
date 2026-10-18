@@ -355,7 +355,7 @@ assert(!/>\s*Approve/.test(runYourselfMarkup), "the run-yourself panel offers no
 const nativeOwner = {
   ...bound,
   artifact_type: "native_bash_request",
-  artifact_id: "native-bash-owner:native-pretool:v1",
+  artifact_id: "native-bash-owner:native-pretool:v2",
   artifact_hash: "guard-approval-context:v1:reviewed-fixture",
   exact_action_persistence_eligible: true,
   scope_restrictions: ["reusable_allow_is_action_bound"],

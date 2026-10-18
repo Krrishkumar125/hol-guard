@@ -69,7 +69,7 @@ def _envelope(value: object) -> dict[str, object] | None:
 
 
 def _native_bash_refusal(request: Mapping[str, object], action: str, scope: str, persist: bool | None) -> bool:
-    from .native_bash_protocol import ARTIFACT_ID, ARTIFACT_TYPE
+    from .native_bash_protocol import ARTIFACT_ID, ARTIFACT_TYPE, LEGACY_ARTIFACT_IDS
 
     envelope = request.get("action_envelope_json")
     return (
@@ -78,7 +78,7 @@ def _native_bash_refusal(request: Mapping[str, object], action: str, scope: str,
         and persist is not True
         and (
             request.get("artifact_type") == ARTIFACT_TYPE
-            or request.get("artifact_id") in (ARTIFACT_ID, "native-bash-launch:v1")
+            or request.get("artifact_id") in (ARTIFACT_ID, *LEGACY_ARTIFACT_IDS)
             or (isinstance(envelope, Mapping) and "native_bash" in envelope)
         )
     )

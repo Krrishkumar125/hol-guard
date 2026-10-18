@@ -10,7 +10,14 @@ use std::path::Path;
 pub(crate) fn reserved(kind: Option<&str>, id: Option<&str>, descriptor: Option<&Value>) -> bool {
     kind == Some(NATIVE_BASH_REVIEW_ARTIFACT_TYPE)
         || descriptor.is_some()
-        || matches!(id, Some(NATIVE_BASH_ARTIFACT_ID | "native-bash-launch:v1"))
+        || matches!(
+            id,
+            Some(
+                NATIVE_BASH_ARTIFACT_ID
+                    | "native-bash-launch:v1"
+                    | "native-bash-owner:native-pretool:v1"
+            )
+        )
 }
 
 pub(crate) fn validate(

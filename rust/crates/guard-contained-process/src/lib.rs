@@ -16,6 +16,8 @@ pub mod bound_fs;
 pub mod bound_output;
 #[cfg(unix)]
 pub mod deferred_output;
+#[cfg(target_os = "macos")]
+pub mod host_owner;
 pub mod probe;
 pub use probe::main as probe_main;
 pub mod runtime_files;

@@ -6,7 +6,14 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from .native_approval_resolution import ApprovalResolutionPlanUnavailableError
-from .native_bash_protocol import ARTIFACT_ID, ARTIFACT_TYPE, NativeBashError, request_id, verify_review_request
+from .native_bash_protocol import (
+    ARTIFACT_ID,
+    ARTIFACT_TYPE,
+    LEGACY_ARTIFACT_IDS,
+    NativeBashError,
+    request_id,
+    verify_review_request,
+)
 
 if TYPE_CHECKING:
     from .store import GuardStore
@@ -21,7 +28,7 @@ def require_verified_bash_review(
     envelope = request.get("action_envelope_json")
     descriptor = envelope.get("native_bash") if isinstance(envelope, Mapping) else None
     reserved = (
-        request.get("artifact_id") in (ARTIFACT_ID, "native-bash-launch:v1")
+        request.get("artifact_id") in (ARTIFACT_ID, *LEGACY_ARTIFACT_IDS)
         or request.get("artifact_type") == ARTIFACT_TYPE
         or (isinstance(envelope, Mapping) and "native_bash" in envelope)
     )

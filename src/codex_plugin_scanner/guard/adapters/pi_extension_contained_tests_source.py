@@ -133,6 +133,7 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
       (!windowsSink && (GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS || !GUARD_CLI_WRAPPER_COMMAND.startsWith("/"))) ||
       snapshot.payload.tool_name !== "bash" || !key || containedTestRequests.has(key) ||
       (boundBash && (!boundBashIntent || process.platform !== "darwin" ||
+        !Number.isSafeInteger(process.pid) || process.pid <= 1 ||
         typeof snapshot.payload.session_id !== "string" ||
         snapshot.payload.session_id.length === 0)) ||
       !input || typeof input !== "object" || Array.isArray(input) ||
@@ -160,6 +161,7 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
       }), "utf8").digest("hex");
       const args = boundBash ? [
         "execute-bound-bash", "--harness", boundBashHarness, "--operation-id", operationId,
+        "--host-owner-pid", String(process.pid),
         "--guard-home", GUARD_HOME, "--workspace", snapshot.cwd,
         "--request-file", requestPath, "--request-sha256", digest,
         "--timeout-seconds", String(typeof (input as Record<string, unknown>).timeout === "number"
