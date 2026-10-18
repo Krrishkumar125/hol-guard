@@ -240,6 +240,8 @@ const ONCE_ONLY_REASON_COPY: Record<string, string> = {
     "Guard has not verified that later package loads are protected from this program's file writes. This command cannot be remembered.",
   runner_code_closure_unproven:
     "Guard could not bind all code loaded by this package runner and its command. This command cannot be remembered.",
+  python_runtime_module_unproven:
+    "Guard could not bind the installed Python implementation this program imports. This command cannot be remembered.",
   compound_command:
     "Always allow is unavailable: this command chains steps that Guard cannot verify one by one. You can allow it once.",
   guard_control: "Changes to Guard itself are always reviewed. You can allow this one time.",

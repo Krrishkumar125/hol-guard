@@ -40,6 +40,7 @@ def test_manifest_only_runtime_is_refused_by_the_real_transport_gate(tmp_path, m
         "node_package_native_addon_unproven",
         "node_runtime_package_mutation_unproven",
         "runner_code_closure_unproven",
+        "python_runtime_module_unproven",
     ],
 )
 def test_specific_installed_code_uncertainty_is_preserved_without_accepting_arbitrary_reasons(reason):

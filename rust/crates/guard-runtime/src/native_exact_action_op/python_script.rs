@@ -2,8 +2,8 @@
 //!
 //! A script launch is persistable only when every module it can load is
 //! bound: the script and each module found beside it by content (with any
-//! cached bytecode Python may run in its place) and each standard module by
-//! name. An installed package, a module that loads code by a computed name,
+//! cached bytecode Python may run in its place) and resolved standard source.
+//! An installed package, a module that loads code by a computed name,
 //! evaluates strings, starts processes or reaches the import system keeps
 //! the launch once-only, as do a graph that writes files and imports a local
 //! module or has the script's directory on the module path, an option or environment variable that loads other code or moves
@@ -51,6 +51,7 @@ const MAX_MODULES: usize = 64;
 const MAX_MODULE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_LISTING: usize = 4096;
+const RUNTIME_MODULE_UNPROVEN: &str = "python_runtime_module_unproven";
 
 /// What the options before the script change about module lookup.
 #[derive(Default)]
@@ -89,8 +90,11 @@ struct Graph<'a> {
     cwd: &'a str,
     /// The script's directory: the first module-path entry.
     root: String,
+    runtime: Value,
+    library: Option<Vec<String>>,
     script_directory: bool,
     modules: BTreeMap<String, String>,
+    runtime_modules: BTreeMap<String, String>,
     bytecode: BTreeMap<String, String>,
     /// Code `site` runs before the script: `.pth` files, the modules they
     /// import, and `sitecustomize`/`usercustomize`.
@@ -108,6 +112,63 @@ struct Graph<'a> {
 }
 
 impl Graph<'_> {
+    fn drain(&mut self, script: &str) -> Proof<(bool, Replaces)> {
+        let mut writes = false;
+        let mut replaces = Replaces::default();
+        while let Some(module) = self.queue.pop_front() {
+            let (digest, bytes) = self.digest(&module)?;
+            let source = String::from_utf8(bytes).map_err(|_| MUTABLE_LAUNCHER)?;
+            let scanned = scan(source.trim_start_matches('\u{feff}')).ok_or(MUTABLE_LAUNCHER)?;
+            let runtime = self
+                .library
+                .as_ref()
+                .is_some_and(|roots| roots.iter().any(|root| fs_path::is_inside(&module, root)));
+            if runtime {
+                self.runtime_modules.insert(module.clone(), digest);
+            } else {
+                self.modules.insert(module.clone(), digest);
+            }
+            writes |= scanned.writes;
+            replaces = replaces.join(scanned.replaces);
+            for import in &scanned.imports {
+                self.resolve(&module, module == script, import)?;
+            }
+        }
+        Ok((writes, replaces))
+    }
+
+    fn add_standard(&mut self, name: &str, parts: &[&str], names: &[String]) -> Proof<()> {
+        // These are interpreter-owned builtin modules, rather than files
+        // selected from an installation. Other standard names are not code.
+        if matches!(name, "sys" | "builtins") {
+            self.standard.insert(name.to_owned());
+            return Ok(());
+        }
+        if self.library.is_none() {
+            self.library = Some(
+                startup::runtime_library(&self.runtime, self.ctx.home)
+                    .map_err(|_| RUNTIME_MODULE_UNPROVEN)?,
+            );
+        }
+        let library = self.library.as_ref().unwrap().clone();
+        for directory in library {
+            let found = self
+                .find(&directory, name)
+                .map_err(|_| RUNTIME_MODULE_UNPROVEN)?;
+            if found.is_some() {
+                self.standard.insert(name.to_owned());
+                return self.add_local(&directory, parts, names).map_err(|reason| {
+                    if reason == SENSITIVE_PATH {
+                        reason
+                    } else {
+                        RUNTIME_MODULE_UNPROVEN
+                    }
+                });
+            }
+        }
+        Err(RUNTIME_MODULE_UNPROVEN)
+    }
+
     fn digest(&mut self, path: &str) -> Proof<(String, Vec<u8>)> {
         self.ctx.check()?;
         let resolved = fs_path::resolve_strict(path).ok_or(MUTABLE_LAUNCHER)?;
@@ -183,10 +244,13 @@ impl Graph<'_> {
     /// Queue a module and bind the cached bytecode Python may run in its
     /// place.
     fn add_module(&mut self, path: String) -> Proof<()> {
-        if self.modules.contains_key(&path) || self.queue.contains(&path) {
+        if self.modules.contains_key(&path)
+            || self.runtime_modules.contains_key(&path)
+            || self.queue.contains(&path)
+        {
             return Ok(());
         }
-        if self.modules.len() + self.queue.len() >= MAX_MODULES {
+        if self.modules.len() + self.runtime_modules.len() + self.queue.len() >= MAX_MODULES {
             return Err(MUTABLE_LAUNCHER);
         }
         self.add_bytecode(&path)?;
@@ -268,7 +332,13 @@ impl Graph<'_> {
             for _ in 1..import.level {
                 directory = fs_path::parent(&directory);
             }
-            if is_script || directory == self.root || !fs_path::is_inside(&directory, &self.root) {
+            let within_root = fs_path::is_inside(&directory, &self.root)
+                || self.library.as_ref().is_some_and(|roots| {
+                    roots
+                        .iter()
+                        .any(|root| fs_path::is_inside(&directory, root))
+                });
+            if is_script || directory == self.root || !within_root {
                 return Err(MUTABLE_LAUNCHER);
             }
             return self.add_local(&directory, &parts, &import.names);
@@ -285,12 +355,20 @@ impl Graph<'_> {
         if self.script_directory {
             let root = self.root.clone();
             if self.find(&root, top)?.is_some() {
+                // Startup runs before the script directory is installed on
+                // sys.path. An already loaded standard dependency may win
+                // over this local file; bind both possible code origins.
+                if self.runtime_modules.contains_key(importer) {
+                    if !STANDARD_MODULES.contains(&top) {
+                        return Err(RUNTIME_MODULE_UNPROVEN);
+                    }
+                    self.add_standard(top, &parts, &import.names)?;
+                }
                 return self.add_local(&root, &parts, &import.names);
             }
         }
         if STANDARD_MODULES.contains(&top) {
-            self.standard.insert(top.to_owned());
-            return Ok(());
+            return self.add_standard(top, &parts, &import.names);
         }
         Err(MUTABLE_LAUNCHER)
     }
@@ -343,8 +421,11 @@ pub(super) fn python_script(
         // CPython puts the real path's directory first on the module path,
         // so a symlinked script imports beside its target, not the link.
         root: fs_path::parent(&resolved),
+        runtime: executable.clone(),
+        library: None,
         script_directory: !options.safe_path,
         modules: BTreeMap::new(),
+        runtime_modules: BTreeMap::new(),
         bytecode: BTreeMap::new(),
         startup: BTreeMap::new(),
         shim_loaders: Vec::new(),
@@ -357,27 +438,21 @@ pub(super) fn python_script(
     };
     // Python never runs cached bytecode for the script itself.
     graph.queue.push_back(resolved.clone());
-    let mut writes = false;
-    let mut replaces = Replaces::default();
-    while let Some(module) = graph.queue.pop_front() {
-        let (digest, bytes) = graph.digest(&module)?;
-        let source = String::from_utf8(bytes).map_err(|_| MUTABLE_LAUNCHER)?;
-        let scanned = scan(source.trim_start_matches('\u{feff}')).ok_or(MUTABLE_LAUNCHER)?;
-        graph.modules.insert(module.clone(), digest);
-        writes |= scanned.writes;
-        replaces = replaces.join(scanned.replaces);
-        for import in &scanned.imports {
-            graph.resolve(&module, module == resolved, import)?;
-        }
+    let (mut writes, mut replaces) = graph.drain(&resolved)?;
+    if !options.no_site {
+        let paths = graph.add_startup(executable, !options.no_user_site)?;
+        let (startup_writes, startup_replaces) = graph.drain(&resolved)?;
+        writes |= startup_writes;
+        replaces = replaces.join(startup_replaces);
+        graph.check_startup(&paths)?;
     }
     // A local module is bound as it was before launch; a graph that can
     // write files could replace one before it is imported, or create one
     // beside the script that shadows a standard module.
-    if (writes || replaces.writes()) && (graph.modules.len() > 1 || graph.script_directory) {
+    if (writes || replaces.writes())
+        && (graph.modules.len() + graph.runtime_modules.len() > 1 || graph.script_directory)
+    {
         return Err(MUTABLE_LAUNCHER);
-    }
-    if !options.no_site {
-        graph.add_startup(executable, !options.no_user_site)?;
     }
     let entries = |map: &BTreeMap<String, String>| -> Vec<Value> {
         map.iter()
@@ -387,6 +462,7 @@ pub(super) fn python_script(
     Ok(json!({
         "script": resolved,
         "modules": entries(&graph.modules),
+        "runtime_modules": entries(&graph.runtime_modules),
         "bytecode": entries(&graph.bytecode),
         "startup": entries(&graph.startup),
         "standard": graph.standard.into_iter().collect::<Vec<_>>(),

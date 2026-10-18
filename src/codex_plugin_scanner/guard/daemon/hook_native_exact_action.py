@@ -57,6 +57,7 @@ _ONCE_ONLY_REASONS = frozenset(
         "node_package_native_addon_unproven",
         "node_runtime_package_mutation_unproven",
         "runner_code_closure_unproven",
+        "python_runtime_module_unproven",
     }
 )
 
