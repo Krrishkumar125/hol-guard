@@ -51,6 +51,12 @@ impl Resolver for FixtureResolver {
                 openssl_config: None,
                 delivery: NativeDelivery::ReadonlySystem,
             }),
+            "/usr/bin/base64" => Ok(Executable::Native {
+                resolved_path: "/usr/bin/base64".into(),
+                content_sha256: "4".repeat(64),
+                openssl_config: None,
+                delivery: NativeDelivery::ReadonlySystem,
+            }),
             "rm" => Ok(Executable::Native {
                 resolved_path: "/bin/rm".into(),
                 content_sha256: "2".repeat(64),
@@ -91,12 +97,12 @@ fn brokered_native_call_reserves_fd7_and_keeps_outputs_contiguous_from_fd8() {
     let source = graph.source_for_launch().unwrap();
     assert!(source.contains("builtin printf '%s\\n' \"$__guard_id\" >&7"));
     assert!(source.contains(": >&8"));
-    assert!(source.contains("__guard_broker_call 0 value"));
+    assert!(source.contains("__guard_broker_call 0 0 value"));
 }
 
 #[test]
-fn brokered_native_call_rejects_pipeline_input_instead_of_changing_stdin() {
-    let error = build(
+fn brokered_native_call_binds_the_system_stdin_encoder() {
+    let graph = build(
         Code {
             original_path: "/script.sh".into(),
             resolved_path: "/script.sh".into(),
@@ -107,8 +113,15 @@ fn brokered_native_call_rejects_pipeline_input_instead_of_changing_stdin() {
         &FixtureResolver,
         Instant::now() + Duration::from_secs(1),
     )
-    .unwrap_err();
-    assert_eq!(error.reason, "bash_broker_stdin_unproven");
+    .unwrap();
+    assert_eq!(
+        graph.native_images.get("/usr/bin/base64"),
+        Some(&"4".repeat(64))
+    );
+    assert!(graph
+        .source_for_launch()
+        .unwrap()
+        .contains("__guard_broker_call 0 1 value"));
 }
 
 fn graph(mode: &str) -> Graph {

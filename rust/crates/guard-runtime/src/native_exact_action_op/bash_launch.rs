@@ -65,7 +65,11 @@ pub(crate) fn execute(
         .graph
         .invocations
         .iter()
-        .filter_map(|invocation| invocation.broker_id)
+        .filter_map(|invocation| {
+            invocation
+                .broker_id
+                .map(|id| (id, invocation.operation.pipeline_input))
+        })
         .collect::<Vec<_>>();
     let mut isolation = Isolation {
         seatbelt: Some(profile),

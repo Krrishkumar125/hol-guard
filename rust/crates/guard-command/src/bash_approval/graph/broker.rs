@@ -13,9 +13,13 @@ pub(super) fn render(source: String, enabled: bool) -> Result<String> {
         return Ok(source);
     }
     let prefix = r#"__guard_broker_call() {
-  builtin local __guard_id="$1" __guard_status __guard_stdout __guard_stderr
-  shift
+  builtin local __guard_id="$1" __guard_stdin="$2" __guard_status __guard_stdout __guard_stderr
+  shift 2
   builtin printf '%s\n' "$__guard_id" >&7 || return 126
+  if [ "$__guard_stdin" = 1 ]; then
+    /usr/bin/base64 >&7 || return 126
+    builtin printf '\n.\n' >&7 || return 126
+  fi
   IFS= builtin read -r __guard_status <&7 || return 126
   IFS= builtin read -r __guard_stdout <&7 || return 126
   IFS= builtin read -r __guard_stderr <&7 || return 126

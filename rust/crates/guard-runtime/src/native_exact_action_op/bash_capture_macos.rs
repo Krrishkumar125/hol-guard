@@ -236,6 +236,7 @@ impl graph::Resolver for Resolver<'_> {
                 true
             }
             Some("/usr/bin/sort") => argv.len() == 1,
+            Some("/usr/bin/base64") => argv.len() == 1,
             Some("/usr/bin/head") => {
                 argv.len() == 3
                     && argv[1] == "-n"
@@ -245,7 +246,11 @@ impl graph::Resolver for Resolver<'_> {
             }
             _ => false,
         };
-        if matches!(path.to_str(), Some("/usr/bin/sort" | "/usr/bin/head")) && !native {
+        if matches!(
+            path.to_str(),
+            Some("/usr/bin/sort" | "/usr/bin/base64" | "/usr/bin/head")
+        ) && !native
+        {
             return Err("bash_native_arguments_unproven");
         }
         if let Some(captured) = self.captured.borrow().get(&key) {

@@ -39,11 +39,9 @@ impl SourceLaunchGate for Gate {
 }
 
 fn hardened_helper(root: &Path, return_code: u8) -> PathBuf {
-    let source = root.join("compiled-helper.c");
-    let image = root.join("compiled-helper");
-    std::fs::write(
-        &source,
-        format!(
+    hardened_helper_source(
+        root,
+        &format!(
             r#"#include <stdio.h>
 int main(int argc, char **argv) {{
   printf("argv0=%s arg=%s\n", argv[0], argc > 1 ? argv[1] : "");
@@ -53,7 +51,12 @@ int main(int argc, char **argv) {{
 "#
         ),
     )
-    .unwrap();
+}
+
+fn hardened_helper_source(root: &Path, program: &str) -> PathBuf {
+    let source = root.join("compiled-helper.c");
+    let image = root.join("compiled-helper");
+    std::fs::write(&source, program).unwrap();
     let mut compile = Command::new("/usr/bin/clang");
     compile
         .args(["-O0", "-Wl,-no_uuid"])
@@ -145,6 +148,57 @@ fn bash_broker_preserves_output_into_a_modeled_pipeline_consumer() {
     assert_eq!(output.exit_code, Some(0));
     assert_eq!(output.stdout, b"argv0=compiled-helper arg=value\n");
     assert_eq!(output.stderr, b"broker-stderr\n");
+    assert_eq!((gate.prepared, gate.committed, gate.released), (0, 1, 1));
+}
+
+#[test]
+fn bash_broker_preserves_binary_pipeline_input() {
+    let (_root, request) = tests::fixture();
+    let root = Path::new(&request.cwd);
+    hardened_helper_source(
+        root,
+        r#"#include <stdio.h>
+int main(void) {
+  unsigned char buffer[4096];
+  size_t count;
+  size_t total = 0;
+  while ((count = fread(buffer, 1, sizeof buffer, stdin)) != 0) {
+    if (fwrite(buffer, 1, count, stdout) != count) return 90;
+    total += count;
+  }
+  fprintf(stderr, "broker-stdin=%zu\n", total);
+  return ferror(stdin) ? 91 : 0;
+}
+"#,
+    );
+    std::fs::write(
+        root.join("maintenance.sh"),
+        "printf 'alpha\\000beta\\n' | compiled-helper value\n",
+    )
+    .unwrap();
+    let captured = capture_for_launch(&request, &tests::admitted("allow")).unwrap();
+    assert_eq!(captured.graph.brokered_images.len(), 1);
+    assert!(captured.graph.native_images.contains_key("/usr/bin/base64"));
+    assert!(captured.subject.code_inputs.iter().any(|input| {
+        input.kind == guard_contracts::NativeScriptInputKindV1::Native
+            && input.resolved_path == "/usr/bin/base64"
+    }));
+    let mut gate = Gate {
+        allow: true,
+        prepared: 0,
+        committed: 0,
+        released: 0,
+    };
+    let output = super::super::super::bash_launch::execute(
+        captured,
+        Instant::now() + Duration::from_secs(10),
+        &AtomicBool::new(false),
+        &mut gate,
+    )
+    .unwrap();
+    assert_eq!(output.exit_code, Some(0));
+    assert_eq!(output.stdout, b"alpha\0beta\n");
+    assert_eq!(output.stderr, b"broker-stdin=11\n");
     assert_eq!((gate.prepared, gate.committed, gate.released), (0, 1, 1));
 }
 

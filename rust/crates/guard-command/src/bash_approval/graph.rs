@@ -356,10 +356,60 @@ impl Builder<'_> {
                         images.insert(resolved_path.clone(), content_sha256);
                         if delivery == NativeDelivery::HardenedBroker {
                             if operation.pipeline_input {
-                                return Err(Uncertainty {
-                                    reason: "bash_broker_stdin_unproven",
-                                    line: operation.line,
-                                });
+                                let encoder_argv = vec!["/usr/bin/base64".to_owned()];
+                                let encoder =
+                                    self.resolver.resolve(&encoder_argv).map_err(|reason| {
+                                        Uncertainty {
+                                            reason,
+                                            line: operation.line,
+                                        }
+                                    })?;
+                                let Executable::Native {
+                                    resolved_path: encoder_path,
+                                    content_sha256: encoder_digest,
+                                    openssl_config: None,
+                                    delivery: NativeDelivery::ReadonlySystem,
+                                } = encoder
+                                else {
+                                    return Err(Uncertainty {
+                                        reason: "bash_broker_stdin_encoder_unproven",
+                                        line: operation.line,
+                                    });
+                                };
+                                if encoder_path != "/usr/bin/base64"
+                                    || encoder_digest.len() != 64
+                                    || !encoder_digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                                {
+                                    return Err(Uncertainty {
+                                        reason: "bash_broker_stdin_encoder_unproven",
+                                        line: operation.line,
+                                    });
+                                }
+                                if !self.native_images.contains_key(&encoder_path)
+                                    && self.code.len()
+                                        + self.sources.len()
+                                        + self.startup.len()
+                                        + self.native_images.len()
+                                        + self.brokered_images.len()
+                                        + 1
+                                        >= MAX_CODE_INPUTS
+                                {
+                                    return Err(Uncertainty {
+                                        reason: "bash_graph_bounds",
+                                        line: operation.line,
+                                    });
+                                }
+                                if self
+                                    .native_images
+                                    .get(&encoder_path)
+                                    .is_some_and(|previous| previous != &encoder_digest)
+                                {
+                                    return Err(Uncertainty {
+                                        reason: "bash_code_changed_during_analysis",
+                                        line: operation.line,
+                                    });
+                                }
+                                self.native_images.insert(encoder_path, encoder_digest);
                             }
                             if openssl_config.is_some() {
                                 return Err(Uncertainty {
@@ -375,7 +425,10 @@ impl Builder<'_> {
                                 })?;
                             let id = *self.broker_ids.entry(key).or_insert(next);
                             invocation.broker_id = Some(id);
-                            Some(format!("__guard_broker_call {id}"))
+                            Some(format!(
+                                "__guard_broker_call {id} {}",
+                                u8::from(operation.pipeline_input)
+                            ))
                         } else {
                             // Keep the original native argv[0] while pinning the
                             // executable path. A direct path replacement changes it.
