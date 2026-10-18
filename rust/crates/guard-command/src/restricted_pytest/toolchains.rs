@@ -7,7 +7,7 @@ use std::os::unix::fs::MetadataExt;
 
 #[path = "user_tools.rs"]
 mod user_tools;
-pub(super) use user_tools::host_corepack_home;
+pub(super) use user_tools::{host_corepack_home, host_go_module_cache};
 
 /// Where `xcode-select -s` records the developer directory: the current
 /// location first, then the one older macOS releases used.
@@ -98,8 +98,14 @@ fn sensitive_for_exec(path: &Path, home: &Path) -> bool {
 fn accept_entry(entry: &Path, home: Option<&Path>, workspace: &Path) -> Option<Vec<PathBuf>> {
     let canonical = entry.canonicalize().ok()?;
     // Any other directory must be one of the caller's sealed tool directories.
-    let user_tool =
-        || user_tools::tool_root(&canonical, &homes(home), workspace).map(|root| vec![root]);
+    let user_tool = || {
+        let homes = homes(home);
+        user_tools::tool_root(&canonical, &homes, workspace).map(|root| {
+            let mut roots = vec![root.clone()];
+            roots.extend(user_tools::shim_siblings(&root, &homes, workspace));
+            roots
+        })
+    };
     if forbidden(&canonical, home) || !owned_and_sealed(&canonical) {
         return user_tool();
     }
@@ -182,6 +188,45 @@ fn developer_root(resolved: &Path) -> Option<PathBuf> {
     (bundle.extension() == Some(OsStr::new("app"))).then_some(bundle)
 }
 
+/// A workspace venv's `bin` and the install roots its launchers link to. The
+/// directory keeps its place on the sandbox PATH, because a bare `python` has
+/// to find the same launcher inside the sandbox as the session found outside
+/// it, and the install becomes an executable root, because that launcher is a
+/// symlink to a file the workspace does not hold.
+fn workspace_venv(entry: &Path, workspace: &Path) -> Option<(PathBuf, Vec<PathBuf>)> {
+    let canonical = entry.canonicalize().ok()?;
+    if !path_is_within(&canonical, workspace) {
+        return None;
+    }
+    let roots = super::venv::workspace_base_roots(&canonical, workspace);
+    // The interpreter needs every root it was given; a run that can start but
+    // cannot read its standard library would fail inside the sandbox instead.
+    (!roots.is_empty() && roots.iter().all(|root| owned_and_sealed(root)))
+        .then_some((canonical, roots))
+}
+
+/// A directory of the workspace's own that the session finds its tools in,
+/// such as `node_modules/.bin`. It needs no grant, because the sandbox reads
+/// and runs the workspace already; what it needs is its place on the sandbox
+/// PATH, so a bare `vite` or `tsc` resolves to the same file inside the
+/// sandbox that the session resolved outside it. Without it the sandbox
+/// cannot start the program the command names, and ordinary project work is
+/// contained and then refused.
+fn workspace_tools(entry: &Path, workspace: &Path) -> Option<PathBuf> {
+    let canonical = entry.canonicalize().ok()?;
+    // A directory anyone else can write could answer for a project's tool
+    // with a file the session never saw.
+    (path_is_within(&canonical, workspace) && owned_and_sealed(&canonical)).then_some(canonical)
+}
+
+/// Keep `canonical` on the sandbox PATH, in the place the session gave it.
+fn keep_entry(entries: &mut Vec<String>, canonical: &Path) {
+    let text = canonical.to_string_lossy().into_owned();
+    if !text.contains(':') && !entries.contains(&text) {
+        entries.push(text);
+    }
+}
+
 /// Executable roots and the sandbox PATH for `search_path`, plus the developer
 /// directory and Corepack's cache. Entries that fail any check are dropped,
 /// so their tools are simply unavailable.
@@ -189,22 +234,33 @@ pub(super) fn workspace_exec_roots(
     search_path: &str,
     home: Option<&Path>,
     workspace: &Path,
+    go: bool,
 ) -> (Vec<PathBuf>, String) {
     let mut roots: Vec<PathBuf> = Vec::new();
     let mut entries: Vec<String> = Vec::new();
     for entry in search_path.split(':').take(64) {
         let path = Path::new(entry);
-        if !path.is_absolute() || path_is_within(path, workspace) {
+        if !path.is_absolute() {
+            continue;
+        }
+        if path_is_within(path, workspace) {
+            if let Some((bin, installs)) = workspace_venv(path, workspace) {
+                keep_entry(&mut entries, &bin);
+                for install in installs {
+                    if !roots.contains(&install) {
+                        roots.push(install);
+                    }
+                }
+            } else if let Some(bin) = workspace_tools(path, workspace) {
+                keep_entry(&mut entries, &bin);
+            }
             continue;
         }
         let Some(accepted) = accept_entry(path, home, workspace) else {
             continue;
         };
         if let Ok(canonical) = path.canonicalize() {
-            let text = canonical.to_string_lossy().into_owned();
-            if !text.contains(':') && !entries.contains(&text) {
-                entries.push(text);
-            }
+            keep_entry(&mut entries, &canonical);
         }
         for root in accepted {
             if !roots.contains(&root) {
@@ -223,6 +279,18 @@ pub(super) fn workspace_exec_roots(
     if let Some(cache) = host_corepack_home() {
         if !roots.contains(&cache) {
             roots.push(cache);
+        }
+    }
+    // A Go build compiles the dependency sources in the module cache; the
+    // launch environment points `GOMODCACHE` there and writes its own build
+    // cache into the private directory instead. Only a run that names the
+    // toolchain gets it: the cache holds whatever `go mod download` fetched,
+    // private modules included, and nothing else in a workspace reads it.
+    if go {
+        if let Some(cache) = host_go_module_cache() {
+            if !roots.contains(&cache) {
+                roots.push(cache);
+            }
         }
     }
     (roots, entries.join(":"))
@@ -315,8 +383,22 @@ mod tests {
             &format!("{}:relative/bin", link.display()),
             Some(&home.0),
             Path::new("/nonexistent-workspace"),
+            false,
         );
         assert!(!roots.contains(&outside.0) && !roots.contains(&link));
         assert_eq!(path, "/usr/bin:/bin");
+    }
+
+    #[test]
+    fn the_go_module_cache_is_an_executable_root_only_for_a_go_run() {
+        // The cache holds whatever `go mod download` fetched, a private
+        // module included, and the plan grants each root as executable.
+        let Some(cache) = host_go_module_cache() else {
+            return;
+        };
+        let (without, _) = workspace_exec_roots("", None, Path::new("/nonexistent"), false);
+        let (with, _) = workspace_exec_roots("", None, Path::new("/nonexistent"), true);
+        assert!(!without.contains(&cache));
+        assert!(with.contains(&cache));
     }
 }

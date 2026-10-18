@@ -2,6 +2,11 @@ use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::{fs, path::PathBuf};
 
+#[path = "native_command_program_collection_reader_tests.rs"]
+mod collection_reader_tests;
+#[path = "native_command_program_pack_cache_tests.rs"]
+mod pack_cache_tests;
+
 fn frame(stream: &mut Vec<u8>, bytes: &[u8]) {
     stream.extend((bytes.len() as u32).to_be_bytes());
     stream.extend(bytes);
@@ -295,4 +300,157 @@ fn cross_pack_relationships_are_checked_before_output() {
         "command_source_dependency_cycle_or_depth"
     );
     assert!(output.is_empty());
+}
+
+#[test]
+fn incremental_compilation_matches_clean_and_revalidates_raw_sources() {
+    let mut sources = sources();
+    sources.push(synthetic(0));
+    let mut compiler = PackCompiler::default();
+    let mut first = Vec::new();
+    let (root, stats) = compiler
+        .compile(stream(&sources).as_slice(), &mut first)
+        .unwrap();
+    assert_eq!(stats.compiled, sources.len());
+    let mut repeated = Vec::new();
+    let (again, stats) = compiler
+        .compile(stream(&sources).as_slice(), &mut repeated)
+        .unwrap();
+    assert_eq!((stats.compiled, stats.reused), (0, sources.len()));
+    assert_eq!(root, again);
+    assert_eq!(first, repeated);
+    assert!(stats.retained_encoded_bytes <= CACHE_BYTES);
+    let mut source: Value = serde_json::from_slice(&sources.last().unwrap().1).unwrap();
+    source["extension"]["description"] = json!("Updated description");
+    sources.last_mut().unwrap().1 = serde_json::to_vec(&source).unwrap();
+    let mut cached = Vec::new();
+    let (changed, stats) = compiler
+        .compile(stream(&sources).as_slice(), &mut cached)
+        .unwrap();
+    assert_eq!((stats.compiled, stats.reused), (1, sources.len() - 1));
+    let mut clean = Vec::new();
+    assert_eq!(
+        compile_pack_stream(stream(&sources).as_slice(), &mut clean).unwrap(),
+        changed
+    );
+    assert_eq!(cached, clean);
+    // A hit cannot skip strict JSON decoding, ownership or global validation.
+    sources.last_mut().unwrap().1 = b"{\"schema\":0,\"schema\":1}".to_vec();
+    let mut rejected = Vec::new();
+    assert!(compiler
+        .compile(stream(&sources).as_slice(), &mut rejected)
+        .is_err());
+    assert!(rejected.is_empty());
+}
+
+#[test]
+fn authenticated_release_reuse_matches_cold_output_without_process_cache() {
+    let mut sources = sources();
+    sources.push(synthetic(0));
+    let mut cold = Vec::new();
+    let root = compile_pack_stream(stream(&sources).as_slice(), &mut cold).unwrap();
+    let objects: BTreeMap<String, Vec<u8>> = cold
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let row: Value = serde_json::from_slice(line).unwrap();
+            (
+                row["sha256"].as_str().unwrap().to_owned(),
+                STANDARD.decode(row["data"].as_str().unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    let fetch = |id: &str| objects.get(id).cloned().ok_or("missing");
+    let mut reuse = PackReleaseReuse::new(&root, fetch).unwrap();
+    let mut compiler = PackCompiler {
+        limit: 0,
+        ..PackCompiler::default()
+    };
+    let mut warm = Vec::new();
+    let (again, stats) = compiler
+        .compile_reusing(stream(&sources).as_slice(), &mut warm, &mut reuse)
+        .unwrap();
+    assert_eq!(
+        (stats.compiled, stats.reused, stats.retained_encoded_bytes),
+        (0, sources.len(), 0)
+    );
+    assert_eq!(again, root);
+    assert_eq!(warm, cold);
+    let mut changed: Value = serde_json::from_slice(&sources.last().unwrap().1).unwrap();
+    changed["extension"]["description"] = json!("One source edit across compiler processes");
+    sources.last_mut().unwrap().1 = serde_json::to_vec(&changed).unwrap();
+    warm.clear();
+    let (updated, stats) = compiler
+        .compile_reusing(stream(&sources).as_slice(), &mut warm, &mut reuse)
+        .unwrap();
+    assert_eq!((stats.compiled, stats.reused), (1, sources.len() - 1));
+    cold.clear();
+    assert_eq!(
+        compile_pack_stream(stream(&sources).as_slice(), &mut cold).unwrap(),
+        updated
+    );
+    assert_eq!(warm, cold);
+    // Current invalid source relationships still reject before cache lookup.
+    changed["extension"]["dependencies"] = json!(["command.missing"]);
+    sources.last_mut().unwrap().1 = serde_json::to_vec(&changed).unwrap();
+    warm.clear();
+    assert!(compiler
+        .compile_reusing(stream(&sources).as_slice(), &mut warm, &mut reuse)
+        .is_err());
+    assert!(warm.is_empty());
+    // Replacing a disk object cannot replace the authenticated Merkle path.
+    let mut corrupt = PackReleaseReuse::new(&root, |_: &str| Ok(b"{}".to_vec())).unwrap();
+    assert!(corrupt.get("command.git", "irrelevant").is_err());
+    let mut wrong_engine = root;
+    wrong_engine["engine"] = json!("0".repeat(64));
+    assert!(PackReleaseReuse::new(&wrong_engine, |_: &str| Err("unused")).is_err());
+}
+
+#[test]
+fn referenced_interface_changes_invalidate_dependants_and_removed_owners_fail() {
+    let mut sources = sources();
+    let (metadata, bytes) = synthetic(0);
+    let mut owner: Value = serde_json::from_slice(&bytes).unwrap();
+    owner["extension"]["dependencies"] = json!(["command.scale-1"]);
+    sources.push((metadata, serde_json::to_vec(&owner).unwrap()));
+    sources.push(synthetic(1));
+    let mut compiler = PackCompiler::default();
+    compiler
+        .compile(stream(&sources).as_slice(), std::io::sink())
+        .unwrap();
+    let last = sources.last_mut().unwrap();
+    let mut related: Value = serde_json::from_slice(&last.1).unwrap();
+    related["extension"]["description"] = json!("Related interface input changed");
+    last.1 = serde_json::to_vec(&related).unwrap();
+    let (_, stats) = compiler
+        .compile(stream(&sources).as_slice(), std::io::sink())
+        .unwrap();
+    assert_eq!((stats.compiled, stats.reused), (2, sources.len() - 2));
+    sources.pop();
+    let mut rejected = Vec::new();
+    assert_eq!(
+        compiler
+            .compile(stream(&sources).as_slice(), &mut rejected)
+            .unwrap_err(),
+        "command_source_dependency_missing"
+    );
+    assert!(rejected.is_empty());
+}
+
+#[test]
+fn cache_working_set_over_budget_compiles_without_retaining_unbounded_results() {
+    let sources = sources();
+    let mut compiler = PackCompiler {
+        limit: 1,
+        ..PackCompiler::default()
+    };
+    for _ in 0..2 {
+        let (_, stats) = compiler
+            .compile(stream(&sources).as_slice(), std::io::sink())
+            .unwrap();
+        assert_eq!(stats.compiled, sources.len());
+        assert_eq!(stats.reused, 0);
+        assert_eq!(stats.retained_encoded_bytes, 0);
+    }
+    assert!(compiler.cache.is_empty());
 }

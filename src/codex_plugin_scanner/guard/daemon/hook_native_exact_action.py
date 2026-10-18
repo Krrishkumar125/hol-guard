@@ -100,6 +100,14 @@ def launch_cwd(payload: Mapping[str, object], workspace: Path | None) -> Path | 
     return resolved if os.path.isdir(resolved) else None
 
 
+def launch_path(payload: Mapping[str, object]) -> str | None:
+    """The ``PATH`` the hook stamped from the agent's own environment, if any."""
+
+    stamped = payload.get(HOOK_EXECUTION_ENVIRONMENT_KEY)
+    path = stamped.get("path") if isinstance(stamped, Mapping) else None
+    return path if isinstance(path, str) and path and "\0" not in path else None
+
+
 def _facts(native_result: Mapping[str, object]) -> dict[str, str | None]:
     action = native_result.get("action")
     action_type = action.get("action_type") if isinstance(action, Mapping) else None
@@ -134,6 +142,18 @@ def _tool_input_pairs(payload: Mapping[str, object]) -> list[list[object]] | Non
     return [[key, value] for key, value in tool_input.items() if isinstance(key, str)]
 
 
+def _raw_tool_input(payload: Mapping[str, object]) -> object | None:
+    """The first tool input sent that is not an object, when none is one."""
+
+    if pre_tool_input(payload) is not None or isinstance(payload.get("arguments"), Mapping):
+        return None
+    for key in ("tool_input", "toolInput", "arguments"):
+        value = payload.get(key)
+        if value is not None:
+            return value
+    return None
+
+
 def _text(value: object) -> str | None:
     return str(value) if value is not None else None
 
@@ -149,7 +169,7 @@ def _exact_query(
     home_dir: Path | None,
 ) -> dict[str, object]:
     raw_cwd = payload.get("cwd")
-    return {
+    query: dict[str, object] = {
         "kind": "exact_action",
         "harness": harness,
         "tool_name": tool_name,
@@ -164,6 +184,10 @@ def _exact_query(
         "extension_control_digest": current_extension_control_binding_digest(),
         "budget_ms": _BUDGET_MS,
     }
+    raw_tool_input = _raw_tool_input(payload)
+    if raw_tool_input is not None:
+        query["raw_tool_input"] = raw_tool_input
+    return query
 
 
 def native_exact_action(

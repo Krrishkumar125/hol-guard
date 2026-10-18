@@ -299,6 +299,9 @@ mod guard_store_cmd_rollups;
 #[cfg(test)]
 mod guard_store_cmd_vectors_tests;
 mod guard_store_cmd_wire;
+mod guard_store_composio_catalog;
+#[cfg(test)]
+mod guard_store_composio_catalog_tests;
 mod guard_store_connect;
 mod guard_store_connect_effective;
 #[cfg(test)]
@@ -321,6 +324,7 @@ mod guard_store_local_cli_grant_vectors_tests;
 mod guard_store_local_cli_grants;
 #[cfg(test)]
 mod guard_store_local_cli_vectors_tests;
+mod guard_store_local_mcp_declarations;
 mod guard_store_local_mcp_observation;
 mod guard_store_native_receipts;
 #[cfg(test)]
@@ -419,14 +423,23 @@ mod hook_direct;
 mod hook_direct_counters;
 mod hook_direct_evidence;
 mod hook_env_stamp;
-// Wired into the evidence writer when the Python seams retire; the
-// readers are already exercised by their own tests.
+// The seams the evidence writer runs on. Each is reached through
+// hook_evidence_writer_op; the readers also have their own tests.
 #[allow(dead_code)]
 mod hook_evidence_activity;
 #[allow(dead_code)]
 mod hook_evidence_composio;
 #[allow(dead_code)]
 mod hook_evidence_correlation;
+#[allow(dead_code)]
+mod hook_evidence_store;
+#[allow(dead_code)]
+mod hook_evidence_store_gate;
+#[allow(dead_code)]
+mod hook_evidence_store_timeout;
+#[allow(dead_code)]
+mod hook_evidence_store_wire;
+mod hook_evidence_writer_op;
 mod hook_policy_config;
 mod hook_process_spawn;
 mod hook_render_op;
@@ -866,6 +879,25 @@ mod tests {
                 .join(",")
         );
         assert!(strict_json_value(wide.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn strict_json_carries_strings_up_to_the_operation_request_bound() {
+        let catalog_capacity_overflow =
+            format!("{{\"description\":\"{}\"}}", "x".repeat(2_000_001));
+        let parsed = strict_json_value(catalog_capacity_overflow.as_bytes()).unwrap();
+        assert_eq!(
+            parsed["description"].as_str().map(str::len),
+            Some(2_000_001)
+        );
+        let over_cap = format!(
+            "{{\"description\":\"{}\"}}",
+            "x".repeat(strict_json::TEST_MAX_JSON_STRING_BYTES + 1)
+        );
+        assert_eq!(
+            strict_json_value(over_cap.as_bytes()).unwrap_err(),
+            "native_json_string_too_large"
+        );
     }
 
     #[test]

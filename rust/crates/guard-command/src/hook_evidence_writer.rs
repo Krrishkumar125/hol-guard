@@ -277,9 +277,26 @@ pub struct ObservedMcpTool {
     /// Fully qualified `mcp__<server>__<tool>` name.
     pub qualified_name: String,
     /// `source.identity` passed to `ensure_local_mcp_observation`.
-    pub identity: String,
+    pub identity: ObservedCliIdentity,
     /// Server descriptor consumed by `record_composio_discovery`.
     pub server: ObservedMcpServerIdentity,
+}
+
+/// `ObservedMcpTool.identity` — the `UnlistedCliIdentity` the connector
+/// boundary stands in for, as `ensure_local_mcp_observation` records it. The
+/// observed form never carries a source path, runner or path class, so only
+/// the fields that call site reads are kept.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObservedCliIdentity {
+    pub cli_id: String,
+    /// The MCP server segment of the tool name.
+    pub name: String,
+    /// Always `executable` for an observed connector.
+    pub kind: String,
+    pub identity_hash: String,
+    /// The `mcp__<server>__` namespace.
+    pub example_label: String,
+    pub interpreter_name: Option<String>,
 }
 
 /// Server identity carried inside [`ObservedMcpTool`].
@@ -1046,7 +1063,8 @@ impl RuntimeHookEvidenceWriter {
             invocation_preview,
         });
         let mut state = self.lock_state();
-        if state.records.len() >= self.max_records
+        if state.stopping
+            || state.records.len() >= self.max_records
             || state.queued_bytes + record.payload_bytes() > self.max_bytes
         {
             state.dropped += 1;
@@ -1106,7 +1124,8 @@ impl RuntimeHookEvidenceWriter {
             _ => unreachable!(),
         };
         let mut state = self.lock_state();
-        if state.records.len() >= self.max_records
+        if state.stopping
+            || state.records.len() >= self.max_records
             || state.queued_bytes + record.payload_bytes() > self.max_bytes
         {
             state.dropped += 1;
@@ -1123,6 +1142,12 @@ impl RuntimeHookEvidenceWriter {
     /// `submit_native_decision_receipt` (:237-270).
     pub fn submit_native_decision_receipt(&self, receipt: &Map<String, Value>) -> bool {
         let Some(validated) = self.deps.receipts.validate_native_decision_receipt(receipt) else {
+            // A receipt that does not validate is a dropped receipt, not a
+            // silent no-op: the counters are how a degraded writer is seen.
+            let mut state = self.lock_state();
+            state.receipt_dropped += 1;
+            state.dropped += 1;
+            state.degraded = true;
             return false;
         };
         let record = EvidenceRecord::NativeDecisionReceipt(NativeDecisionReceiptRecord {
@@ -1146,7 +1171,8 @@ impl RuntimeHookEvidenceWriter {
             state.receipt_deduped += 1;
             return true;
         }
-        if state.records.len() >= self.max_records
+        if state.stopping
+            || state.records.len() >= self.max_records
             || state.queued_bytes + record.payload_bytes() > self.max_bytes
         {
             state.receipt_dropped += 1;
@@ -1492,9 +1518,17 @@ impl EvidenceWorker {
                             state.receipt_processed += 1;
                         }
                         state.processed += 1;
-                        if self.rewrite_journal(&record.record_id()).is_err() {
-                            state.failures += 1;
-                            state.degraded = true;
+                        match self.rewrite_journal(&record.record_id()) {
+                            Ok(invalid_records) => {
+                                if invalid_records > 0 {
+                                    state.failures += invalid_records;
+                                    state.degraded = true;
+                                }
+                            }
+                            Err(_) => {
+                                state.failures += 1;
+                                state.degraded = true;
+                            }
                         }
                     }
                     PersistOutcome::Deduped => {
@@ -1503,9 +1537,17 @@ impl EvidenceWorker {
                         if record.is_receipt() {
                             state.receipt_deduped += 1;
                         }
-                        if self.rewrite_journal(&record.record_id()).is_err() {
-                            state.failures += 1;
-                            state.degraded = true;
+                        match self.rewrite_journal(&record.record_id()) {
+                            Ok(invalid_records) => {
+                                if invalid_records > 0 {
+                                    state.failures += invalid_records;
+                                    state.degraded = true;
+                                }
+                            }
+                            Err(_) => {
+                                state.failures += 1;
+                                state.degraded = true;
+                            }
                         }
                     }
                     PersistOutcome::Retry => {
@@ -1526,8 +1568,9 @@ impl EvidenceWorker {
                                 state.receipt_failures += 1;
                             }
                             state.degraded = true;
-                            if self.rewrite_journal(&record.record_id()).is_err() {
-                                state.failures += 1;
+                            match self.rewrite_journal(&record.record_id()) {
+                                Ok(invalid_records) => state.failures += invalid_records,
+                                Err(_) => state.failures += 1,
                             }
                         } else {
                             state.queued_bytes += record.payload_bytes();
@@ -1682,18 +1725,18 @@ impl EvidenceWorker {
     }
 
     /// `_rewrite_journal` (:496-502).
-    fn rewrite_journal(&self, remove_record_id: &str) -> Result<(), io::Error> {
-        let invalid_records = self.deps.journal.rewrite_journal(
-            &self.journal_path,
-            remove_record_id,
-            self.max_bytes,
-        )?;
-        if invalid_records > 0 {
-            let mut state = self.lock_state();
-            state.degraded = true;
-            state.failures += invalid_records;
-        }
-        Ok(())
+    /// Rewrite the journal without the record, and report how many invalid
+    /// lines the rewrite dropped.
+    ///
+    /// The count is returned rather than recorded here. Every caller runs
+    /// inside the worker loop holding the shared state, and this lock is not
+    /// reentrant: taking it again on the same thread would wedge the worker
+    /// while it holds the lock a stop needs, and every request behind that
+    /// stop with it.
+    fn rewrite_journal(&self, remove_record_id: &str) -> Result<u64, io::Error> {
+        self.deps
+            .journal
+            .rewrite_journal(&self.journal_path, remove_record_id, self.max_bytes)
     }
 
     fn lock_state(&self) -> MutexGuard<'_, EvidenceState> {

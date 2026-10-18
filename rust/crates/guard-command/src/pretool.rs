@@ -35,6 +35,7 @@ pub struct PathContext<'a> {
 mod contained_wrapper;
 pub(crate) mod curl_reads;
 pub use curl_reads::bound_curl_read_destinations;
+mod digest_reads;
 pub(crate) mod docker_reads;
 mod docker_start;
 mod doctl_reads;
@@ -42,6 +43,9 @@ pub(crate) mod kubectl_reads;
 mod loopback_ports;
 pub(crate) mod port_probes;
 mod workspace_contained;
+/// The package firewall's extensions, whose permission marks which
+/// ecosystem's manager ran rather than a risk the run carries.
+pub(crate) use workspace_contained::package::PACKAGE_EXTENSIONS;
 #[cfg(unix)]
 pub(crate) use workspace_contained::Shape;
 #[cfg(unix)]
@@ -61,6 +65,7 @@ mod compound_reason;
 mod fanout_reads;
 mod find_reads;
 mod for_loop_unroll;
+pub(crate) mod git_apply_check;
 pub(crate) mod git_branch_listing;
 pub(crate) mod git_clean_preview;
 pub(crate) mod git_clone_local;
@@ -169,7 +174,9 @@ pub use git_push::{
 pub use safe_scalar::PsqlEnvironment;
 #[cfg_attr(not(unix), allow(unused_imports))]
 pub(crate) use script_content::launch_loopback_ports;
-pub(crate) use script_content::{sole_program_sources, sourced_program_sources};
+pub(crate) use script_content::{
+    sole_program_sources, sole_sourcing_sources, sourced_program_sources,
+};
 pub(crate) use segment_proof::{benign_command_segments, without_stderr_merge};
 pub(crate) use worktree_add::new_checkout_route;
 pub(crate) use worktree_add::verified_leading_cd;

@@ -10,6 +10,16 @@ use crate::native_command_program::source::{
 use serde_json::{json, Value};
 use std::io::{BufRead, Read, Write};
 
+#[cfg(guard_source_bootstrap)]
+#[path = "source_compiler_receipt.rs"]
+mod receipt;
+
+pub fn compiler_info() -> Value {
+    json!({"schema":"guard.source-compiler-capabilities.v1",
+        "implementation_digest":env!("GUARD_COMMAND_SOURCE_IMPLEMENTATION"),
+        "embedded_catalog":!cfg!(guard_source_bootstrap)})
+}
+
 #[cfg(not(guard_source_bootstrap))]
 static EXPORTED_TRUST_MAP: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/trust-class-map.v1.json"));
@@ -116,7 +126,9 @@ pub fn is_command(arguments: &[String]) -> bool {
         return false;
     };
     match operation {
-        "export-trust"
+        "compiler-info"
+        | "compile-bootstrap-stream"
+        | "export-trust"
         | "export-built"
         | "schema"
         | "descriptor-schema"
@@ -130,11 +142,15 @@ pub fn is_command(arguments: &[String]) -> bool {
         | "compare"
         | "evaluate-batch" => arguments.len() == 1,
         "check" => arguments.len() == 2,
+        "check-pack-cache" => arguments.len() == 3,
         _ => false,
     }
 }
 
 fn run(arguments: &[String]) -> Result<Value, &'static str> {
+    if arguments == ["compiler-info"] {
+        return Ok(compiler_info());
+    }
     if arguments == ["export-trust"] {
         return serde_json::from_slice(EXPORTED_TRUST_MAP)
             .map_err(|_| "command_source_trust_output_invalid");
@@ -167,6 +183,21 @@ fn run(arguments: &[String]) -> Result<Value, &'static str> {
     let Some(operation) = arguments.first().map(String::as_str) else {
         return Err("command_source_usage_expected_schema_validate_compile_check_or_test");
     };
+    if operation == "check-pack-cache" {
+        if arguments.len() != 3 {
+            return Err("command_pack_cache_usage_invalid");
+        }
+        let program = crate::native_command_program::NativeCommandProgram::from_pack_cache(
+            std::path::Path::new(&arguments[1]),
+            &arguments[2],
+            crate::native_command_program::PackAdmissionBudget::resident(),
+        )?;
+        return Ok(
+            json!({"schema":"guard.command-pack-cache-check.v1", "engine":env!("GUARD_COMMAND_SOURCE_IMPLEMENTATION"),
+            "program_digest":program.program_digest,"catalog_digest":program.catalog_digest,"trust_digest":program.trust_digest,
+            "extensions":program.extensions.len(),"rules":program.rules.len()}),
+        );
+    }
     if !matches!(
         operation,
         "validate" | "compile" | "check" | "test" | "compare" | "evaluate-batch"
@@ -223,7 +254,19 @@ pub fn main(arguments: Vec<String>) -> i32 {
     if arguments == ["github-classify-serve"] {
         return github_classify_serve();
     }
-    let result = if arguments == ["compile-packs"] {
+    let result = if arguments == ["compile-bootstrap-stream"] {
+        #[cfg(guard_source_bootstrap)]
+        {
+            receipt::compile(std::io::stdin().lock())
+        }
+        #[cfg(not(guard_source_bootstrap))]
+        {
+            Err((
+                "command_source_bootstrap_operation_unsupported",
+                String::new(),
+            ))
+        }
+    } else if arguments == ["compile-packs"] {
         compile_pack_stream(std::io::stdin().lock(), std::io::stdout().lock())
             .map_err(|code| (code, String::new()))
     } else if arguments == ["compile-stream"] {

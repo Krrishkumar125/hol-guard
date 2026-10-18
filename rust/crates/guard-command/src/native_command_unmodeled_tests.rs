@@ -465,6 +465,24 @@ fn program_lookups_do_not_make_a_command_unmatchable() {
     let controls = controls(serde_json::json!([]), false);
     let command = "date -u +%Y-%m-%dT%H:%M:%SZ; echo \"rc=$?\"; echo \"HOME=$HOME\"; command -v doctl; ls -l \"$(command -v doctl)\"";
     assert_ne!(decision(&controls, command).1, FAILED);
+    // `which` takes a list of names and runs none of them, with or without the
+    // options that only change how it prints the answer.
+    for command in [
+        "which doctl kubectl",
+        "which -a doctl",
+        "which --all doctl kubectl helm",
+        "which doctl kubectl 2>/dev/null",
+        "echo start; which doctl kubectl; echo done",
+    ] {
+        assert_ne!(decision(&controls, command).1, FAILED, "{command}");
+    }
+    // A word the lookup never proves is an operand leaves the whole line alone.
+    for command in [
+        "ls -l \"$(which --exec doctl)\"",
+        "ls -l \"$(which doctl; gh pr list)\"",
+    ] {
+        assert_eq!(decision(&controls, command).1, FAILED, "{command}");
+    }
     // A lookup whose name is computed, or a substitution that runs a program,
     // still could run anything.
     for command in [
@@ -474,6 +492,89 @@ fn program_lookups_do_not_make_a_command_unmatchable() {
     ] {
         assert_eq!(decision(&controls, command).1, FAILED, "{command}");
     }
+}
+
+/// The shell glues a quoted part onto the word before it, so a lookup name
+/// that carries one is not a plain operand and the run has to stop in front of
+/// it. Consuming only its plain prefix would leave the quoted remainder beside
+/// the replacement and invent a command nothing in the line names.
+#[test]
+fn a_quoted_part_of_a_name_is_not_a_separate_operand() {
+    for (command, stripped) in [
+        ("which doctl foo'bar'", "true foo'bar'"),
+        ("which doctl \"kube ctl\"", "true \"kube ctl\""),
+        ("command -v gh'ub'", "command -v gh'ub'"),
+    ] {
+        assert_eq!(
+            super::shapes::without_lookups(command),
+            stripped,
+            "{command}"
+        );
+    }
+}
+
+/// A lookup that reports its answer through the exit status sends the printed
+/// path to a redirection, and the substitution still runs nothing but the
+/// lookup. Reading the close of the substitution as the first character after
+/// the name left `$(true &> /dev/null)` behind, whose bare `$` read as a
+/// computed program, so `if $(command -v tool &> /dev/null)` — the shape every
+/// generated virtualenv activation script carries — reached an evaluation
+/// failure and blocked outright, with no approval left to give it.
+#[test]
+fn redirections_do_not_hide_the_close_of_a_lookup() {
+    for (command, stripped) in [
+        // Discarded output leaves the substitution printing nothing, so the
+        // name is not a word the surrounding command received.
+        ("$(command -v cygpath &> /dev/null)", "true"),
+        ("$(command -v doctl >/dev/null 2>&1)", "true"),
+        ("$(which doctl kubectl 2>&1)", "doctl kubectl"),
+        // Only redirections read past the name; a second command does not.
+        ("$(command -v doctl && gh pr list)", "$(true && gh pr list)"),
+        // A target the shell would truncate is not one of them: reading past
+        // it would drop the write out of the text the rest of the scan reads.
+        (
+            "$(command -v doctl > .git/hooks/post-checkout)",
+            "$(true > .git/hooks/post-checkout)",
+        ),
+        (
+            "$(command -v doctl >> /home/u/.bashrc)",
+            "$(true >> /home/u/.bashrc)",
+        ),
+        ("$(command -v doctl < secrets.env)", "$(true < secrets.env)"),
+    ] {
+        assert_eq!(
+            super::shapes::without_lookups(command),
+            stripped,
+            "{command}"
+        );
+    }
+    let controls = controls(serde_json::json!([]), false);
+    assert_ne!(
+        decision(
+            &controls,
+            "if $(command -v doctl &> /dev/null); then doctl account get; fi"
+        )
+        .1,
+        FAILED
+    );
+    assert_eq!(
+        decision(
+            &controls,
+            "if $(command -v doctl && gh pr list); then echo ok; fi"
+        )
+        .1,
+        FAILED
+    );
+    // The write stays in the text the decision reads, so the command keeps
+    // the opaque substitution it had rather than reading as a bare lookup.
+    assert_eq!(
+        decision(
+            &controls,
+            "echo \"$(command -v doctl > .git/hooks/post-checkout)\""
+        )
+        .1,
+        FAILED
+    );
 }
 
 #[test]

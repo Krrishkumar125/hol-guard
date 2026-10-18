@@ -122,25 +122,12 @@ fn evaluate_with(
 
 /// The exact-action context token or its refusal for a resident caller.
 /// The separate delivery contract decides whether a once retry is executable.
+#[cfg(test)]
 pub(crate) fn exact_action_token(query: &NativeExactActionQueryV1) -> Result<String, &'static str> {
     exact_action_token_with(query, &ResidentEngines { guard_home: None })
 }
 
-pub(crate) fn exact_action_token_for_home(
-    query: &NativeExactActionQueryV1,
-    guard_home: &std::path::Path,
-) -> Result<String, &'static str> {
-    if !guard_home.is_absolute() {
-        return exact_action_token(query);
-    }
-    exact_action_token_with(
-        query,
-        &ResidentEngines {
-            guard_home: Some(guard_home),
-        },
-    )
-}
-
+#[cfg(test)]
 fn exact_action_token_with(
     query: &NativeExactActionQueryV1,
     engines: &dyn Engines,
@@ -150,6 +137,38 @@ fn exact_action_token_with(
     };
     let budget = Duration::from_millis((*budget_ms).min(NATIVE_EXACT_ACTION_MAX_BUDGET_MS));
     token::exact_action(query, Instant::now() + budget, engines)
+}
+
+/// The token an approval of `query` is saved and matched under
+/// (`token::approval_token`), for a resident caller that holds the query.
+pub(crate) fn approval_token(query: &NativeExactActionQueryV1) -> Result<String, &'static str> {
+    approval_token_with(query, &ResidentEngines { guard_home: None })
+}
+
+pub(crate) fn approval_token_for_home(
+    query: &NativeExactActionQueryV1,
+    guard_home: &std::path::Path,
+) -> Result<String, &'static str> {
+    if !guard_home.is_absolute() {
+        return approval_token(query);
+    }
+    approval_token_with(
+        query,
+        &ResidentEngines {
+            guard_home: Some(guard_home),
+        },
+    )
+}
+
+fn approval_token_with(
+    query: &NativeExactActionQueryV1,
+    engines: &dyn Engines,
+) -> Result<String, &'static str> {
+    let NativeExactActionQueryV1::ExactAction { budget_ms, .. } = query else {
+        return Err("native_exact_action_query_invalid");
+    };
+    let budget = Duration::from_millis((*budget_ms).min(NATIVE_EXACT_ACTION_MAX_BUDGET_MS));
+    token::approval_token(query, Instant::now() + budget, engines)
 }
 
 /// The review identity the daemon binds an approve-once retry of `query` to
@@ -180,6 +199,7 @@ pub(crate) fn review_binding_for(
             execution_environment,
             &ResidentEngines { guard_home: None },
         )
+        .or(Some(reuse_shape::Reuse::Argv))
     };
     binding::review_binding(
         harness,
@@ -194,6 +214,17 @@ pub(crate) fn review_binding_for(
         policy_binding,
         launcher,
     )
+}
+
+/// What an unprovable command falls back to (`CommandHash`), or the strict
+/// proofs alone that the recorded parity vectors expect (`Strict`).
+#[derive(Clone, Copy, PartialEq)]
+enum Fallback {
+    /// A command Guard cannot prove binds to its own hash: an approval holds
+    /// until the command changes (`docs/guard/approval-invariant.md`).
+    CommandHash,
+    #[cfg(test)]
+    Strict,
 }
 
 /// The launcher state a one-time approval of `command` binds to: a plain
@@ -218,6 +249,14 @@ fn launcher_reuse(
 fn decide(
     request: &NativeExactActionRequestV1,
     engines: &dyn Engines,
+) -> Result<NativeExactActionPayloadV1, &'static str> {
+    decide_with(request, engines, Fallback::CommandHash)
+}
+
+fn decide_with(
+    request: &NativeExactActionRequestV1,
+    engines: &dyn Engines,
+    fallback: Fallback,
 ) -> Result<NativeExactActionPayloadV1, &'static str> {
     if request.schema != NATIVE_EXACT_ACTION_REQUEST_SCHEMA {
         return Err("native_exact_action_schema_mismatch");
@@ -263,13 +302,19 @@ fn decide(
                         execution_environment.as_ref(),
                         engines,
                     )
+                    .or((fallback == Fallback::CommandHash).then_some(reuse_shape::Reuse::Argv))
                 },
             ),
         },
         NativeExactActionQueryV1::ExactAction { budget_ms, .. } => {
             let budget = Duration::from_millis((*budget_ms).min(NATIVE_EXACT_ACTION_MAX_BUDGET_MS));
             let deadline = Instant::now() + budget;
-            match token::exact_action(&request.query, deadline, engines) {
+            let minted = match fallback {
+                Fallback::CommandHash => token::approval_token(&request.query, deadline, engines),
+                #[cfg(test)]
+                Fallback::Strict => token::exact_action(&request.query, deadline, engines),
+            };
+            match minted {
                 Ok(token) => NativeExactActionPayloadV1::ExactAction {
                     token: Some(token),
                     once_only_reason: None,
@@ -286,6 +331,14 @@ fn decide(
 #[cfg(test)]
 #[path = "native_exact_action_op_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "native_exact_action_op/approval_fallback_tests.rs"]
+mod approval_fallback_tests;
+
+#[cfg(test)]
+#[path = "native_exact_action_op/wire_tests.rs"]
+mod wire_tests;
 
 #[cfg(all(test, windows))]
 #[path = "native_exact_action_op/windows_tests.rs"]

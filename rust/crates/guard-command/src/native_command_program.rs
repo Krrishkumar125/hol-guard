@@ -45,6 +45,17 @@ pub const PACKAGED_COMMAND_PROGRAM_SHA256: &str = env!("GUARD_PACKAGED_PROGRAM_S
 #[cfg(guard_source_bootstrap)]
 pub const PACKAGED_COMMAND_PROGRAM_SHA256: &str = "";
 
+/// Program identity without decoding the legacy embedded artifact.
+#[cfg(not(guard_source_bootstrap))]
+pub const PACKAGED_COMMAND_PROGRAM_ID: &str = env!("GUARD_PACKAGED_PROGRAM_ID");
+#[cfg(guard_source_bootstrap)]
+pub const PACKAGED_COMMAND_PROGRAM_ID: &str = "";
+
+#[cfg(not(guard_source_bootstrap))]
+const DEFAULT_COMMAND_PACK_IDS: &str = env!("GUARD_DEFAULT_COMMAND_PACK_IDS");
+#[cfg(guard_source_bootstrap)]
+const DEFAULT_COMMAND_PACK_IDS: &str = "";
+
 /// The exact program admitted by the runtime, also used for rule attestation.
 // One shared allocation and accessor keep multi-megabyte data out of caller
 // codegen units. Constant propagation otherwise emits redundant binary copies.
@@ -74,12 +85,19 @@ pub fn packaged_command_program_bytes() -> &'static [u8] {
 #[path = "native_command_program_admission.rs"]
 mod admission;
 pub(crate) use admission::{public_ipv4, public_ipv6};
+#[path = "native_command_program_collection.rs"]
+mod collection;
+#[path = "native_command_program_collection_reader.rs"]
+mod collection_reader;
+pub use collection_reader::PackAdmissionBudget;
 #[path = "native_command_program_compile.rs"]
 mod compile;
 #[path = "native_command_program_dispatch.rs"]
 mod dispatch;
 #[path = "native_command_program_evaluation.rs"]
 mod evaluation;
+#[path = "native_command_program_pack_cache.rs"]
+mod pack_cache;
 pub(crate) use dispatch::CommandCandidateIndex;
 #[path = "native_command_program_memo.rs"]
 mod memo;
@@ -271,6 +289,7 @@ pub struct NativeCommandProgram {
     pub extensions: Vec<ProgramExtension>,
     pub rules: Vec<ProgramRule>,
     nodes: Vec<Node>,
+    node_ids: Vec<String>,
     executable_index: BTreeMap<String, Vec<usize>>,
     keyword_index: BTreeMap<String, Vec<usize>>,
     unindexed: Vec<usize>,
@@ -283,7 +302,7 @@ pub fn packaged_command_program() -> Result<Arc<NativeCommandProgram>, &'static 
     static PROGRAM: OnceLock<Result<Arc<NativeCommandProgram>, &'static str>> = OnceLock::new();
     PROGRAM
         .get_or_init(|| {
-            NativeCommandProgram::from_packaged_bytes(packaged_command_program_bytes())
+            NativeCommandProgram::from_embedded_artifact(packaged_command_program_bytes())
                 .map(Arc::new)
         })
         .clone()
