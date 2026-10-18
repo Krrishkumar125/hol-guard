@@ -195,9 +195,13 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     wrapper = tmp_path / "guard-cli"
     ready_marker, resume_marker = tmp_path / "cli-ready", tmp_path / "cli-resume"
     pause_source = pause_native_execute_source(ready_marker, resume_marker) if duration == "host-parent-death" else ""
+    package_bootstrap = ""
+    if os.environ.get("HOL_GUARD_TEST_USE_INSTALLED") != "1":
+        package_bootstrap = f"sys.path.insert(0, {str(repo / 'src')!r})\n"
     wrapper.write_text(
-        f"#!{sys.executable}\nimport os, sys\nsys.path.insert(0, {str(repo / 'src')!r})\n"
-        "os.environ['HOL_GUARD_NATIVE'] = 'force'\n"
+        f"#!{sys.executable}\nimport os, sys\n"
+        + package_bootstrap
+        + "os.environ['HOL_GUARD_NATIVE'] = 'force'\n"
         f"os.environ['HOL_GUARD_NATIVE_BINARY'] = {str(status.identity.path)!r}\n"
         + pause_source
         + "from codex_plugin_scanner.cli import main\nraise SystemExit(main())\n"
