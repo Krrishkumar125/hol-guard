@@ -401,7 +401,11 @@ def main() -> int:
                 "native policy evaluation",
                 "local decision-store lookup",
             ],
-            "analysis_cache": "none; warm samples reread and reanalyze the graph",
+            "analysis_cache": (
+                "bounded process-local graph cache for builtins and local sources only; "
+                "hits reread and hash all code, recheck source lookup order, reacquire "
+                "interpreter/output handles, and re-evaluate current policy and saved decisions"
+            ),
         },
         "source": {
             "git_sha": _command_output(["git", "rev-parse", "HEAD"]),

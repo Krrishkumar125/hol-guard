@@ -90,6 +90,7 @@ pub struct OutputEffect {
     pub redirect: super::Redirect,
 }
 
+#[derive(Clone)]
 pub struct Graph {
     pub entry_path: String,
     pub code: Vec<CodeIdentity>,
@@ -120,6 +121,12 @@ impl Graph {
             });
         }
         Ok(&self.frozen_source)
+    }
+
+    /// Frozen source is the dominant retained allocation in an analysis cache.
+    /// Callers may use this length only to bound cache memory, never as identity.
+    pub fn frozen_source_bytes(&self) -> usize {
+        self.frozen_source.len()
     }
 }
 

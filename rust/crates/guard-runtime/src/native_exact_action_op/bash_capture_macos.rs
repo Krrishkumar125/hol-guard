@@ -19,6 +19,9 @@ use guard_contracts::{
 use sha2::{Digest, Sha256};
 
 #[cfg(test)]
+#[path = "bash_capture_cache_tests.rs"]
+mod cache_tests;
+#[cfg(test)]
 #[path = "bash_grant_tests.rs"]
 mod grant_tests;
 #[cfg(test)]
@@ -34,6 +37,8 @@ mod policy_tests;
 #[path = "bash_capture_tests.rs"]
 mod tests;
 
+#[path = "bash_capture_cache.rs"]
+mod analysis_cache;
 #[path = "bash_capture_native.rs"]
 mod native_image;
 #[path = "bash_capture_outputs.rs"]
@@ -395,53 +400,62 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
     if interpreter != Path::new("/bin/bash") {
         return Err("bash_interpreter_unproven");
     }
-    let image = resolver.image(&interpreter)?;
     let argv = &segment.arguments;
     if argv.is_empty() || argv[0].starts_with('-') || argv[0].starts_with('+') {
         return Err("bash_invocation_options_unproven");
     }
-    let entry = canonical(&text(&cwd.join(&argv[0]))?)?;
-    let entry = resolver.code(&argv[0], &entry)?;
-    let observed = graph::build(entry.clone(), argv, &environment, &resolver, deadline)
-        .map_err(|uncertainty| uncertainty.reason)?;
-    let graph = if bind_outputs {
-        resolver.brokered_commands.borrow_mut().clear();
-        let first_output = if observed.brokered_images.is_empty() {
-            7
-        } else {
-            8
-        };
-        let fds = observed
-            .writes
-            .iter()
-            .map(|effect| effect.redirect.path.clone())
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .enumerate()
-            .map(|(index, path)| (path, first_output + index as u32))
-            .collect();
-        if observed.brokered_images.is_empty() {
-            graph::build_with_acknowledged_outputs(
-                entry,
-                argv,
-                &environment,
-                &resolver,
-                deadline,
-                &fds,
-            )
-        } else {
-            graph::build_with_acknowledged_broker_outputs(
-                entry,
-                argv,
-                &environment,
-                &resolver,
-                deadline,
-                &fds,
-            )
-        }
-        .map_err(|uncertainty| uncertainty.reason)?
+    let image = resolver.image(&interpreter)?;
+    let cache_key = bind_outputs.then(|| analysis_cache::key(request)).flatten();
+    let cached_graph = cache_key
+        .as_ref()
+        .and_then(|key| analysis_cache::reuse(key, &resolver, argv));
+    let cache_hit = cached_graph.is_some();
+    let graph = if let Some(graph) = cached_graph {
+        graph
     } else {
-        observed
+        let entry = canonical(&text(&cwd.join(&argv[0]))?)?;
+        let entry = resolver.code(&argv[0], &entry)?;
+        let observed = graph::build(entry.clone(), argv, &environment, &resolver, deadline)
+            .map_err(|uncertainty| uncertainty.reason)?;
+        if bind_outputs {
+            resolver.brokered_commands.borrow_mut().clear();
+            let first_output = if observed.brokered_images.is_empty() {
+                7
+            } else {
+                8
+            };
+            let fds = observed
+                .writes
+                .iter()
+                .map(|effect| effect.redirect.path.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .enumerate()
+                .map(|(index, path)| (path, first_output + index as u32))
+                .collect();
+            if observed.brokered_images.is_empty() {
+                graph::build_with_acknowledged_outputs(
+                    entry,
+                    argv,
+                    &environment,
+                    &resolver,
+                    deadline,
+                    &fds,
+                )
+            } else {
+                graph::build_with_acknowledged_broker_outputs(
+                    entry,
+                    argv,
+                    &environment,
+                    &resolver,
+                    deadline,
+                    &fds,
+                )
+            }
+            .map_err(|uncertainty| uncertainty.reason)?
+        } else {
+            observed
+        }
     };
     // Bash 3 exports functions under the command name; Bash 4+ encodes it.
     // A withheld function body must not be mistaken for a PATH executable or builtin.
@@ -489,7 +503,7 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
     {
         return Err("bash_broker_capture_mismatch");
     }
-    Ok(CapturedBash {
+    let captured = CapturedBash {
         subject,
         graph,
         interpreter: image,
@@ -498,5 +512,11 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
         policy: None,
         network_destinations,
         brokered_commands,
-    })
+    };
+    if !cache_hit {
+        if let Some(key) = cache_key {
+            analysis_cache::insert(key, &captured.graph);
+        }
+    }
+    Ok(captured)
 }
