@@ -81,11 +81,18 @@ def validate_review_lineage(lineage: object) -> dict[str, object]:
 
 
 def validate_executed(result: dict[str, object], request: dict[str, object]) -> None:
+    def operation_matches(value: object) -> bool:
+        if request.get("tool_call_id") is not None:
+            # Native allocation is part of the request-bound reply. This digest
+            # names an invocation; it is not client permission or a grant.
+            return isinstance(value, str) and re.fullmatch(r"bash-invocation:[0-9a-f]{64}", value) is not None
+        return value == request["operation_id"]
+
     _require(all(type(result[key]) is bool for key in ("grant_claimed", "dispatch_acknowledged", "replayed")))
     lineage = result["review_lineage"]
     if lineage is not None:
         lineage = validate_review_lineage(lineage)
-        _require(lineage["operation_id"] == request["operation_id"])
+        _require(operation_matches(lineage["operation_id"]))
         _require(
             result["status"] == "error"
             and result["code"] == "native_bash_consent_required"
@@ -112,7 +119,7 @@ def validate_executed(result: dict[str, object], request: dict[str, object]) -> 
                 "completion",
             }
         )
-        _require(operation["operation_id"] == request["operation_id"])
+        _require(operation_matches(operation["operation_id"]))
         authorization = request["authorization"]
         _require(isinstance(authorization, dict))
         assert isinstance(authorization, dict)

@@ -1,6 +1,8 @@
 //! Policy-allowed launches use no consent row, key or billing authority.
 use super::*;
 use guard_contracts::{NativeBashAuthorizationKindV1 as Kind, NativeBashAuthorizationV1};
+#[path = "bash_invocation_tests.rs"]
+mod invocation_tests;
 
 fn quiet(
     request: &NativeBashCaptureV1,
@@ -20,6 +22,7 @@ fn quiet(
         crate::policy_decision_lookup_op::tests::seed_store(&store_path);
     }
     NativeBashExecuteRequestV1 {
+        tool_call_id: None,
         schema: NATIVE_BASH_EXECUTE_REQUEST_SCHEMA.into(),
         request_id: "quiet-request-0001".into(),
         operation_id: "quiet-operation-0001".into(),

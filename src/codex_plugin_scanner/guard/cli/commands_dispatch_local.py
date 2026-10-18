@@ -177,6 +177,27 @@ def _run_guard_execute_contained_test_command(
                 request_file.unlink(missing_ok=True)
                 request_file.parent.rmdir()
 
+def _run_guard_ack_bound_bash_command(
+    args: argparse.Namespace, *, guard_home: Path | None = None,
+    workspace: Path | None = None, store: GuardStore | None = None, **_kwargs: object,
+) -> int:
+    from ..native_bash_ack import acknowledge
+    from ..native_bash_protocol import NativeBashError
+
+    if guard_home is None or workspace is None or store is None:
+        return 126
+    try:
+        acknowledge(
+            guard_home=guard_home, store_path=store.path, project=workspace,
+            base_id=str(args.operation_id), harness=str(args.harness),
+            tool_call_id=str(args.tool_call_id), exit_code=args.exit_code,
+        )
+        return 0
+    except (NativeBashError, OSError, RuntimeError, ValueError, sqlite3.Error):
+        print("native_bash_ack_unavailable", file=sys.stderr)
+        return 125
+
+
 def _run_guard_execute_bound_bash_command(
     args: argparse.Namespace, *, guard_home: Path | None = None,
     workspace: Path | None = None, context: HarnessContext | None = None,
@@ -197,6 +218,7 @@ def _run_guard_execute_bound_bash_command(
             payload, store=store, workspace=workspace, harness=str(args.harness),
             operation_id=str(args.operation_id), timeout_seconds=args.timeout_seconds,
             host_owner_pid=getattr(args, "host_owner_pid", None),
+            tool_call_id=getattr(args, "tool_call_id", None),
         )
     except NativeBashError as error:
         print(error.code, file=sys.stderr)
@@ -789,6 +811,7 @@ def _run_guard_mcp_command(
 
 
 __all__ = [
+    "_run_guard_ack_bound_bash_command",
     "_run_guard_apps_command",
     "_run_guard_bootstrap_command",
     "_run_guard_command_inspection_command",

@@ -30,7 +30,9 @@ from tests.omp_bound_bash_lifecycle import assert_sdk_host_death_cancels, pause_
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="native Bash owner is macOS-only")
 
 
-@pytest.mark.parametrize("duration", ["once", "persistent", "keep-blocked", "host-parent-death"])
+@pytest.mark.parametrize(
+    "duration", ["once", "persistent", "persistent-same-intent", "keep-blocked", "host-parent-death"]
+)
 @pytest.mark.parametrize("harness", ["omp", "pi"])
 def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     native_context_digest,
@@ -126,6 +128,7 @@ const pi = { on(name, callback) {
 export function bindSession(manager) {
   pi.appendEntry = (kind, data) => manager.appendCustomEntry(kind, data);
 }
+export function bindExec(exec) { pi.exec = exec; }
 const toolCallIdKey = (value) => typeof value === 'string' ? value : null;
 const GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS = false;
 const GUARD_HOME_DIR_IS_DEFAULT = true;
@@ -179,7 +182,7 @@ pi.on("tool_call", async (event, ctx) => {
                     "sessionFile": str(tmp_path / "sdk-session.jsonl"),
                     "newIntent": (
                         call_id in {"fresh-operation", "current-policy-denied", "new-user-intent"}
-                        or call_id.startswith("persistent-")
+                        or (call_id.startswith("persistent-") and duration != "persistent-same-intent")
                     ),
                 }
             )
@@ -198,6 +201,8 @@ pi.on("tool_call", async (event, ctx) => {
         assert completed.returncode == 0, completed.stderr[-2000:]
         decoded = json.loads(completed.stdout)
         assert decoded["version"] == expected and decoded["originalInput"] == original_input
+        if call_id == "approved-retry":
+            assert decoded.get("acknowledgements") == [{"code": 0, "stderr": ""}], decoded
         return decoded.get("result"), decoded.get("sdkError")
 
     def refused(call_id, code):
@@ -245,7 +250,7 @@ pi.on("tool_call", async (event, ctx) => {
             request_id=request["request_id"],
             action="allow",
             scope="artifact",
-            persist_policy=duration == "persistent",
+            persist_policy=duration in {"persistent", "persistent-same-intent"},
             workspace=str(session_cwd),
             reason="Lane-owned SDK consent",
             scope_contract_version=request["scope_contract_version"],
@@ -268,13 +273,15 @@ pi.on("tool_call", async (event, ctx) => {
         assert not approved.get("isError", False)
         assert approved.get("details", {}).get("exitCode", 0) == 0
         assert "local metadata" in report.read_text()
-        if duration == "persistent":
+        if duration in {"persistent", "persistent-same-intent"}:
             for iteration in range(2, 11):
                 (execution_cwd / "maintenance.sh").touch()
                 (execution_cwd / "unrelated.txt").write_text(str(iteration))
+                report.write_text(f"must refresh for invocation {iteration}")
                 result, error = run(f"persistent-{iteration}")
                 assert error is None, error
                 assert not result.get("isError", False), result
+                assert "local metadata" in report.read_text(), "a distinct invocation must execute rather than replay"
             assert store.list_approval_requests() == []
             report.write_text("preserve persistent SDK report")
             update_guard_settings(guard, {"subprocess_action": "block"})

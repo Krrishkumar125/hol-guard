@@ -16,6 +16,7 @@ pub(crate) fn reserved(kind: Option<&str>, id: Option<&str>, descriptor: Option<
                 NATIVE_BASH_ARTIFACT_ID
                     | "native-bash-launch:v1"
                     | "native-bash-owner:native-pretool:v1"
+                    | "native-bash-owner:native-pretool:v2"
             )
         )
 }

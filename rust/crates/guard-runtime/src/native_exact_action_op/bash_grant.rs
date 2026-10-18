@@ -105,7 +105,7 @@ pub(crate) fn execute_saved(
         &NativeBashAuthorizationV1::SavedGrant {
             claim: Box::new(claim.clone()),
         },
-        operation_id,
+        (operation_id, None),
         deadline,
         cancel,
     )
@@ -116,7 +116,7 @@ pub(crate) fn execute_authorized(
     envelope: &GuardHookEnvelopeV2,
     store: &PolicySnapshotStore,
     authorization: &NativeBashAuthorizationV1,
-    operation_id: &str,
+    operation: (&str, Option<&str>),
     deadline: Instant,
     cancel: &AtomicBool,
 ) -> Result<LaunchOutput, LaunchFailure> {
@@ -144,9 +144,20 @@ pub(crate) fn execute_authorized(
         .map_err(|_| io::ErrorKind::PermissionDenied)?;
     let expected = binding(&captured.subject, fence.snapshot())
         .map_err(|_| io::ErrorKind::PermissionDenied)?;
-    let journal =
-        BashOperationJournal::open(store, authorization.store_path(), operation_id, &expected)
+    let allocator =
+        BashOperationJournal::open(store, authorization.store_path(), operation.0, &expected)
             .map_err(refuse)?;
+    let (operation_id, invocation) = allocator
+        .allocate_invocation(&request.harness, &request.workspace, operation.1)
+        .map_err(|_| io::Error::from(io::ErrorKind::PermissionDenied))?;
+    let _activity_alias = store
+        .bash_launches()
+        .alias(operation.0, &operation_id)
+        .map_err(refuse)?;
+    let mut journal =
+        BashOperationJournal::open(store, authorization.store_path(), &operation_id, &expected)
+            .map_err(refuse)?;
+    journal.attach_invocation(invocation);
     if let Some(operation) = journal
         .read()
         .map_err(|_| io::ErrorKind::PermissionDenied)?

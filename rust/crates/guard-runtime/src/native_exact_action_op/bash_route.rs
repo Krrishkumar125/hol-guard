@@ -205,7 +205,7 @@ fn execute(
         &request.envelope,
         store,
         &request.authorization,
-        &request.operation_id,
+        (&request.operation_id, request.tool_call_id.as_deref()),
         deadline,
         &registration.cancelled,
     ) {

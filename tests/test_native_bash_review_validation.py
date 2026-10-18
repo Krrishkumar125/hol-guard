@@ -175,7 +175,8 @@ from tests.test_native_bash_sink_integration import _Secrets
 configuration = json.load(sys.stdin)
 status = native_runtime_status()
 assert status.available and status.compatible and status.capabilities is not None
-assert not {DESCRIPTOR_FEATURE, HOST_LIVENESS_FEATURE}.issubset(status.capabilities.features)
+required = {DESCRIPTOR_FEATURE, HOST_LIVENESS_FEATURE, 'native-bash-invocation-lifetime-v1'}
+assert not required.issubset(status.capabilities.features)
 try:
     runtime_status()
 except NativeBashError as error:

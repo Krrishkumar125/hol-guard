@@ -9,7 +9,15 @@ const sdk = join(sdkRoot, "node_modules", configuration.harness === "pi"
   ? "@earendil-works/pi-coding-agent" : "@oh-my-pi/pi-coding-agent");
 const version = JSON.parse(readFileSync(join(sdk, "package.json"), "utf8")).version;
 if (version !== configuration.expectedVersion) throw Error("unpinned OMP SDK");
-const { handlers, bindSession } = await import(pathToFileURL(configuration.routingModule).href);
+const { handlers, bindSession, bindExec } = await import(pathToFileURL(configuration.routingModule).href);
+const { execCommand } = await import(pathToFileURL(join(sdk, configuration.harness === "pi"
+  ? "dist/core/exec.js" : "src/exec/exec.ts")).href);
+const acknowledgements = [];
+bindExec(async (command, args, options) => {
+  const result = await execCommand(command, args, options?.cwd ?? configuration.workspace, options);
+  acknowledgements.push({ code: result.code, stderr: result.stderr?.slice(-1000) });
+  return result;
+});
 const sessionModule = configuration.harness === "pi"
   ? join(sdk, "dist/core/session-manager.js") : join(sdk, "src/session/session-manager.ts");
 const { SessionManager } = await import(pathToFileURL(sessionModule).href);
@@ -34,9 +42,10 @@ if (configuration.harness === "pi") {
   const { ExtensionRunner } = await load("extensions/runner.js");
   const { AgentSession } = await load("agent-session.js");
   const { createBashTool } = await load("tools/bash.js");
+  const { SettingsManager } = await load("settings-manager.js");
   const runner = new ExtensionRunner([extension], {}, configuration.workspace, sessionManager, {});
   await beginIntent(runner);
-  const owner = { agent: {}, _extensionRunner: runner };
+  const owner = { agent: {}, _extensionRunner: runner, settingsManager: SettingsManager.inMemory() };
   AgentSession.prototype._installAgentToolHooks.call(owner);
   const args = structuredClone(configuration.input);
   const hook = await owner.agent.beforeToolCall({
@@ -44,8 +53,12 @@ if (configuration.harness === "pi") {
   });
   if (hook !== undefined) throw Error("Pi mutation route returned an unexpected decision");
   try {
-    const result = await createBashTool(configuration.workspace).execute(configuration.callId, args);
-    console.log(JSON.stringify({ version, result, originalInput: configuration.input }));
+    let result = await createBashTool(configuration.workspace).execute(configuration.callId, args);
+    const hookResult = await owner.agent.afterToolCall({
+      toolCall: { id: configuration.callId, name: "bash" }, args, result, isError: false,
+    });
+    if (hookResult) result = { ...result, ...hookResult };
+    console.log(JSON.stringify({ version, result, acknowledgements, originalInput: configuration.input }));
   } catch (error) {
     console.log(JSON.stringify({ version, sdkError: String(error), originalInput: configuration.input }));
   }
@@ -70,6 +83,6 @@ const wrapped = new ExtensionToolWrapper(tool, runner);
 const result = await withActiveSettings(settings, () => wrapped.execute(
   configuration.callId, configuration.input, undefined, undefined, { settings },
 ));
-console.log(JSON.stringify({ version, result, originalInput: configuration.input }));
+console.log(JSON.stringify({ version, result, acknowledgements, originalInput: configuration.input }));
 await runner.shutdown();
 persistSession();

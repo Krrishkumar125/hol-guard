@@ -42,6 +42,7 @@ fn execution(
     claim: ClaimApprovalReuseDecisionsRequestV1,
 ) -> NativeBashExecuteRequestV1 {
     NativeBashExecuteRequestV1 {
+        tool_call_id: None,
         schema: NATIVE_BASH_EXECUTE_REQUEST_SCHEMA.into(),
         request_id: "execute-bash-test".into(),
         operation_id: "execute-bash-operation-test".into(),

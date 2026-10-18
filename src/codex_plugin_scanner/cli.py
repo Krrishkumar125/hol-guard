@@ -320,6 +320,7 @@ def _resolve_legacy_args(
         "pytest-contained",
         "execute-contained-test",
         "execute-bound-bash",
+        "ack-bound-bash",
         "diff",
         "test-eval",
         "command",

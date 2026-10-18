@@ -91,7 +91,7 @@ const raw = readFileSync(file, 'utf8');
 const output = { rejected, duplicate, input, raw, snapshot,
   directoryMode: statSync(directory).mode & 0o777, fileMode: statSync(file).mode & 0o777 };
 const assistant = { role: 'assistant', content: [{type:'toolCall', id:'test-call', name:'bash', arguments:input}] };
-const details = handlers.tool_result({toolCallId:'test-call', details:{ordinary:true}}).details;
+const details = (await handlers.tool_result({toolCallId:'test-call', details:{ordinary:true}})).details;
 output.projected = handlers.context({messages:[assistant]}).messages[0].content[0].arguments.command;
 output.storedTransportUnchanged = assistant.content[0].arguments.command === input.command;
 containedTestPresentations.clear();

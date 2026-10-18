@@ -75,6 +75,7 @@ def run_bound_bash(
     harness: str, operation_id: str, timeout_seconds: int = 120,
     output: TextIO | None = None, errors: TextIO | None = None,
     host_owner_pid: int | None = None,
+    tool_call_id: str | None = None,
 ) -> int:
     from ..daemon.hook_worker import HookWorker
     from ..hook_execution_environment import HOOK_EXECUTION_ENVIRONMENT_KEY
@@ -133,6 +134,7 @@ def run_bound_bash(
         result = execute({
             "schema": "guard-native-bash-execute-request.v1", "request_id": request_id(),
             "operation_id": operation_id, "capture": capture, "envelope": envelope,
+            **({"tool_call_id": tool_call_id} if tool_call_id is not None else {}),
             "authorization": authorization, "timeout_ms": timeout_seconds * 1000,
         }, guard_home=Path(store.guard_home), cwd=cwd, host_owner_pid=host_owner_pid)
         if result["status"] == "error" and result["code"] == "native_bash_consent_required":

@@ -273,6 +273,10 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                 let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
                 crate::native_exact_action_op::bash_activity_request(&request, store)
             }
+            ResidentOperationV1::NativeBashAck(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::acknowledge_bash_request(&request, store)
+            }
             ResidentOperationV1::CommandEffectDecide(request) => {
                 crate::command_effect::evaluate_command_effect_request(&request)
             }
@@ -620,6 +624,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::NativeBashExecute(request) => Some(&request.capture.guard_home),
         ResidentOperationV1::NativeBashCancel(request) => Some(&request.guard_home),
         ResidentOperationV1::NativeBashActivity(request) => Some(&request.guard_home),
+        ResidentOperationV1::NativeBashAck(request) => Some(&request.guard_home),
         ResidentOperationV1::NativeBashReviewCheck(request) => Some(&request.guard_home),
         ResidentOperationV1::ArchiveAcquisition(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirect(request) => Some(&request.guard_home),
@@ -685,6 +690,7 @@ fn operation_store_path(operation: &ResidentOperationV1) -> Option<&str> {
     match operation {
         ResidentOperationV1::NativeBashExecute(request) => Some(request.authorization.store_path()),
         ResidentOperationV1::NativeBashReviewCheck(request) => Some(&request.store_path),
+        ResidentOperationV1::NativeBashAck(request) => Some(&request.store_path),
         ResidentOperationV1::ApprovalReuseDiagnostic(request) => Some(&request.store_path),
         ResidentOperationV1::ClaimApprovalReuseDecisions(request) => Some(&request.store_path),
         ResidentOperationV1::GuardStore(request) => Some(&request.store_path),

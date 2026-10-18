@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import subprocess
 import time
@@ -22,7 +23,9 @@ from codex_plugin_scanner.guard.runtime import bound_bash_sink
 original_execute = bound_bash_sink.execute
 def synchronized_execute(request, **options):
     if request['authorization']['kind'] == 'saved_grant':
-        Path({str(ready)!r}).write_text('ready')
+        pending_marker = Path({str(ready)!r} + '.pending')
+        pending_marker.write_text(request['operation_id'])
+        pending_marker.replace(Path({str(ready)!r}))
         deadline = time.monotonic() + 25
         while not Path({str(resume)!r}).is_file():
             if time.monotonic() >= deadline:
@@ -82,6 +85,16 @@ def assert_sdk_host_death_cancels(
             assert process.poll() is None, "SDK ended before its real CLI prepared authorization"
             assert time.monotonic() < deadline, "SDK did not reach the pre-execution barrier"
             time.sleep(0.02)
+        # The transport owns cancellation before the allocator can acquire the
+        # database write barrier. Its base ID is not the eventual journal ID.
+        transport_id = ready.read_text()
+        with store._connect() as connection:
+            row = connection.execute(
+                "SELECT payload FROM guard_bash_invocations WHERE base_id=?",
+                (transport_id,),
+            ).fetchone()
+        assert row is not None and json.loads(row[0])["operation_id"] == operation_id
+        operation_id = transport_id
         blocker.execute("BEGIN IMMEDIATE")
         resume.write_text("dispatch")
         observed = _wait_activity(operation_id, store.guard_home, lambda item: item["active"])

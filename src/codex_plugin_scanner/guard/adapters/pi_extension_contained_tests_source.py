@@ -7,10 +7,33 @@ from .pi_extension_bound_bash_intent_source import BOUND_BASH_INTENT_SOURCE
 CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
   const boundBashHarness = "omp";
   const containedTestRequests = new Map<string, string>();
+  const boundBashInvocations = new Map<string, { operationId: string; cwd: string }>();
   const containedTestPresentations = new Map<string, { input: Record<string, unknown>; command: string }>();
 
-  pi.on("tool_result", (event) => {
+  pi.on("tool_result", async (event) => {
     const key = toolCallIdKey(event.toolCallId);
+    const invocation = key ? boundBashInvocations.get(key) : undefined;
+    if (key && invocation && event.toolName === "bash") {
+      boundBashInvocations.delete(key);
+      const observed = event.details && typeof event.details === "object"
+        ? event.details as Record<string, unknown> : {};
+      const job = observed.async;
+      const background = job && typeof job === "object" && Reflect.get(job, "state") === "running";
+      const exitCode = typeof observed.exitCode === "number" ? observed.exitCode
+        : event.isError === false ? 0 : undefined;
+      if (!background && typeof exitCode === "number" && Number.isInteger(exitCode) &&
+          exitCode >= 0 && exitCode <= 255) {
+        const args = ["ack-bound-bash", "--harness", boundBashHarness,
+          "--operation-id", invocation.operationId, "--tool-call-id", key,
+          "--exit-code", String(exitCode), "--guard-home", GUARD_HOME,
+          "--workspace", invocation.cwd];
+        if (!GUARD_HOME_DIR_IS_DEFAULT) args.push("--home", GUARD_HOME_DIR);
+        // Only native signed completion can make this effective. An error or
+        // lost acknowledgement retains the original operation on retry.
+        try { await pi.exec(GUARD_CLI_WRAPPER_COMMAND, args, { cwd: invocation.cwd, timeout: 10_000 }); }
+        catch {}
+      }
+    }
     const presentation = key ? containedTestPresentations.get(key) : undefined;
     if (!key || !presentation) return undefined;
     const details = event.details && typeof event.details === "object" && !Array.isArray(event.details)
@@ -64,6 +87,7 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
   }
 
   pi.on("session_shutdown", () => {
+    boundBashInvocations.clear();
     containedTestPresentations.clear();
     releaseBackgroundContainedTestRequests();
   });
@@ -162,6 +186,7 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
       const args = boundBash ? [
         "execute-bound-bash", "--harness", boundBashHarness, "--operation-id", operationId,
         "--host-owner-pid", String(process.pid),
+        "--tool-call-id", key,
         "--guard-home", GUARD_HOME, "--workspace", snapshot.cwd,
         "--request-file", requestPath, "--request-sha256", digest,
         "--timeout-seconds", String(typeof (input as Record<string, unknown>).timeout === "number"
@@ -175,11 +200,13 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
       const prefix = windowsSink ? GUARD_CONTAINED_SINK_COMMAND : [GUARD_CLI_WRAPPER_COMMAND];
       const command = [...prefix, ...args].map(quote).join(" ");
       containedTestRequests.set(key, directory);
+      if (boundBash) boundBashInvocations.set(key, { operationId, cwd: snapshot.cwd });
       containedTestPresentations.set(key, { input: { ...(input as Record<string, unknown>) }, command });
       while (containedTestPresentations.size > 256) {
         const oldest = containedTestPresentations.keys().next().value;
         if (oldest === undefined) break;
         containedTestPresentations.delete(oldest);
+        boundBashInvocations.delete(oldest);
       }
       return { ...(input as Record<string, unknown>), command };
     } catch {

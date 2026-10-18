@@ -17,6 +17,8 @@ use super::PolicySnapshotStore;
 
 #[path = "policy_store_bash_admission.rs"]
 mod admission;
+#[path = "policy_store_bash_invocation.rs"]
+pub(crate) mod invocation;
 #[path = "policy_store_bash_review.rs"]
 mod review;
 
@@ -27,10 +29,11 @@ const SCHEMA: &str = include_str!(
 );
 
 pub(crate) struct BashOperationJournal<'store> {
-    connection: Connection,
-    store: &'store PolicySnapshotStore,
+    pub(super) connection: Connection,
+    pub(super) store: &'store PolicySnapshotStore,
     operation_id: &'store str,
     artifact_hash: &'store str,
+    invocation: Option<invocation::Invocation>,
 }
 
 impl<'store> BashOperationJournal<'store> {
@@ -62,11 +65,17 @@ impl<'store> BashOperationJournal<'store> {
                 "../../../../src/codex_plugin_scanner/guard/schemas/native_bash_reviews_v1.sql"
             ))
             .map_err(|_| "native_bash_operation_store_unavailable")?;
+        connection
+            .execute_batch(include_str!(
+                "../../../../src/codex_plugin_scanner/guard/schemas/native_bash_invocations_v1.sql"
+            ))
+            .map_err(|_| "native_bash_operation_store_unavailable")?;
         let journal = Self {
             connection,
             store,
             operation_id,
             artifact_hash,
+            invocation: None,
         };
         journal
             .require_authority()
@@ -78,7 +87,7 @@ impl<'store> BashOperationJournal<'store> {
         Self::require_authority_for(self.store)
     }
 
-    fn require_authority_for(store: &PolicySnapshotStore) -> rusqlite::Result<()> {
+    pub(super) fn require_authority_for(store: &PolicySnapshotStore) -> rusqlite::Result<()> {
         if store
             .authority_changed
             .load(std::sync::atomic::Ordering::SeqCst)
@@ -90,15 +99,29 @@ impl<'store> BashOperationJournal<'store> {
     }
 
     pub(crate) fn read(&self) -> rusqlite::Result<Option<NativeBashOperationV1>> {
-        self.require_authority()?;
+        let record = Self::read_authenticated(&self.connection, self.store, self.operation_id)?;
+        if record
+            .as_ref()
+            .is_some_and(|record| record.artifact_hash != self.artifact_hash)
+        {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok(record)
+    }
+
+    pub(super) fn read_authenticated(
+        connection: &Connection,
+        store: &PolicySnapshotStore,
+        operation_id: &str,
+    ) -> rusqlite::Result<Option<NativeBashOperationV1>> {
+        Self::require_authority_for(store)?;
         // Bound allocations even when the database has been modified externally.
-        let row: Option<(Option<String>, Option<String>)> = self
-            .connection
+        let row: Option<(Option<String>, Option<String>)> = connection
             .query_row(
                 "SELECT CASE WHEN length(payload)<=16384 THEN payload END,
                     CASE WHEN length(integrity)<=4096 THEN integrity END
                FROM guard_bash_operations WHERE operation_id=?1",
-                [self.operation_id],
+                [operation_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
@@ -113,11 +136,11 @@ impl<'store> BashOperationJournal<'store> {
             serde_json::from_str(&payload).map_err(|_| rusqlite::Error::InvalidQuery)?;
         let integrity: Value =
             serde_json::from_str(&integrity).map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let key_id = guard_policy_snapshot::verifier_key_id(&self.store.verifier_key);
+        let key_id = guard_policy_snapshot::verifier_key_id(&store.verifier_key);
         if verify_local_authority_payload(
             &payload,
             &integrity,
-            Some(&self.store.verifier_key),
+            Some(&store.verifier_key),
             Some(&key_id),
             PURPOSE,
         )
@@ -128,8 +151,7 @@ impl<'store> BashOperationJournal<'store> {
         }
         let record: NativeBashOperationV1 =
             serde_json::from_value(payload).map_err(|_| rusqlite::Error::InvalidQuery)?;
-        if record.operation_id != self.operation_id
-            || record.artifact_hash != self.artifact_hash
+        if record.operation_id != operation_id
             || (record.state == State::Completed) != record.completion.is_some()
             || (matches!(record.state, State::Dispatched | State::Completed)
                 && !record.dispatch_acknowledged)
@@ -144,7 +166,7 @@ impl<'store> BashOperationJournal<'store> {
         self.seal(record, PURPOSE)
     }
 
-    fn seal<T: serde::Serialize>(
+    pub(super) fn seal<T: serde::Serialize>(
         &self,
         record: &T,
         purpose: &str,
@@ -218,6 +240,9 @@ impl<'store> BashOperationJournal<'store> {
 
     fn insert(&self, authorization: Authorization) -> rusqlite::Result<Option<()>> {
         // Always inside BEGIN IMMEDIATE, including the saved-grant claim.
+        if let Some(invocation) = &self.invocation {
+            invocation.require_reservable(self)?;
+        }
         if self.read()?.is_some() {
             return Ok(None);
         }
@@ -285,6 +310,11 @@ impl<'store> BashOperationJournal<'store> {
                 record.state = state;
                 record.dispatch_acknowledged = dispatched;
                 record.completion = completion;
+                if state == State::Completed {
+                    if let Some(invocation) = &self.invocation {
+                        invocation.complete(self)?;
+                    }
+                }
                 let (payload, integrity) = self.encode(&record)?;
                 if self.connection.execute(
                 "UPDATE guard_bash_operations SET payload=?1,integrity=?2 WHERE operation_id=?3",

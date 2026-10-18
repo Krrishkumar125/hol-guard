@@ -14,10 +14,14 @@ from .native_execution import _resident_request
 from .native_runtime import NativeRuntimeStatus, _isolated_environment, native_runtime_status
 
 FEATURE = "native-bash-owner-protocol-v1"
-ARTIFACT_ID = "native-bash-owner:native-pretool:v2"
-LEGACY_ARTIFACT_IDS = ("native-bash-launch:v1", "native-bash-owner:native-pretool:v1")
+ARTIFACT_ID = "native-bash-owner:native-pretool:v3"
+LEGACY_ARTIFACT_IDS = (
+    "native-bash-launch:v1",
+    "native-bash-owner:native-pretool:v1",
+    "native-bash-owner:native-pretool:v2",
+)
 ARTIFACT_TYPE = "native_bash_request"
-DESCRIPTOR_SCHEMA = "guard-native-bash-review.v3"
+DESCRIPTOR_SCHEMA = "guard-native-bash-review.v4"
 DESCRIPTOR_FEATURE = "native-bash-review-descriptor-v1"
 HOST_LIVENESS_FEATURE = "native-bash-host-liveness-v1"
 MAX_REQUEST_BYTES = 512 * 1024
@@ -47,6 +51,7 @@ def runtime_status() -> NativeRuntimeStatus:
             FEATURE,
             DESCRIPTOR_FEATURE,
             HOST_LIVENESS_FEATURE,
+            "native-bash-invocation-lifetime-v1",
             "native-bash-review-lineage-v1",
             "resident-protocol-v2",
         }.issubset(status.capabilities.features)

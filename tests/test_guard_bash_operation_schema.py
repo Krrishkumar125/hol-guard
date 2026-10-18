@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard.store_bash_operation_schema import (
+    BASH_INVOCATION_MIGRATION_VERSION,
     BASH_OPERATION_MIGRATION_VERSION,
     BASH_REVIEW_MIGRATION_VERSION,
     bash_operation_schema_statement,
@@ -33,14 +34,17 @@ def test_bash_operation_upgrade_preserves_reservations_across_reopen(tmp_path: P
             ("operation-00000001", "{}", "{}")
         ]
         assert connection.execute("select version from schema_migrations").fetchall() == [
-            (BASH_OPERATION_MIGRATION_VERSION,), (BASH_REVIEW_MIGRATION_VERSION,),
+            (BASH_OPERATION_MIGRATION_VERSION,),
+            (BASH_REVIEW_MIGRATION_VERSION,),
+            (BASH_INVOCATION_MIGRATION_VERSION,),
         ]
         assert BASH_OPERATION_MIGRATION_VERSION in _REQUIRED_SCHEMA_MIGRATION_VERSIONS
         assert BASH_REVIEW_MIGRATION_VERSION in _REQUIRED_SCHEMA_MIGRATION_VERSIONS
+        assert BASH_INVOCATION_MIGRATION_VERSION in _REQUIRED_SCHEMA_MIGRATION_VERSIONS
         assert connection.execute("select count(*) from guard_bash_reviews").fetchone()[0] == 0
 
 
-@pytest.mark.parametrize("table", ["guard_bash_operations", "guard_bash_reviews"])
+@pytest.mark.parametrize("table", ["guard_bash_operations", "guard_bash_reviews", "guard_bash_invocations"])
 def test_bash_operation_upgrade_rejects_incompatible_schema_without_marking_current(tmp_path: Path, table: str) -> None:
     with database(tmp_path / "guard.db") as connection:
         connection.execute(f"create table {table}(operation_id text, payload text, integrity text)")

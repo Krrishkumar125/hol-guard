@@ -97,5 +97,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::NATIVE_BASH_ACTIVITY_FEATURE,
     #[cfg(target_os = "macos")]
     guard_contracts::NATIVE_BASH_HOST_LIVENESS_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_INVOCATION_FEATURE,
     guard_contracts::SKILL_WORKFLOW_PREFLIGHT_FEATURE,
 ];
