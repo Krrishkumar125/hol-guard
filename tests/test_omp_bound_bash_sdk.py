@@ -92,6 +92,7 @@ def _compile_hardened_helper(directory: Path, marker: str) -> Path:
         "network-once",
         "network-persistent-same-intent",
         "network-quiet",
+        "external-quiet",
         "compiled-once",
         "compiled-persistent-same-intent",
         "compiled-pending-helper-change",
@@ -108,7 +109,8 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
 ):
     del native_context_digest
     compiled = duration.startswith("compiled-")
-    duration = duration.removeprefix("network-").removeprefix("compiled-")
+    external = duration.startswith("external-")
+    duration = duration.removeprefix("network-").removeprefix("compiled-").removeprefix("external-")
     repo = Path(__file__).resolve().parents[1]
     sdk_root = repo / "ci" / "pi-exact-continuation"
     package_name = "@earendil-works/pi-coding-agent" if harness == "pi" else "@oh-my-pi/pi-coding-agent"
@@ -149,6 +151,15 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     if duration == "persistent-nonzero":
         script = execution_cwd / "maintenance.sh"
         script.write_text(script.read_text() + "\nexit 7\n")
+    script = execution_cwd / "maintenance.sh"
+    if external:
+        directory = tmp_path / "external-code"
+        directory.mkdir()
+        external_script = directory / script.name
+        external_script.write_bytes(script.read_bytes())
+        external_script.chmod(0o700)
+        script = external_script
+        assert not script.is_relative_to(workspace)
     monkeypatch.chdir(workspace)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("LANG", "C")
@@ -168,7 +179,7 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
         settings["subprocess_action"] = "require-reapproval"
     update_guard_settings(guard, settings)
     store = GuardStore(guard)
-    command = f"/bin/bash {shlex.quote(str(execution_cwd / 'maintenance.sh'))} dry"
+    command = f"/bin/bash {shlex.quote(str(script))} dry"
     original_input = {"command": command, "timeout": 45}
     session_cwd = workspace if harness == "omp" else execution_cwd
     if harness == "omp":
@@ -213,9 +224,7 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     if os.environ.get("HOL_GUARD_TEST_USE_INSTALLED") != "1":
         package_bootstrap = f"sys.path.insert(0, {str(repo / 'src')!r})\n"
     wrapper.write_text(
-        f"#!{sys.executable}\nimport os, sys\n"
-        + package_bootstrap
-        + "os.environ['HOL_GUARD_NATIVE'] = 'force'\n"
+        f"#!{sys.executable}\nimport os, sys\n" + package_bootstrap + "os.environ['HOL_GUARD_NATIVE'] = 'force'\n"
         f"os.environ['HOL_GUARD_NATIVE_BINARY'] = {str(status.identity.path)!r}\n"
         + pause_source
         + "from codex_plugin_scanner.cli import main\nraise SystemExit(main())\n"
@@ -339,8 +348,11 @@ pi.on("tool_call", async (event, ctx) => {
                 assert error is None and not result.get("isError", False), (result, error)
                 assert "local metadata" in report.read_text()
                 assert store.list_approval_requests() == []
-            assert http_registry is not None and len(http_registry.requests) == 40
-            assert all(method == "GET" for method, _ in http_registry.requests)
+            if external:
+                assert http_registry is None
+            else:
+                assert http_registry is not None and len(http_registry.requests) == 40
+                assert all(method == "GET" for method, _ in http_registry.requests)
             return
         refused("initial-call", "native_bash_consent_required")
         report = home / "maintenance-report.tsv"

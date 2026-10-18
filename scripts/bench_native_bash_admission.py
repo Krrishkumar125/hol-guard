@@ -409,6 +409,7 @@ def main() -> int:
         },
         "source": {
             "git_sha": _command_output(["git", "rev-parse", "HEAD"]),
+            "runtime_build_sha": status.capabilities.build_sha if status.capabilities is not None else None,
             "runtime_sha256": _sha256(runtime),
             "runtime_bytes": runtime.stat().st_size,
         },
