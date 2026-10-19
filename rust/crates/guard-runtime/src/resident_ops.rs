@@ -577,6 +577,9 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::ToolActionRequestIdentity(request) => {
                 crate::tool_action_identity_op::evaluate_tool_action_request_identity(&request)
             }
+            ResidentOperationV1::RuntimeArtifactIdentity(request) => {
+                crate::runtime_artifact_identity_op::evaluate_runtime_artifact_identity(&request)
+            }
             #[cfg(not(unix))]
             ResidentOperationV1::ContainedNodeExecute(_)
             | ResidentOperationV1::ContainedTypescriptExecute(_)

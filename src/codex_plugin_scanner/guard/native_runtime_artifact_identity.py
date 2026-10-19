@@ -1,0 +1,126 @@
+"""Typed client for the native runtime artifact identities; no Python derivation."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from pathlib import Path
+
+from . import native_execution
+from .native_context import _canonical_request_sha256, _resolve_digest_home, ensure_resident_prerequisite
+
+_FEATURE = "runtime-artifact-identity-v1"
+_REQUEST_SCHEMA = "guard-runtime-artifact-identity-request.v1"
+_RESULT_SCHEMA = "guard-runtime-artifact-identity-result.v1"
+_RESULT_KEYS = frozenset({"schema", "request_id", "request_sha256", "status", "code", "artifact_id"})
+# The resident accepts a canonical request up to 256 KiB. ``json.dumps``
+# escapes every control character to six bytes, so the wire envelope can be
+# several times larger than the request; leave that room plus the envelope.
+_MAX_REQUEST_BYTES = 256 * 1024
+_MAX_WIRE_BYTES = 6 * _MAX_REQUEST_BYTES + 4096
+_HEX = "0123456789abcdef"
+
+
+class NativeRuntimeArtifactIdentityError(RuntimeError):
+    """The native owner could not supply a complete, request-bound artifact id."""
+
+
+def prompt_multi_artifact_id(
+    harness: str,
+    member_artifact_ids: Sequence[str],
+    *,
+    guard_home: Path | None = None,
+    timeout_seconds: float = 10.0,
+) -> str:
+    """Return the resident's artifact id for a merged multi-prompt request."""
+
+    identity = {"kind": "prompt_multi", "member_artifact_ids": [str(item) for item in member_artifact_ids]}
+    return _request_identity(
+        harness,
+        identity,
+        prefix=f"{harness}:session:prompt:multi:",
+        digest_chars=24,
+        guard_home=guard_home,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def data_flow_artifact_id(
+    harness: str,
+    *,
+    source_scope: str,
+    command_text: str,
+    signal_ids: Sequence[str],
+    guard_home: Path | None = None,
+    timeout_seconds: float = 10.0,
+) -> str:
+    """Return the resident's artifact id for a data-flow exfiltration request."""
+
+    identity = {
+        "kind": "data_flow",
+        "source_scope": source_scope,
+        "command_text": command_text,
+        "signal_ids": [str(item) for item in signal_ids],
+    }
+    return _request_identity(
+        harness,
+        identity,
+        prefix=f"{harness}:{source_scope}:data-flow:",
+        digest_chars=64,
+        guard_home=guard_home,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _request_identity(
+    harness: str,
+    identity: dict[str, object],
+    *,
+    prefix: str,
+    digest_chars: int,
+    guard_home: Path | None,
+    timeout_seconds: float,
+) -> str:
+    """Ask the resident for one runtime artifact id and verify it answers this request.
+
+    The id is the key a saved approval is stored under, so it has exactly one
+    derivation and the resident owns it. Every outcome other than a
+    well-formed, request-bound ``ok`` reply raises
+    ``NativeRuntimeArtifactIdentityError``; callers must not fall back to a
+    Python fingerprint, which would re-key reviews the user already approved.
+    """
+
+    wire: dict[str, object] = {
+        "schema": _REQUEST_SCHEMA,
+        "request_id": native_execution._request_id("runtime_artifact_identity"),
+        "harness": harness,
+        "identity": identity,
+    }
+    try:
+        home = _resolve_digest_home(guard_home)
+        if not ensure_resident_prerequisite(home):
+            raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_unavailable")
+        request_sha256 = _canonical_request_sha256(wire)
+        decoded = native_execution._resident_request(
+            operation="runtime_artifact_identity",
+            request=wire,
+            guard_home=home,
+            timeout_seconds=timeout_seconds,
+            required_feature=_FEATURE,
+            response_schema=_RESULT_SCHEMA,
+            max_request_bytes=_MAX_WIRE_BYTES,
+        )
+    except (OSError, TypeError, ValueError) as error:
+        raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_unavailable") from error
+    if decoded is None:
+        raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_unavailable")
+    if set(decoded) != _RESULT_KEYS or decoded.get("code") != "ok":
+        raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_invalid_result")
+    if decoded.get("request_id") != wire["request_id"] or decoded.get("request_sha256") != request_sha256:
+        raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_request_mismatch")
+    artifact_id = decoded.get("artifact_id")
+    if not isinstance(artifact_id, str) or not artifact_id.startswith(prefix):
+        raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_invalid_result")
+    digest = artifact_id[len(prefix) :]
+    if len(digest) != digest_chars or any(character not in _HEX for character in digest):
+        raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_invalid_result")
+    return artifact_id

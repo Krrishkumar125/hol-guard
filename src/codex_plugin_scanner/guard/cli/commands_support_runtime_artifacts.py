@@ -10,6 +10,7 @@ from ..native_codex_tool_output import codex_tool_output_native
 from ..native_context import bound_context_digest_home
 from ..native_path_anchor import anchor_to_process_directory
 from ..native_rich_command_model import NativeCommandModelError
+from ..native_runtime_artifact_identity import data_flow_artifact_id, prompt_multi_artifact_id
 from ..native_sensitive_request import (
     NativeSensitiveRequestError,
     native_compound_artifact,
@@ -105,7 +106,6 @@ def _merged_prompt_runtime_artifact(harness: str, artifacts: list[GuardArtifact]
     prompt_matched_texts: list[str] = []
     prompt_request_classes: list[str] = []
     prompt_display_texts: list[str] = []
-    request_identity = "|".join(sorted(artifact.artifact_id for artifact in artifacts))
     for artifact in artifacts:
         metadata = artifact.metadata
         prompt_signals.extend(_string_list(metadata.get("prompt_signals")))
@@ -125,8 +125,11 @@ def _merged_prompt_runtime_artifact(harness: str, artifacts: list[GuardArtifact]
     request_summary = (
         deduped_display[0] if len(deduped_display) == 1 else "Prompt matches multiple guarded request classes."
     )
+    # The artifact id is the key a saved approval for the merged request is
+    # stored under, so the resident derives it and this side never recomputes it.
+    artifact_id = prompt_multi_artifact_id(harness, [artifact.artifact_id for artifact in artifacts])
     return GuardArtifact(
-        artifact_id=f"{harness}:session:prompt:multi:{hashlib.sha256(request_identity.encode('utf-8')).hexdigest()[:24]}",
+        artifact_id=artifact_id,
         name="prompt multi-signal request",
         harness=harness,
         artifact_type="prompt_request",
@@ -462,18 +465,15 @@ def _runtime_data_flow_artifact(
 ) -> GuardArtifact:
     command_text = action_envelope.command or action_envelope.tool_name or action_envelope.action_type
     signal_ids = tuple(signal.signal_id for signal in data_flow_signals)
-    fingerprint = hashlib.sha256(
-        json.dumps(
-            {
-                "command_text": command_text,
-                "signal_ids": signal_ids,
-                "source_scope": source_scope,
-            },
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()
+    # Same rule as the merged prompt id: the resident owns the approval key.
+    artifact_id = data_flow_artifact_id(
+        harness,
+        source_scope=source_scope,
+        command_text=command_text,
+        signal_ids=signal_ids,
+    )
     return GuardArtifact(
-        artifact_id=f"{harness}:{source_scope}:data-flow:{fingerprint}",
+        artifact_id=artifact_id,
         name=f"{action_envelope.tool_name or 'runtime'} data-flow exfiltration",
         harness=harness,
         artifact_type="tool_action_request",

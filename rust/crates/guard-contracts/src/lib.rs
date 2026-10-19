@@ -198,6 +198,8 @@ mod business_dispatch_receipt;
 pub use business_dispatch_receipt::*;
 mod skill_workflow_preflight;
 pub use skill_workflow_preflight::*;
+mod runtime_artifact_identity;
+pub use runtime_artifact_identity::*;
 mod tool_action_identity;
 pub use tool_action_identity::*;
 
