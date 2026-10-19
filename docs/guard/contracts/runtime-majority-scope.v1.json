@@ -845,6 +845,13 @@
       {
         "path": "src/codex_plugin_scanner/guard/protection_coverage.py",
         "reason": "Reviewed and retained in runtime scope: cli/render.py imports it at module load so the status and doctor panels report whether the configured protection posture is actually in effect. It reads the harness rows the adapters already produced and decides what the panel says; no admission, authority or enforcement decision reads it."
+      },
+      {
+        "path": [
+          "src/codex_plugin_scanner/guard/consumer/low_trust.py",
+          "src/codex_plugin_scanner/guard/registry_trust.py"
+        ],
+        "reason": "Reviewed and retained in runtime scope: consumer/service reaches the low-trust review floor lazily when it decides a first-seen or changed skill, MCP server or plugin. The floor reads a public HOL Registry trust score with a bounded, cached lookup and can only raise an action; native composition still decides the result."
       }
     ],
     "tests": {
