@@ -13,6 +13,7 @@
 //! The evaluator never re-parses command text on its own authority.
 
 use super::context_digest_json::write_canonical_json_with_limit;
+use guard_command::native_command_controls::CompiledNativeCommandControls;
 use guard_contracts::{
     CommandEffectBatchRequestV1, CommandEffectBatchResultV1, CommandEffectRequestV1,
     CommandEffectResultV1, COMMAND_EFFECT_BATCH_MAX_BYTES, COMMAND_EFFECT_BATCH_MAX_ITEMS,
@@ -20,7 +21,6 @@ use guard_contracts::{
     COMMAND_EFFECT_MAX_BYTES, COMMAND_EFFECT_REQUEST_SCHEMA, COMMAND_EFFECT_RESULT_SCHEMA,
 };
 use guard_policy_snapshot::digest_bytes;
-use guard_command::native_command_controls::CompiledNativeCommandControls;
 
 // The resident owns its guard-home scope. Capture one authenticated generation
 // and hold its mutation lease across the entire single or batch evaluation.
@@ -28,7 +28,9 @@ fn with_store<T>(
     store: Option<&crate::policy_store::PolicySnapshotStore>,
     evaluate: impl FnOnce(Option<&CompiledNativeCommandControls>) -> Result<T, String>,
 ) -> Result<T, String> {
-    let Some(store) = store else { return evaluate(None) };
+    let Some(store) = store else {
+        return evaluate(None);
+    };
     let snapshot = match store.current_admitted_snapshot() {
         Ok(snapshot) => snapshot,
         // Preserve the core-only offline evaluator. It cannot accept an
@@ -95,7 +97,10 @@ pub(crate) fn evaluate_command_effect_request(
     single(request, None)
 }
 
-fn single(request: &CommandEffectRequestV1, controls: Option<&CompiledNativeCommandControls>) -> Result<Vec<u8>, String> {
+fn single(
+    request: &CommandEffectRequestV1,
+    controls: Option<&CompiledNativeCommandControls>,
+) -> Result<Vec<u8>, String> {
     let request_sha256 = digest_of(&canonical_request_bytes(request).map_err(str::to_owned)?);
     crate::encode_response(&evaluate_to_result(request, request_sha256, controls))
 }
@@ -119,7 +124,10 @@ fn refused_batch(request_id: &str, code: &str) -> Result<Vec<u8>, String> {
 /// limit refuses the whole batch with no partial result. Per-item failures
 /// (schema, canonical command, control snapshot, evaluator rejection) are
 /// reported on that item exactly as the single op reports them.
-fn batch_in(batch: &CommandEffectBatchRequestV1, controls: Option<&CompiledNativeCommandControls>) -> Result<Vec<u8>, String> {
+fn batch_in(
+    batch: &CommandEffectBatchRequestV1,
+    controls: Option<&CompiledNativeCommandControls>,
+) -> Result<Vec<u8>, String> {
     if batch.schema != COMMAND_EFFECT_BATCH_REQUEST_SCHEMA {
         return refused_batch(
             &batch.request_id,
@@ -176,7 +184,10 @@ fn batch_in(batch: &CommandEffectBatchRequestV1, controls: Option<&CompiledNativ
     }
 }
 
-fn evaluate(request: &CommandEffectRequestV1, controls: Option<&CompiledNativeCommandControls>) -> Result<serde_json::Value, String> {
+fn evaluate(
+    request: &CommandEffectRequestV1,
+    controls: Option<&CompiledNativeCommandControls>,
+) -> Result<serde_json::Value, String> {
     if request.schema != COMMAND_EFFECT_REQUEST_SCHEMA {
         return Err("native_command_effect_schema_mismatch".to_owned());
     }
@@ -203,7 +214,10 @@ fn evaluate_with_read_floors(
         serde_json::from_value(request.canonical_command.clone())
             .map_err(|_| "native_command_effect_invalid_canonical_command".to_owned())?;
     let command = CanonicalCommand::from_v1(&canonical_v1);
-    let registry = controls.map_or_else(packaged_command_catalog, |controls| controls.command_catalog())
+    let registry = controls
+        .map_or_else(packaged_command_catalog, |controls| {
+            controls.command_catalog()
+        })
         .map_err(|_| "native_command_effect_catalog_unavailable".to_owned())?;
     let mut binding: NativeCommandControlBindingV1 =
         serde_json::from_value(request.control_snapshot.clone())

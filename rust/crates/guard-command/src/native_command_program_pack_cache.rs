@@ -117,7 +117,12 @@ impl NativeCommandProgram {
         }
         let root = source::read_pack_blob(&set.release, &mut fetch)?;
         let program = Self::from_integrity_bound_packs_catalog(
-            &root, &set.release.sha256, &selected, budget, fetch, catalog,
+            &root,
+            &set.release.sha256,
+            &selected,
+            budget,
+            fetch,
+            catalog,
         )?;
         if program.program_digest != expected_program {
             return Err("native_command_program_binding_mismatch");

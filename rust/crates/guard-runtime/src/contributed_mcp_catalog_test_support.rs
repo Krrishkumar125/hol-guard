@@ -13,10 +13,20 @@ use guard_policy_snapshot::{canonical_json_bytes, digest_bytes};
 use serde_json::{json, Value};
 
 pub(super) fn controls(home: &Path, lockdown: bool) -> CompiledNativeCommandControls {
-    controls_for(home, lockdown, &["command.mcp-filesystem", "command.mcp-enola"], &["command.mcp-filesystem", "command.mcp-enola"])
+    controls_for(
+        home,
+        lockdown,
+        &["command.mcp-filesystem", "command.mcp-enola"],
+        &["command.mcp-filesystem", "command.mcp-enola"],
+    )
 }
 
-pub(super) fn controls_for(home: &Path, lockdown: bool, optional: &[&str], enabled: &[&str]) -> CompiledNativeCommandControls {
+pub(super) fn controls_for(
+    home: &Path,
+    lockdown: bool,
+    optional: &[&str],
+    enabled: &[&str],
+) -> CompiledNativeCommandControls {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let mut selected: BTreeSet<String> = packaged_command_program()
         .unwrap()

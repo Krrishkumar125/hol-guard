@@ -16,8 +16,13 @@ impl CompiledNativeCommandControls {
     }
 
     /// Metadata retained from the same admitted immutable pack collection.
-    pub fn command_catalog(&self) -> Result<Arc<crate::native_command_catalog::CommandCatalog>, &'static str> {
-        self.catalog.clone().map(Ok).unwrap_or_else(crate::native_command_catalog::packaged_command_catalog)
+    pub fn command_catalog(
+        &self,
+    ) -> Result<Arc<crate::native_command_catalog::CommandCatalog>, &'static str> {
+        self.catalog
+            .clone()
+            .map(Ok)
+            .unwrap_or_else(crate::native_command_catalog::packaged_command_catalog)
     }
 
     pub(crate) fn for_program(
@@ -38,10 +43,15 @@ impl CompiledNativeCommandControls {
         binding.validate()?;
         let mut extensions = Vec::new();
         let program = NativeCommandProgram::from_pack_cache_catalog(
-            directory, &binding.program_digest, budget, Some(&mut extensions),
+            directory,
+            &binding.program_digest,
+            budget,
+            Some(&mut extensions),
         )?;
         let catalog = crate::native_command_catalog::CommandCatalog::from_extensions(
-            extensions, program.program_digest.clone(), program.catalog_digest.clone(),
+            extensions,
+            program.program_digest.clone(),
+            program.catalog_digest.clone(),
         )?;
         let mut controls = Self::for_program_inner(binding, Arc::new(program), true)?;
         controls.catalog = Some(Arc::new(catalog));

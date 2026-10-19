@@ -11,6 +11,7 @@ from . import lifecycle
 def verified_preparation():
     """Pin verified bytes for all requests; never accept an executable from callers."""
     with lifecycle.session():
+
         def invoke(kind="preparation", **fields):
             return lifecycle.invoke(kind, **fields)
 

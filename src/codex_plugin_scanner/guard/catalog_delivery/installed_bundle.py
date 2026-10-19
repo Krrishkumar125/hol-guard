@@ -56,11 +56,15 @@ def target(value, *, source_sha):
 
 
 def asset_path(relative, *, source_sha):
-    if re.fullmatch(
-        r"assets/extension-data-" + re.escape(source_sha)
-        + r"-0\.0-[0-9]{6}/(?:(?:objects|packs)-[0-9]{6}\.zip|object-[0-9a-f]{64}\.json|pack-[0-9a-f]{64}\.zip)",
-        relative,
-    ) is None:
+    if (
+        re.fullmatch(
+            r"assets/extension-data-"
+            + re.escape(source_sha)
+            + r"-0\.0-[0-9]{6}/(?:(?:objects|packs)-[0-9]{6}\.zip|object-[0-9a-f]{64}\.json|pack-[0-9a-f]{64}\.zip)",
+            relative,
+        )
+        is None
+    ):
         raise ValueError("installed bundle asset path invalid")
 
 

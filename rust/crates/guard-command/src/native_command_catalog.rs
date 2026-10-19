@@ -163,7 +163,11 @@ impl CommandCatalog {
         }
         let wrapper: Wrapper =
             serde_json::from_slice(bytes).map_err(|_| "command_catalog_decode_failed")?;
-        Self::from_extensions(wrapper.catalog, wrapper.program_digest, wrapper.catalog_digest)
+        Self::from_extensions(
+            wrapper.catalog,
+            wrapper.program_digest,
+            wrapper.catalog_digest,
+        )
     }
 
     pub(crate) fn from_extensions(
