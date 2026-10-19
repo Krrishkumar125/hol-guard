@@ -36,7 +36,7 @@ from ..native_hook_render import (
     native_cursor_after_shell_observed,
     native_cursor_observer_event,
 )
-from ..runtime.approval_context import parse_approval_context_token
+from ..runtime.approval_context import approval_context_token_is_well_formed
 from ..store import _runtime_scoped_exact_match_key, runtime_tool_action_exact_match_context
 from ._commands_shared import *
 from .commands_parser_helpers import *
@@ -448,9 +448,7 @@ def _persist_claude_native_permission_policy(
     # the only values that may authorize P44 approval reuse.  Keep the legacy
     # exact-command key only for legacy callers/blocks.
     stored_artifact_hash = (
-        artifact_hash
-        if parse_approval_context_token(artifact_hash) is not None
-        else exact_artifact_hash or artifact_hash
+        artifact_hash if approval_context_token_is_well_formed(artifact_hash) else exact_artifact_hash or artifact_hash
     )
     try:
         if artifact_type == "tool_action_request" and exact_artifact_hash is None:
