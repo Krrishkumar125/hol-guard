@@ -72,8 +72,11 @@ def native_protect_request(
     }
     if cwd is not None:
         # A custom command that launches a relative script is read from here;
-        # the resident reads a script only against an absolute directory. The
-        # field is omitted when absent so a resident without it still parses.
+        # the resident reads a script only against an absolute directory.
+        # `parse_protect_command` and a verdict asked for without a working
+        # directory have none, so the field is left out rather than sent as
+        # null: their request, and the digest the reply is bound to, stay the
+        # bytes a caller that never knew about `cwd` would send.
         request["cwd"] = str(Path(cwd).absolute())
     try:
         home = _resolve_digest_home(guard_home)
