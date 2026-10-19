@@ -89,6 +89,7 @@ def test_vector_set_covers_offline_and_cloud_cases() -> None:
     assert len(VECTORS["cases"]) > len(OFFLINE_CASES)
     assert set(CACHE_CONTRACT["expected_patches"]) == {
         "offline_eval_cache_hit",
+        "unpaid_unreachable_eval_cache_hit",
         "cached_cloud_error_saved_block",
     }
     for case in OFFLINE_CASES:

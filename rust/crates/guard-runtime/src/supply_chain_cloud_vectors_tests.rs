@@ -468,7 +468,11 @@ fn resident_cloud_evaluation_matches_recorded_python_vectors() {
     if let Some(path) = std::env::var_os("GUARD_VECTOR_REPORT") {
         std::fs::write(path, &report).expect("write report");
     }
-    assert!(failures.is_empty(), "{} case(s) differ", failures.len());
+    assert!(
+        failures.is_empty(),
+        "{} case(s) differ\n{report}",
+        failures.len()
+    );
 }
 
 #[test]

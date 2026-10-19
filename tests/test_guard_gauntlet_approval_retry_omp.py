@@ -16,7 +16,8 @@ from ci.gauntlet.catalog import catalog_digest, load_catalog
 from ci.gauntlet.evidence import assess_case
 from ci.gauntlet.fixtures import create_fixture
 from tests.test_guard_gauntlet import observed_case, ordinary
-from tests.test_guard_gauntlet_approval_retry import _LIFECYCLE_COMMAND, REVIEW_REASON, _lifecycle_case
+from tests.test_guard_gauntlet_approval_retry import REVIEW_REASON
+from tests.test_guard_gauntlet_bash_lifecycle import _LIFECYCLE_COMMAND, _lifecycle_case
 from tests.test_guard_gauntlet_parallel import _fake_environment, _fake_result
 
 
