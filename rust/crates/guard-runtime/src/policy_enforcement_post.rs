@@ -6,6 +6,20 @@ use crate::bash_post_delivery::VerifiedBashDelivery;
 #[path = "policy_enforcement_post_action.rs"]
 mod post_action;
 
+fn plain_inline_output(payload: &Value) -> bool {
+    match payload.get("tool_response") {
+        Some(Value::String(_)) => true,
+        Some(Value::Array(parts)) if parts.len() <= 1024 => parts.iter().all(|part| {
+            part.as_object().is_some_and(|record| {
+                record.len() == 2
+                    && record.get("type").and_then(Value::as_str) == Some("text")
+                    && record.get("text").is_some_and(Value::is_string)
+            })
+        }),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn apply_post_tool_policy(
     snapshot: &AdmittedPolicySnapshot,
@@ -28,16 +42,18 @@ pub(crate) fn apply_post_tool_policy_with_delivery(
     }
     // Only a complete native output scan may reuse the execution admission.
     // A host-supplied marker alone cannot construct this opaque witness.
-    let clean_output = response.decision == "allow"
+    let verified_delivery = delivery.is_some()
+        && payload_kind == GuardHookPayloadKindV2::Inline
+        && plain_inline_output(&request.payload)
+        && response.decision == "allow"
         && response.model_output_action == "allow_original"
         && matches!(
             response.reason_code.as_str(),
-            "output_scan_allow" | "source_full_scan_allow"
+            "output_scan_allow" | "output_empty_allow" | "source_full_scan_allow"
         )
         && response.reviewed_output_sha256.is_some()
         && response.reviewed_output_sha256
             == guard_hook_core::canonical_observed_output_sha256(&request.payload);
-    let verified_delivery = clean_output && delivery.is_some();
     let task_metadata = payload_kind == GuardHookPayloadKindV2::Inline
         && guard_command::pretool::bounded_task_metadata_output(&request.payload, &request.harness);
     let omp_output_action = (payload_kind == GuardHookPayloadKindV2::Inline)

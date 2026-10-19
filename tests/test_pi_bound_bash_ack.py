@@ -18,6 +18,14 @@ def test_result_acknowledgement_waits_for_reviewed_matching_final_context(tmp_pa
         pytest.skip("requires the pinned SDK's Bun runtime")
     samples = [
         ({"isError": False}, 0),
+        ({"isError": False, "content": []}, 0),
+        ({"isError": False, "content": [{"type": "image", "data": "fixture-image"}]}, None),
+        (
+            {"isError": False, "content": [
+                {"type": "text", "text": "ordinary"}, {"type": "image", "data": "fixture-image"}
+            ]},
+            None,
+        ),
         ({"isError": True, "details": {"exitCode": 7}}, 7),
         (
             {"isError": True, "content": [{"type": "text", "text": "output\n\nCommand exited with code 7"}]},

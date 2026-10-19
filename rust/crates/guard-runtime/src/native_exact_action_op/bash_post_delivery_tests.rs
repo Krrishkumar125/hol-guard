@@ -299,3 +299,81 @@ fn bash_post_delivery_nonzero_completion_preserves_exact_status_and_can_acknowle
     assert!(!ack(&execution, &store, 0).acknowledged);
     assert!(ack(&execution, &store, 7).acknowledged);
 }
+
+#[test]
+fn bash_post_delivery_empty_output_requires_a_complete_digest_and_signed_completion() {
+    let (_root, request) = tests::fixture();
+    let (store, mut envelope) = policy_store(&request);
+    let execution = invocation(&request, &envelope);
+    assert_eq!(execute(&execution, &store).status, "ok");
+    execution_floor(&store, &mut envelope, "require-reapproval");
+    let mut empty = post(&execution, 0);
+    empty.payload["tool_response"] = json!("");
+    let native = guard_hook_core::review_post_tool(&empty);
+    assert_eq!(native.reason_code, "output_empty_allow");
+    assert_eq!(
+        native.reviewed_output_sha256.as_deref(),
+        Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    );
+    let proof = verify(&empty, &store).unwrap();
+    let allowed = joined(&store, &empty, native.clone(), Some(&proof));
+    assert_eq!(allowed.decision, "allow");
+    assert_eq!(allowed.reason_code, "native_bash_owner_result_allow");
+    assert_eq!(joined(&store, &empty, native, None).decision, "deny");
+
+    for output in [
+        json!([]),
+        json!([{"type":"text", "text":""}]),
+        json!([{"type":"text", "text":"completed"}]),
+    ] {
+        let mut text = empty.clone();
+        text.payload["tool_response"] = output;
+        let result = joined(
+            &store,
+            &text,
+            guard_hook_core::review_post_tool(&text),
+            Some(&proof),
+        );
+        assert_eq!(result.decision, "allow");
+        assert_eq!(result.reason_code, "native_bash_owner_result_allow");
+    }
+
+    let mut missing = empty.clone();
+    missing
+        .payload
+        .as_object_mut()
+        .unwrap()
+        .remove("tool_response");
+    let mut truncated = empty.clone();
+    truncated.payload["tool_response_summary"] = json!({"excerpt_truncated":true});
+    for incomplete in [missing, truncated] {
+        assert!(guard_hook_core::canonical_observed_output_sha256(&incomplete.payload).is_none());
+        let result = joined(
+            &store,
+            &incomplete,
+            guard_hook_core::review_post_tool(&incomplete),
+            Some(&proof),
+        );
+        assert_eq!(result.decision, "deny");
+        assert_ne!(result.reason_code, "native_bash_owner_result_allow");
+    }
+    // A digest of the extracted text alone is not a proof for opaque content.
+    for output in [
+        json!([{"type":"image", "data":"fixture-image"}]),
+        json!([{"type":"text", "text":"ordinary"}, {"type":"image", "data":"fixture-image"}]),
+        json!([{"type":"text", "text":"", "extra":"unreviewed"}]),
+        json!({"opaque":"unreviewed"}),
+        json!(null),
+    ] {
+        let mut opaque = empty.clone();
+        opaque.payload["tool_response"] = output;
+        let result = joined(
+            &store,
+            &opaque,
+            guard_hook_core::review_post_tool(&opaque),
+            Some(&proof),
+        );
+        assert_eq!(result.decision, "deny");
+        assert_ne!(result.reason_code, "native_bash_owner_result_allow");
+    }
+}
