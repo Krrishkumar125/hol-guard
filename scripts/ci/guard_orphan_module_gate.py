@@ -34,6 +34,14 @@ EXEMPT_STEMS = frozenset({"__init__", "__main__"})
 # as `import_module(".installed_bundle", __package__)` counted as references.
 TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
+# This detector and its suite name modules that do not exist. Scanning them would
+# let a fixture stem shelter a real module of the same name, so they are skipped:
+# a Guard module is residue unless something other than the detector refers to it.
+FIXTURE_SOURCES = (
+    "scripts/ci/guard_orphan_module_gate.py",
+    "tests/test_guard_orphan_module_gate.py",
+)
+
 # Modules that are deliberately unreferenced. Each entry needs a reason; an entry
 # without one is residue wearing an exemption.
 ALLOWLIST: tuple[str, ...] = ()
@@ -49,7 +57,8 @@ def _scan_files(root: Path) -> list[Path]:
         for path in directory.rglob("*"):
             if not path.is_file() or path.suffix not in SCAN_SUFFIXES:
                 continue
-            if SKIP_DIRS.intersection(path.relative_to(root).parts):
+            relative = path.relative_to(root)
+            if SKIP_DIRS.intersection(relative.parts) or relative.as_posix() in FIXTURE_SOURCES:
                 continue
             found.append(path)
     found.extend(root / name for name in SCAN_FILES if (root / name).is_file())
@@ -120,9 +129,15 @@ def _self_test() -> None:
         cache.mkdir()
         (cache / "left_behind.py").write_text("left_behind\n", encoding="utf-8")
 
+        # Nor may this detector's own fixtures, which name the same module.
+        for name in FIXTURE_SOURCES:
+            fixture = root / name
+            fixture.parent.mkdir(parents=True, exist_ok=True)
+            fixture.write_text("left_behind folded owner dynamic\n", encoding="utf-8")
+
         # A test suite reference counts, so `owner` itself is not residue.
         suite = root / "tests"
-        suite.mkdir()
+        suite.mkdir(exist_ok=True)
         (suite / "test_owner.py").write_text(
             "from codex_plugin_scanner.guard.owner import helper\n",
             encoding="utf-8",

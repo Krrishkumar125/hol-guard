@@ -126,3 +126,21 @@ def test_the_audit_job_watches_the_package_it_guards() -> None:
     triggers = workflow[True]
     for event in ("pull_request", "push"):
         assert "src/**" in triggers[event]["paths"]
+
+
+def test_detector_fixtures_cannot_shelter_a_real_module(tmp_path: Path) -> None:
+    """Names used only by this detector's own fixtures must not count as repository references."""
+    package = _package(tmp_path)
+    (package / "left_behind.py").write_text("VALUE = 1\n", encoding="utf-8")
+    for name in gate.FIXTURE_SOURCES:
+        fixture = tmp_path / name
+        fixture.parent.mkdir(parents=True, exist_ok=True)
+        fixture.write_text('(package / "left_behind.py").write_text("VALUE = 1")\n', encoding="utf-8")
+
+    assert gate.find_orphans(tmp_path) == [f"{gate.PACKAGE}/left_behind.py"]
+
+
+def test_the_excluded_fixture_sources_still_exist() -> None:
+    """Renaming either file would turn the exclusion into a silent no-op."""
+    for name in gate.FIXTURE_SOURCES:
+        assert (ROOT / name).is_file(), name
