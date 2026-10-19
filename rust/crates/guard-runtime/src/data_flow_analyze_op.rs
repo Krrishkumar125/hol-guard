@@ -62,11 +62,13 @@ fn analyze(request: &DataFlowAnalyzeRequestV1) -> Result<Vec<RiskSignalV2>, &'st
 /// alone or the command raised none: an action with no data flow earns no
 /// review, so there is nothing to key one under.
 fn artifact_for(request: &DataFlowAnalyzeRequestV1, signals: &[RiskSignalV2]) -> Option<Value> {
+    fn non_empty(value: &str) -> Option<&str> {
+        (!value.is_empty()).then_some(value)
+    }
     let naming = request.naming.as_ref()?;
     if signals.is_empty() {
         return None;
     }
-    let non_empty = |value: &str| (!value.is_empty()).then_some(value);
     let command_text = request
         .command
         .as_deref()
