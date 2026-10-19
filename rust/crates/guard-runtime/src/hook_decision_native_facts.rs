@@ -131,7 +131,7 @@ static RECORDED_VERDICT: Mutex<Option<(String, Instant, bool)>> = Mutex::new(Non
 
 /// Whether the slot holds a verdict for `inputs`, without taking it. For
 /// tests that assert what the handoff holds rather than time what it saves.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn verdict_is_recorded_after(inputs: &HookCompositionInputsV1, after: Duration) -> bool {
     let Some(key) = verdict_key(inputs) else {
         return false;
@@ -145,7 +145,7 @@ pub(crate) fn verdict_is_recorded_after(inputs: &HookCompositionInputsV1, after:
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn verdict_is_recorded(inputs: &HookCompositionInputsV1) -> bool {
     verdict_is_recorded_after(inputs, Duration::ZERO)
 }
