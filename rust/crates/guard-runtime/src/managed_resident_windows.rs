@@ -161,6 +161,7 @@ mod tests {
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     const CHILD_MARKER_ENV: &str = "HOL_GUARD_TEST_LIVENESS_CHILD_MARKER";
+    const CHILD_PARENT_ENV: &str = "HOL_GUARD_TEST_LIVENESS_CHILD_PARENT";
     const EOF_MARKER_ENV: &str = "HOL_GUARD_TEST_LIVENESS_EOF_MARKER";
     const EOF_STARTED_ENV: &str = "HOL_GUARD_TEST_LIVENESS_EOF_STARTED";
     const ORPHAN_EOF_MARKER_ENV: &str = "HOL_GUARD_TEST_ORPHAN_EOF_MARKER";
@@ -184,6 +185,7 @@ mod tests {
         let eof_marker = directory.join("pipe-closed");
         let eof_started = directory.join("eof-probe-started");
         env::set_var(CHILD_MARKER_ENV, &child_marker);
+        env::set_var(CHILD_PARENT_ENV, std::process::id().to_string());
         env::set_var(EOF_MARKER_ENV, &eof_marker);
         env::set_var(EOF_STARTED_ENV, &eof_started);
 
@@ -201,6 +203,7 @@ mod tests {
         let result = supervise_managed_child(&executable, &arguments, &[0x5a; 32], &owner);
 
         env::remove_var(CHILD_MARKER_ENV);
+        env::remove_var(CHILD_PARENT_ENV);
         env::remove_var(EOF_MARKER_ENV);
         env::remove_var(EOF_STARTED_ENV);
 
@@ -296,7 +299,11 @@ mod tests {
 
     #[test]
     fn liveness_pipe_child_probe() {
-        let Some(child_marker) = env::var_os(CHILD_MARKER_ENV) else {
+        // As in `orphan_child_probe`, only the spawned child acts on the
+        // process-wide variables the parent sets.
+        let spawned =
+            env::var(CHILD_PARENT_ENV).is_ok_and(|parent| parent != std::process::id().to_string());
+        let Some(child_marker) = env::var_os(CHILD_MARKER_ENV).filter(|_| spawned) else {
             return;
         };
         let eof_marker = env::var_os(EOF_MARKER_ENV).expect("EOF marker is configured");
