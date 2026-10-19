@@ -79,6 +79,35 @@ fn compatibility_labels_require_request_bound_native_rule_evidence() {
     inactive.compatibility_action_class = Some(core_class.clone());
     let result = evaluate(&inactive, Some(&controls)).unwrap();
     assert!(result["controlling_action_class"].is_null());
+
+    // The classifier's unowned fetch diagnostic is bound to the one rule whose
+    // evidence selects it, and no other command's evidence admits it.
+    let diagnostic = "unverified Git remote refresh";
+    for command in [
+        "git fetch https://example.invalid/project.git",
+        "git -c core.sshCommand=payload fetch origin",
+        "git --config-env credential.helper=HELPER fetch origin",
+        "git --exec-path=/tmp fetch origin",
+        "git fetch origin && git -c core.sshCommand=payload fetch origin",
+    ] {
+        let mut fetch = command_request(&controls, command);
+        fetch.compatibility_action_class = Some(diagnostic.into());
+        let result = evaluate(&fetch, Some(&controls)).unwrap();
+        assert_eq!(result["controlling_action_class"], diagnostic, "{command}");
+        assert_eq!(
+            result["controlling_rule_id"], "command.git.unverified-fetch",
+            "{command}"
+        );
+        assert_ne!(result["minimum_action"], "allow", "{command}");
+    }
+    let mut replay = command_request(&controls, "git push --force origin main");
+    replay.compatibility_action_class = Some(diagnostic.into());
+    let result = evaluate(&replay, Some(&controls)).unwrap();
+    assert_ne!(result["controlling_action_class"], diagnostic);
+    assert_eq!(result["controlling_rule_id"], rule.rule_id);
+    inactive.compatibility_action_class = Some(diagnostic.into());
+    let result = evaluate(&inactive, Some(&controls)).unwrap();
+    assert!(result["controlling_action_class"].is_null());
     std::fs::remove_dir_all(home).unwrap();
 }
 

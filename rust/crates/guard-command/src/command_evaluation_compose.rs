@@ -48,6 +48,15 @@ use crate::native_command_extension_evidence::observations_from_native_evidence;
 
 const ERR_UNKNOWN_IDENTITY: &str = "native_command_extension_evidence_unknown_identity";
 
+/// Core classifier diagnostics that refine one catalog rule without being one
+/// of its action classes. A caller may present such a label only when native
+/// evidence for that exact rule is effective for this command; no rule owns the
+/// label, so it cannot be authenticated by ownership.
+const DIAGNOSTIC_LABEL_RULES: &[(&str, &str)] = &[(
+    "unverified Git remote refresh",
+    "command.git.unverified-fetch",
+)];
+
 /// Inputs of one evaluation. `read_factors` is the host-computed
 /// `shell_read_floor_factors` output.
 pub struct CommandEvaluationInput<'a> {
@@ -108,7 +117,12 @@ pub fn evaluate_command(
     let compatibility_rule: Option<CompatRuleRef> = compatibility_action_class.and_then(|class| {
         selected
             .iter()
-            .find(|(_, _, rule, _)| rule.action_classes.iter().any(|item| item == class))
+            .find(|(_, _, rule, _)| {
+                rule.action_classes.iter().any(|item| item == class)
+                    || DIAGNOSTIC_LABEL_RULES
+                        .iter()
+                        .any(|(label, rule_id)| *label == class && *rule_id == rule.rule_id)
+            })
             .map(|(_, extension, rule, _)| CompatRuleRef {
                 extension_required: extension.required,
                 rule_severity: rule.severity.clone(),

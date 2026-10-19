@@ -22,6 +22,7 @@ from .test_guard_temporary_mcp_approvals import _artifact as _browser_click_arti
 from .test_guard_temporary_mcp_approvals import _evaluate
 
 _ACTIONS = ("allow", "warn", "review", "require-reapproval", "block")
+_LOCKDOWN_REASON = "This MCP tool is blocked by its authenticated extension authority."
 
 
 def _package_cases() -> list[tuple[str, str, str, str, str]]:
@@ -61,7 +62,12 @@ def test_resident_matches_the_recorded_expectations_for_every_bundled_package(lo
         store = _AuthorityStore((layer,))
         artifact = _artifact(_identity(command, package), tool)
         for action in _ACTIONS:
-            expected = expected_decision(state, lockdown, action)
+            if lockdown:
+                # The resident enforces the authenticated global lockdown before any
+                # per-tool state: every call is blocked unless the request already is.
+                expected = None if action == "block" else ("block", recorded()["source"], _LOCKDOWN_REASON)
+            else:
+                expected = expected_decision(state, lockdown, action)
             actual = extension_driver.apply_contributed_mcp_decision(store, artifact, action)
             if expected != actual:
                 mismatches.append(f"{mcp_id} {tool} {action}: {expected} != {actual}")
