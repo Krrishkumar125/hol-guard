@@ -22,6 +22,13 @@ fn bash_reply_rejects_a_different_authenticated_invocation_for_the_current_call(
     current.operation.as_mut().unwrap().operation_id = old_id;
     assert!(!backed(&execution, &store, &current));
     current.operation.as_mut().unwrap().operation_id = actual_id;
+    if let Some(alias) = execution.capture.workspace.strip_prefix("/private") {
+        execution.capture.workspace = alias.to_owned();
+        assert!(
+            backed(&execution, &store, &current),
+            "physical workspace aliases share the allocation"
+        );
+    }
     execution.tool_call_id = Some("unallocated-sdk-call".into());
     assert!(!backed(&execution, &store, &current));
 }

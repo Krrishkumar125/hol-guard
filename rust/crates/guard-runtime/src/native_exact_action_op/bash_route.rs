@@ -216,13 +216,16 @@ pub(super) fn reply_is_backed(
     let Some(call) = request.tool_call_id.as_deref() else {
         return id == &request.operation_id;
     };
+    let Ok(project) = std::fs::canonicalize(&request.capture.workspace) else {
+        return false;
+    };
     let Ok(journal) = crate::policy_store::policy_store_approval::bash_journal::BashOperationJournal::open_for_delivery(
         store, request.authorization.store_path(), &request.operation_id,
     ) else { return false };
     journal
         .reply_invocation_matches(
             &request.capture.harness,
-            &request.capture.workspace,
+            project.to_str().unwrap_or_default(),
             call,
             id,
             hash,

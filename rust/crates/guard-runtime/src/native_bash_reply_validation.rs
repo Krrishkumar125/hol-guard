@@ -123,6 +123,9 @@ pub(crate) fn executed(value: &Value, request: &Value) -> bool {
     let Ok(result) = serde_json::from_value::<NativeBashExecuteResultV1>(value.clone()) else {
         return false;
     };
+    // The owner checks SDK allocations against its authenticated journal in
+    // bash_route::reply_is_backed before encoding. This stateless wire check
+    // binds the transport header and validates the allocated ID's shape.
     let operation_matches = |id: &str| {
         if request
             .get("tool_call_id")
