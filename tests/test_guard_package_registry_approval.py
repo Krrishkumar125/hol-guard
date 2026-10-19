@@ -22,11 +22,22 @@ from tests.manifest_install_fixtures import (
 )
 
 
+def _review_package_signals(guard_home: Path, *keys: str) -> None:
+    """Opt into reviewing package signals that the default only records."""
+
+    guard_home.mkdir(parents=True, exist_ok=True)
+    lines = "".join(f'{key} = "require-reapproval"\n' for key in keys)
+    (guard_home / "config.toml").write_text(f"[risk_actions]\n{lines}", encoding="utf-8")
+
+
 def test_private_registry_package_approval_never_lowers_current_gate_or_registry_change(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store = GuardStore(tmp_path / "guard-home")
+    _review_package_signals(
+        tmp_path / "guard-home", "package_unknown", "package_lockfile_drift", "package_custom_registry"
+    )
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
     _write_linked_git_worktrees(workspace_dir, tmp_path / "unused-linked")
@@ -131,6 +142,9 @@ def test_workspace_package_approval_still_reprompts_when_worktree_lockfile_chang
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store = GuardStore(tmp_path / "guard-home")
+    _review_package_signals(
+        tmp_path / "guard-home", "package_unknown", "package_lockfile_drift", "package_custom_registry"
+    )
     workspace_dir = tmp_path / "workspace"
     worktree_dir = tmp_path / "workspace-worktree"
     workspace_dir.mkdir()
@@ -218,6 +232,9 @@ def test_build_package_protect_payload_saved_hashless_block_clear_command_omits_
     tmp_path: Path,
 ) -> None:
     store = GuardStore(tmp_path / "guard-home")
+    _review_package_signals(
+        tmp_path / "guard-home", "package_unknown", "package_lockfile_drift", "package_custom_registry"
+    )
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
     command = ["pnpm", "add", "left-pad"]
