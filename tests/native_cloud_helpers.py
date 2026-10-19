@@ -96,6 +96,9 @@ def native_bridge(monkeypatch):
 
     monkeypatch.setattr(pages, "native_call", request)
     monkeypatch.setattr(provider, "native_call", request)
+    from codex_plugin_scanner.guard.runtime import extension_catalog_transfer
+
+    monkeypatch.setattr(extension_catalog_transfer, "native_call", request)
     yield request
     process.stdin.close()
     process.wait(timeout=10)

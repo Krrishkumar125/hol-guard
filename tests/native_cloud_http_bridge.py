@@ -42,6 +42,7 @@ from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMA
 from codex_plugin_scanner.guard.runtime.extension_catalog_completion import complete_authenticated_view
 from codex_plugin_scanner.guard.runtime.managed_controls_sync import managed_controls_runtime_sync_posture
 from codex_plugin_scanner.guard.store import GuardStore
+from codex_plugin_scanner.version import __version__
 from tests.native_cloud_helpers import call_native, prepare_native, raw
 
 
@@ -55,6 +56,9 @@ def main(data):
 
     call = partial(call_native, native)
     pages.native_call = provider.native_call = call
+    from codex_plugin_scanner.guard.runtime import extension_catalog_transfer
+
+    extension_catalog_transfer.native_call = call
     home = (
         Path(data["home"])
         if data.get("home")
@@ -77,7 +81,11 @@ def main(data):
                 values.append(item)
             values.sort(key=lambda item: item["extension_id"])
             view = prepare_native(
-                home=home, values=values, generated_at=now, enforcement_digest=REGISTRY.catalog_digest
+                home=home,
+                values=values,
+                generated_at=now,
+                guard_version=__version__,
+                enforcement_digest=REGISTRY.catalog_digest,
             )
             return {
                 "home": str(home),

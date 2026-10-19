@@ -28,7 +28,8 @@ def unit_active_authority(monkeypatch):
     monkeypatch.setattr(controls, "current_catalog_registry", lambda _: BUILT_IN_COMMAND_EXTENSION_REGISTRY)
 
 
-def test_runtime_v2_uses_existing_authenticated_request_transport(monkeypatch):
+@pytest.mark.parametrize("known", [False, True])
+def test_runtime_v2_uses_existing_authenticated_request_transport(monkeypatch, known):
     view = provider.remember_view(prepare(166))
     session = posture(view)
     receiver = Receiver()
@@ -59,12 +60,13 @@ def test_runtime_v2_uses_existing_authenticated_request_transport(monkeypatch):
         guard_home=view.guard_home,
         auth_context=auth,
         runtime_sync_url="https://example.test/api/guard/runtime/sessions/sync?tenant=fixture",
-        runtime_response=signal(view),
+        runtime_response=signal(view, known=known),
         session_payload=session,
     )
-    assert receiver.accepted
-    assert summary["extension_catalog_sync_status"] == "uploaded"
+    assert receiver.accepted is not known
+    assert summary["extension_catalog_sync_status"] == ("already_known" if known else "uploaded")
     assert completed[0]["store"] is store and completed[0]["auth_context"] is auth
+    assert completed[0]["url"] == "https://example.test/api/guard/runtime/extension-catalog/sync-v2?tenant=fixture"
 
 
 def test_same_root_heartbeat_retry_reuses_manifest_and_key():

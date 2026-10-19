@@ -263,7 +263,7 @@ def test_exact_handshake_validation(change):
         target["uploadPath"] = "https://untrusted.test" + UPLOAD_PATH
     else:
         target["protocolVersion"] = "extension-catalog.v3"
-    with pytest.raises(RuntimeError, match="Invalid"):
+    with pytest.raises(ValueError, match="^catalog_invalid$"):
         sync(view, lambda *_: pytest.fail("invalid handshake sent bytes"), response=response)
 
 
@@ -279,7 +279,7 @@ def test_exact_handshake_validation(change):
     ],
 )
 def test_origin_path_guard(url):
-    with pytest.raises(RuntimeError, match="origin/path"):
+    with pytest.raises(ValueError, match="^catalog_invalid$"):
         sync(prepare(1), lambda *_: pytest.fail("invalid origin sent bytes"), url=url)
 
 
@@ -294,7 +294,7 @@ def test_exact_completion_response(field):
             response[field] = False
         return response
 
-    with pytest.raises(RuntimeError, match="response"):
+    with pytest.raises(ValueError, match="^catalog_invalid$"):
         sync(view, send)
 
 
@@ -305,7 +305,7 @@ def test_immutable_manifest_page_tampering_and_observed_identity_binding():
     assert view.manifest != manifest
     session = posture(view)
     session["extensionCatalogEnforcementDigest"] = "f" * 64
-    with pytest.raises(RuntimeError, match="posture"):
+    with pytest.raises(ValueError, match="^catalog_invalid$"):
         sync(view, lambda *_: pytest.fail("changed posture sent bytes"), session=session)
     path = view.guard_home / "native-runtime/cloud-catalog" / view.token / "1.json"
     original = path.read_bytes()
