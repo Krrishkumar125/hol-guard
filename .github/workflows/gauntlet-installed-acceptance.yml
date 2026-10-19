@@ -133,7 +133,9 @@ jobs:
       - name: Installed acceptance against the wheel
         run: |
           set -euo pipefail
-          python3 -m venv "$RUNNER_TEMP/wheel-venv"
+          python3 -m venv --copies "$RUNNER_TEMP/wheel-venv"
+          # Harden lane-owned copies; the runner's shared interpreter may be group-writable.
+          chmod go-w "$RUNNER_TEMP/wheel-venv"/bin/python*
           PYTHONPATH= "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install --no-compile \
             --index-url https://pypi.org/simple "$WHEEL"
           python3 -m ci.gauntlet installed \
