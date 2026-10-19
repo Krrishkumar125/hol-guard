@@ -222,10 +222,11 @@ def test_normal_builder_apply_above_512_preserves_core_profile(tmp_path, monkeyp
     from codex_plugin_scanner.guard.extension_builder.repository_write import apply_kit
     from tests.extension_builder_support import make_discovery, repository_fixture, use_built_native_source_compiler
 
-    compiler = ROOT / "rust/target/debug/guard-command-source"
     monkeypatch.setattr(sys, "argv", ["hol-guard"])
-    monkeypatch.setenv("HOL_GUARD_NATIVE_SOURCE_COMPILER", str(compiler))
-    use_built_native_source_compiler(monkeypatch)
+    # Destination admission is not routed through the kit; it reads the override
+    # from the environment, so expose the compiler this job actually built.
+    if (compiler := use_built_native_source_compiler(monkeypatch)) is not None:
+        monkeypatch.setenv("HOL_GUARD_NATIVE_SOURCE_COMPILER", str(compiler))
     discovery = make_discovery(tmp_path, kind)
     identity = discovery.metadata
     arguments = [

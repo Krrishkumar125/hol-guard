@@ -106,12 +106,16 @@ def use_installed_native_source_compiler(monkeypatch: Any, directory: Path) -> N
     monkeypatch.delenv("HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER", raising=False)
 
 
-def use_built_native_source_compiler(monkeypatch: Any) -> None:
-    """Route builder unit tests through the explicitly built native compiler."""
+def use_built_native_source_compiler(monkeypatch: Any) -> Path | None:
+    """Route builder unit tests through the explicitly built native compiler.
+
+    Returns the compiler for callers that must also expose it to unpatched
+    native operations such as destination admission, or None when installed.
+    """
 
     if os.environ.get("HOL_GUARD_TEST_USE_INSTALLED") == "1":
         assert Path(native_source_compiler.__file__).is_relative_to(Path(sys.prefix))
-        return  # Exercise the installed factory rather than a checkout compiler.
+        return None  # Exercise the installed factory rather than a checkout compiler.
     candidates = [
         *(
             [Path(os.environ["HOL_GUARD_BUILD_SOURCE_COMPILER"])]
@@ -136,6 +140,7 @@ def use_built_native_source_compiler(monkeypatch: Any) -> None:
         "run_source_compiler",
         lambda operation, request: native_source_compiler.run_source_compiler(operation, request, compiler=compiler),
     )
+    return compiler
 
 
 def metadata(kind: Literal["cli", "mcp"] = "cli", *, slug: str = "builder-demo") -> Metadata:
