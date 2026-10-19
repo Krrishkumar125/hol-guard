@@ -7,7 +7,6 @@ import json
 import subprocess
 import tempfile
 import threading
-from pathlib import Path
 
 
 def exchange(compiler, operation, records, directory, *, fetch=None, archive=None):
