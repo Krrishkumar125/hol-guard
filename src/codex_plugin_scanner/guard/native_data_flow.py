@@ -12,7 +12,9 @@ from .native_context import _canonical_request_sha256, _resolve_digest_home, ens
 from .runtime.actions import GuardActionEnvelope
 from .runtime.signals import RiskSignalV2
 
-_FEATURE = "data-flow-analyze-v1"
+# v2 added the request's ``naming`` and the reply's ``artifact``. A v1 resident
+# refuses the first and omits the second, so it must not be picked for this.
+_FEATURE = "data-flow-analyze-v2"
 _REQUEST_SCHEMA = "guard-data-flow-analyze-request.v1"
 _RESULT_SCHEMA = "guard-data-flow-analyze-result.v1"
 _RESULT_KEYS = frozenset({"schema", "request_id", "request_sha256", "status", "code", "signals", "artifact"})
@@ -97,6 +99,10 @@ def _artifact(value: object) -> GuardArtifact:
     if not isinstance(value, dict) or set(value) != _ARTIFACT_FIELDS:
         raise _invalid()
     wire = cast("dict[str, Any]", value)
+    if any(wire[name] is not None for name in ("command", "url", "transport", "publisher")):
+        raise _invalid()
+    if wire["args"] != [] or wire["runtime_private_metadata"] != {}:
+        raise _invalid()
     metadata = wire["metadata"]
     if not isinstance(metadata, dict) or not all(isinstance(key, str) for key in metadata):
         raise _invalid()

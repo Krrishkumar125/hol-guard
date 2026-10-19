@@ -15,7 +15,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub const DATA_FLOW_ANALYZE_FEATURE: &str = "data-flow-analyze-v1";
+/// v2 added `naming` to the request and `artifact` to the result; a v1
+/// resident cannot answer the new shape, so clients ask for v2 by name.
+pub const DATA_FLOW_ANALYZE_FEATURE: &str = "data-flow-analyze-v2";
 pub const DATA_FLOW_ANALYZE_REQUEST_SCHEMA: &str = "guard-data-flow-analyze-request.v1";
 pub const DATA_FLOW_ANALYZE_RESULT_SCHEMA: &str = "guard-data-flow-analyze-result.v1";
 /// Largest command the op accepts; longer input fails closed.

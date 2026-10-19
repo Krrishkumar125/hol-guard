@@ -84,7 +84,7 @@ def _install(monkeypatch: pytest.MonkeyPatch, mutate) -> list[dict[str, Any]]:
     def fake(*, operation, request, guard_home, timeout_seconds, required_feature, response_schema, max_request_bytes):
         seen.append(request)
         assert operation == "data_flow_analyze"
-        assert required_feature == "data-flow-analyze-v1"
+        assert required_feature == "data-flow-analyze-v2"
         result = {
             "schema": response_schema,
             "request_id": request["request_id"],
@@ -150,6 +150,10 @@ def test_a_named_request_with_no_signals_earns_no_artifact(monkeypatch, tmp_path
         lambda result: result.update(signals=[_SIGNAL], artifact={"artifact_id": "x"}),
         lambda result: result.update(signals=[_SIGNAL], artifact=dict(_ARTIFACT, metadata="nope")),
         lambda result: result.update(signals=[_SIGNAL], artifact=dict(_ARTIFACT, artifact_id=None)),
+        # A request artifact carries no launch fields; filling one is drift.
+        lambda result: result.update(signals=[_SIGNAL], artifact=dict(_ARTIFACT, args=["x"])),
+        lambda result: result.update(signals=[_SIGNAL], artifact=dict(_ARTIFACT, publisher="p")),
+        lambda result: result.update(signals=[_SIGNAL], artifact=dict(_ARTIFACT, runtime_private_metadata={"a": 1})),
     ],
 )
 def test_named_requests_fail_closed_on_a_missing_or_malformed_artifact(monkeypatch, tmp_path, mutate) -> None:
@@ -269,7 +273,7 @@ def test_escaped_command_larger_than_the_default_transport_limit_reaches_the_res
         available=True,
         compatible=True,
         identity=identity,
-        capabilities=SimpleNamespace(features=("resident-protocol-v2", "data-flow-analyze-v1")),
+        capabilities=SimpleNamespace(features=("resident-protocol-v2", "data-flow-analyze-v2")),
     )
     monkeypatch.setattr(native_execution, "native_runtime_status", lambda: status)
 
