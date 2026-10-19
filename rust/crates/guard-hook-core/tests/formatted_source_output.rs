@@ -225,6 +225,34 @@ fn resolved_directory_target_is_rechecked_before_inline_output_allow() {
         selector_redirected_result.model_output_action,
         "allow_original"
     );
+
+    // An ordinary feature folder inside the workspace shares a name with the
+    // external credential parts list. Its names-only listing stays visible.
+    let feature = workspace.join("src/lib/auth");
+    std::fs::create_dir_all(&feature).unwrap();
+    let mut feature_request = request(&workspace, "README.md\n");
+    feature_request
+        .payload
+        .as_object_mut()
+        .unwrap()
+        .remove("guard_source_ref");
+    feature_request.payload["tool_input"]["path"] = json!("src/lib/auth");
+    feature_request.payload["resolved_directory_target"] = json!(feature.to_string_lossy());
+    assert_eq!(
+        review_post_tool(&feature_request).model_output_action,
+        "allow_original"
+    );
+
+    // The same name inside the workspace pointing out of it is still refused.
+    let swapped = workspace.join("src/lib/secrets");
+    std::os::unix::fs::symlink(&credentials, &swapped).unwrap();
+    let mut swapped_request = feature_request.clone();
+    swapped_request.payload["tool_input"]["path"] = json!("src/lib/secrets");
+    swapped_request.payload["resolved_directory_target"] = json!(swapped.to_string_lossy());
+    assert_eq!(
+        review_post_tool(&swapped_request).reason_code,
+        "sensitive_path"
+    );
 }
 
 #[cfg(unix)]

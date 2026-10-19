@@ -177,6 +177,37 @@ fn envelope_target(payload: &Value) -> Option<String> {
     None
 }
 
+/// A listing target that resolves inside the session's workspace with no
+/// hidden component below it. PreToolUse already admitted the read against the
+/// workspace, and an ordinary source folder such as `src/lib/auth` holds
+/// feature code rather than credential material, so denying its names-only
+/// listing stops real work without protecting anything. The recheck still
+/// refuses a target that resolves outside the workspace, or through a link
+/// into a dot-directory such as `.aws`, which is the post-PreToolUse swap it
+/// exists to catch.
+fn workspace_visible_target(target: &Path, request: &NativeHookRequestV1) -> bool {
+    let Some(cwd) = request.cwd.as_deref() else {
+        return false;
+    };
+    let Ok(workspace) = std::fs::canonicalize(cwd) else {
+        return false;
+    };
+    let candidate = if target.is_absolute() {
+        target.to_path_buf()
+    } else {
+        workspace.join(target)
+    };
+    let Ok(resolved) = std::fs::canonicalize(candidate) else {
+        return false;
+    };
+    let Ok(relative) = resolved.strip_prefix(&workspace) else {
+        return false;
+    };
+    relative
+        .components()
+        .all(|component| !component.as_os_str().to_string_lossy().starts_with('.'))
+}
+
 fn sensitive_envelope_target(request: &NativeHookRequestV1) -> bool {
     let payload = &request.payload;
     let target = envelope_target(payload);
@@ -185,7 +216,9 @@ fn sensitive_envelope_target(request: &NativeHookRequestV1) -> bool {
         .and_then(Value::as_str);
     let is_sensitive = |target: &str| {
         let path = Path::new(target.trim());
-        sensitive_path_family(path).is_some() || guard_secure_fs::credential_named_path(path)
+        sensitive_path_family(path).is_some()
+            || (guard_secure_fs::credential_named_path(path)
+                && !workspace_visible_target(path, request))
     };
     // A `file.json?q=<filter>` read queries the file before the `?`.
     let is_sensitive_entry = |entry: &str| {
