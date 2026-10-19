@@ -4067,7 +4067,7 @@ def _sync_extension_catalog_from_runtime_handshake(
 
     from .extension_catalog_provider import observed_view
     from .extension_catalog_sync import build_v1_catalog_from_view
-    from .extension_catalog_transfer import sync_catalog_view
+    from .extension_catalog_transfer import catalog_sync_plan, sync_catalog_view
 
     signal = runtime_response.get("extensionCatalogSync")
     if isinstance(signal, dict) and "protocolVersion" in signal:
@@ -4103,14 +4103,18 @@ def _sync_extension_catalog_from_runtime_handshake(
         if store is None:
             raise RuntimeError("Authenticated catalog completion requires the current store")
         from .extension_catalog_completion import complete_authenticated_view
-        from .extension_catalog_transfer import upload_url
 
         result.update(
             complete_authenticated_view(
                 store=store,
                 view=view,
                 auth_context=auth_context,
-                url=upload_url(runtime_sync_url, signal.get("uploadPath")),
+                url=catalog_sync_plan(
+                    view=view,
+                    runtime_sync_url=runtime_sync_url,
+                    runtime_response=runtime_response,
+                    session_payload=session_payload,
+                )["upload_url"],
                 send=send_page,
             )
         )

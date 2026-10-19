@@ -3,8 +3,27 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from .extension_catalog_pages import PreparedCatalogView, native_call
+
+
+def catalog_sync_plan(
+    *,
+    view: PreparedCatalogView,
+    runtime_sync_url: str,
+    runtime_response: dict[str, object],
+    session_payload: dict[str, object],
+) -> dict[str, Any]:
+    """Obtain the native-validated destination and limits for this view."""
+    return native_call(
+        view.guard_home,
+        action="sync_plan",
+        token=view.token,
+        runtime_sync_url=runtime_sync_url,
+        runtime_response=runtime_response,
+        session_payload=session_payload,
+    )
 
 
 def _sync_catalog_view(
@@ -24,10 +43,8 @@ def _sync_catalog_view(
     The native runtime judges the handshake signal, the advertised limits, the
     upload origin and every acknowledgement; this module only moves bytes.
     """
-    plan = native_call(
-        view.guard_home,
-        action="sync_plan",
-        token=view.token,
+    plan = catalog_sync_plan(
+        view=view,
         runtime_sync_url=runtime_sync_url,
         runtime_response=runtime_response,
         session_payload=session_payload,
