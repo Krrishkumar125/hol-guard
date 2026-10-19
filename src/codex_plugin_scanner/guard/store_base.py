@@ -1480,7 +1480,9 @@ def _is_runtime_scoped_exact_match_key(value: str | None) -> bool:
 
 
 def _is_approval_context_token(value: object) -> bool:
-    return approval_context_token_is_well_formed(value)
+    # A harness or global policy row drops a hash this rejects, so an
+    # unreachable native authority must not widen the row to the whole family.
+    return approval_context_token_is_well_formed(value, keep_prefixed_when_unavailable=True)
 
 
 def _policy_integrity_ready_for_local_write(payload: Mapping[str, object]) -> bool:

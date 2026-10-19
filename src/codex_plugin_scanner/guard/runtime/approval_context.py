@@ -156,7 +156,7 @@ def build_approval_context_token(
     return cast(str, result["token"])
 
 
-def approval_context_token_is_well_formed(token: object) -> bool:
+def approval_context_token_is_well_formed(token: object, *, keep_prefixed_when_unavailable: bool = False) -> bool:
     """Whether a stored value is a well-formed v1 approval-context token.
 
     The token grammar has exactly one owner: the native authority that mints
@@ -166,10 +166,14 @@ def approval_context_token_is_well_formed(token: object) -> bool:
     disagree about what counts as a token, and the narrower of the two
     opinions would decide whether a saved approval binds.
 
-    An unreachable authority answers ``False``.  That is the restrictive
-    direction at every call site: a value that cannot be shown to be a context
-    token is treated as a legacy hash, which narrows the key an approval is
-    stored under and never mints reuse on its own.
+    An unreachable authority answers ``False`` by default.  Where the answer
+    decides reuse, that is the restrictive direction: a value that cannot be
+    shown to be a context token is treated as a legacy hash and never mints
+    reuse on its own.  A policy key works the other way round, because a
+    harness or global row drops a hash that is not a token and so binds to the
+    whole artifact family.  ``keep_prefixed_when_unavailable`` lets that caller
+    keep any value carrying the token prefix while the authority is down,
+    which keeps the narrower key.
     """
 
     if not isinstance(token, str) or not token:
@@ -180,7 +184,7 @@ def approval_context_token_is_well_formed(token: object) -> bool:
             {"token": token},
         )
     except (NativeContextDigestUnavailableError, TypeError):
-        return False
+        return keep_prefixed_when_unavailable and token.startswith(APPROVAL_CONTEXT_TOKEN_PREFIX)
     return result.get("approval_context_token_well_formed") is True
 
 

@@ -260,14 +260,16 @@ def test_only_a_minted_token_is_well_formed(legacy_or_malformed: object, native_
 def test_token_is_not_well_formed_when_the_native_authority_cannot_answer(
     failure: Exception, monkeypatch: pytest.MonkeyPatch, native_context_digest: Path
 ) -> None:
-    """A verdict Guard cannot obtain is not a token.
+    """A verdict Guard cannot obtain is not a token where reuse depends on it.
 
-    Both call-site uses of this predicate narrow when it answers ``False``:
-    the stored approval key falls back to the exact-command form, and saved
-    evidence is treated as legacy rather than as a context binding. So the
-    unreachable authority must answer ``False``, never raise past the caller
-    or guess ``True``.
+    The stored approval key falls back to the exact-command form, and saved
+    evidence is treated as legacy rather than as a context binding, so those
+    callers get ``False``. A harness or global policy row is the exception:
+    it drops a hash that is not a token, so the policy-key site keeps any
+    prefixed value rather than widening the row to the artifact family.
     """
+
+    from codex_plugin_scanner.guard.store_base import _is_approval_context_token
 
     token = _token()
 
@@ -277,6 +279,8 @@ def test_token_is_not_well_formed_when_the_native_authority_cannot_answer(
     monkeypatch.setattr(approval_context_module, "_context_digest_result", _unavailable)
 
     assert not approval_context_token_is_well_formed(token)
+    assert _is_approval_context_token(token)
+    assert not _is_approval_context_token("sha256:legacy")
 
 
 def test_builder_rejects_non_json_context_without_leaking_its_value() -> None:
