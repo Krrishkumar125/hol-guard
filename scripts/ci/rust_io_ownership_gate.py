@@ -407,23 +407,6 @@ def _inventory(root: Path, reachable: tuple[FunctionRecord, ...]) -> list[IoObse
     )
 
 
-def _stale_waivers(root: Path, inventory: Iterable[IoObservation]) -> list[str]:
-    """Name every pending-authority waiver the hook graph no longer reaches.
-
-    The waiver only ever excused a reachable operation, so an entry whose
-    module has dropped off the graph grants nothing and misreports the
-    remaining backlog. A module that is not in this tree at all is outside the
-    analysis rather than migrated, so it is left alone.
-    """
-
-    waived = {item.path for item in inventory if item.reachable and item.category == "pending_authority_migration"}
-    return sorted(path for path in _PENDING_AUTHORITY_PATHS if path not in waived and (root / path).is_file())
-
-
-def _capability_contract() -> list[dict[str, object]]:
-    return capability_contract(COMPATIBILITY_MODES)
-
-
 def validate(root: Path) -> dict[str, object]:
     """Validate current source in a fresh, bounded-lifetime analysis scope."""
     with analysis_cache():
@@ -465,7 +448,10 @@ def _validate(root: Path) -> dict[str, object]:
         failures.extend(
             f"reachable unclassified Python I/O: {item.path}:{item.line} {item.operation}" for item in reachable_bad
         )
-    failures.extend(f"stale pending_authority_migration waiver: {path}" for path in _stale_waivers(root, inventory))
+    # A waiver the hook graph no longer reaches excuses nothing; one outside this tree is left alone.
+    waived = {item.path for item in inventory if item.reachable and item.category == "pending_authority_migration"}
+    stale = sorted(path for path in _PENDING_AUTHORITY_PATHS if path not in waived and (root / path).is_file())
+    failures.extend(f"stale pending_authority_migration waiver: {path}" for path in stale)
     if failures:
         raise RuntimeError("; ".join(failures))
     reachable_inventory = [item for item in inventory if item.reachable]
@@ -475,7 +461,7 @@ def _validate(root: Path) -> dict[str, object]:
         "status": "passed",
         "native_modes": sorted(NATIVE_MODES),
         "compatibility_modes": sorted(COMPATIBILITY_MODES),
-        "capabilities": _capability_contract(),
+        "capabilities": capability_contract(COMPATIBILITY_MODES),
         "roots": [f"{item.path}:{item.name}" for item in (_root_record(root, spec, records) for spec in ROOTS)],
         "reachable_function_count": len(reachable),
         "inventory_total": len(inventory),
