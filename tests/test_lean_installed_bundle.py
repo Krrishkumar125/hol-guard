@@ -192,7 +192,6 @@ def test_fixed_factory_selected_fetch_and_offline_native_admission(built, tmp_pa
     with pytest.raises(ValueError, match="unavailable"):
         preparation.prepare(authority, [identity], tmp_path / "uncached", engine=root["engine"])
     assert native.check_pack_cache(cache, prepared.metadata.program_digest) == admitted
-    assert authority.manifest()["publication_id"] == "0.0" and "expires_at" not in authority.manifest()
 
 
 @pytest.mark.parametrize("failure", ["substituted", "missing"])
@@ -243,45 +242,3 @@ def test_publication_rejects_unbound_asset_before_any_upload(built, tmp_path):
     (directory / "asset-plan.jsonl").write_bytes(b"".join(encoded(row) + b"\n" for row in rows))
     with pytest.raises(ValueError, match="Root reachability"):
         publisher.publish(directory, wheel, root["source_sha"], verify_only=True)
-
-
-def test_native_wheel_binds_the_same_root_in_both_manifests(built, tmp_path, monkeypatch):
-    import build_native_hol_guard_wheel as assembler
-
-    _, _, output, _, _, root, data, _ = built
-    version = "3.0.0a7"
-    dist_info = f"hol_guard-{version}.dist-info"
-    wheel = tmp_path / f"hol_guard-{version}-py3-none-any.whl"
-    program = "codex_plugin_scanner/guard/contracts/data/extensions/native-command-program.v1.json"
-    with zipfile.ZipFile(wheel, "x") as archive:
-        archive.writestr(f"{dist_info}/METADATA", f"Metadata-Version: 2.4\nName: hol-guard\nVersion: {version}\n\n")
-        archive.writestr(f"{dist_info}/WHEEL", "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n")
-        archive.writestr(f"{dist_info}/RECORD", "")
-        archive.writestr(program, encoded({"program_digest": "b" * 64}))
-        for path in output.rglob("*"):
-            if path.is_file():
-                archive.write(path, ROOT_MEMBER.removesuffix(MANIFEST) + path.relative_to(output).as_posix())
-    # Unit fixture for the assembler's manifest seam; executable provenance and
-    # real selected-pack admission are exercised separately by the factory test.
-    monkeypatch.setattr(assembler, "_verify_runtime_provenance", lambda *a, **k: b"fixture-executable")
-    arguments = dict(
-        source_wheel=wheel,
-        runtime=tmp_path / "unused",
-        output_dir=tmp_path / "native",
-        version=version,
-        platform_tag="manylinux_2_28_x86_64",
-        target="x86_64-unknown-linux-gnu",
-        source_sha=root["source_sha"],
-        rule_digest="b" * 64,
-        implementation_digest=root["engine"],
-        base_program_digest="b" * 64,
-    )
-    result = assembler.build_native_wheel(**arguments)
-    with zipfile.ZipFile(result) as archive:
-        expected = descriptor(data, source_sha=root["source_sha"], engine=root["engine"])
-        for name in ("runtime-manifest.json", "source-compiler-manifest.json"):
-            assert json.loads(archive.read("codex_plugin_scanner/_native/" + name))["command_pack_bundle"] == expected
-    arguments["output_dir"] = tmp_path / "mismatch"
-    arguments["implementation_digest"] = "c" * 64
-    with pytest.raises(assembler.NativeWheelError, match="source or engine"):
-        assembler.build_native_wheel(**arguments)

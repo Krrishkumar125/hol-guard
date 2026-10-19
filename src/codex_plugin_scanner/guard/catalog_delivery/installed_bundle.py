@@ -217,7 +217,9 @@ def _native_metadata(operation: str, *, compiler=None, **fields: object) -> dict
             if operation in {"root", "descriptor", "compatibility"}
             else None
         )
-        options = {"compiler": Path(configured)} if configured else {}
-        return run_source_compiler("bundle-metadata", {"operation": operation, **fields}, **options)
+        request = {"operation": operation, **fields}
+        if configured:
+            return run_source_compiler("bundle-metadata", request, compiler=Path(configured))
+        return run_source_compiler("bundle-metadata", request)
     except NativeSourceCompilerError as error:
         raise ValueError(f"installed bundle metadata unavailable: {error}") from error

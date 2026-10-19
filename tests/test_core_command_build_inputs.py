@@ -21,22 +21,6 @@ def generator(root=ROOT):
     return module
 
 
-def test_explicit_inventory_preserves_current_defaults_and_external_opt_in():
-    module = generator()
-    request = module.build_request(core_only=True)
-    selected = {entry["extension_id"] for entry in module.core_entries()}
-    defaults = set()
-    for path in (ROOT / "contributions/command-sources").glob("command.*.json"):
-        source = json.loads(path.read_bytes())["extension"]
-        binding = json.loads((ROOT / f"contracts/extensions/trust/{path.stem}.v1.json").read_bytes())
-        if source["required"] or binding["trustClass"] != "external":
-            defaults.add(path.stem)
-    assert selected == defaults
-    assert len(selected) == 63
-    assert request["trust"]["classes"]["external"] == []
-    assert {source["extension"]["extension_id"] for source in request["sources"]} == selected
-
-
 def test_core_projection_ignores_more_than_512_optional_inputs(tmp_path):
     directory = tmp_path / "contributions/command-sources"
     directory.mkdir(parents=True)

@@ -6,7 +6,7 @@ import importlib
 import subprocess
 from collections.abc import Mapping
 
-_STAGING = None
+_staging = None
 
 
 def register_development_staging(callback) -> None:
@@ -16,8 +16,8 @@ def register_development_staging(callback) -> None:
     failing closed. Only a caller that already runs against this checkout, such
     as the test suite or a maintainer script, supplies the staging callback.
     """
-    global _STAGING
-    _STAGING = callback
+    global _staging
+    _staging = callback
 
 
 def admission_request(request, compiler, *, installed, directory, development=None):
@@ -75,7 +75,7 @@ def validation_base(request, compiler, *, installed, directory, fixture=False, a
             "source_context": bundle.digest,
         }
         objects = directory / "packs"
-    elif (staging := development or _STAGING) is None:
+    elif (staging := development or _staging) is None:
         raise ValueError("authoring requires the verified installed command pack bundle")
     else:
         native_request = {"mode": "development", **staging(compiler, directory)}
