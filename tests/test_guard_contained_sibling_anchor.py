@@ -75,6 +75,7 @@ def test_an_absolute_script_in_a_sibling_repository_anchors_its_root(tmp_path: P
         # the script an operand of a program that runs from the session.
         f"node --max-old-space-size=0 {script}",
         f"node --max-old-space-size=4096k {script}",
+        f"node --max-old-space-size={'9' * 5000} {script}",
         f"node --require=./hook.js {script}",
         f"node --max-old-space-size=4096 --require=./hook.js {script}",
     ):

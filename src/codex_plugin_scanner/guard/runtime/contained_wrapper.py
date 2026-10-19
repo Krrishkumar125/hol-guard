@@ -195,7 +195,12 @@ _PYTHON = re.compile(r"python(?:3(?:\.[0-9]+)?)?")
 def _node_heap_size(word: str) -> bool:
     """Whether `word` is the `--max-old-space-size=<megabytes>` Node takes ahead of its script."""
     value = word.removeprefix("--max-old-space-size=")
-    return value != word and value.isascii() and value.isdigit() and 16 <= int(value) <= 131072
+    if value == word or not value.isascii() or not value.isdigit():
+        return False
+    # Past six significant digits the value is out of range anyway; checking
+    # the length first keeps `int` off a string past the conversion limit.
+    significant = value.lstrip("0") or "0"
+    return len(significant) <= 6 and 16 <= int(significant) <= 131072
 
 
 def _executed_path(words: list[str]) -> str | None:
