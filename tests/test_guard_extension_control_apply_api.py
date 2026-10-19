@@ -28,6 +28,7 @@ from codex_plugin_scanner.guard.runtime.extension_control_contract import (
 from codex_plugin_scanner.guard.runtime.extension_control_proof import ExtensionControlProof
 from codex_plugin_scanner.guard.runtime.extension_control_runtime import ExtensionControlRuntime
 from codex_plugin_scanner.guard.store import GuardStore
+from tests.native_activation_support import compiled_lifecycle as compiled_lifecycle
 from tests.test_guard_extension_control_api import _mutation_payload, _service
 
 

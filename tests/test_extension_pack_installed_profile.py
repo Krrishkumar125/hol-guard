@@ -33,6 +33,9 @@ def installed(delivery, monkeypatch):
 
     module = ModuleType("codex_plugin_scanner.guard.catalog_delivery.installed_bundle")
     module.VerifiedInstalledBundle = VerifiedInstalledBundle
+    # Like a source checkout, nothing is advertised until a test patches the
+    # loader that hands out this bundle.
+    module.advertised = lambda: False
     monkeypatch.setitem(sys.modules, module.__name__, module)
     root = {field: delivery.value[field] for field in ("source_sha", "engine", "authority_epoch", "policy")}
     root.update(schema="guard.command-pack-bundle.v1", publication_id="0.0")

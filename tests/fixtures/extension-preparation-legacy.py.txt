@@ -186,7 +186,8 @@ def _prepare(
             store, policy["root"], policy["transport"], identity, expected_reference=default_references.get(identity)
         )
         if record is None:
-            raise UnavailablePackError("selected policy is not available in the authenticated release")
+            # Rust's typed reason, which alone authorizes the remote fallback.
+            raise UnavailablePackError("pack_policy_unavailable")
         if identity in default_ids and record["trust_class"] == "external":
             raise ValueError("external policy cannot be selected by defaults")
         catalog = store.json(record["catalog_metadata"])

@@ -330,8 +330,10 @@ def test_reordered_catalog_inputs_keep_identity(compiler: Path, build: dict, com
     assert compile_request(compiler, reordered) == compiled
 
 
-def test_native_directory_preparation_above_legacy_limit(compiler: Path) -> None:
+def test_native_directory_preparation_above_legacy_limit(compiler: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Real native packs and public metadata remain complete at the 513th source."""
+    # The script imports its siblings by bare name, as it does when run directly.
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
     import prepare_extension_directory as directory
 
     from codex_plugin_scanner.guard.extension_builder.errors import BuilderError
