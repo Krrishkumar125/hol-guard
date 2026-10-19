@@ -109,6 +109,23 @@ fn unreachable_from(
 /// as they already are in `/usr/bin`.
 pub(super) const MAC_PROGRAM_ROOTS: &[&str] = &["/bin", "/usr/bin", "/usr/sbin", "/sbin"];
 
+/// The canonical form of a session `PATH` entry that is one of the system
+/// program directories above, which the sandbox executes from on every
+/// platform. The toolchain roots the sandbox PATH otherwise accepts leave out
+/// `/usr/sbin` and `/sbin`, so a bare `sysctl` resolved there for the agent's
+/// shell but not inside the sandbox, and the command went to review.
+pub(super) fn system_program_directory(entry: &Path) -> Option<PathBuf> {
+    let canonical = entry.canonicalize().ok()?;
+    MAC_PROGRAM_ROOTS
+        .iter()
+        .any(|root| {
+            Path::new(root)
+                .canonicalize()
+                .is_ok_and(|root| root == canonical)
+        })
+        .then_some(canonical)
+}
+
 /// Directories the sandbox may execute from on this platform.
 pub(super) fn executable_roots(workspace: &Path, exec_roots: Vec<PathBuf>) -> Vec<PathBuf> {
     let system: &[&str] = if cfg!(target_os = "macos") {
