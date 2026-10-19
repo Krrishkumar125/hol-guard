@@ -4,7 +4,7 @@ This describes the candidate native Bash execution route. It is not a release or
 
 | Platform and host | Execution route |
 | --- | --- |
-| macOS on Apple silicon, pinned OMP or Pi SDK | Native owner delivery, with immutable Bash code and enforced effects; covered by SDK integration tests. A real managed-host consent workflow is a separate acceptance gate. |
+| macOS on Apple silicon, pinned OMP or Pi SDK | Native owner delivery, with immutable Bash code and enforced effects; covered by SDK integration tests. Reviews here keep both approval choices like every other review (`approval-invariant.md`); what holds the script to the reviewed bytes is the owner's launch barrier, which matches a saved decision against the captured artifact hash, so edited script, helper or dependency bytes ask again instead of reusing the grant. A real managed-host consent workflow is a separate acceptance gate. |
 | macOS on Intel | Shares the macOS implementation; installed Intel qualification remains required. |
 | Linux or Windows | The native immutable Bash owner is unavailable. Saving consent cannot create that execution capability, so an approval there keeps binding the command hash, as it did before this route existed: both approval choices stay on the review and neither claims the bytes behind the command. |
 | Other host adapters | This Bash owner is not delivered by their admission hooks. They must not present an unsupported grant as permission to execute reviewed bytes; their reviews keep the command-hash approval, which claims the command text only. |

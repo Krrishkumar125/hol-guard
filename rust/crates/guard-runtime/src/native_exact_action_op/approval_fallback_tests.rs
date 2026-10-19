@@ -69,19 +69,23 @@ fn script_request(harness: &str, command: &str) -> NativeExactActionRequestV1 {
     })
 }
 
-/// Off the execution-owner route there is no stronger binding to hold a script
-/// to, so refusing the token would leave the review with neither Allow once nor
-/// Always allow (`docs/guard/approval-invariant.md`). The command hash still
-/// binds the approval to this command in this directory.
+/// A script review keeps Allow once and Always allow on every harness and
+/// platform (`docs/guard/approval-invariant.md`), including the native
+/// execution-owner route. Withholding the token is not what holds a script to
+/// the bytes the user saw: the owner matches a saved decision against the
+/// captured artifact hash at its launch barrier, so edited bytes ask again.
+/// The command hash still binds the approval to this command in this directory.
 #[test]
 fn a_script_review_without_an_owner_route_keeps_both_choices() {
-    for command in SCRIPTS {
-        let (token, reason) = outcome(&script_request("codex", command), Fallback::CommandHash);
-        assert!(
-            token.is_some(),
-            "{command} offers Allow once and Always allow"
-        );
-        assert_eq!(reason, None, "{command}");
+    for harness in ["codex", "claude-code", "omp", "pi"] {
+        for command in SCRIPTS {
+            let (token, reason) = outcome(&script_request(harness, command), Fallback::CommandHash);
+            assert!(
+                token.is_some(),
+                "{harness} {command} offers Allow once and Always allow"
+            );
+            assert_eq!(reason, None, "{harness} {command}");
+        }
     }
     let first = outcome(&script_request("codex", SCRIPTS[0]), Fallback::CommandHash).0;
     let second = outcome(&script_request("codex", SCRIPTS[2]), Fallback::CommandHash).0;
@@ -91,15 +95,16 @@ fn a_script_review_without_an_owner_route_keeps_both_choices() {
     );
 }
 
-/// On the route that can hold a script to the bytes the user saw, command text
-/// is not a substitute for that binding.
-#[cfg(target_os = "macos")]
+/// A script launch never gets the proven exact-action token: its approval is
+/// saved under the command hash, so it covers this command only and never
+/// claims the bytes behind it. `Fallback::Strict` is the caller that wants the
+/// refusal itself, and it still sees it.
 #[test]
-fn command_hash_cannot_replace_an_unavailable_script_execution_owner() {
-    for harness in ["omp", "pi"] {
+fn a_script_launch_never_claims_a_proven_execution_binding() {
+    for harness in ["codex", "omp", "pi"] {
         for command in SCRIPTS {
             assert_eq!(
-                outcome(&script_request(harness, command), Fallback::CommandHash),
+                outcome(&script_request(harness, command), Fallback::Strict),
                 (None, Some("script_execution_binding_unavailable".into())),
                 "{harness} {command}"
             );
