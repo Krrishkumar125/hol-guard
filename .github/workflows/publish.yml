@@ -1081,11 +1081,15 @@ jobs:
             --rule-digest "$RULE_DIGEST" \
             --implementation-digest "$(python -c 'import json,sys; print(json.load(open("source-compiled.json"))["implementation_digest"])')" \
             --base-program-digest "$(python -c 'import json,sys; print(json.load(open("source-compiled.json"))["base_program_digest"])')"
-          SIZE_ARGS=()
-          if [[ "$ALPHA_FAST_CODEGEN" == "true" ]]; then
-            SIZE_ARGS+=(--alpha-native-budgets)
+          # Windows wheels carry no size budget: PyPI's limit is far above them,
+          # and the budget only ever blocked builds.
+          if [[ "$PLATFORM_TAG" != win_* ]]; then
+            SIZE_ARGS=()
+            if [[ "$ALPHA_FAST_CODEGEN" == "true" ]]; then
+              SIZE_ARGS+=(--alpha-native-budgets)
+            fi
+            python "$HOL_GUARD_WHEEL_SIZE_CHECKER" --dist-dir native-dist ${SIZE_ARGS[@]+"${SIZE_ARGS[@]}"}
           fi
-          python "$HOL_GUARD_WHEEL_SIZE_CHECKER" --dist-dir native-dist ${SIZE_ARGS[@]+"${SIZE_ARGS[@]}"}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: native-guard-wheel-${{ matrix.platform_tag }}
