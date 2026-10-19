@@ -617,6 +617,7 @@ def prompt_analyze_native(
     harness: str | None = None,
     config_path: str | None = None,
     requests: Sequence[Mapping[str, object]] | None = None,
+    artifacts: Sequence[Mapping[str, object]] | None = None,
     prior_policy_present: bool | None = None,
     approved_classes: Sequence[str] | None = None,
     timeout_seconds: float = 10.0,
@@ -631,6 +632,12 @@ def prompt_analyze_native(
         not isinstance(requests, Sequence)
         or isinstance(requests, (str, bytes, bytearray))
         or not all(isinstance(item, Mapping) for item in requests)
+    ):
+        return None
+    if artifacts is not None and (
+        not isinstance(artifacts, Sequence)
+        or isinstance(artifacts, (str, bytes, bytearray))
+        or not all(isinstance(item, Mapping) for item in artifacts)
     ):
         return None
     if approved_classes is not None and (
@@ -649,6 +656,7 @@ def prompt_analyze_native(
         "harness": harness,
         "config_path": config_path,
         "requests": [dict(r) for r in requests] if requests is not None else None,
+        "artifacts": [dict(a) for a in artifacts] if artifacts is not None else None,
         "prior_policy_present": prior_policy_present,
         "approved_classes": list(approved_classes) if approved_classes is not None else None,
         "guard_home": str(guard_home),

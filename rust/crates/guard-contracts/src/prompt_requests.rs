@@ -24,7 +24,7 @@ pub struct PromptAnalyzeRequestV1 {
     pub schema: String,
     pub request_id: String,
     /// `extract` | `detect_injection` | `to_artifacts` |
-    /// `should_force_reapproval` | `request_id`.
+    /// `merge_artifacts` | `should_force_reapproval` | `request_id`.
     pub subop: String,
     /// `extract`/`detect_injection`/`request_id`: the raw prompt text.
     pub prompt_text: Option<String>,
@@ -37,6 +37,8 @@ pub struct PromptAnalyzeRequestV1 {
     /// `to_artifacts`/`should_force_reapproval`: serialized
     /// `GuardRunPromptRequest.to_dict()` objects.
     pub requests: Option<Vec<Value>>,
+    /// `merge_artifacts`: the prompt artifacts to fold into one review.
+    pub artifacts: Option<Vec<Value>>,
     /// `should_force_reapproval`: whether a prior policy existed.
     pub prior_policy_present: Option<bool>,
     /// `should_force_reapproval`: approved prompt classes.
@@ -49,7 +51,8 @@ pub struct PromptAnalyzeRequestV1 {
 pub struct PromptAnalyzeResultV1 {
     pub schema: String,
     /// Subop payload: array of request dicts (`extract`/`detect_injection`),
-    /// array of artifact dicts (`to_artifacts`), bool
+    /// array of artifact dicts (`to_artifacts`), one artifact dict
+    /// (`merge_artifacts`), bool
     /// (`should_force_reapproval`), or string (`request_id`). `None` when the
     /// subop could not run (caller falls back to Python).
     pub result: Option<Value>,
