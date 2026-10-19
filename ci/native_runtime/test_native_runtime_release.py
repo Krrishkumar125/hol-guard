@@ -546,6 +546,7 @@ def test_local_guard_set_requires_exact_native_wheel_manifest(tmp_path: Path, ch
 
 def _bundle_descriptor(bundle_root: bytes) -> dict[str, object]:
     return {
+        "schema": "guard.command-pack-bundle.v1",
         "path": release.BUNDLE_ROOT_PATH,
         "sha256": hashlib.sha256(bundle_root).hexdigest(),
         "length": len(bundle_root),

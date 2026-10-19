@@ -223,7 +223,8 @@ def _bundle_binding(descriptor: object, bundle_root: bytes | None, *, source_sha
     if (
         not isinstance(descriptor, dict)
         or bundle_root is None
-        or set(descriptor) != {"path", "sha256", "length", "source_sha", "engine"}
+        or set(descriptor) != {"schema", "path", "sha256", "length", "source_sha", "engine"}
+        or descriptor["schema"] != "guard.command-pack-bundle.v1"
         or descriptor["path"] != BUNDLE_ROOT_PATH
         or descriptor["sha256"] != hashlib.sha256(bundle_root).hexdigest()
         or descriptor["length"] != len(bundle_root)

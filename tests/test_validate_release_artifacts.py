@@ -230,6 +230,7 @@ def test_validate_provenance_accepts_multiline_json_array(tmp_path: Path) -> Non
 
 def _bundle_descriptor(bundle_root: bytes) -> dict[str, object]:
     return {
+        "schema": "guard.command-pack-bundle.v1",
         "path": BUNDLE_ROOT_PATH,
         "sha256": hashlib.sha256(bundle_root).hexdigest(),
         "length": len(bundle_root),
@@ -258,6 +259,7 @@ def test_validate_wheel_set_accepts_a_bound_command_pack_bundle(tmp_path: Path) 
         (b"root", None),
         (b"root", {**_bundle_descriptor(b"root"), "source_sha": "d" * 40}),
         (b"root", {**_bundle_descriptor(b"root"), "extra": 1}),
+        (b"root", {**_bundle_descriptor(b"root"), "schema": "guard.command-pack-bundle.v2"}),
     ],
 )
 def test_validate_wheel_set_rejects_an_unbound_command_pack_bundle(

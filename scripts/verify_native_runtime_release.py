@@ -185,7 +185,8 @@ def _assert_bundle_binding(manifest: Mapping[str, object], bundle_root: bytes | 
     if (
         not isinstance(descriptor, dict)
         or bundle_root is None
-        or set(descriptor) != {"path", "sha256", "length", "source_sha", "engine"}
+        or set(descriptor) != {"schema", "path", "sha256", "length", "source_sha", "engine"}
+        or descriptor["schema"] != "guard.command-pack-bundle.v1"
         or descriptor["path"] != BUNDLE_ROOT_PATH
         or descriptor["sha256"] != _sha256_bytes(bundle_root)
         or descriptor["length"] != len(bundle_root)
