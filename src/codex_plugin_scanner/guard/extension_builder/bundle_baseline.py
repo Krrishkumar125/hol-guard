@@ -6,6 +6,19 @@ import importlib
 import subprocess
 from collections.abc import Mapping
 
+_STAGING = None
+
+
+def register_development_staging(callback) -> None:
+    """Let repository tooling stage command packs for an uninstalled process.
+
+    The installed runtime never registers one, so uninstalled authoring keeps
+    failing closed. Only a caller that already runs against this checkout, such
+    as the test suite or a maintainer script, supplies the staging callback.
+    """
+    global _STAGING
+    _STAGING = callback
+
 
 def admission_request(request, compiler, *, installed, directory, development=None):
     from .native_source_compiler import NativeSourceCompilerError
@@ -62,10 +75,10 @@ def validation_base(request, compiler, *, installed, directory, fixture=False, a
             "source_context": bundle.digest,
         }
         objects = directory / "packs"
-    elif development is None:
+    elif (staging := development or _STAGING) is None:
         raise ValueError("authoring requires the verified installed command pack bundle")
     else:
-        native_request = {"mode": "development", **development(compiler, directory)}
+        native_request = {"mode": "development", **staging(compiler, directory)}
         objects = directory / "objects"
     native_request.update(request=candidate, fixture=fixture)
     if admission is not None:

@@ -36,6 +36,31 @@ if not use_installed_package and str(SRC_PATH) not in sys.path:
 if str(SUPPORT_PATH) not in sys.path:
     sys.path.insert(0, str(SUPPORT_PATH))
 
+
+def _development_staging(compiler: Path, directory: Path) -> dict[str, object]:
+    """Stage this checkout's command packs for an uninstalled authoring request."""
+    import hashlib
+
+    scripts = str(SRC_PATH.parent / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        import build_native_command_packs as packs
+
+        packs.stage(compiler, directory, source_root=SRC_PATH.parent)
+    finally:
+        sys.path.remove(scripts)
+    manifest = (directory / "release.json").read_bytes()
+    return {"root": json.loads(manifest), "source_context": hashlib.sha256(manifest).hexdigest()}
+
+
+# The runtime refuses to compile an uninstalled bundle unless a caller that owns
+# a checkout stages it. The suite runs against this checkout, so it registers one.
+from codex_plugin_scanner.guard.extension_builder.bundle_baseline import (  # noqa: E402
+    register_development_staging,
+)
+
+register_development_staging(_development_staging)
+
 existing_pythonpath = os.environ.get("PYTHONPATH", "")
 pythonpath_entries = [entry for entry in existing_pythonpath.split(os.pathsep) if entry]
 source_paths = (SUPPORT_PATH,) if use_installed_package else (SUPPORT_PATH, SRC_PATH)
