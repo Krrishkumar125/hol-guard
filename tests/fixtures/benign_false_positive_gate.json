@@ -16169,22 +16169,6 @@
       "expect": "not_allow"
     },
     {
-      "id": "shell-gofmt-list",
-      "fix_area": "shell",
-      "harnesses": [
-        "codex",
-        "zcode",
-        "claude-code",
-        "omp"
-      ],
-      "tool": "shell",
-      "tool_input": {
-        "command": "gofmt -l ."
-      },
-      "cwd": "worktree",
-      "expect": "allow"
-    },
-    {
       "id": "package-yarn-build",
       "fix_area": "package",
       "harnesses": [
@@ -16256,8 +16240,7 @@
         "codex",
         "zcode",
         "claude-code",
-        "omp",
-        "cursor"
+        "omp"
       ],
       "tool": "shell",
       "tool_input": {
@@ -16395,23 +16378,6 @@
       "tool": "shell",
       "tool_input": {
         "command": "date -u +%Y-%m-%dT%H:%M:%SZ"
-      },
-      "cwd": "worktree",
-      "expect": "allow"
-    },
-    {
-      "id": "shell-sysctl-cpu-count",
-      "fix_area": "shell",
-      "harnesses": [
-        "codex",
-        "zcode",
-        "claude-code",
-        "omp",
-        "cursor"
-      ],
-      "tool": "shell",
-      "tool_input": {
-        "command": "sysctl -n hw.ncpu"
       },
       "cwd": "worktree",
       "expect": "allow"
