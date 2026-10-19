@@ -50,6 +50,9 @@ fn describe_request(stub: &Stub, command: &str) -> GithubWorkflowPrepareRequestV
         environment: Some(stub.environment.clone()),
         policy_version: Some("policy.v1@abc".to_owned()),
         record: None,
+        approval_request: None,
+        operation: None,
+        session: None,
     }
 }
 
@@ -242,6 +245,9 @@ fn malformed_requests_are_rejected() {
         environment: None,
         policy_version: None,
         record: None,
+        approval_request: None,
+        operation: None,
+        session: None,
     };
     let code = |request: &GithubWorkflowPrepareRequestV1| {
         serde_json::from_slice::<GithubWorkflowPrepareResultV1>(
