@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 from copy import deepcopy
 from pathlib import Path
 
@@ -142,7 +143,7 @@ def test_bash_persistent_consent_survives_restart_for_ten_real_effects():
         runs=10,
         persist=True,
         decisions=decisions,
-        lifecycle={"resident_restarted": True},
+        lifecycle={"resident_restarted": True, "restart_after_initial_delivery": True},
     )
     assert bash_lifecycle_assessment(PERSISTENT_RESTART_CASE, case, decisions)[0] == "pass"
 
@@ -172,7 +173,7 @@ def test_bash_current_deny_overrides_saved_consent_before_effects():
         runs=0,
         persist=True,
         decisions=decisions,
-        lifecycle={"policy_denied": True, "resident_restarted": True},
+        lifecycle={"policy_denied": True, "resident_restarted": True, "restart_after_initial_delivery": True},
     )
     assert bash_lifecycle_assessment(DENIAL_CASE, case, decisions)[0] == "pass"
 
@@ -439,3 +440,39 @@ def test_lifecycle_transition_restarts_only_the_requested_restart_case(
     assert calls[0]["persist_policy"] is True
     assert bool(closed) is restarted
     assert approver.report()["lifecycle"] == ({"resident_restarted": True} if restarted else {"script_mutated": True})
+
+
+@pytest.mark.parametrize("early_retry", [False, True])
+def test_restart_follows_initial_delivery_and_precedes_retry(monkeypatch, tmp_path: Path, early_retry: bool):
+    from ci.gauntlet.approval_retry_bash import PLANS
+    from codex_plugin_scanner.guard import native_resident_client
+
+    log = tmp_path / "events.jsonl"
+    log.write_text(json.dumps({"type": "tool_execution_start"}) + "\n")
+
+    def finish():
+        with log.open("a") as stream:
+            stream.write(json.dumps({"type": "tool_execution_end", "toolName": "bash"}) + "\n")
+            if early_retry:
+                stream.write(json.dumps({"type": "tool_execution_start"}) + "\n")
+
+    def close(*, guard_home):
+        assert "tool_execution_end" in log.read_text(), "restart interrupted initial output validation"
+        return True
+
+    monkeypatch.setattr(native_resident_client, "close_native_residents", close)
+    approver = ReviewApprover(
+        object(), known_ids=set(), workspace=tmp_path, guard_home=tmp_path / "guard", initial_result_log=log
+    )
+    writer = threading.Timer(0.02, finish)
+    writer.start()
+    try:
+        approver._apply_lifecycle_transition(PLANS[PERSISTENT_RESTART_CASE])
+    finally:
+        writer.join()
+    report = approver.report()
+    if early_retry:
+        assert report["errors"] and not report["lifecycle"].get("restart_after_initial_delivery")
+    else:
+        assert not report["errors"]
+        assert report["lifecycle"] == {"resident_restarted": True, "restart_after_initial_delivery": True}

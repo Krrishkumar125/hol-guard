@@ -51,6 +51,7 @@ class OmpReview:
             scenario_id=self.scenario.id,
             guard_home=self.guard_home,
             worker=worker,
+            initial_result_log=self.fixture.root / "private-evidence" / "omp.jsonl",
         )
 
     def collect(

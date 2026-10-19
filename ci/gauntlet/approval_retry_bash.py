@@ -318,7 +318,9 @@ def assessment(
             f"and {len(completed)} completed journal row(s)"
         )
     transition = grants.get("lifecycle") or {}
-    if current.restart_after_first_grant and transition.get("resident_restarted") is not True:
+    if current.restart_after_first_grant and (
+        transition.get("resident_restarted") is not True or transition.get("restart_after_initial_delivery") is not True
+    ):
         return "harness-error", "the resident restart after grant was not observed"
     if current.mutate_after_first_grant and (transition.get("script_mutated") is not True or not target_withheld):
         return "fail", "changed script bytes did not create a fresh ungranted review"

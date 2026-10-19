@@ -84,6 +84,7 @@ class ReviewApprover:
         scenario_id: str | None = None,
         guard_home: Path | None = None,
         worker: Any | None = None,
+        initial_result_log: Path | None = None,
         interval: float = 0.05,
     ) -> None:
         self._store = store
@@ -92,6 +93,7 @@ class ReviewApprover:
         self._scenario_id = scenario_id
         self._guard_home = guard_home
         self._worker = worker
+        self._initial_result_log = initial_result_log
         self._interval = interval
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -238,6 +240,8 @@ class ReviewApprover:
         from .approval_retry_bash import mutate
 
         try:
+            if lifecycle.restart_after_first_grant and self._initial_result_log is not None:
+                self._await_initial_delivery()
             if lifecycle.mutate_after_first_grant:
                 mutate(Path(self._workspace))
                 self._lifecycle["script_mutated"] = True
@@ -255,9 +259,42 @@ class ReviewApprover:
             if lifecycle.restart_after_first_grant:
                 if self._guard_home is None or not close_native_residents(guard_home=self._guard_home):
                     raise RuntimeError("Bash lifecycle resident restart failed")
+                if self._initial_result_log is not None:
+                    import json
+
+                    if self._initial_result_log.stat().st_size > 1_048_576:
+                        raise RuntimeError("Bash lifecycle restart evidence exceeds its bound")
+                    events = [json.loads(line) for line in self._initial_result_log.read_text().splitlines()]
+                    if sum(event.get("type") == "tool_execution_start" for event in events) != 1:
+                        raise RuntimeError("Bash lifecycle retry began before the resident restart completed")
+                    self._lifecycle["restart_after_initial_delivery"] = True
                 self._lifecycle["resident_restarted"] = True
         except Exception as error:
             self._record_error(error, self._errors)
+
+    def _await_initial_delivery(self) -> None:
+        import json
+
+        assert self._initial_result_log is not None
+        deadline = time.monotonic() + 15
+        starts = 0
+        with self._initial_result_log.open(encoding="utf-8") as stream:
+            while not self._stop.is_set() and time.monotonic() < deadline:
+                offset = stream.tell()
+                line = stream.readline(1_048_577)
+                if len(line) > 1_048_576:
+                    raise RuntimeError("Bash lifecycle initial result exceeds its evidence bound")
+                if not line.endswith("\n"):
+                    stream.seek(offset)
+                    self._stop.wait(self._interval)
+                    continue
+                event = json.loads(line)
+                starts += event.get("type") == "tool_execution_start"
+                if event.get("type") == "tool_execution_end" and event.get("toolName") == "bash":
+                    if starts != 1:
+                        raise RuntimeError("Bash lifecycle retry began before the initial result was delivered")
+                    return
+        raise RuntimeError("Bash lifecycle initial result was not delivered before restart")
 
     def _record_error(self, error: BaseException, sink: list[str]) -> None:
         with self._lock:
