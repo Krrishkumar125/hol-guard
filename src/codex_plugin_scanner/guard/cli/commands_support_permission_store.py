@@ -137,8 +137,11 @@ def _record_cursor_pending_shell_permission(
             if pending_key is not None:
                 store.delete_sync_payload(pending_key)
             else:
-                # The store failed, so no key came back; name the row by its
-                # command so an older pending row for it does not outlive this.
+                # The resident refused the store, so no key came back; name the
+                # row by its command so an older pending row for it does not
+                # outlive this. A resident that cannot be reached removes
+                # nothing, and it is also the only reader that would verify
+                # and honour that row.
                 _remove_cursor_pending_shell_permission(
                     store,
                     conversation_id=conversation_id,
