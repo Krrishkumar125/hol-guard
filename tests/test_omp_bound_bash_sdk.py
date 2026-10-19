@@ -30,6 +30,8 @@ from codex_plugin_scanner.guard.native_resident_client import (
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.bash_http_registry import local_registry
 from tests.omp_bound_bash_lifecycle import assert_sdk_host_death_cancels, pause_native_execute_source
+from tests.omp_bound_bash_sdk_source import assert_native_post_review, post_review_source, write_cli_wrapper
+from tests.omp_bound_bash_sdk_source import compile_hardened_helper as _compile_hardened_helper
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="native Bash owner is macOS-only")
 
@@ -41,41 +43,6 @@ def http_registry(request):
         return
     with local_registry() as registry:
         yield registry
-
-
-def _compile_hardened_helper(directory: Path, marker: str) -> Path:
-    source = directory / "compiled-helper.c"
-    image = directory / "compiled-helper"
-    source.write_text(
-        "#include <stdio.h>\n"
-        "int main(int argc, char **argv) {\n"
-        f'  printf("{marker} argv0=%s arg=%s\\n", argv[0], argc > 1 ? argv[1] : "");\n'
-        "  return 0;\n"
-        "}\n"
-    )
-    subprocess.run(
-        ["/usr/bin/clang", "-O0", "-Wl,-no_uuid", str(source), "-o", str(image)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    subprocess.run(
-        [
-            "/usr/bin/codesign",
-            "--force",
-            "--sign",
-            "-",
-            "--options",
-            "runtime",
-            "--identifier",
-            "guard.bash-broker-sdk-test",
-            str(image),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return image
 
 
 @pytest.mark.parametrize(
@@ -108,6 +75,8 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     http_registry,
 ):
     del native_context_digest
+    native_post = duration.startswith("native-post-")
+    duration = duration.removeprefix("native-post-")
     compiled = duration.startswith("compiled-")
     external = duration.startswith("external-")
     duration = duration.removeprefix("network-").removeprefix("compiled-").removeprefix("external-")
@@ -223,13 +192,7 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     package_bootstrap = ""
     if os.environ.get("HOL_GUARD_TEST_USE_INSTALLED") != "1":
         package_bootstrap = f"sys.path.insert(0, {str(repo / 'src')!r})\n"
-    wrapper.write_text(
-        f"#!{sys.executable}\nimport os, sys\n" + package_bootstrap + "os.environ['HOL_GUARD_NATIVE'] = 'force'\n"
-        f"os.environ['HOL_GUARD_NATIVE_BINARY'] = {str(status.identity.path)!r}\n"
-        + pause_source
-        + "from codex_plugin_scanner.cli import main\nraise SystemExit(main())\n"
-    )
-    wrapper.chmod(0o700)
+    write_cli_wrapper(wrapper, status.identity.path, bootstrap=package_bootstrap, pause=pause_source)
     routing = tmp_path / "routing.ts"
     routing.write_text(
         """
@@ -258,16 +221,16 @@ const GUARD_CONTAINED_REQUEST_ROOT = "";
             'const boundBashHarness = "omp";', f'const boundBashHarness = "{harness}";'
         )
         + f"const response = {json.dumps(response)};\n"
+        + post_review_source(
+            native=native_post,
+            directory=tmp_path,
+            guard=guard,
+            home=home,
+            workspace=session_cwd,
+            harness=harness,
+            package_bootstrap=package_bootstrap,
+        )
         + """
-// This SDK delivery lane models an allowed post review for the fixture's
-// successful/exit-7 results. The managed-host policy round trip is Gauntlet evidence.
-pi.on("tool_result", (event) => {
-  const exit = boundBashObservedExit(event);
-  if (exit !== 0 && exit !== 7) return undefined;
-  const digest = boundBashContextDigest(event.content);
-  const details = digest ? markBoundBashResultDelivery(event, digest) : undefined;
-  return details ? { details } : undefined;
-});
 pi.on("tool_call", async (event, ctx) => {
   const snapshot = { cwd: ctx.sessionManager.getCwd(), payload: {
     hook_event_name: "PreToolUse", tool_name: event.toolName, tool_call_id: event.toolCallId,
@@ -294,6 +257,7 @@ pi.on("tool_call", async (event, ctx) => {
     if os.environ.get("HOL_GUARD_TEST_USE_INSTALLED") != "1":
         environment["PYTHONPATH"] = str(repo / "src")
     configuration = tmp_path / "sdk.json"
+    post_reviewed_calls: set[str] = set()
 
     def configure(call_id):
         configuration.write_text(
@@ -331,7 +295,10 @@ pi.on("tool_call", async (event, ctx) => {
         decoded = json.loads(completed.stdout)
         assert decoded["version"] == expected and decoded["originalInput"] == original_input
         if call_id == "approved-retry" or duration == "quiet" or call_id.startswith("persistent-"):
-            assert decoded.get("acknowledgements") == [{"code": 0, "stderr": ""}], decoded
+            expected_commands = 2 if native_post else 1
+            assert decoded.get("acknowledgements") == [{"code": 0, "stderr": ""}] * expected_commands, decoded
+            if native_post:
+                assert_native_post_review(decoded, call_id, home, compiled, post_reviewed_calls)
             text = "\n".join(block.get("text", "") for block in decoded.get("result", {}).get("content", []))
             assert "getcwd: cannot access parent directories" not in text, text
         return decoded.get("result"), decoded.get("sdkError")
