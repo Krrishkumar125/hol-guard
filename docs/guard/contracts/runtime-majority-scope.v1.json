@@ -532,7 +532,7 @@
       },
       {
         "path": "src/codex_plugin_scanner/guard/runtime/node_semver.py",
-        "reason": "Reviewed and retained in runtime scope: cli/commands_support_runtime_artifacts imports node_semver_spec_matches at module load to check that an installed Node package version satisfies its declared range when it builds runtime artifacts. The local tool eligibility decision that used to reach it eagerly now runs in the resident, so it is reached through that lazily loaded artifact module and stays counted."
+        "reason": "Reviewed and retained in runtime scope: the routine local runner verdict that used to import node_semver_spec_matches now runs in the resident package intent parser, so the artifact module no longer reaches this. scripts/record_direct_tool_vectors binds node_semver_spec_matches into the services it replays direct tool vectors through, which is a recording harness rather than an enforcement path; the module stays counted until that harness reads the native verdict."
       },
       {
         "path": "src/codex_plugin_scanner/guard/retry_lineage.py",
@@ -845,6 +845,13 @@
       {
         "path": "src/codex_plugin_scanner/guard/protection_coverage.py",
         "reason": "Reviewed and retained in runtime scope: cli/render.py imports it at module load so the status and doctor panels report whether the configured protection posture is actually in effect. It reads the harness rows the adapters already produced and decides what the panel says; no admission, authority or enforcement decision reads it."
+      },
+      {
+        "path": [
+          "src/codex_plugin_scanner/guard/consumer/low_trust.py",
+          "src/codex_plugin_scanner/guard/registry_trust.py"
+        ],
+        "reason": "Reviewed and retained in runtime scope: consumer/service reaches the low-trust review floor lazily when it decides a first-seen or changed skill, MCP server or plugin. The floor reads a public HOL Registry trust score with a bounded, cached lookup and can only raise an action; native composition still decides the result."
       }
     ],
     "tests": {

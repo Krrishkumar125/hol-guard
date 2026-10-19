@@ -96,6 +96,20 @@ def _node_toolchain(workspace: Path, *, tools: bool = False) -> None:
     _write(workspace / ".prettierrc", "{}\n")
 
 
+def _sibling_test_runner(repository: Path) -> None:
+    """Jest installed at a checkout's root: its launcher loads the CLI package, as the real one does."""
+    modules = repository / "node_modules"
+    _write(modules / "jest" / "package.json", json.dumps({"name": "jest", "version": "30.0.5"}) + "\n")
+    _write(
+        modules / "jest" / "bin" / "jest.js",
+        "#!/usr/bin/env node\nconst importLocal = require('import-local');\n"
+        "if (!importLocal(__filename)) {\n  require('jest-cli/bin/jest');\n}\n",
+    )
+    _write(modules / "import-local" / "index.js", "module.exports = () => false;\n")
+    _write(modules / "jest-cli" / "bin" / "jest.js", "console.log('jest-cli 30.0.5');\n")
+    _write(repository / "jest.config.js", "module.exports = {};\n")
+
+
 def _yarn_lockfile(packages: dict[str, str]) -> str:
     """A classic ``yarn.lock``, the file that makes ``yarn build`` the project's spelling."""
     entries = [
