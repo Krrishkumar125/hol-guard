@@ -330,7 +330,11 @@ mod tests {
 
     #[test]
     fn liveness_pipe_eof_probe() {
-        let Some(eof_started) = env::var_os(EOF_STARTED_ENV) else {
+        // The grandchild inherits the parent's PID in `CHILD_PARENT_ENV` and
+        // runs with its own, so the parent never reads its harness's stdin.
+        let spawned =
+            env::var(CHILD_PARENT_ENV).is_ok_and(|parent| parent != std::process::id().to_string());
+        let Some(eof_started) = env::var_os(EOF_STARTED_ENV).filter(|_| spawned) else {
             return;
         };
         let eof_marker = env::var_os(EOF_MARKER_ENV).expect("EOF marker is configured");
