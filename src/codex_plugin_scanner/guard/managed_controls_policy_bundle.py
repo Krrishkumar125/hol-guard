@@ -92,6 +92,16 @@ def _projection_digest(value: dict[str, object]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _observed_projection(parsed, projection: str, *, catalog_digest: str | None) -> str:
+    """Release a native projection only under the enforcement identity it was cut against."""
+
+    if catalog_digest != parsed.cloud_enforcement_digest:
+        raise ManagedControlsPolicyError(
+            "policy_enforcement_digest_mismatch", "Cloud policy enforcement identity changed."
+        )
+    return projection
+
+
 def signed_cloud_extension_projection_json(
     parsed: ParsedManagedControlsPolicy,
     *,
@@ -100,11 +110,7 @@ def signed_cloud_extension_projection_json(
     """Return the canonical signed-Cloud projection for the observed wire catalog."""
 
     if parsed.cloud_projection_json is not None:
-        if catalog_digest != parsed.cloud_enforcement_digest:
-            raise ManagedControlsPolicyError(
-                "policy_enforcement_digest_mismatch", "Cloud policy enforcement identity changed."
-            )
-        return parsed.cloud_projection_json
+        return _observed_projection(parsed, parsed.cloud_projection_json, catalog_digest=catalog_digest)
 
     signed_layers = ()
     if parsed.signed_cloud_layer is not None:
@@ -150,11 +156,7 @@ def signed_cloud_extension_projection_digest(
     """Hash the canonical signed-Cloud projection for the observed wire catalog."""
 
     if parsed.cloud_projection_digest is not None:
-        if catalog_digest != parsed.cloud_enforcement_digest:
-            raise ManagedControlsPolicyError(
-                "policy_enforcement_digest_mismatch", "Cloud policy enforcement identity changed."
-            )
-        return parsed.cloud_projection_digest
+        return _observed_projection(parsed, parsed.cloud_projection_digest, catalog_digest=catalog_digest)
 
     canonical = signed_cloud_extension_projection_json(parsed, catalog_digest=catalog_digest)
     return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
@@ -187,12 +189,12 @@ def parsed_managed_controls_from_validated_policy_bundle(
         from .runtime.managed_controls_cloud import local_policy_view
 
         try:
-            cloud_view = local_policy_view(guard_home=guard_home, runtime_summary=runtime_summary, registry=registry)
-            identity = cloud_view["identity"]
-            if not isinstance(identity, dict) or identity.get("workspaceId") != policy_bundle.get("workspaceId"):
-                raise ManagedControlsPolicyError(
-                    "policy_observation_identity_mismatch", "Policy workspace identity changed."
-                )
+            cloud_view = local_policy_view(
+                guard_home=guard_home,
+                runtime_summary=runtime_summary,
+                registry=registry,
+                policy_workspace_id=policy_bundle.get("workspaceId"),
+            )
         except ManagedControlsPolicyError:
             raise
         except (ImportError, OSError, RuntimeError, TypeError, ValueError) as error:

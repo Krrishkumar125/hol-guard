@@ -11,9 +11,9 @@ const SESSION_PATH: &str = "/api/guard/runtime/sessions/sync";
 const SCHEMA_V2: &str = "guard.extension-catalog-sync.v2";
 
 fn exact(value: &Value, fields: &[&str]) -> bool {
-    value
-        .as_object()
-        .is_some_and(|object| object.len() == fields.len() && fields.iter().all(|key| object.contains_key(*key)))
+    value.as_object().is_some_and(|object| {
+        object.len() == fields.len() && fields.iter().all(|key| object.contains_key(*key))
+    })
 }
 
 fn advertises(capabilities: &Value) -> bool {
@@ -74,7 +74,14 @@ pub fn plan(manifest: &Value, request: &Value) -> Result<Value> {
     let required = signal["uploadRequired"].as_bool().ok_or(Error::Invalid)?;
     if !exact(
         signal,
-        &["protocolVersion", "catalogDigest", "catalogKnown", "uploadRequired", "uploadPath", "limits"],
+        &[
+            "protocolVersion",
+            "catalogDigest",
+            "catalogKnown",
+            "uploadRequired",
+            "uploadPath",
+            "limits",
+        ],
     ) || signal["protocolVersion"] != CAPABILITY_V2
         || signal["catalogDigest"] != *expected
         || known == required
@@ -99,8 +106,10 @@ pub fn plan(manifest: &Value, request: &Value) -> Result<Value> {
 pub fn ack(manifest: &Value, request: &Value) -> Result<Value> {
     let value = &request["response"];
     let complete = value["complete"].as_bool().ok_or(Error::Invalid)?;
-    if !exact(value, &["schemaVersion", "catalogDigest", "accepted", "complete"])
-        || value["schemaVersion"] != SCHEMA_V2
+    if !exact(
+        value,
+        &["schemaVersion", "catalogDigest", "accepted", "complete"],
+    ) || value["schemaVersion"] != SCHEMA_V2
         || value["catalogDigest"] != manifest["catalogDigest"]
         || value["accepted"] != Value::Bool(true)
         || (request["completing"] == Value::Bool(true) && !complete)

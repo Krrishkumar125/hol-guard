@@ -12,21 +12,29 @@ from pathlib import Path
 
 from .extension_catalog_provider import observed_view
 
+_UNBOUND = object()
 
-def local_policy_view(*, guard_home: Path, runtime_summary: dict[str, object], registry) -> dict[str, object]:
+
+def local_policy_view(
+    *, guard_home: Path, runtime_summary: dict[str, object], registry, policy_workspace_id: object = _UNBOUND
+) -> dict[str, object]:
     """Marshal a previously authenticated session and current local discovery.
 
     The session adapter must retain the full authenticated observation identity;
     a response's selected metadata is never a substitute for that local binding.
+    A caller binding this view to a signed policy envelope passes that envelope's
+    workspace; the native runtime, not this module, decides whether it matches.
     """
     view = observed_view(runtime_summary, guard_home)
     discovery = importlib.import_module("..catalog_delivery.discovery", __package__)
     handle = discovery.require_handle(discovery.installed_discovery(guard_home), guard_home)
     from .extension_catalog_pages import native_call
 
+    bound = {} if policy_workspace_id is _UNBOUND else {"policy_workspace_id": policy_workspace_id}
     return native_call(
         guard_home,
         action="policy_view",
+        **bound,
         runtime_summary={
             "policyMetadataIdentity": runtime_summary.get("policyMetadataIdentity"),
             "policyMetadataObservedAt": runtime_summary.get("policyMetadataObservedAt"),

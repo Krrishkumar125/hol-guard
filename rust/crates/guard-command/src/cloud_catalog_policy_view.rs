@@ -25,6 +25,18 @@ fn assemble(request: &Value) -> PolicyResult {
             "Policy observation session identity changed.",
         ));
     }
+    // Present only for callers that bind the view to a signed policy envelope.
+    if let Some(workspace) = request
+        .as_object()
+        .and_then(|o| o.get("policy_workspace_id"))
+    {
+        if identity["workspaceId"] != *workspace {
+            return Err((
+                "policy_observation_identity_mismatch",
+                "Policy workspace identity changed.",
+            ));
+        }
+    }
     let observed_at = &summary["policyMetadataObservedAt"];
     if observed_at.as_str().is_none_or(str::is_empty) {
         return Err((
@@ -127,6 +139,20 @@ mod tests {
             local["observed_at"],
             input["runtime_summary"]["policyMetadataObservedAt"]
         );
+    }
+
+    #[test]
+    fn bound_policy_workspace_must_match_the_observed_identity() {
+        let mut input = request();
+        input["policy_workspace_id"] = json!("workspace");
+        assert!(assemble(&input).is_ok());
+        for value in [json!("other"), Value::Null] {
+            input["policy_workspace_id"] = value;
+            assert_eq!(
+                assemble(&input).unwrap_err().0,
+                "policy_observation_identity_mismatch"
+            );
+        }
     }
 
     #[test]
