@@ -10,10 +10,12 @@ import pytest
 from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import ObjectStore, encoded
 from codex_plugin_scanner.guard.extension_builder.metadata_index import exchange
 from codex_plugin_scanner.guard.extension_builder.native_source_compiler import NativeSourceCompilerError
-from tests import test_authoring_metadata_index as metadata_tests
-from tests.test_authoring_metadata_index import ROOT, inventory, invoke
+from tests import extension_builder_support as builder_support
 
-native = metadata_tests.native
+ROOT = builder_support.REPOSITORY
+native = builder_support.native_authoring_index
+inventory = builder_support.authoring_index_inventory
+invoke = builder_support.invoke_source_cli
 
 
 def release_for(native, directory, count, *, change=None):

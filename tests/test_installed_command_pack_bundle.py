@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard.catalog_delivery import installed_bundle as installed
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import MANIFEST, descriptor, validate
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor, validate
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler
 
 SOURCE = "a" * 40

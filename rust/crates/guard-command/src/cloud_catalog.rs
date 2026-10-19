@@ -19,6 +19,8 @@ mod policy;
 mod policy_view;
 #[path = "cloud_catalog_projection.rs"]
 mod projection;
+#[path = "cloud_catalog_sync.rs"]
+pub mod sync;
 pub use policy::select_policy_metadata;
 #[cfg(test)]
 #[path = "cloud_catalog_tests.rs"]
@@ -26,6 +28,7 @@ mod tests;
 
 pub const CAPABILITY: &str = "cloud-catalog-producer-v2";
 pub const MAX_ENTRY: usize = 1_000_000;
+pub const MAX_PAGE_ENTRIES: usize = 64;
 pub const MAX_PAGE: usize = 2 * 1024 * 1024;
 pub const MAX_PAGES: usize = 8192;
 pub const MAX_TOTAL: usize = 512 * 1024 * 1024;

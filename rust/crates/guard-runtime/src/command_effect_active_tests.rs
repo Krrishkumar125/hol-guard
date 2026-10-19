@@ -26,6 +26,7 @@ fn request(controls: &CompiledNativeCommandControls) -> CommandEffectRequestV1 {
 fn optional_command_effect_uses_admitted_catalog_and_rejects_tampering() {
     let home = std::env::temp_dir().join(format!("guard-command-effect-active-{}", std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
+    let home = home.canonicalize().unwrap();
     let controls = crate::contributed_mcp_catalog_test_support::controls_for(
         &home, false, &["command.vttforge"], &["command.vttforge"],
     );

@@ -17,7 +17,7 @@ from pathlib import Path
 import extension_delivery_github as provider
 from installed_asset_inventory import verify_reachable
 
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import ROOT, asset_path, validate
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import ROOT, asset_path, validate
 from codex_plugin_scanner.guard.extension_builder.io import checked_path, read_bytes
 
 

@@ -3,23 +3,11 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-CAPABILITY = "extension-catalog.v2"
-UPLOAD_PATH = "/api/guard/runtime/extension-catalog/sync-v2"
-LIMITS = {
-    "maxPageEntries": 64,
-    "maxPageBytes": 2 * 1024 * 1024,
-    "maxEntryBytes": 1_000_000,
-    "maxPages": 8192,
-    "maxTotalBytes": 512 * 1024 * 1024,
-}
-
 
 def encoded(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
@@ -86,23 +74,19 @@ class PreparedCatalogView:
                 ordinal=ordinal,
                 offset=len(body),
             )
+            # The native runtime enforces the wire budget; these checks only keep
+            # the reassembly loop well formed when chunks arrive out of order.
             size = result.get("total_bytes")
-            if (
-                type(size) is not int
-                or not 0 < size <= LIMITS["maxPageBytes"] + 1024
-                or result.get("offset") != len(body)
-            ):
-                raise ValueError("Native catalog request exceeds transport budget")
+            if type(size) is not int or size <= 0 or result.get("offset") != len(body):
+                raise ValueError("Native catalog request chunk is out of sequence")
             if total is None:
                 total, expected = size, result.get("body_sha256")
             if size != total or result.get("body_sha256") != expected:
                 raise ValueError("Native catalog request changed between chunks")
             chunk = base64.b64decode(result["body_chunk"], validate=True)
-            if not chunk or len(chunk) > 512 * 1024 or len(body) + len(chunk) > total:
-                raise ValueError("Native catalog chunk exceeds transport budget")
+            if not chunk or len(body) + len(chunk) > total:
+                raise ValueError("Native catalog chunk exceeds the declared body")
             body.extend(chunk)
-        if hashlib.sha256(body).hexdigest() != expected:
-            raise ValueError("Native catalog request checksum differs")
         return bytes(body)
 
     def pages(self):

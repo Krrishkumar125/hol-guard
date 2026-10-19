@@ -217,6 +217,28 @@ pub(crate) fn evaluate(bytes: &[u8]) -> Result<Value> {
     match input["operation"].as_str() {
         Some("installed-plan") => installed_plan(&input),
         Some("installed") => installed(&input),
+        Some("root" | "descriptor") => {
+            let data = input["data"].as_str().ok_or(INVALID)?;
+            let source = input["source_sha"].as_str().ok_or(INVALID)?;
+            let engine = input["engine"].as_str().ok_or(INVALID)?;
+            let value = root(data, source, engine)?;
+            if input["operation"] == "root" {
+                Ok(value)
+            } else {
+                Ok(json!({"schema":"guard.command-pack-bundle.v1",
+                    "path":"codex_plugin_scanner/guard/contracts/data/extensions/command-pack-bundle/command-pack-bundle.v1.json",
+                    "sha256":hex::encode(Sha256::digest(data.as_bytes())),
+                    "length":data.len(),"source_sha":source,"engine":engine}))
+            }
+        }
+        Some("compatibility") => {
+            compatibility(
+                &input["value"],
+                input["extensions"].as_u64().ok_or(INVALID)?,
+                None,
+            )?;
+            Ok(json!({}))
+        }
         _ => Err(INVALID),
     }
 }
@@ -391,6 +413,18 @@ mod tests {
     fn complete_root_and_compatibility_preserve_default_off_inventory() {
         let mut value = fixture();
         assert_eq!(validate(&value).unwrap(), value);
+        let data = serde_json::to_string(&value).unwrap();
+        let mut request = json!({"operation":"root","data":data,
+            "source_sha":"a".repeat(40),"engine":"b".repeat(64)});
+        assert_eq!(
+            evaluate(&serde_json::to_vec(&request).unwrap()).unwrap(),
+            value
+        );
+        request["operation"] = json!("descriptor");
+        assert_eq!(
+            evaluate(&serde_json::to_vec(&request).unwrap()).unwrap(),
+            installed_fixture()["runtime_manifest"]["command_pack_bundle"]
+        );
         value["compatibility"] = json!({"commands":{"count":1,"index":value["policy"]["transport"]},"mcp":{"count":0,"index":null}});
         assert_eq!(validate(&value).unwrap(), value);
         assert_eq!(value["policy"]["defaults"]["count"], 0);
@@ -446,6 +480,12 @@ mod tests {
         let located = fixture()["policy"]["transport"].clone();
         let good = json!({"commands":{"count":1,"index":located},"mcp":{"count":0,"index":null}});
         assert!(compatibility(&good, 1, None).is_ok());
+        assert!(evaluate(
+            &serde_json::to_vec(&json!({"operation":"compatibility",
+            "value":good,"extensions":1}))
+            .unwrap()
+        )
+        .is_ok());
         assert!(compatibility(&good, 2, None).is_err());
         let mut invalid = good.clone();
         invalid["mcp"]["index"] = located.clone();

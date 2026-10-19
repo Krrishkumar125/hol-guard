@@ -30,7 +30,7 @@ from extension_delivery_revocations import build as build_revocations
 from extension_policy_delivery import build_policy
 from installed_bundle_assets import default_assets, publication_plan, stage_assets
 
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import validate, validate_compatibility
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import validate, validate_compatibility
 
 SCHEMA = "guard.command-pack-bundle.v1"
 MANIFEST = "command-pack-bundle.v1.json"
@@ -38,7 +38,7 @@ MAX_BUNDLE_BYTES = 512 * 1024 * 1024
 MAX_BUNDLE_FILES = 8192
 
 
-def build_compatibility(source_root, compiled, native_root, store):
+def build_compatibility(source_root, compiled, native_root, store, *, compiler):
     """Copy public metadata only after the complete native inventory validates."""
     reader = PackReader(compiled / "objects")
     commands, mcp, expected_mcp = {}, {}, set()
@@ -69,7 +69,7 @@ def build_compatibility(source_root, compiled, native_root, store):
     }
     if sum(reference["expanded_length"] for rows in (commands, mcp) for reference in rows.values()) > MAX_BUNDLE_BYTES:
         raise ValueError("public compatibility metadata exceeds expanded byte budget")
-    validate_compatibility(result, native_root["extensions"])
+    validate_compatibility(result, native_root["extensions"], compiler=compiler)
     if set(mcp) != expected_mcp or len(commands) + len(mcp) != native_root["extensions"]:
         raise ValueError("public compatibility inventory differs from native inventory")
     return result
@@ -132,7 +132,7 @@ def build(compiler, output, source_sha, *, source_root, assets_output=None, offl
             validate_core_defaults(source_root, policy, store)
             epoch, revocations = build_revocations(source_root, store)
             policy["revocations"] = revocations
-            compatibility = build_compatibility(source_root, compiled, native_root, store)
+            compatibility = build_compatibility(source_root, compiled, native_root, store, compiler=compiler)
             bundled = default_assets(policy, store) if not offline else set()
         finally:
             plan.finish()
@@ -148,7 +148,7 @@ def build(compiler, output, source_sha, *, source_root, assets_output=None, offl
             "compatibility": compatibility,
         }
         data = encoded(root)
-        validate(data, source_sha=source_sha, engine=native_root["engine"])
+        validate(data, source_sha=source_sha, engine=native_root["engine"], compiler=compiler)
         if len(data) > 65536:
             raise ValueError("installed policy bundle root exceeds byte budget")
         installed_count, installed_bytes = stage_assets(

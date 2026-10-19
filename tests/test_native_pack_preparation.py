@@ -19,7 +19,7 @@ from codex_plugin_scanner.guard.catalog_delivery import (
     installed_bundle,
     preparation,
 )
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import MANIFEST, descriptor
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor
 from codex_plugin_scanner.guard.catalog_delivery.located_store import LocatedStore
 from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import ObjectStore, encoded, entries
 from codex_plugin_scanner.guard.catalog_delivery.pack_store import PackReader

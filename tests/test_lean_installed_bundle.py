@@ -23,8 +23,8 @@ import build_command_pack_bundle as builder
 import publish_installed_bundle_assets as publisher
 
 from codex_plugin_scanner.guard.catalog_delivery import installed_bundle, preparation, transport
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import MANIFEST, descriptor
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import ROOT as ROOT_MEMBER
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import ROOT as ROOT_MEMBER
 from codex_plugin_scanner.guard.catalog_delivery.located_store import LocatedStore
 from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import encoded
 from codex_plugin_scanner.guard.catalog_delivery.policy_lookup import lookup

@@ -156,6 +156,286 @@ pub(super) fn read(handle: &Handle) -> Result<Vec<Value>, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use serde_json::json;
+    use std::fs;
+
+    fn store(directory: &std::path::Path, value: &Value) -> ObjectRef {
+        let mut output = Vec::new();
+        let reference = super::super::packs::objects::ObjectWriter::new(&mut output)
+            .json(value)
+            .unwrap();
+        for line in output
+            .split(|b| *b == b'\n')
+            .filter(|line| !line.is_empty())
+        {
+            let row: Value = serde_json::from_slice(line).unwrap();
+            let path = directory.join(format!("{}.json", row["sha256"].as_str().unwrap()));
+            if !path.exists() {
+                fs::write(
+                    &path,
+                    STANDARD.decode(row["data"].as_str().unwrap()).unwrap(),
+                )
+                .unwrap();
+                let mut permissions = fs::metadata(&path).unwrap().permissions();
+                permissions.set_readonly(true);
+                fs::set_permissions(path, permissions).unwrap();
+            }
+        }
+        reference
+    }
+
+    fn fixture(count: usize) -> (tempfile::TempDir, Handle, Value) {
+        let owner = tempfile::tempdir().unwrap();
+        let directory = owner.path().canonicalize().unwrap();
+        let entries: Vec<_> = (0..count)
+            .map(|n| json!({"extension_id":format!("command.test{n:05}")}))
+            .collect();
+        let rows: Vec<_> = entries
+            .iter()
+            .map(|entry| json!([entry["extension_id"], store(&directory, entry)]))
+            .collect();
+        let mut next = Value::Null;
+        for chunk in rows.rchunks(64) {
+            next = serde_json::to_value(store(
+                &directory,
+                &json!({"schema":"guard.authoring-metadata-page.v1","entries":chunk,"next":next}),
+            ))
+            .unwrap();
+        }
+        let root = json!({"schema":"guard.authoring-metadata.v1","engine":env!("GUARD_COMMAND_SOURCE_IMPLEMENTATION"),
+            "source_context":"a".repeat(64),"count":count,"total_bytes":entries.iter().map(|v| serde_json::to_vec(v).unwrap().len()).sum::<usize>(),"pages":count.div_ceil(64),"first":next});
+        let handle = Handle {
+            root: store(&directory, &root),
+            directory,
+            source_context: "a".repeat(64),
+        };
+        (owner, handle, root)
+    }
+
+    #[test]
+    fn indexed_inventory_rejects_cursor_identity_order_and_bound_mutations() {
+        for fault in [
+            "hash",
+            "duplicate",
+            "order",
+            "page-count",
+            "count",
+            "total-budget",
+            "total-mismatch",
+            "source-context",
+            "engine",
+            "substitution",
+            "early-end",
+            "page-items",
+            "record-budget",
+            "cursor-replay",
+        ] {
+            let (_owner, mut handle, mut root) = fixture(130);
+            match fault {
+                "hash" => root["first"]["sha256"] = json!("0".repeat(64)),
+                "page-count" => root["pages"] = json!(4),
+                "count" => root["count"] = json!(100001),
+                "total-budget" => root["total_bytes"] = json!(MAX_TOTAL_BYTES + 1),
+                "total-mismatch" => {
+                    root["total_bytes"] = json!(root["total_bytes"].as_u64().unwrap() - 1)
+                }
+                "source-context" => root["source_context"] = json!("0".repeat(64)),
+                "engine" => root["engine"] = json!("0".repeat(64)),
+                _ => {
+                    let path = handle.directory.join(format!(
+                        "{}.json",
+                        root["first"]["sha256"].as_str().unwrap()
+                    ));
+                    let mut page: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+                    match fault {
+                        "duplicate" => page["entries"][1] = page["entries"][0].clone(),
+                        "order" => page["entries"].as_array_mut().unwrap().reverse(),
+                        "substitution" => page["entries"][0][1] = page["entries"][1][1].clone(),
+                        "early-end" => page["next"] = Value::Null,
+                        "page-items" => {
+                            page["entries"] = json!(vec![page["entries"][0].clone(); 65])
+                        }
+                        "record-budget" => {
+                            root["total_bytes"] =
+                                json!(8 * 1024 * 1024 + root["total_bytes"].as_u64().unwrap());
+                            page["entries"][0][1]["expanded_length"] = json!(8 * 1024 * 1024 + 1);
+                        }
+                        "cursor-replay" => page["next"] = root["first"].clone(),
+                        _ => unreachable!(),
+                    }
+                    root["first"] = serde_json::to_value(store(&handle.directory, &page)).unwrap();
+                }
+            }
+            handle.root = store(&handle.directory, &root);
+            assert!(read(&handle).is_err(), "{fault}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn indexed_inventory_rejects_missing_corrupt_linked_mutable_and_nonregular_pages() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        for fault in [
+            "missing",
+            "corrupt",
+            "symlink",
+            "hardlink",
+            "nonregular",
+            "mutable",
+        ] {
+            let (_owner, handle, root) = fixture(130);
+            let path = handle.directory.join(format!(
+                "{}.json",
+                root["first"]["sha256"].as_str().unwrap()
+            ));
+            let mut bytes = fs::read(&path).unwrap();
+            fs::remove_file(&path).unwrap();
+            match fault {
+                "missing" => {}
+                "corrupt" => {
+                    bytes[0] = b'!';
+                    fs::write(&path, bytes).unwrap();
+                    fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+                }
+                "mutable" => {
+                    fs::write(&path, bytes).unwrap();
+                    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+                }
+                "nonregular" => fs::create_dir(&path).unwrap(),
+                kind => {
+                    let target = handle.directory.join("target");
+                    fs::write(&target, bytes).unwrap();
+                    fs::set_permissions(&target, fs::Permissions::from_mode(0o400)).unwrap();
+                    if kind == "symlink" {
+                        symlink(target, &path).unwrap();
+                    } else {
+                        fs::hard_link(target, &path).unwrap();
+                    }
+                }
+            }
+            assert!(read(&handle).is_err(), "{fault}");
+        }
+    }
+
+    #[test]
+    fn indexed_inventory_assembles_bounded_metadata() {
+        let (_owner, mut handle, mut root) = fixture(1);
+        let entry = json!({"extension_id":"command.test00000","diagnostic_metadata":vec!["x".repeat(4000);30]});
+        let reference = store(&handle.directory, &entry);
+        assert_eq!(reference.kind, "concat");
+        root["first"] = serde_json::to_value(store(&handle.directory,&json!({"schema":"guard.authoring-metadata-page.v1","entries":[["command.test00000",reference]],"next":null}))).unwrap();
+        root["total_bytes"] = json!(serde_json::to_vec(&entry).unwrap().len());
+        handle.root = store(&handle.directory, &root);
+        assert_eq!(read(&handle).unwrap(), vec![entry]);
+    }
+
+    #[test]
+    fn global_inactive_metadata_rejection_matrix_and_publisher_boundary_remain_native() {
+        use super::super::{baseline::ValidationBase, catalog};
+        const EXAMPLE: &[u8] = include_bytes!("../tests/fixtures/command-source-example.v1.json");
+        let trust = include_bytes!(concat!(env!("OUT_DIR"), "/trust-class-map.v1.json"));
+        let ids = BTreeSet::from(["command.example-cli".to_owned()]);
+        let permissions = BTreeSet::from(["command.example-cli.permission.destroy".to_owned()]);
+        let pack = catalog::compile_pack(&[EXAMPLE], &[], trust, (&ids, &permissions)).unwrap();
+        let mut catalog = serde_json::from_slice::<Value>(
+            crate::native_command_catalog::embedded_catalog_bytes(),
+        )
+        .unwrap()["catalog"]
+            .as_array()
+            .unwrap()
+            .clone();
+        for n in 0..2 {
+            catalog.push(
+                serde_json::from_str(
+                    &serde_json::to_string(&pack.catalog[0])
+                        .unwrap()
+                        .replace("command.example-cli", &format!("command.inactive{n}")),
+                )
+                .unwrap(),
+            );
+        }
+        ValidationBase {
+            catalog: catalog.clone(),
+            programs: vec![],
+        }
+        .prepare(&[EXAMPLE], &[], false)
+        .unwrap();
+        let last = catalog.len() - 1;
+        let previous = last - 1;
+        for fault in [
+            "ownership",
+            "owner-field",
+            "dependency",
+            "permission-dependency",
+            "cycle",
+            "conflict",
+            "family",
+            "mcp",
+            "core",
+            "alias",
+        ] {
+            let mut changed = catalog.clone();
+            match fault {
+                "ownership" => {
+                    changed[last]["permissions"][0]["permission_id"] =
+                        changed[previous]["permissions"][0]["permission_id"].clone()
+                }
+                "owner-field" => {
+                    changed[last]["permissions"][0]["extension_id"] =
+                        changed[previous]["extension_id"].clone()
+                }
+                "dependency" => changed[last]["dependencies"] = json!(["command.absent"]),
+                "permission-dependency" => {
+                    changed[last]["permissions"][0]["dependencies"] =
+                        json!(["command.absent.permission.destroy"])
+                }
+                "cycle" => {
+                    changed[last]["dependencies"] = json!([changed[previous]["extension_id"]]);
+                    changed[previous]["dependencies"] = json!([changed[last]["extension_id"]]);
+                }
+                "conflict" => changed[last]["conflicts"] = json!(["command.absent"]),
+                "family" => {
+                    changed[last]["permissions"][0]["family"] = json!("shared.family");
+                    changed[previous]["permissions"][0]["family"] = json!("shared.family");
+                }
+                "mcp" => {
+                    changed[last]["mcp_launch"] =
+                        json!({"kind":"direct-command","command":"same-mcp-target"});
+                    changed[previous]["mcp_launch"] = changed[last]["mcp_launch"].clone();
+                }
+                "core" => changed[0]["description"] = json!("substituted"),
+                "alias" => changed[last]["aliases"] = json!(["command.example-cli"]),
+                _ => unreachable!(),
+            }
+            assert!(
+                ValidationBase {
+                    catalog: changed,
+                    programs: vec![]
+                }
+                .prepare(&[EXAMPLE], &[], false)
+                .is_err(),
+                "{fault}"
+            );
+        }
+        catalog[last]["trust_class"] = json!("first-party");
+        let base = ValidationBase {
+            catalog,
+            programs: vec![],
+        }
+        .prepare(&[EXAMPLE], &[], false)
+        .unwrap();
+        let output =
+            catalog::addition::compile_with_base(&[EXAMPLE], &[], trust, Some(base)).unwrap();
+        let candidate = output.program["extensions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["extension_id"] == "command.example-cli")
+            .unwrap();
+        assert_eq!(candidate["trust_class"], "external");
+        assert_eq!(candidate["publisher"]["id"], "community");
+    }
 
     #[test]
     fn reference_visit_budget_is_independent_of_hash_validity_and_file_io() {

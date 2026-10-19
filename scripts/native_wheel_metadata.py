@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import (
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import (
     MAX_BYTES,
     MAX_FILES,
     PREFIX,

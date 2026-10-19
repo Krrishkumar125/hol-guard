@@ -1,4 +1,11 @@
-"""Bounded JSON transport to the manifest-bound native compiler; no fallback."""
+"""Bounded access to the packaged declarative source compiler.
+
+The compiler operations are hosted by the packaged native runtime executable,
+whose bytes are bound to the source-compiler manifest.  This module only
+locates that manifest-bound executable and exchanges one bounded JSON document
+over stdin; it never discovers Cargo, reads a checkout, imports contributor
+code, or provides a Python compilation fallback.
+"""
 
 from __future__ import annotations
 

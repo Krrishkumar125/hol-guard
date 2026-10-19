@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from codex_plugin_scanner.guard.catalog_delivery import installed_bundle as installed
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import descriptor, validate
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import descriptor, validate
 from codex_plugin_scanner.guard.catalog_delivery.located_store import LocatedStore
 from codex_plugin_scanner.guard.extension_builder.repository_edits import edit_pyproject
 from codex_plugin_scanner.guard.runtime import extension_contribution as commands

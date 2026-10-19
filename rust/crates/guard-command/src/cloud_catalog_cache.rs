@@ -361,6 +361,12 @@ pub fn evaluate(request: &Value) -> Result<Value> {
     if digest(&record["manifest"])? != token {
         return Err(Error::Invalid);
     }
+    if request["action"] == "sync_plan" {
+        return super::sync::plan(&record["manifest"], request);
+    }
+    if request["action"] == "sync_ack" {
+        return super::sync::ack(&record["manifest"], request);
+    }
     if request["action"] == "legacy" {
         return Ok(json!({"catalog":legacy(&path,&record)?}));
     }

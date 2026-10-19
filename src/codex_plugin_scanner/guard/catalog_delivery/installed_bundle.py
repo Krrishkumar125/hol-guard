@@ -7,6 +7,8 @@ must be bound by both installed native manifests to the same executable bytes.
 from __future__ import annotations
 
 import hashlib
+import os
+import re
 import sys
 import zipfile
 from dataclasses import dataclass
@@ -17,8 +19,49 @@ from typing import Any, cast
 from ..extension_builder.io import read_bytes
 from ..extension_builder.native_source_compiler import NativeSourceCompilerError, run_source_compiler
 from .authority import decode
-from .bundle_metadata import MANIFEST, MAX_BYTES, target
-from .containers import maximum, member
+from .containers import location, maximum, member
+
+SCHEMA = "guard.command-pack-bundle.v1"
+MANIFEST = "command-pack-bundle.v1.json"
+PREFIX = "codex_plugin_scanner/guard/contracts/data/extensions/command-pack-bundle/"
+ROOT = PREFIX + MANIFEST
+MAX_BYTES = 512 * 1024 * 1024
+MAX_FILES = 8192
+
+
+def validate(data, *, source_sha, engine, compiler=None):
+    return _native_metadata("root", data=data.decode("utf-8"), source_sha=source_sha, engine=engine, compiler=compiler)
+
+
+def descriptor(data, *, source_sha, engine):
+    return _native_metadata("descriptor", data=data.decode("utf-8"), source_sha=source_sha, engine=engine)
+
+
+def validate_compatibility(value, extensions, *, compiler=None):
+    _native_metadata("compatibility", value=value, extensions=extensions, compiler=compiler)
+
+
+def target(value, *, source_sha):
+    # These checks constrain local IO paths; Root and policy admission are native.
+    if not isinstance(value, dict):
+        raise ValueError("installed bundle location invalid")
+    name = value.get("member", value.get("asset", ""))
+    match = re.fullmatch(r"(object|pack)-([0-9a-f]{64})\.(json|zip)", name) if isinstance(name, str) else None
+    if match is None or match[3] != ("json" if match[1] == "object" else "zip"):
+        raise ValueError("installed bundle asset invalid")
+    location(value, match[2], match[1])
+    if not value["tag"].startswith("extension-data-" + source_sha + "-0.0-"):
+        raise ValueError("installed bundle asset source differs")
+    return name, match[2], match[1]
+
+
+def asset_path(relative, *, source_sha):
+    if re.fullmatch(
+        r"assets/extension-data-" + re.escape(source_sha)
+        + r"-0\.0-[0-9]{6}/(?:(?:objects|packs)-[0-9]{6}\.zip|object-[0-9a-f]{64}\.json|pack-[0-9a-f]{64}\.zip)",
+        relative,
+    ) is None:
+        raise ValueError("installed bundle asset path invalid")
 
 
 def _package() -> Path:
@@ -163,8 +206,14 @@ def load_installed_bundle() -> VerifiedInstalledBundle:
     return result
 
 
-def _native_metadata(operation: str, **fields: object) -> dict[str, object]:
+def _native_metadata(operation: str, *, compiler=None, **fields: object) -> dict[str, object]:
     try:
-        return run_source_compiler("bundle-metadata", {"operation": operation, **fields})
+        configured = compiler or (
+            os.environ.get("HOL_GUARD_BUILD_SOURCE_COMPILER")
+            if operation in {"root", "descriptor", "compatibility"}
+            else None
+        )
+        options = {"compiler": Path(configured)} if configured else {}
+        return run_source_compiler("bundle-metadata", {"operation": operation, **fields}, **options)
     except NativeSourceCompilerError as error:
         raise ValueError(f"installed bundle metadata unavailable: {error}") from error

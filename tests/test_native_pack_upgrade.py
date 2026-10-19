@@ -14,7 +14,7 @@ from codex_plugin_scanner.guard.catalog_delivery import (
     lifecycle_store,
     preparation_authority,
 )
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import MANIFEST, descriptor
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport
 from codex_plugin_scanner.guard.native_command_control_authority_io import hold_command_control_authority_lock
 from codex_plugin_scanner.guard.native_command_control_authority_store import _key

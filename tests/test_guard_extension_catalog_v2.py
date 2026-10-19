@@ -10,12 +10,7 @@ from copy import deepcopy
 import pytest
 
 from codex_plugin_scanner.guard.runtime.extension_catalog_handshake import prepare_extension_catalog_handshake
-from codex_plugin_scanner.guard.runtime.extension_catalog_pages import (
-    CAPABILITY,
-    LIMITS,
-    UPLOAD_PATH,
-    encoded,
-)
+from codex_plugin_scanner.guard.runtime.extension_catalog_pages import encoded
 from codex_plugin_scanner.guard.runtime.extension_catalog_sync import (
     ExtensionCatalogLimitError,
     build_v1_catalog_from_view,
@@ -27,6 +22,17 @@ from tests.native_cloud_helpers import prepare_native
 NOW = "2026-10-18T00:00:00Z"
 pytestmark = pytest.mark.usefixtures("native_bridge")
 URL = "https://example.test/api/guard/runtime/sessions/sync?tenant=fixture"
+# Independent restatement of the published v2 wire contract. The runtime keeps
+# no Python copy; the native runtime is the only enforcement point.
+CAPABILITY = "extension-catalog.v2"
+UPLOAD_PATH = "/api/guard/runtime/extension-catalog/sync-v2"
+LIMITS = {
+    "maxPageEntries": 64,
+    "maxPageBytes": 2 * 1024 * 1024,
+    "maxEntryBytes": 1_000_000,
+    "maxPages": 8192,
+    "maxTotalBytes": 512 * 1024 * 1024,
+}
 
 
 def digest(value):

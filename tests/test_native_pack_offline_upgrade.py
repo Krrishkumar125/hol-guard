@@ -21,7 +21,7 @@ from codex_plugin_scanner.guard.catalog_delivery import (
 from codex_plugin_scanner.guard.catalog_delivery import (
     transport as remote,
 )
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import MANIFEST, descriptor
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor
 from codex_plugin_scanner.guard.daemon import extension_control_prepared as candidates
 from codex_plugin_scanner.guard.daemon.extension_control_api import ExtensionControlApiService
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport

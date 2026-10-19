@@ -222,7 +222,7 @@ def test_db_loss_and_missing_release_cannot_fall_back_to_legacy_controls(protect
 
 def test_production_packaged_bridge_and_native_release_binding(tmp_path, monkeypatch):
     from codex_plugin_scanner.guard.catalog_delivery import installed_bundle
-    from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import MANIFEST, descriptor
+    from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor
     from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport
     from tests.test_installed_command_pack_bundle import root
 

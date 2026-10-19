@@ -119,12 +119,6 @@ fn refused_batch(request_id: &str, code: &str) -> Result<Vec<u8>, String> {
 /// limit refuses the whole batch with no partial result. Per-item failures
 /// (schema, canonical command, control snapshot, evaluator rejection) are
 /// reported on that item exactly as the single op reports them.
-pub(crate) fn evaluate_command_effect_batch_request(
-    batch: &CommandEffectBatchRequestV1,
-) -> Result<Vec<u8>, String> {
-    batch_in(batch, None)
-}
-
 fn batch_in(batch: &CommandEffectBatchRequestV1, controls: Option<&CompiledNativeCommandControls>) -> Result<Vec<u8>, String> {
     if batch.schema != COMMAND_EFFECT_BATCH_REQUEST_SCHEMA {
         return refused_batch(

@@ -164,6 +164,26 @@ def _run(command: list[str], *, input_bytes: bytes | None = None) -> bytes:
     return completed.stdout
 
 
+def _development_release(compiler: Path, directory: Path) -> dict:
+    """Stage the checkout's command packs for maintainer fixture validation.
+
+    The installed runtime has no compilation fallback; this repository-owned
+    staging path exists only for this maintainer command.
+    """
+    import hashlib
+
+    scripts = str(ROOT / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        import build_native_command_packs as packs
+
+        packs.stage(compiler, directory, source_root=ROOT)
+    finally:
+        sys.path.remove(scripts)
+    manifest = (directory / "release.json").read_bytes()
+    return {"root": json.loads(manifest), "source_context": hashlib.sha256(manifest).hexdigest()}
+
+
 def _validate_fixture(compiler: Path, path: Path) -> str:
     fixture = _load_object(path)
     sys.path.insert(0, str(ROOT / "src"))
@@ -176,6 +196,7 @@ def _validate_fixture(compiler: Path, path: Path) -> str:
             compiler,
             installed=False,
             cache_directory=Path(scratch).resolve(strict=True),
+            development=_development_release,
         )
         result = _run([str(compiler), "test"], input_bytes=json.dumps(request).encode())
     try:

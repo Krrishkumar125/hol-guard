@@ -24,7 +24,7 @@ from codex_plugin_scanner.guard.catalog_delivery import (
     installed_bundle,
     transport,
 )
-from codex_plugin_scanner.guard.catalog_delivery.bundle_metadata import MANIFEST, descriptor
+from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as compiler
 from codex_plugin_scanner.guard.native_command_control_authority_io import _LOCKS
 from codex_plugin_scanner.guard.native_policy_snapshot import provision_native_policy_verifier_key
