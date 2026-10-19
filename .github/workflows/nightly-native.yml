@@ -757,6 +757,7 @@ jobs:
             tests/test_guard_extension_claim_notice.py \
             tests/test_guard_extension_claim_notice_refresh.py \
             tests/test_guard_extension_claim_notice_readiness.py \
+            tests/extension_claim_notice_harness.py \
             tests/test_prepare_extension_contribution.py
           uv run --no-sync ruff check tests/test_contribution_trust_map.py \
             tests/test_guard_mcp_mail_server_policy.py \
@@ -774,6 +775,7 @@ jobs:
             tests/test_guard_extension_claim_notice.py \
             tests/test_guard_extension_claim_notice_refresh.py \
             tests/test_guard_extension_claim_notice_readiness.py \
+            tests/extension_claim_notice_harness.py \
             tests/test_prepare_extension_contribution.py
           uv run --no-sync ruff format --check tests/test_contribution_trust_map.py \
             tests/test_guard_mcp_mail_server_policy.py \
