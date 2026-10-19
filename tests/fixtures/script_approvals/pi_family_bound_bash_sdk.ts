@@ -33,6 +33,12 @@ async function beginIntent(runner) {
     sessionManager.appendMessage({ role: "user", content: "Lane-owned SDK user intent", timestamp: Date.now() });
   }
 }
+async function deliverContext(runner, result, isError = result.isError === true) {
+  const message = {role:"toolResult",toolCallId:configuration.callId,toolName:"bash",
+    content:result.content,details:result.details,isError,timestamp:Date.now()};
+  sessionManager.appendMessage(message);
+  await runner.emitContext([message]);
+}
 const extension = {
   path: configuration.routingModule, resolvedPath: configuration.routingModule, handlers,
   flags: new Map(), commands: new Map(), shortcuts: new Map(), tools: new Map(),
@@ -58,6 +64,7 @@ if (configuration.harness === "pi") {
       toolCall: { id: configuration.callId, name: "bash" }, args, result, isError: false,
     });
     if (hookResult) result = { ...result, ...hookResult };
+    await deliverContext(runner, result);
     console.log(JSON.stringify({ version, result, acknowledgements, originalInput: configuration.input }));
   } catch (error) {
     // Match pi-agent-core's createErrorToolResult, then enter the actual
@@ -66,6 +73,7 @@ if (configuration.harness === "pi") {
     const hookResult = await owner.agent.afterToolCall({
       toolCall: { id: configuration.callId, name: "bash" }, args, result, isError: true,
     });
+    await deliverContext(runner, { ...result, ...hookResult }, true);
     console.log(JSON.stringify({ version, result: { ...result, ...hookResult, isError: true },
       sdkError: String(error), acknowledgements, originalInput: configuration.input }));
   }
@@ -90,6 +98,7 @@ const wrapped = new ExtensionToolWrapper(tool, runner);
 const result = await withActiveSettings(settings, () => wrapped.execute(
   configuration.callId, configuration.input, undefined, undefined, { settings },
 ));
+await deliverContext(runner, result);
 console.log(JSON.stringify({ version, result, acknowledgements, originalInput: configuration.input }));
 await runner.shutdown();
 persistSession();

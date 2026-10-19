@@ -187,12 +187,15 @@ def _run_guard_ack_bound_bash_command(
     if guard_home is None or workspace is None or store is None:
         return 126
     try:
-        acknowledge(
+        recorded = acknowledge(
             guard_home=guard_home, store_path=store.path, project=workspace,
             base_id=str(args.operation_id), harness=str(args.harness),
             tool_call_id=str(args.tool_call_id), exit_code=args.exit_code,
         )
-        return 0
+        if recorded:
+            return 0
+        print("native_bash_ack_not_recorded", file=sys.stderr)
+        return 125
     except (NativeBashError, OSError, RuntimeError, ValueError, sqlite3.Error):
         print("native_bash_ack_unavailable", file=sys.stderr)
         return 125

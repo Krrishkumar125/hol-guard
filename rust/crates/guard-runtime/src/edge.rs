@@ -402,11 +402,14 @@ fn evaluate_validated_envelope(
             };
             let native = review_post_tool(&request);
             let evaluated = if let Some(snapshot) = policy_snapshot {
-                crate::policy_enforcement::apply_post_tool_policy(
+                let delivery = origin_store
+                    .and_then(|store| crate::bash_post_delivery::verify(&request, store));
+                crate::policy_enforcement::apply_post_tool_policy_with_delivery(
                     snapshot,
                     &request,
                     payload_kind,
                     native,
+                    delivery.as_ref(),
                 )?
             } else {
                 native

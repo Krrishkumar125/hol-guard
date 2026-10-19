@@ -12,7 +12,7 @@ from codex_plugin_scanner.guard.adapters.pi_extension_contained_tests_source imp
 
 
 @pytest.mark.parametrize("harness", ["omp", "pi"])
-def test_result_acknowledgement_only_transports_bounded_sdk_exit_observations(tmp_path, harness):
+def test_result_acknowledgement_waits_for_reviewed_matching_final_context(tmp_path, harness):
     bun = shutil.which("bun")
     if bun is None:
         pytest.skip("requires the pinned SDK's Bun runtime")
@@ -53,9 +53,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const handlers = new Map();
 const calls = [];
+let acknowledgementCode = 0;
 const pi = { on(name, callback) {
   const list = handlers.get(name) ?? []; list.push(callback); handlers.set(name, list);
-}, async exec(command, args) { calls.push({command, args}); return {code:0}; } };
+}, async exec(command, args) { calls.push({command, args}); return {code:acknowledgementCode}; } };
 const toolCallIdKey = value => typeof value === 'string' ? value : null;
 const GUARD_CLI_WRAPPER_COMMAND = '/fixture/guard-cli';
 const GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS = false;
@@ -71,13 +72,57 @@ const GUARD_CONTAINED_REQUEST_ROOT = '';
         + f"\nconst samples = {json.dumps([event for event, _ in samples])};\n"
         + """
 const observed = [];
-for (const sample of samples) {
+for (const [index, sample] of samples.entries()) {
   calls.length = 0;
-  boundBashInvocations.set('sdk-call', {operationId:'bash-operation:'+'a'.repeat(64), cwd:'/fixture/project'});
-  await handlers.get('tool_result')[0]({toolCallId:'sdk-call', toolName:'bash', ...sample});
+  const key = 'sdk-call-'+index;
+  const event = {toolCallId:key, toolName:'bash', content:[{type:'text',text:'status'}], ...sample};
+  boundBashInvocations.set(key, {operationId:'bash-operation:'+'a'.repeat(64), cwd:'/fixture/project'});
+  await handlers.get('tool_result')[0](event);
+  if (calls.length) throw Error('tool_result acknowledged before post review');
+  const message = {role:'toolResult', ...event};
+  await handlers.get('context')[0]({messages:[message]});
+  if (calls.length) throw Error('unreviewed result acknowledged');
+  const digest = boundBashContextDigest(event.content);
+  const details = markBoundBashResultDelivery(event, digest);
+  if (details) {
+    await handlers.get('context')[0]({messages:[{...message,details,content:[{type:'text',text:'withheld'}]}]});
+    if (calls.length) throw Error('withheld result acknowledged');
+    await handlers.get('context')[0]({messages:[{...message,details,isError:!event.isError}]});
+    if (calls.length) throw Error('changed result status acknowledged');
+    await handlers.get('context')[0]({messages:[{...message,details:{...details,exitCode:254}}]});
+    if (calls.length) throw Error('changed exit status acknowledged');
+    await handlers.get('context')[0]({messages:[{...message,details:{...details,async:{state:'running'}}}]});
+    if (calls.length) throw Error('unfinished background result acknowledged');
+    await handlers.get('context')[0]({messages:[{...message,details}]});
+    const count = calls.length;
+    await handlers.get('context')[0]({messages:[{...message,details}]});
+    if (calls.length !== count) throw Error('delivered result acknowledgement repeated');
+  }
   observed.push(calls.map(call => ({ command:call.command, action:call.args[0],
     exit:call.args[call.args.indexOf('--exit-code')+1] })));
 }
+const history = [];
+for (const key of ['stored-older', 'stored-latest']) {
+  boundBashInvocations.set(key, {operationId:'bash-operation:'+'b'.repeat(64), cwd:'/fixture/project'});
+  const event = {toolCallId:key, toolName:'bash', isError:false, content:[{type:'text',text:key}]};
+  history.push({role:'toolResult', ...event,
+    details:markBoundBashResultDelivery(event, boundBashContextDigest(event.content))});
+}
+calls.length = 0;
+await handlers.get('context')[0]({messages:history});
+if (calls.length !== 1 || calls[0].args[calls[0].args.indexOf('--tool-call-id')+1] !== 'stored-latest') {
+  throw Error('stored context retried superseded invocation acknowledgements');
+}
+await handlers.get('context')[0]({messages:history});
+if (calls.length !== 1) throw Error('stored latest acknowledgement repeated');
+acknowledgedBoundBashResults.clear();
+calls.length = 0;
+acknowledgementCode = 125;
+await handlers.get('context')[0]({messages:history});
+acknowledgementCode = 0;
+await handlers.get('context')[0]({messages:history});
+await handlers.get('context')[0]({messages:history});
+if (calls.length !== 2) throw Error('failed acknowledgement was cached or successful acknowledgement retried');
 console.log(JSON.stringify(observed));
 """
     )

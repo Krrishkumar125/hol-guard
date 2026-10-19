@@ -196,7 +196,7 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
                 "tool_call_id": "initial-call",
                 HOOK_EXECUTION_ENVIRONMENT_KEY: collect_hook_execution_environment(),
                 "guard_bound_bash_host": {
-                    "schema": "guard-native-bash-host-delivery.v2",
+                    "schema": "guard-native-bash-host-delivery.v3",
                     "owner_pid": os.getpid(),
                     "host": "omp-input-rewrite-v1" if harness == "omp" else "pi-input-mutation-v1",
                     "environment": {name: os.environ[name] for name in _ENVIRONMENT_NAMES if os.environ.get(name)},
@@ -259,6 +259,15 @@ const GUARD_CONTAINED_REQUEST_ROOT = "";
         )
         + f"const response = {json.dumps(response)};\n"
         + """
+// This SDK delivery lane models an allowed post review for the fixture's
+// successful/exit-7 results. The managed-host policy round trip is Gauntlet evidence.
+pi.on("tool_result", (event) => {
+  const exit = boundBashObservedExit(event);
+  if (exit !== 0 && exit !== 7) return undefined;
+  const digest = boundBashContextDigest(event.content);
+  const details = digest ? markBoundBashResultDelivery(event, digest) : undefined;
+  return details ? { details } : undefined;
+});
 pi.on("tool_call", async (event, ctx) => {
   const snapshot = { cwd: ctx.sessionManager.getCwd(), payload: {
     hook_event_name: "PreToolUse", tool_name: event.toolName, tool_call_id: event.toolCallId,

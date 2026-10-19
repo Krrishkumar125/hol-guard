@@ -11,6 +11,7 @@ use crate::{
 /// Native protocol support, not a host delivery or approval UI capability.
 pub const NATIVE_BASH_OWNER_PROTOCOL_FEATURE: &str = "native-bash-owner-protocol-v1";
 pub const NATIVE_BASH_HOST_LIVENESS_FEATURE: &str = "native-bash-host-liveness-v1";
+pub const NATIVE_BASH_RESULT_POLICY_FEATURE: &str = "native-bash-result-policy-v1";
 pub const NATIVE_BASH_ARTIFACT_ID: &str = "native-bash-owner:native-pretool:v3";
 pub const NATIVE_BASH_REVIEW_LINEAGE_FEATURE: &str = "native-bash-review-lineage-v1";
 pub const NATIVE_BASH_DELIVERY_REASON: &str = "native_bash_owner_required";

@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from .pi_extension_bound_bash_intent_source import BOUND_BASH_INTENT_SOURCE
+from .pi_extension_bound_bash_result_source import BOUND_BASH_RESULT_SOURCE
 
-CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
+CONTAINED_TEST_HELPERS_SOURCE = (
+    BOUND_BASH_INTENT_SOURCE
+    + BOUND_BASH_RESULT_SOURCE
+    + r"""
   const boundBashHarness = "omp";
   const containedTestRequests = new Map<string, string>();
   const boundBashInvocations = new Map<string, { operationId: string; cwd: string }>();
@@ -30,27 +34,6 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
 
   pi.on("tool_result", async (event) => {
     const key = toolCallIdKey(event.toolCallId);
-    const invocation = key ? boundBashInvocations.get(key) : undefined;
-    if (key && invocation && event.toolName === "bash") {
-      boundBashInvocations.delete(key);
-      const observed = event.details && typeof event.details === "object"
-        ? event.details as Record<string, unknown> : {};
-      const job = observed.async;
-      const background = job && typeof job === "object" && Reflect.get(job, "state") === "running";
-      const exitCode = boundBashObservedExit(event);
-      if (!background && typeof exitCode === "number" && Number.isInteger(exitCode) &&
-          exitCode >= 0 && exitCode <= 255) {
-        const args = ["ack-bound-bash", "--harness", boundBashHarness,
-          "--operation-id", invocation.operationId, "--tool-call-id", key,
-          "--exit-code", String(exitCode), "--guard-home", GUARD_HOME,
-          "--workspace", invocation.cwd];
-        if (!GUARD_HOME_DIR_IS_DEFAULT) args.push("--home", GUARD_HOME_DIR);
-        // Only native signed completion can make this effective. An error or
-        // lost acknowledgement retains the original operation on retry.
-        try { await pi.exec(GUARD_CLI_WRAPPER_COMMAND, args, { cwd: invocation.cwd, timeout: 10_000 }); }
-        catch {}
-      }
-    }
     const presentation = key ? containedTestPresentations.get(key) : undefined;
     if (!key || !presentation) return undefined;
     const details = event.details && typeof event.details === "object" && !Array.isArray(event.details)
@@ -60,7 +43,8 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
     } } };
   });
 
-  pi.on("context", (event) => {
+  pi.on("context", async (event) => {
+    await acknowledgeBoundBashContext(event.messages);
     // Only provider projection changes. The stored execution input remains an
     // audit record of the protected sink; every new call still passes Guard.
     const presentations = new Map(containedTestPresentations);
@@ -104,6 +88,7 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
   }
 
   pi.on("session_shutdown", () => {
+    acknowledgedBoundBashResults.clear();
     boundBashInvocations.clear();
     containedTestPresentations.clear();
     releaseBackgroundContainedTestRequests();
@@ -234,6 +219,7 @@ CONTAINED_TEST_HELPERS_SOURCE = BOUND_BASH_INTENT_SOURCE + r"""
     }
   }
 """
+)
 
 CONTAINED_TEST_BRANCH_SOURCE = r"""
     const requiredProfile = Reflect.get(response, "required_execution_profile");

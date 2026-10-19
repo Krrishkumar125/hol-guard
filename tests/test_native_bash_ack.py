@@ -75,3 +75,18 @@ def test_ack_still_refuses_after_two_invalid_responses(monkeypatch, tmp_path):
         )
     assert len(requests) == 2
     assert requests[0] is requests[1]
+
+
+@pytest.mark.parametrize(("recorded", "expected"), [(True, 0), (False, 125)])
+def test_ack_cli_reports_a_native_refusal_as_unacknowledged(monkeypatch, tmp_path, capsys, recorded, expected):
+    from codex_plugin_scanner.guard.cli.commands_dispatch_local import _run_guard_ack_bound_bash_command
+
+    monkeypatch.setattr(native_bash_ack, "acknowledge", lambda **_kwargs: recorded)
+    args = SimpleNamespace(operation_id="bash-operation:" + "a" * 64, harness="omp", tool_call_id="call", exit_code=0)
+    assert (
+        _run_guard_ack_bound_bash_command(
+            args, guard_home=tmp_path, workspace=tmp_path / "project", store=SimpleNamespace(path=tmp_path / "guard.db")
+        )
+        == expected
+    )
+    assert ("native_bash_ack_not_recorded" in capsys.readouterr().err) is (not recorded)

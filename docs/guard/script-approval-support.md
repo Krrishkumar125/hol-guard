@@ -17,6 +17,8 @@ The output profile supports one prepared report. Its initialization must be the 
 
 An eligible once grant permits one real invocation. A persistent exact-version grant binds the project, execution context, meaningful arguments, interpreter and executable inputs. Timestamp-only changes and unrelated data edits do not by themselves invalidate an unchanged reviewed version. Changes to script, helper or dependency bytes require reevaluation. A dry-mode grant does not authorize deletion mode.
 
+Execution completion and host delivery are separate. The candidate result path checks the native authenticated invocation journal, scans the complete output and applies current output restrictions. It acknowledges a clean completion only after the reviewed result reaches stored host context with matching content and exit/error status. A withheld or altered result cannot advance the invocation. Compatible hosts must support this delivery protocol; older clients cannot advertise the route.
+
 OMP print mode does not emit the host input event used to distinguish new user requests. The candidate adapter binds its initial durable user turn and retains that intent across programmatic continuations. A later new intent requires an observed human input event; a `user` label alone is insufficient. Multiple print-mode batch prompts without distinct trusted input events remain unqualified as separate user requests.
 
 Every launch still evaluates current policy and extension restrictions. Saved consent cannot override a non-overridable denial, Guard self-approval protection, failed integrity checks or an unbound execution route. A code digest is identity evidence, not a safety verdict about remote targets or mutable services.
@@ -26,3 +28,5 @@ Local consent is independent of a Cloud subscription. Cloud dependency evidence 
 The candidate Bash owner currently checks local command and extension policy. It does not yet connect its code-input graph to the package Cloud evaluator. Composed script-dependency entitlement, freshness, revocation and disclosure checks remain delivery gates; existing package-only tests do not establish that integration.
 
 Qualification must distinguish source tests, pinned SDK delivery, exact-wheel real-agent workflows, rendered dashboard behavior and the operator's installed runtime. The admission benchmark in `scripts/bench_native_bash_admission.py` includes policy binding, host observation, IPC, filesystem capture, hashing and the decision store. Its warm 20 ms and cold 100 ms targets remain explicit; a cache change alone does not establish that either target is met.
+
+The latest exact-wheel consent test physically completed one reviewed invocation, but post-tool policy withheld its result. That workflow remains unqualified. The subsequent authenticated result-policy and delayed-acknowledgement changes require fresh native, SDK and exact-wheel verification.

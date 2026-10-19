@@ -37,6 +37,39 @@ pub(crate) struct BashOperationJournal<'store> {
 }
 
 impl<'store> BashOperationJournal<'store> {
+    /// Observe an existing signed delivery record without creating or changing
+    /// execution, consent, or acknowledgement state.
+    pub(crate) fn open_for_delivery(
+        store: &'store PolicySnapshotStore,
+        store_path: &str,
+        operation_id: &'store str,
+    ) -> Result<Self, String> {
+        if !guard_contracts::native_bash_operation_id_is_valid(operation_id) {
+            return Err("native_bash_operation_id_invalid".into());
+        }
+        store.require_store_path(store_path)?;
+        let connection =
+            Connection::open_with_flags(store_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .map_err(|_| "native_bash_operation_store_unavailable")?;
+        connection
+            .busy_timeout(std::time::Duration::from_millis(100))
+            .map_err(|_| "native_bash_operation_store_unavailable")?;
+        connection
+            .execute_batch("BEGIN DEFERRED")
+            .map_err(|_| "native_bash_operation_store_unavailable")?;
+        let journal = Self {
+            connection,
+            store,
+            operation_id,
+            artifact_hash: "",
+            invocation: None,
+        };
+        journal
+            .require_authority()
+            .map_err(|_| "native_bash_operation_authority_changed")?;
+        Ok(journal)
+    }
+
     pub(crate) fn open(
         store: &'store PolicySnapshotStore,
         store_path: &str,

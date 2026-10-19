@@ -1,6 +1,8 @@
 //! Exercise allocation, durable completion and SDK acknowledgement via dispatch.
 use super::*;
 use guard_contracts::NativeBashAckResultV1;
+#[path = "bash_post_delivery_tests.rs"]
+mod post_delivery_tests;
 
 fn invocation(
     request: &NativeBashCaptureV1,

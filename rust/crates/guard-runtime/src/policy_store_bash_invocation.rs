@@ -139,6 +139,70 @@ fn transaction<T>(
 }
 
 impl BashOperationJournal<'_> {
+    /// A signed invocation may explain its own control/result delivery, never
+    /// authorize another execution. The bool identifies a clean current result
+    /// eligible for a later SDK acknowledgement.
+    pub(crate) fn confirm_delivery_call(
+        &self,
+        harness: &str,
+        project: &str,
+        call_id: &str,
+        observed_exit: i32,
+    ) -> rusqlite::Result<Option<bool>> {
+        let Some(record) = read(self, self.operation_id)? else {
+            return Ok(None);
+        };
+        if record.harness != harness || record.project != project {
+            return Err(invalid());
+        }
+        let digest = call_digest(call_id)?;
+        let Some(generation) = record.calls.get(&digest) else {
+            return Ok(None);
+        };
+        let current = *generation == record.generation;
+        if current && !record.completed && record.reserved.is_some() && observed_exit == 125 {
+            return Ok(Some(false));
+        }
+        let Some(operation) = Self::read_authenticated(
+            &self.connection,
+            self.store,
+            &operation_id(self.operation_id, *generation),
+        )?
+        else {
+            return Ok(None);
+        };
+        if operation.state != NativeBashOperationStateV1::Completed
+            || current && operation.artifact_hash != record.artifact_hash
+        {
+            return Ok(None);
+        }
+        let Some(completion) = operation.completion else {
+            return Ok(None);
+        };
+        let exit = if completion.timed_out {
+            124
+        } else if completion.cancelled || completion.output_limited {
+            125
+        } else {
+            match completion.exit_code {
+                Some(code @ 0..=255) => code,
+                _ => 125,
+            }
+        };
+        if observed_exit != exit {
+            return Ok(None);
+        }
+        Ok(Some(
+            current
+                && record.completed
+                && operation.dispatch_acknowledged
+                && !completion.timed_out
+                && !completion.cancelled
+                && !completion.output_limited
+                && completion.exit_code == Some(observed_exit),
+        ))
+    }
+
     pub(crate) fn allocate_invocation(
         &self,
         harness: &str,

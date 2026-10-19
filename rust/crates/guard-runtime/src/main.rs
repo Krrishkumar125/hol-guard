@@ -41,6 +41,7 @@ mod archive_inspect;
 mod archive_inspect_containment;
 mod archive_verdict_seam;
 mod artifact_risk_op;
+mod bash_post_delivery;
 #[cfg(unix)]
 mod binding_capture_capture;
 #[cfg(unix)]
