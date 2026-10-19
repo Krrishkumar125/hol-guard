@@ -135,7 +135,7 @@ def validated_managed_controls_candidate(
     try:
         parsed = parsed_managed_controls_from_validated_policy_bundle(
             policy_bundle,
-            registry=registry if registry is not None else _registry_for_home(guard_home),
+            registry=registry if registry is not None else lambda: _registry_for_home(guard_home),
             negotiated_capabilities=negotiated_capabilities,
             guard_home=guard_home,
             runtime_summary=runtime_summary if isinstance(runtime_summary, dict) else None,

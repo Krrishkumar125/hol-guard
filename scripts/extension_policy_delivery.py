@@ -10,6 +10,11 @@ from command_pack_store import MAX_OBJECT_BYTES, PackReader
 from extension_delivery_objects import entries
 from extension_pack_archives import pack_objects, parts
 
+from codex_plugin_scanner.guard.extension_builder.native_source_compiler import (
+    NativeSourceCompilerError,
+    run_source_compiler,
+)
+
 
 def policy_transport(reader, reference, records, store):
     """Mirror the native index without copying a corpus proof into each record."""
@@ -30,13 +35,13 @@ def policy_transport(reader, reference, records, store):
     return store.put_json(output)
 
 
-def build_policy(pack_directory, native_root, plan, store):
+def build_policy(pack_directory, native_root, plan, store, *, compiler=None, **defaults_evidence):
     """Package native outputs without interpreting or granting matcher authority."""
     reader = PackReader(pack_directory / "objects")
     inventory = dict(entries(reader, native_root["index"], native_root["extensions"]))
     if len(inventory) != native_root["extensions"]:
         raise ValueError("native policy inventory is incomplete")
-    records, defaults = {}, {}
+    records, catalogs = {}, []
     for identity, reference in sorted(inventory.items()):
         # pack_objects records every object read by its reader. Each archive
         # needs a fresh read set, including any nodes shared with other packs.
@@ -62,10 +67,16 @@ def build_policy(pack_directory, native_root, plan, store):
             "trust_class": catalog["trust_class"],
         }
         records[identity] = store.put_json(record)
-        if catalog["enabled"]:
-            if catalog["trust_class"] == "external":
-                raise ValueError("external policy cannot be selected by release defaults")
-            defaults[identity] = records[identity]
+        catalogs.append({key: catalog[key] for key in ("extension_id", "enabled", "trust_class")})
+    try:
+        selected = run_source_compiler(
+            "bundle-metadata",
+            {"operation": "release-defaults", "catalogs": catalogs, **defaults_evidence},
+            compiler=compiler,
+        )["selected_ids"]
+    except NativeSourceCompilerError as error:
+        raise ValueError(str(error)) from error
+    defaults = {identity: records[identity] for identity in selected}
     return {
         "root": native_root,
         "transport": policy_transport(reader, native_root["index"], records, store),

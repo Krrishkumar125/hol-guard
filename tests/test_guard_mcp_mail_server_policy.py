@@ -301,8 +301,12 @@ def test_profile_preserves_stronger_requirements(tool: str, base_action: GuardAc
 
 @pytest.mark.parametrize("tool", _READ_TOOLS)
 def test_lockdown_suppresses_read_allow_defaults(tool: str) -> None:
-    assert (
-        apply_local_mcp_extension_decision(_AuthorityStore((_layer(lockdown=True),)), _artifact(tool), "review") is None
+    decision = apply_local_mcp_extension_decision(_AuthorityStore((_layer(lockdown=True),)), _artifact(tool), "review")
+    assert decision is not None
+    assert decision == (
+        "block",
+        "catalog-mcp-extension",
+        "This MCP tool is blocked by its authenticated extension authority.",
     )
 
 

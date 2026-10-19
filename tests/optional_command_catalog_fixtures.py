@@ -14,13 +14,28 @@ import pytest
 COMMAND_MODULES = {
     "test_retired_command_extension_continuity",
     "test_syngraphe_safe_evidence",
+    "test_guard_extension_trust",
     *(
         f"test_guard_command_{name}_extensions"
         for name in (
-            "agentbridge", "blitcp", "digline", "noodle", "ollama", "probe",
-            "remote", "repo2nb", "tui_runner", "skill_sunset", "vttforge",
+            "agentbridge",
+            "blitcp",
+            "digline",
+            "noodle",
+            "ollama",
+            "probe",
+            "remote",
+            "repo2nb",
+            "tui_runner",
+            "skill_sunset",
+            "vttforge",
         )
     ),
+}
+METADATA_MODULES = {
+    "test_guard_extension_directory_operations",
+    "test_guard_extension_control_catalog_detail",
+    "test_guard_workspace_cli_control_authority",
 }
 
 
@@ -35,12 +50,20 @@ def authored_command_catalog():
 @pytest.fixture(autouse=True)
 def optional_command_catalog(request, monkeypatch, tmp_path):
     module = request.module.__name__.rsplit(".", 1)[-1]
-    if module not in COMMAND_MODULES | {"test_guard_extension_directory_operations"}:
+    optional_integration = (
+        module == "test_native_command_evaluation_integration"
+        and request.node.name == "test_real_native_payload_rejects_stale_snapshot"
+    )
+    if module not in COMMAND_MODULES | METADATA_MODULES and not optional_integration:
         return
     catalog = request.getfixturevalue("authored_command_catalog")
     if hasattr(request.module, "BUILT_IN_COMMAND_EXTENSION_REGISTRY"):
         monkeypatch.setattr(request.module, "BUILT_IN_COMMAND_EXTENSION_REGISTRY", catalog)
-    if module not in COMMAND_MODULES:
+    if module == "test_guard_workspace_cli_control_authority":
+        from tests import guard_extension_control_authority_fixtures
+
+        monkeypatch.setattr(guard_extension_control_authority_fixtures, "BUILT_IN_COMMAND_EXTENSION_REGISTRY", catalog)
+    if module not in COMMAND_MODULES and not optional_integration:
         return
 
     from codex_plugin_scanner.guard import native_command_model, native_hook_edge, native_policy_snapshot
@@ -92,6 +115,12 @@ def optional_command_catalog(request, monkeypatch, tmp_path):
     current = [None]
     homes = {}
     monkeypatch.setattr(support, "native_test_guard_home", lambda **kwargs: current[0])
+    original_home = command_evaluation._resolve_home
+    monkeypatch.setattr(
+        command_evaluation,
+        "_resolve_home",
+        lambda home: current[0] if home is None and current[0] is not None else original_home(home),
+    )
 
     def close_homes():
         from codex_plugin_scanner.guard.native_resident_client import close_native_residents
@@ -105,37 +134,50 @@ def optional_command_catalog(request, monkeypatch, tmp_path):
     request.addfinalizer(close_homes)
 
     def review(
-        commands, *, cwd=None, home_dir=None, controls=(), managed_controls=(),
-        global_lockdown=False, managed_global_lockdown=False, health=AuthorityHealth.PROTECTED,
+        commands,
+        *,
+        cwd=None,
+        home_dir=None,
+        controls=(),
+        managed_controls=(),
+        global_lockdown=False,
+        managed_global_lockdown=False,
+        health=AuthorityHealth.PROTECTED,
     ):
-        assert not managed_controls and not managed_global_lockdown
         assert health is AuthorityHealth.PROTECTED
         if not delivery:
             delivery.append(request.getfixturevalue("mcp_policy_delivery"))
             monkeypatch.setattr(mcp_policy_catalog_fixture, "_DELIVERY", delivery)
-        key = (controls, global_lockdown)
+        key = (controls, global_lockdown, managed_controls, managed_global_lockdown)
         if key not in homes:
-            layer = ExtensionControlLayer(
-                schema_version=CONTROL_SCHEMA_VERSION,
-                kind=ControlLayerKind.LOCAL_ADMIN,
-                catalog_digest=catalog.catalog_digest,
-                global_lockdown=global_lockdown,
-                controls=tuple(
-                    ExtensionControl(
-                        target=ControlTarget(ControlTargetKind(kind), identity), state=ControlState(state),
-                    )
-                    for kind, identity, state in controls
-                ),
-            )
+
+            def layer(kind, values, lockdown):
+                return ExtensionControlLayer(
+                    schema_version=CONTROL_SCHEMA_VERSION,
+                    kind=kind,
+                    catalog_digest=catalog.catalog_digest,
+                    global_lockdown=lockdown,
+                    controls=tuple(
+                        ExtensionControl(
+                            target=ControlTarget(ControlTargetKind(kind), identity),
+                            state=ControlState(state),
+                        )
+                        for kind, identity, state in values
+                    ),
+                )
+
+            layers = (layer(ControlLayerKind.LOCAL_ADMIN, controls, global_lockdown),)
+            if managed_controls or managed_global_lockdown:
+                layers += (layer(ControlLayerKind.SIGNED_CLOUD, managed_controls, managed_global_lockdown),)
             store = SimpleNamespace(guard_home=tmp_path / f"policy-{len(homes)}")
-            mcp_policy_catalog_fixture.admit_mcp_layers(store, (layer,))
+            mcp_policy_catalog_fixture.admit_mcp_layers(store, layers)
             binding = _BINDINGS[store.guard_home]
             snapshot = ExtensionControlRuntimeSnapshot.from_authority_view(
                 ExtensionControlAuthorityView(
                     health=health,
                     revision=binding["revision"],
                     catalog_digest=binding["catalog_digest"],
-                    layers=(replace(layer, catalog_digest=binding["catalog_digest"]),),
+                    layers=tuple(replace(value, catalog_digest=binding["catalog_digest"]) for value in layers),
                     managed_revision=binding["managed_revision"],
                 )
             )

@@ -33,7 +33,7 @@ def daemon_managed_controls_candidate(
     try:
         policy = parsed_managed_controls_from_validated_policy_bundle(
             policy_bundle,
-            registry=current_catalog_registry(store),
+            registry=lambda: current_catalog_registry(store),
             negotiated_capabilities=capabilities,
             guard_home=store.guard_home,
             runtime_summary=runtime_summary if isinstance(runtime_summary, dict) else None,

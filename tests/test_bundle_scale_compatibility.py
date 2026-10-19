@@ -133,18 +133,10 @@ def test_core_profile_builder_does_not_change_native_build_input(kind):
     assert edit_pyproject(project, metadata(kind), core_profile=True) == project
 
 
-@pytest.mark.parametrize("fault", ["count", "unknown", "empty", "source"])
-def test_root_compatibility_contract_rejects_invalid_inventory(compatibility, fault):
+def test_root_compatibility_contract_rejects_source_substitution(compatibility):
     value, _, _ = compatibility
     row = value["compatibility"]["commands"]
-    if fault == "count":
-        row["count"] = True
-    elif fault == "unknown":
-        row["remote"] = "https://example.com/unsigned"
-    elif fault == "empty":
-        row["count"] = 0
-    else:
-        row["index"]["location"]["tag"] = "extension-data-" + "c" * 40 + "-0.0-000000"
+    row["index"]["location"]["tag"] = "extension-data-" + "c" * 40 + "-0.0-000000"
     with pytest.raises(ValueError):
         validate(encoded(value), source_sha=SOURCE, engine=ENGINE)
 

@@ -67,7 +67,7 @@ def _use_native_metadata_compiler(monkeypatch):
         installed,
         "run_source_compiler",
         lambda operation, request, **options: native_source_compiler.run_source_compiler(
-            operation, request, compiler=binary_path, **options
+            operation, request, **{"compiler": binary_path, **options}
         ),
     )
 

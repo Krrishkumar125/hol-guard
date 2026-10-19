@@ -32,6 +32,8 @@ def native_mcp_catalog_admission(request):
         "test_guard_ftp_mcp_contribution",
         "test_guard_gmail_mcp_contribution",
         "test_guard_remote_mcp_contributions",
+        "test_guard_remote_mcp_endpoint_contract",
+        "test_guard_remote_mcp_url_safety",
         "test_guard_remote_mcp_server_name_fallback",
         "test_guard_kranz_mcp_contribution",
         "test_guard_contributed_mcp_native",

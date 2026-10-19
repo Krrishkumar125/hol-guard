@@ -71,7 +71,7 @@ def enrich_entry(root, entry, commit, history):
     return json.loads(files["docs/guard/extensions/catalog.v2.json"])["entries"][0], invitation
 
 
-def build_from_packs(root, pack_directory, native_root, plan, store, commit, *, resolve_claimants=False):
+def build_from_packs(root, pack_directory, native_root, plan, store, commit, *, resolve_claimants=False, compiler=None):
     reader = PackReader(pack_directory / "objects")
     inventory = dict(entries(reader, native_root["index"], native_root["extensions"]))
     public = {}
@@ -82,7 +82,7 @@ def build_from_packs(root, pack_directory, native_root, plan, store, commit, *, 
             raise ValueError("public metadata differs from native pack identity")
         public[identity] = entry
     history = claim_context(root, public, commit) if resolve_claimants else None
-    policy = build_policy(pack_directory, native_root, plan, store)
+    policy = build_policy(pack_directory, native_root, plan, store, compiler=compiler)
     directory, claims = {}, {}
     for identity in sorted(inventory):
         entry, invitation = (
@@ -130,7 +130,9 @@ def create_distribution(
     plan = AssetPlan(output / "assets", commit, existing=existing_locations, publication_id=publication_id)
     store = LocatedStore(output / "metadata", publisher=plan)
     try:
-        root = build_from_packs(ROOT, policy, native_root, plan, store, commit, resolve_claimants=resolve_claimants)
+        root = build_from_packs(
+            ROOT, policy, native_root, plan, store, commit, resolve_claimants=resolve_claimants, compiler=compiler
+        )
     finally:
         plan.finish()
     root["legacy"] = prepare_legacy(

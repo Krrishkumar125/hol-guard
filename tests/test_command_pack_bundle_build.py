@@ -26,7 +26,7 @@ def modules(monkeypatch):
     )
 
 
-def test_each_pack_archive_contains_only_its_own_complete_read_set(modules, tmp_path):
+def test_each_pack_archive_contains_only_its_own_complete_read_set(modules, tmp_path, monkeypatch):
     _, policy, assets, located, objects = modules
     compiled = tmp_path / "compiled"
     store = objects.ObjectStore(compiled / "objects")
@@ -63,7 +63,33 @@ def test_each_pack_archive_contains_only_its_own_complete_read_set(modules, tmp_
     native = {"extensions": 2, "index": store.index(manifests)}
     plan = assets.AssetPlan(tmp_path / "assets", "a" * 40)
     delivered = located.LocatedStore(tmp_path / "metadata", publisher=plan)
-    result = policy.build_policy(compiled, native, plan, delivered)
+    requests = []
+
+    def select(operation, request, *, compiler):
+        requests.append((operation, request, compiler))
+        return {"selected_ids": ["command.second"]}
+
+    monkeypatch.setattr(policy, "run_source_compiler", select)
+    compiler = tmp_path / "compiler"
+    core = {"schema": "guard.core-defaults.v1", "entries": []}
+    result = policy.build_policy(compiled, native, plan, delivered, compiler=compiler, core_defaults=core)
+    assert requests == [
+        (
+            "bundle-metadata",
+            {
+                "operation": "release-defaults",
+                "catalogs": [
+                    {"extension_id": identity, "enabled": False, "trust_class": "external"}
+                    for identity in ("command.first", "command.second")
+                ],
+                "core_defaults": core,
+            },
+            compiler,
+        )
+    ]
+    assert result["defaults"]["count"] == 1
+    selected = [identity for identity, _ in objects.entries(delivered, result["defaults"]["index"], 1)]
+    assert selected == ["command.second"]
     plan.finish()
     records = delivered.json(result["transport"])["records"]
     from codex_plugin_scanner.guard.catalog_delivery.containers import member

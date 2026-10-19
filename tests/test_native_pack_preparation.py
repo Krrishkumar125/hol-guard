@@ -25,6 +25,7 @@ from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import ObjectS
 from codex_plugin_scanner.guard.catalog_delivery.pack_store import PackReader
 from codex_plugin_scanner.guard.catalog_delivery.revocations import RevokedPackError, revocation_key
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport
+from tests.extension_builder_support import use_installed_native_source_compiler
 from tests.guard_extension_control_authority_fixtures import (
     _allow_local_terminal_confirmation as _allow_local_terminal_confirmation,
 )
@@ -149,11 +150,8 @@ def delivery(inventory, tmp_path, monkeypatch):
     # Preserve the normal lean installed factory and native URL/byte proofs;
     # only the public HTTP transport is replaced with emitted fixture assets.
     monkeypatch.setattr(release_transport, "managed_urlopen", mirror)
-    monkeypatch.setattr(transport, "_NATIVE_PACKAGE", inventory["native"])
+    use_installed_native_source_compiler(monkeypatch, inventory["native"])
     monkeypatch.setattr(transport, "_PACKAGED_PROGRAM", inventory["program"])
-    # This fixture exercises installed compiler identity, not checkout overrides.
-    monkeypatch.delenv("HOL_GUARD_NATIVE_SOURCE_COMPILER", raising=False)
-    monkeypatch.delenv("HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER", raising=False)
     monkeypatch.setattr(installed_bundle, "_package", lambda: inventory["package"])
     version = transport.metadata.version
     monkeypatch.setattr(transport.metadata, "version", lambda n: "3.50.0a1" if n == "hol-guard" else version(n))

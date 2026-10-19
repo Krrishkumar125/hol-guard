@@ -29,6 +29,7 @@ from codex_plugin_scanner.guard.catalog_delivery import (
 from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor
 from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import encoded
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as bridge
+from tests.extension_builder_support import use_installed_native_source_compiler
 
 ROOT = Path(__file__).resolve().parents[1]
 BINARY = Path(os.environ.get("HOL_GUARD_NATIVE_BINARY", ROOT / "rust/target/debug/hol-guard-runtime"))
@@ -118,7 +119,7 @@ def packaged(tmp_path_factory):
         )
         original = bridge.metadata.version
         patch.setattr(bridge.metadata, "version", lambda name: "3.50.0" if name == "hol-guard" else original(name))
-        patch.setattr(bridge, "_NATIVE_PACKAGE", native)
+        use_installed_native_source_compiler(patch, native)
         patch.setattr(bridge, "_PACKAGED_PROGRAM", program)
         patch.setattr(installed_bundle, "_package", lambda: package)
         authority = installed_bundle.load_installed_bundle()

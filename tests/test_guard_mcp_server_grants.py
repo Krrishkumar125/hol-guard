@@ -161,7 +161,13 @@ def test_global_lockdown_suppresses_allow() -> None:
     assert allowed is not None
     assert allowed[0] == "allow"
     locked = _layer(ControlLayerKind.LOCAL_ADMIN, "command.mcp-enola", ControlState.ENABLED, lockdown=True)
-    assert apply_contributed_mcp_decision(_AuthorityStore((locked,)), artifact, "review") is None
+    decision = apply_contributed_mcp_decision(_AuthorityStore((locked,)), artifact, "review")
+    assert decision is not None
+    assert decision == (
+        "block",
+        "catalog-mcp-extension",
+        "This MCP tool is blocked by its authenticated extension authority.",
+    )
 
 
 def test_missing_tool_identity_does_not_apply_other_defaults() -> None:

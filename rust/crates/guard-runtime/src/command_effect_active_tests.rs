@@ -3,7 +3,13 @@ use guard_command::{parse_command, CommandModelRequestV1};
 use serde_json::{json, Value};
 
 fn request(controls: &CompiledNativeCommandControls) -> CommandEffectRequestV1 {
-    let command = "vttforge init example";
+    command_request(controls, "vttforge init example")
+}
+
+fn command_request(
+    controls: &CompiledNativeCommandControls,
+    command: &str,
+) -> CommandEffectRequestV1 {
     let model = parse_command(&CommandModelRequestV1 {
         command: command.into(),
         dialect: "posix".into(),
@@ -28,6 +34,52 @@ fn request(controls: &CompiledNativeCommandControls) -> CommandEffectRequestV1 {
         "native_extension_evidence":evidence,"control_snapshot":controls.control_binding(),
     }))
     .unwrap()
+}
+
+#[test]
+fn compatibility_labels_require_request_bound_native_rule_evidence() {
+    let home = std::env::temp_dir().join(format!(
+        "guard-command-effect-compatibility-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&home).unwrap();
+    let home = home.canonicalize().unwrap();
+    let controls =
+        crate::contributed_mcp_catalog_test_support::controls_for(&home, false, &[], &[]);
+    let catalog = controls.command_catalog().unwrap();
+    // This source is intentionally absent from the admitted sparse catalog.
+    let optional: Value = serde_json::from_str(include_str!(
+        "../../../../contributions/command-sources/command.vttforge.json"
+    ))
+    .unwrap();
+    let class = optional["extension"]["rules"][0]["action_classes"][0]
+        .as_str()
+        .unwrap();
+    assert!(!catalog.has_action_class_owner(class));
+    let mut inactive = request(&controls);
+    inactive.compatibility_action_class = Some(class.into());
+    let result = evaluate(&inactive, Some(&controls)).unwrap();
+    assert!(result["controlling_action_class"].is_null());
+    assert!(result["controlling_rule_id"].is_null());
+    assert!(result["extension_observations"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    // Genuine legacy core labels retain their exact matched native owner.
+    let (_, rule) = catalog.get_rule("command.git.force-push").unwrap();
+    let core_class = rule.action_classes.first().unwrap();
+    let mut core = command_request(&controls, "git push --force origin main");
+    core.compatibility_action_class = Some(core_class.clone());
+    let result = evaluate(&core, Some(&controls)).unwrap();
+    assert_eq!(result["controlling_action_class"], *core_class);
+    assert_eq!(result["controlling_rule_id"], rule.rule_id);
+    assert_ne!(result["minimum_action"], "allow");
+    // A real core label still cannot be replayed against another command.
+    inactive.compatibility_action_class = Some(core_class.clone());
+    let result = evaluate(&inactive, Some(&controls)).unwrap();
+    assert!(result["controlling_action_class"].is_null());
+    std::fs::remove_dir_all(home).unwrap();
 }
 
 #[test]

@@ -195,6 +195,8 @@ def test_all_registry_actions_are_blocked_by_the_remote_asset_gate():
         visit(name, set())
 
 
+@pytest.mark.parametrize("job_name", ["publish-main-assets", "publish-installed-bundle-assets"])
+@pytest.mark.parametrize("build_result", ["success", "failure"])
 @pytest.mark.parametrize(
     "same_repo,labelled,cancelled,allowed",
     [
@@ -204,13 +206,18 @@ def test_all_registry_actions_are_blocked_by_the_remote_asset_gate():
         (True, True, True, False),
     ],
 )
-def test_canary_asset_mutation_requires_explicit_trusted_eligibility(same_repo, labelled, cancelled, allowed):
+def test_canary_asset_mutation_requires_explicit_trusted_eligibility(
+    job_name, build_result, same_repo, labelled, cancelled, allowed
+):
     root = Path(__file__).resolve().parents[1]
-    condition = load_workflow(root / ".github/workflows/publish.yml")["jobs"]["publish-main-assets"]["if"]
+    condition = load_workflow(root / ".github/workflows/publish.yml")["jobs"][job_name]["if"]
+    # The alpha resolver is skipped for PRs. Override implicit success() for
+    # descendants too, while retaining the successful-build and cancellation gates.
+    assert condition.startswith("always() && !cancelled() &&")
     values = {
         "always()": True,
         "!cancelled()": not cancelled,
-        "needs.build.result": "success",
+        "needs.build.result": build_result,
         "needs.assemble-native-guard-distributions.result": "success",
         "needs.build.outputs.channel": "canary",
         "needs.reserve-main-tag.result": "skipped",
@@ -219,11 +226,19 @@ def test_canary_asset_mutation_requires_explicit_trusted_eligibility(same_repo, 
         "github.event.pull_request.head.repo.full_name": "owner/repo" if same_repo else "fork/repo",
         "github.repository": "owner/repo",
         "vars.PR_CANARY_PUBLISHING_ENABLED": "true",
+        "vars.RELEASE_PUBLISHING_ENABLED": "false",
+        "github.run_attempt": 1,
+        "github.ref": "refs/pull/1/merge",
+        "github.event.inputs.release_train": "main",
+        "github.event.inputs.release_version": "3.49.0",
+        "github.event.inputs.release_channel": "stable",
         "contains(github.event.pull_request.labels.*.name, 'publish-testpypi-canary')": labelled,
     }
     for key in sorted(values, key=len, reverse=True):
         condition = condition.replace(key, repr(values[key]))
-    assert eval(condition.replace("&&", " and ").replace("||", " or "), {"__builtins__": {}}) is allowed
+    assert eval(condition.replace("&&", " and ").replace("||", " or "), {"__builtins__": {}}) is (
+        allowed and build_result == "success"
+    )
 
 
 @pytest.mark.parametrize("release_status", [0, 1])

@@ -3,6 +3,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 #[path = "bundle_metadata_compatibility.rs"]
 mod compatibility_reader;
+#[path = "bundle_metadata_defaults.rs"]
+mod release_defaults;
 #[path = "bundle_metadata_json.rs"]
 mod strict_json;
 pub(crate) use compatibility_reader::stream as compatibility_stream;
@@ -215,6 +217,7 @@ fn root(data: &str, source: &str, engine: &str) -> Result<Value> {
 pub(crate) fn evaluate(bytes: &[u8]) -> Result<Value> {
     let input = strict_json::decode(bytes)?;
     match input["operation"].as_str() {
+        Some("release-defaults") => release_defaults::select(&input),
         Some("installed-plan") => installed_plan(&input),
         Some("installed") => installed(&input),
         Some("root" | "descriptor") => {

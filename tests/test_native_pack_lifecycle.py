@@ -12,6 +12,7 @@ import pytest
 from codex_plugin_scanner.guard.catalog_delivery import lifecycle, lifecycle_store
 from codex_plugin_scanner.guard.native_command_control_authority_io import hold_command_control_authority_lock
 from codex_plugin_scanner.guard.native_command_control_authority_store import _key
+from tests.extension_builder_support import use_installed_native_source_compiler
 from tests.native_activation_support import BINARY, native, seed
 from tests.native_activation_support import compiled_lifecycle as compiled_lifecycle
 from tests.test_extension_pack_preparation import delivery as delivery
@@ -260,7 +261,7 @@ def test_production_packaged_bridge_and_native_release_binding(tmp_path, monkeyp
     )
     for name, value in [("runtime-manifest.json", runtime), ("source-compiler-manifest.json", compiler)]:
         (native_dir / name).write_text(json.dumps(value))
-    monkeypatch.setattr(transport, "_NATIVE_PACKAGE", native_dir)
+    use_installed_native_source_compiler(monkeypatch, native_dir)
     monkeypatch.setattr(installed_bundle, "_package", lambda: tmp_path)
     monkeypatch.setattr(lifecycle, "invoke", PRODUCTION_INVOKE)
     authority = installed_bundle.load_installed_bundle()

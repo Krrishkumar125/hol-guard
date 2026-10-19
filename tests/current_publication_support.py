@@ -29,6 +29,7 @@ from codex_plugin_scanner.guard.extension_builder import native_source_compiler 
 from codex_plugin_scanner.guard.native_command_control_authority_io import _LOCKS
 from codex_plugin_scanner.guard.native_policy_snapshot import provision_native_policy_verifier_key
 from codex_plugin_scanner.guard.store import GuardStore
+from tests.extension_builder_support import use_installed_native_source_compiler
 from tests.native_activation_support import BINARY, seed
 
 SOURCE = "a" * 40
@@ -97,7 +98,7 @@ def setup(tmp_path, monkeypatch):
     }
     for name, manifest in manifests.items():
         (native / name).write_text(json.dumps(manifest))
-    monkeypatch.setattr(compiler, "_NATIVE_PACKAGE", native)
+    use_installed_native_source_compiler(monkeypatch, native)
     monkeypatch.setattr(compiler, "_PACKAGED_PROGRAM", program)
     monkeypatch.setattr(installed_bundle, "_package", lambda: package)
     original = compiler.metadata.version

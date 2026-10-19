@@ -99,6 +99,13 @@ def authoring_index_inventory(native, count):
     return catalog
 
 
+def use_installed_native_source_compiler(monkeypatch: Any, directory: Path) -> None:
+    """Enter a synthetic installation without retaining checkout overrides."""
+    monkeypatch.setattr(native_source_compiler, "_NATIVE_PACKAGE", directory)
+    monkeypatch.delenv("HOL_GUARD_NATIVE_SOURCE_COMPILER", raising=False)
+    monkeypatch.delenv("HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER", raising=False)
+
+
 def use_built_native_source_compiler(monkeypatch: Any) -> None:
     """Route builder unit tests through the explicitly built native compiler."""
 

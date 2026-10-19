@@ -116,8 +116,10 @@ pub fn evaluate_command(
                 rule_id: rule.rule_id.clone(),
             })
     });
-    let effective_compatibility_class = compatibility_action_class
-        .filter(|class| compatibility_rule.is_some() || !registry.has_action_class_owner(class));
+    // Sparse active catalogs omit inactive owners. Absence cannot authenticate
+    // a caller label: only effective native evidence for this command can.
+    let effective_compatibility_class =
+        compatibility_action_class.filter(|_| compatibility_rule.is_some());
 
     let mut owned_matches: Vec<OwnedCommandRuleMatch> = Vec::new();
     for (observation, _extension, rule, evidence) in &selected {

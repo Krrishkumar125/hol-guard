@@ -76,13 +76,14 @@ from ..native_directory_trust import (
 )
 from ..native_guard_store import NativeGuardStoreUnavailable
 from ..native_hook_evidence_writer import NativeHookEvidenceWriter, unreachable_writer_stats
+from ..native_policy_snapshot_constants import NativePolicySnapshotError
 from ..native_resident_revival import native_route_unavailable_body
 from ..native_resident_watchdog import start_native_resident_watchdog
 from ..native_runtime_request_scope import scoped_hook_post
 from ..package_firewall_action_rate_limit import PackageFirewallActionRateLimiter
 from ..runtime.approval_attention import ApprovalAttentionCoordinator
 from ..runtime.cloud_review_sync import CloudReviewSyncWorker, start_cloud_sync_sync_worker, stop_cloud_sync_sync_worker
-from ..runtime.command_extensions import CommandSafetyExtensionRegistry
+from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY, CommandSafetyExtensionRegistry
 from ..runtime.extension_control_authority import ExtensionControlAuthorityView
 from ..runtime.extension_control_runtime import (
     ExtensionControlRuntime,
@@ -592,10 +593,19 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
             from ..catalog_delivery.projection import capture
 
             self.store.migrate_installed_command_pack_authority()
-            _, control_registry, _ = capture(self.store)
-            self.extension_control_runtime = ExtensionControlRuntime(
-                self._startup_extension_control_view(control_registry)
-            )
+            try:
+                _, control_registry, _ = capture(self.store)
+                startup_view = self._startup_extension_control_view(control_registry)
+            except NativePolicySnapshotError:
+                # An activation record this build cannot authenticate, such as
+                # one written under a newer schema, activates nothing. Start on
+                # the core registry with a tampered authority so every hook
+                # fails closed, rather than taking hook protection down with
+                # the daemon. The refresh loop keeps this snapshot until the
+                # record reads again.
+                control_registry = BUILT_IN_COMMAND_EXTENSION_REGISTRY
+                startup_view = self.store._tampered_view(control_registry.catalog_digest)
+            self.extension_control_runtime = ExtensionControlRuntime(startup_view)
             self.extension_control_api = ExtensionControlApiService(
                 store=self.store,
                 registry=control_registry,

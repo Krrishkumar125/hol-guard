@@ -29,6 +29,7 @@ from codex_plugin_scanner.guard.native_command_control_authority_store import _k
 from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 from codex_plugin_scanner.guard.runtime.extension_control_runtime import ExtensionControlRuntime
 from codex_plugin_scanner.guard.store import GuardStore
+from tests.extension_builder_support import use_installed_native_source_compiler
 from tests.guard_extension_control_authority_fixtures import _PASSWORD, MemorySecretStore
 from tests.guard_extension_control_authority_fixtures import (
     _allow_local_terminal_confirmation as _allow_local_terminal_confirmation,
@@ -149,7 +150,7 @@ def test_real_packaged_cross_engine_and_changed_source_offline_api_upgrade(tmp_p
         )
         for name, value in [("runtime-manifest.json", runtime), ("source-compiler-manifest.json", compiler)]:
             (native_dir / name).write_text(json.dumps(value))
-        monkeypatch.setattr(transport, "_NATIVE_PACKAGE", native_dir)
+        use_installed_native_source_compiler(monkeypatch, native_dir)
         monkeypatch.setattr(transport, "_PACKAGED_PROGRAM", program)
         monkeypatch.setattr(installed_bundle, "_package", lambda: package)
         package_version["value"] = version

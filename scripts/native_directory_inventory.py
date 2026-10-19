@@ -15,11 +15,15 @@ from functools import lru_cache
 from pathlib import Path
 
 # This module is also imported as scripts.native_directory_inventory by tests.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+_SCRIPTS = str(Path(__file__).resolve().parent)
+sys.path.insert(0, _SCRIPTS)
 
-import build_native_command_packs as packs
-from command_pack_store import PackReader
-from extension_delivery_objects import entries
+try:
+    import build_native_command_packs as packs
+    from command_pack_store import PackReader
+    from extension_delivery_objects import entries
+finally:
+    sys.path.remove(_SCRIPTS)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,7 +39,11 @@ def source_compiler() -> Path:
 def compiled_inventory(compiler: Path | None = None, *, root: Path = ROOT):
     with tempfile.TemporaryDirectory(prefix="hol-guard-directory-") as scratch:
         directory = Path(scratch).resolve(strict=True)
-        packs.stage(compiler or source_compiler(), directory, source_root=root)
+        sys.path.insert(0, _SCRIPTS)
+        try:
+            packs.stage(compiler or source_compiler(), directory, source_root=root)
+        finally:
+            sys.path.remove(_SCRIPTS)
         release = json.loads((directory / "release.json").read_bytes())
         yield directory, PackReader(directory / "objects"), release
 

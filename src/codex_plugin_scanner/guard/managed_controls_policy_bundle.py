@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -11,7 +12,6 @@ from .managed_controls_policy_fields import (
     _UNBOUND,
     ManagedControlsPolicyError,
     ParsedManagedControlsPolicy,
-    _without_extension_fields,
     is_mapping,
     parse_managed_controls_policy_fields,
 )
@@ -166,7 +166,7 @@ def signed_cloud_extension_projection_digest(
 def parsed_managed_controls_from_validated_policy_bundle(
     policy_bundle: dict[str, object],
     *,
-    registry: CommandSafetyExtensionRegistry,
+    registry: CommandSafetyExtensionRegistry | Callable[[], CommandSafetyExtensionRegistry],
     negotiated_capabilities: frozenset[str],
     package_firewall_supported: bool = False,
     guard_home: Path | None = None,
@@ -178,23 +178,20 @@ def parsed_managed_controls_from_validated_policy_bundle(
     payload = policy_bundle.get("payload")
     if not is_mapping(payload):
         raise ManagedControlsPolicyError("invalid_policy_document", "Signed policy payload must be an object.")
-    cloud_view = None
-    capabilities = runtime_summary.get("managedControlsCapabilities") if runtime_summary is not None else None
-    if (
-        not _without_extension_fields(payload)
-        and runtime_summary is not None
-        and isinstance(capabilities, list)
-        and "extension-catalog.v2" in capabilities
-    ):
+
+    def cloud_view(resolved_registry):
+        capabilities = runtime_summary.get("managedControlsCapabilities") if runtime_summary is not None else None
+        if runtime_summary is None or not (isinstance(capabilities, list) and "extension-catalog.v2" in capabilities):
+            return None
         if guard_home is None:
             raise ManagedControlsPolicyError("policy_local_view_missing", "An explicit local policy view is required.")
         from .runtime.managed_controls_cloud import local_policy_view
 
         try:
-            cloud_view = local_policy_view(
+            return local_policy_view(
                 guard_home=guard_home,
                 runtime_summary=runtime_summary,
-                registry=registry,
+                registry=resolved_registry,
                 policy_workspace_id=policy_bundle.get("workspaceId"),
             )
         except ManagedControlsPolicyError:
@@ -203,6 +200,7 @@ def parsed_managed_controls_from_validated_policy_bundle(
             raise ManagedControlsPolicyError(
                 "policy_local_view_invalid", "The local policy view could not be authenticated."
             ) from error
+
     return parse_managed_controls_policy_fields(
         payload,
         registry=registry,

@@ -18,6 +18,7 @@ from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFES
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport
 from codex_plugin_scanner.guard.native_command_control_authority_io import hold_command_control_authority_lock
 from codex_plugin_scanner.guard.native_command_control_authority_store import _key
+from tests.extension_builder_support import use_installed_native_source_compiler
 from tests.guard_extension_control_authority_fixtures import MemorySecretStore, _commit, _store
 from tests.guard_extension_control_authority_fixtures import (
     _allow_local_terminal_confirmation as _allow_local_terminal_confirmation,
@@ -43,7 +44,7 @@ def release(tmp_path, monkeypatch):
     executable.chmod(0o700)
     bundle = package / "guard/contracts/data/extensions/command-pack-bundle"
     bundle.mkdir(parents=True)
-    monkeypatch.setattr(transport, "_NATIVE_PACKAGE", native_dir)
+    use_installed_native_source_compiler(monkeypatch, native_dir)
     monkeypatch.setattr(installed_bundle, "_package", lambda: package)
     original_version = transport.metadata.version
     current = {"version": "3.50.0a1"}

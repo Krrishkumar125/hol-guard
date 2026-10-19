@@ -75,40 +75,12 @@ def build_compatibility(source_root, compiled, native_root, store, *, compiler):
     return result
 
 
-def validate_core_defaults(source_root, policy, store):
-    """Keep every installed default in the reviewed resident core inventory."""
+def core_defaults_evidence(source_root):
+    """Read optional reviewed evidence; native code admits the selected defaults."""
     path = source_root / "contracts/extensions/core-defaults.v1.json"
     if not path.exists() and not path.is_symlink():
-        return  # Older source archives have no separate core representation.
-    value = packs.legacy.read_object(path, root=source_root)
-    if (
-        not isinstance(value, dict)
-        or set(value) != {"schema", "entries"}
-        or value["schema"] != "guard.core-defaults.v1"
-    ):
-        raise ValueError("reviewed core inventory is invalid")
-    rows = value["entries"]
-    if (
-        not isinstance(rows, list)
-        or not rows
-        or any(
-            not isinstance(row, dict)
-            or set(row) != {"extension_id", "source", "trust"}
-            or not isinstance(row["extension_id"], str)
-            or re.fullmatch(r"command\.[a-z0-9]+(?:[.-][a-z0-9]+)*", row["extension_id"]) is None
-            for row in rows
-        )
-    ):
-        raise ValueError("reviewed core inventory entries are invalid")
-    expected = {row["extension_id"] for row in rows}
-    defaults = policy["defaults"]
-    actual = (
-        {identity for identity, _ in entries(store, defaults["index"], defaults["count"])}
-        if defaults["count"]
-        else set()
-    )
-    if len(expected) != len(rows) or actual != expected:
-        raise ValueError("installed defaults differ from the reviewed resident core inventory")
+        return {}  # Older source archives have no separate core representation.
+    return {"core_defaults": packs.legacy.read_object(path, root=source_root)}
 
 
 def build(compiler, output, source_sha, *, source_root, assets_output=None, offline=False):
@@ -128,8 +100,9 @@ def build(compiler, output, source_sha, *, source_root, assets_output=None, offl
         plan = AssetPlan(asset_directory, source_sha, standalone_policy=not offline)
         store = LocatedStore(temporary / "metadata", publisher=plan)
         try:
-            policy = build_policy(compiled, native_root, plan, store)
-            validate_core_defaults(source_root, policy, store)
+            policy = build_policy(
+                compiled, native_root, plan, store, compiler=compiler, **core_defaults_evidence(source_root)
+            )
             epoch, revocations = build_revocations(source_root, store)
             policy["revocations"] = revocations
             compatibility = build_compatibility(source_root, compiled, native_root, store, compiler=compiler)

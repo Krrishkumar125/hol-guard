@@ -32,6 +32,7 @@ from codex_plugin_scanner.guard.catalog_delivery.located_store import LocatedSto
 from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import encoded
 from codex_plugin_scanner.guard.catalog_delivery.policy_lookup import lookup
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as native
+from tests.extension_builder_support import use_installed_native_source_compiler
 
 
 @pytest.fixture(scope="module")
@@ -93,7 +94,7 @@ def install(built, tmp_path, monkeypatch, *, require_runtime=True):
     # executable hashing, dependency selection and native admission are real.
     program = package / "base-program.json"
     program.write_bytes(encoded({"program_digest": "1" * 64}))
-    monkeypatch.setattr(native, "_NATIVE_PACKAGE", native_directory)
+    use_installed_native_source_compiler(monkeypatch, native_directory)
     monkeypatch.setattr(native, "_PACKAGED_PROGRAM", program)
     monkeypatch.setattr(installed_bundle, "_package", lambda: package)
     return installed_bundle.load_installed_bundle()
