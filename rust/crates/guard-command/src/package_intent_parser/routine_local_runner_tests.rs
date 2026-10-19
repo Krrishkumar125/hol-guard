@@ -1,8 +1,5 @@
-//! `_routine_local_runner_has_complete_evidence` parity: the shape the Python
-//! helper accepted, and every condition it refused on.
-//!
-//! Each case builds a real workspace on disk, because the verdict's last two
-//! steps are a containment check and a read of the manifests and lockfiles.
+//! The routine-runner verdict: the one shape it accepts, and every condition
+//! it refuses on.
 
 use std::fs;
 use std::path::Path;
@@ -19,7 +16,7 @@ fn write(path: &Path, body: &str) {
     fs::write(path, body).unwrap();
 }
 
-/// An eslint install the Python helper would have accepted: declared in
+/// An eslint install the verdict accepts: declared in
 /// `devDependencies`, installed under `node_modules`, pinned by one lockfile.
 fn workspace() -> TempDir {
     let dir = TempDir::new().unwrap();
@@ -431,4 +428,17 @@ fn the_installed_version_must_satisfy_the_declared_specifier() {
     let mut value = intent(root);
     value.local_executions[0].declared_version = Some("~9.0.0".to_owned());
     assert!(!routine_local_runner(&value));
+}
+
+#[test]
+fn a_file_past_the_read_limit_gives_no_text() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("package-lock.json");
+    write(&path, "{\"packages\": {}}");
+    let length = u64::try_from("{\"packages\": {}}".len()).unwrap();
+    assert!(super::routine_local_runner::read_bounded(&path, length).is_some());
+    assert!(super::routine_local_runner::read_bounded(&path, length - 1).is_none());
+    assert!(
+        super::routine_local_runner::read_bounded(&dir.path().join("missing"), length).is_none()
+    );
 }

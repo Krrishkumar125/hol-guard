@@ -1,11 +1,11 @@
-//! Rust port of `cli/commands_support_runtime_artifacts.py`'s
-//! `_routine_local_runner_has_complete_evidence` and its
-//! `_routine_local_runner_versions_match` helper — the decision that a routine
-//! JS runner invocation is already bound to local project state.
+//! The decision that a routine JS runner invocation is already bound to local
+//! project state. It was ported from the Python helpers
+//! `_routine_local_runner_has_complete_evidence` and
+//! `_routine_local_runner_versions_match`, which this port replaced.
 //!
-//! The caller used that verdict to suppress a package review artifact
-//! entirely, so it is authority, and it reached it by reading `package.json`,
-//! the installed package's own manifest and every lockfile from Python. The
+//! The caller uses that verdict to suppress a package review artifact
+//! entirely, so it is authority, and it depends on reading `package.json`,
+//! the installed package's own manifest and every lockfile. The
 //! parser already resolves and digests those files for the execution
 //! evidence, so the verdict is computed here, beside the reads it depends on,
 //! and travels with the intent instead of over a second round trip.
@@ -14,6 +14,9 @@
 //! the package root and the executable must canonicalize, and the two
 //! `strip_prefix` checks reject a package directory or a runner binary that a
 //! symlink moved outside the tree the evidence claims it is in.
+//!
+//! Every manifest and lockfile read is capped at `MAX_VERDICT_FILE_BYTES`; a
+//! larger file gives no verdict, so the review artifact stays.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -22,16 +25,16 @@ use super::*;
 use crate::direct_vitest::semver_spec_matches;
 use crate::jsonc::loads_jsonc;
 
-/// The runners whose local identity is worth establishing (:156).
+/// The runners whose local identity is worth establishing.
 const ROUTINE_RUNNERS: [&str; 4] = ["eslint", "jest", "tsc", "vitest"];
 
 /// Declared-version prefixes that name a source outside the registry, where a
-/// version string proves nothing about what is installed (:171-172).
+/// version string proves nothing about what is installed.
 const REMOTE_VERSION_PREFIXES: [&str; 6] =
     ["file:", "git+", "git://", "github:", "http:", "https:"];
 
 /// Whether this evidence row resolved to a readable file with a stable
-/// identity and content digest (:176-184).
+/// identity and content digest.
 fn complete(evidence: &PackageExecutionFileEvidence) -> bool {
     evidence.status == "available"
         && evidence.resolved_path.is_some()
@@ -39,7 +42,8 @@ fn complete(evidence: &PackageExecutionFileEvidence) -> bool {
         && evidence.content_hash.is_some()
 }
 
-/// `_routine_local_runner_has_complete_evidence` (:150).
+/// Whether a routine runner invocation is bound to the local project state
+/// its evidence names.
 pub(super) fn routine_local_runner(intent: &PackageIntent) -> bool {
     if !matches!(intent.package_manager.as_str(), "bunx" | "npx")
         || intent.local_executions.len() != 1
@@ -131,20 +135,38 @@ pub(super) fn routine_local_runner(intent: &PackageIntent) -> bool {
         )
 }
 
-/// A JSON object read from `path`, or `None` for any read, decode or shape
-/// failure — Python caught `OSError`, `UnicodeDecodeError` and
-/// `JSONDecodeError` alike and treated a non-mapping document the same way.
+/// The largest manifest or lockfile the verdict reads. The parser runs in
+/// the shared resident, so a file past this gets no verdict rather than a
+/// second unbounded read and parse.
+const MAX_VERDICT_FILE_BYTES: u64 = 32 * 1024 * 1024;
+
+/// `path` as UTF-8 text, or `None` when it cannot be read or is larger than
+/// `limit` bytes.
+pub(super) fn read_bounded(path: &Path, limit: u64) -> Option<String> {
+    let mut text = String::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(limit.saturating_add(1))
+        .read_to_string(&mut text)
+        .ok()?;
+    u64::try_from(text.len())
+        .is_ok_and(|length| length <= limit)
+        .then_some(text)
+}
+
+/// A JSON object read from `path`, or `None` for any read, decode, size or
+/// shape failure. A read error, invalid UTF-8, invalid JSON and a non-mapping
+/// document are all treated the same way.
 fn read_json_object(path: &Path) -> Option<Map<String, Value>> {
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = read_bounded(path, MAX_VERDICT_FILE_BYTES)?;
     match serde_json::from_str::<Value>(&text).ok()? {
         Value::Object(object) => Some(object),
         _ => None,
     }
 }
 
-/// `_routine_local_runner_versions_match` (:202). The declared dependency pin,
-/// the installed manifest and every lockfile must name one version, and that
-/// version must satisfy the pin.
+/// The declared dependency pin, the installed manifest and every lockfile
+/// must name one version, and that version must satisfy the pin.
 fn versions_match(
     workspace: &Path,
     package_name: &str,
@@ -186,7 +208,7 @@ fn versions_match(
             continue;
         };
         let path = Path::new(resolved);
-        let Ok(text) = std::fs::read_to_string(path) else {
+        let Some(text) = read_bounded(path, MAX_VERDICT_FILE_BYTES) else {
             return false;
         };
         let parsed = if path.file_name().and_then(|name| name.to_str()) == Some("bun.lock") {
