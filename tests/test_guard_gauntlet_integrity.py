@@ -534,8 +534,7 @@ def test_a_credential_handed_on_in_an_encoding_is_redacted_too():
 
     A model that pipes its environment through ``base64``, a client that logs a
     percent-encoded header, a tool that hex-escapes what it sends: each writes
-    bytes the bundle's reader can turn straight back into a live key. Redact
-    the spellings alongside the literal one.
+    bytes the bundle's reader can turn straight back into a live key.
     """
     import base64
     from urllib.parse import quote
@@ -543,7 +542,7 @@ def test_a_credential_handed_on_in_an_encoding_is_redacted_too():
     from ci.gauntlet.case_helpers import add_credential_redactions
 
     key = "sk-ant-not-a-real-key"
-    replacements: dict[str, str] = {}
+    replacements = {}
     add_credential_redactions(replacements, {"ANTHROPIC_API_KEY": key})
     raw = key.encode("utf-8")
     spellings = (
@@ -559,6 +558,59 @@ def test_a_credential_handed_on_in_an_encoding_is_redacted_too():
     redacted = str(redact_value(transcript, replacements))
     for spelling in spellings:
         assert spelling not in redacted, spelling
+    assert "<anthropic_api_key-redacted>" in redacted
+
+
+def test_a_credential_base64ed_mid_stream_and_wrapped_is_redacted():
+    """``env | base64`` is how a key really reaches a transcript, and it is neither aligned nor flat.
+
+    The key sits at whatever byte offset the dump puts it at, so its encoding
+    depends on the bytes around it, and ``base64`` breaks the result every 76
+    columns. Matching one unbroken, three-byte-aligned spelling leaves nearly
+    all of the key decodable in the published bundle.
+    """
+    import base64
+
+    from ci.gauntlet.case_helpers import add_credential_redactions
+
+    key = "sk-ant-api03-" + "aB3dE6gH9jK2mN5p" * 7
+    replacements = {}
+    add_credential_redactions(replacements, {"ANTHROPIC_API_KEY": key})
+    raw = key.encode("utf-8")
+    for prefix in (b"PATH=/usr/bin\nANTHROPIC_API_KEY=", b"x\nANTHROPIC_API_KEY=", b"xy\nANTHROPIC_API_KEY="):
+        stream = prefix + raw + b"\nHOME=/fixture/home\n"
+        wrapped = base64.encodebytes(stream).decode("ascii")
+        assert "\n" in wrapped.strip(), "the fixture stream is long enough to wrap"
+        # The groups made entirely of key bytes, as this stream really encodes
+        # them: nothing in them comes from a neighbour, so all of them must go.
+        flat = base64.b64encode(stream).decode("ascii")
+        offset = len(prefix)
+        interior = flat[-(-offset // 3) * 4 : ((offset + len(raw)) // 3) * 4]
+        assert len(interior) > 76 and interior in "".join(wrapped.split())
+        redacted = redact_value([{"output": wrapped}], replacements)[0]["output"]
+        assert interior not in "".join(redacted.split()), prefix
+        assert "<anthropic_api_key-redacted>" in redacted
+
+
+def test_a_credential_piped_through_base64_with_a_trailing_newline_is_redacted():
+    """``echo $KEY | base64`` encodes the key plus the newline ``echo`` added.
+
+    That trailing byte changes the final group, so neither the padded nor the
+    unpadded spelling of the key alone appears anywhere in the output.
+    """
+    import base64
+
+    from ci.gauntlet.case_helpers import add_credential_redactions
+
+    key = "sk-ant-api03-" + "aB3dE6gH9jK2mN5p" * 7
+    replacements = {}
+    add_credential_redactions(replacements, {"ANTHROPIC_API_KEY": key})
+    raw = key.encode("utf-8")
+    flat = base64.b64encode(raw + b"\n").decode("ascii")
+    assert base64.b64encode(raw).decode("ascii") not in flat, "the fixture key exercises the shifted tail"
+    redacted = redact_value([{"output": flat}], replacements)[0]["output"]
+    whole = flat[: (len(raw) // 3) * 4]
+    assert whole not in redacted
     assert "<anthropic_api_key-redacted>" in redacted
 
 
