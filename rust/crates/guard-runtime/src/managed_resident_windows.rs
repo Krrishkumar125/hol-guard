@@ -165,6 +165,9 @@ mod tests {
     const EOF_STARTED_ENV: &str = "HOL_GUARD_TEST_LIVENESS_EOF_STARTED";
     const ORPHAN_EOF_MARKER_ENV: &str = "HOL_GUARD_TEST_ORPHAN_EOF_MARKER";
     const ORPHAN_PARENT_ENV: &str = "HOL_GUARD_TEST_ORPHAN_PARENT";
+    // The supervisor claims its state scope before the spawn, and a scope is
+    // named by a full runtime digest.
+    const RUNTIME_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
     #[test]
     fn liveness_pipe_remains_open_while_child_runs_and_closes_after_wait() {
@@ -192,7 +195,7 @@ mod tests {
         // The test process stays alive, so only the supervisor's wait closes the pipe.
         let owner = ManagedOwner {
             state_base: &directory.join("state"),
-            digest: "0",
+            digest: RUNTIME_DIGEST,
             process_id: std::process::id(),
         };
         let result = supervise_managed_child(&executable, &arguments, &[0x5a; 32], &owner);
@@ -201,14 +204,17 @@ mod tests {
         env::remove_var(EOF_MARKER_ENV);
         env::remove_var(EOF_STARTED_ENV);
 
-        assert!(result.is_ok(), "supervisor child should exit successfully");
+        assert!(
+            result.is_ok(),
+            "supervisor child should exit successfully: {result:?}"
+        );
         assert!(child_marker.exists(), "child did not observe an open pipe");
         wait_for_marker(&eof_marker);
         assert!(eof_started.exists(), "EOF probe did not start");
         let _ = fs::remove_file(child_marker);
         let _ = fs::remove_file(eof_marker);
         let _ = fs::remove_file(eof_started);
-        let _ = fs::remove_dir(directory);
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -245,7 +251,7 @@ mod tests {
         // child must see EOF while it is still running, not after the idle timeout.
         let owner = ManagedOwner {
             state_base: &directory.join("missing-state"),
-            digest: "0",
+            digest: RUNTIME_DIGEST,
             process_id: owner_process_id,
         };
         let started = Instant::now();
@@ -253,11 +259,14 @@ mod tests {
         env::remove_var(ORPHAN_EOF_MARKER_ENV);
         env::remove_var(ORPHAN_PARENT_ENV);
 
-        assert!(result.is_ok(), "orphaned child did not see its pipe close");
+        assert!(
+            result.is_ok(),
+            "orphaned child did not see its pipe close: {result:?}"
+        );
         assert!(eof_marker.exists(), "orphaned child did not record EOF");
         assert!(started.elapsed() < Duration::from_secs(10));
         let _ = fs::remove_file(eof_marker);
-        let _ = fs::remove_dir(directory);
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]
