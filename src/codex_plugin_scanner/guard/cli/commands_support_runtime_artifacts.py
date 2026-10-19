@@ -289,28 +289,26 @@ def _hook_runtime_artifact_with_native(
     tool_name = _runtime_hook_tool_name(payload)
     tool_arguments = _runtime_hook_tool_arguments(payload)
     raw_command_text = _runtime_hook_raw_command_text(payload, action_envelope)
-    request = extract_sensitive_file_read_request(
+    source_scope = _coalesce_string(payload.get("source_scope"), "project")
+    config_path = str(_runtime_policy_path(harness, home_dir, workspace, payload=payload))
+    naming = {"harness": harness, "config_path": config_path, "source_scope": source_scope}
+    _read_request, read_artifact = extract_sensitive_file_read_request_artifact(
         tool_name,
         tool_arguments,
         cwd=workspace,
         home_dir=home_dir,
+        **naming,
     )
-    if request is None:
-        request = (
-            extract_sensitive_file_read_request_from_action(action_envelope, cwd=workspace, home_dir=home_dir)
-            if action_envelope is not None
-            else None
+    if read_artifact is None and action_envelope is not None:
+        _read_request, read_artifact = extract_sensitive_file_read_request_artifact_from_action(
+            action_envelope,
+            cwd=workspace,
+            home_dir=home_dir,
+            **naming,
         )
-    source_scope = _coalesce_string(payload.get("source_scope"), "project")
-    config_path = str(_runtime_policy_path(harness, home_dir, workspace, payload=payload))
-    if request is not None:
-        return build_file_read_request_artifact(
-            harness=harness,
-            request=request,
-            config_path=config_path,
-            source_scope=source_scope,
-        )
-    file_write_request = extract_sensitive_file_write_request(
+    if read_artifact is not None:
+        return read_artifact
+    _write_request, write_artifact = extract_sensitive_file_write_request_artifact(
         tool_name,
         tool_arguments,
         cwd=workspace,
@@ -320,14 +318,10 @@ def _hook_runtime_artifact_with_native(
             home_dir=home_dir,
             workspace=workspace,
         ),
+        **naming,
     )
-    if file_write_request is not None:
-        return build_file_write_request_artifact(
-            harness=harness,
-            request=file_write_request,
-            config_path=config_path,
-            source_scope=source_scope,
-        )
+    if write_artifact is not None:
+        return write_artifact
     package_intent = None
     if not _post_tool_package_request_was_already_evaluated(payload=payload, action_envelope=action_envelope):
         package_intent = extract_package_intent_request(
