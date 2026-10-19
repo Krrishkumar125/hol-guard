@@ -685,6 +685,7 @@ mod supply_chain_eval_seams;
 mod supply_chain_eval_transport;
 mod tool_action_identity_op;
 mod totp;
+mod verified_read_decision_op;
 #[cfg(windows)]
 mod windows_node_build;
 #[cfg(windows)]

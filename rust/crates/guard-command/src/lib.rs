@@ -873,3 +873,6 @@ pub mod supply_chain_bundle;
 pub mod supply_chain_package_identity;
 pub mod supply_chain_risk;
 pub mod supply_chain_support;
+pub mod verified_read_decision;
+#[cfg(test)]
+mod verified_read_decision_tests;

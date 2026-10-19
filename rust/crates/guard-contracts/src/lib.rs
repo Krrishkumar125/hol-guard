@@ -202,6 +202,8 @@ mod runtime_artifact_identity;
 pub use runtime_artifact_identity::*;
 mod tool_action_identity;
 pub use tool_action_identity::*;
+mod verified_read_decision;
+pub use verified_read_decision::*;
 
 pub const NATIVE_PROTOCOL_VERSION: u16 = 1;
 pub const GUARD_HOOK_ENVELOPE_V2_SCHEMA: &str = "guard-hook-envelope.v2";
