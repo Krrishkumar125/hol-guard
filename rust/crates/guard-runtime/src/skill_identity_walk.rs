@@ -91,24 +91,38 @@ pub(crate) type Structure = Vec<(String, EntryType, StatKey, Option<String>)>;
 /// property of the filesystem (hash order on ext4 and APFS), and the hashing
 /// pass stops at the first unsupported entry, so an unordered walk would
 /// account different bytes for the same tree on different machines. The
-/// original vectors were recorded in an order this reproduces. A directory
-/// with more children than the remaining entry budget fails before its names
-/// are buffered, since the walk could never finish inside the limit.
+/// original vectors were recorded in an order this reproduces.
+///
+/// Only the first `remaining + 1` children in that order are kept. The walk
+/// fails with `MaxEntriesExceeded` no later than that last kept child, so a
+/// later one is never visited, while the kept ones still go through the
+/// per-entry depth, name and collision checks in walk order: a directory with
+/// more children than the budget reports the same failure it would if every
+/// name were buffered, and holds at most twice the budget while reading.
 fn read_children(path: &Path, remaining: u64) -> Result<std::vec::IntoIter<fs::DirEntry>, Failure> {
     let directory = fs::read_dir(path).map_err(|error| match error.kind() {
         io::ErrorKind::NotFound => Failure::TreeChangedDuringHash,
         _ => Failure::UnreadableEntry,
     })?;
+    let keep = usize::try_from(remaining)
+        .unwrap_or(usize::MAX)
+        .saturating_add(1);
     let mut children = Vec::new();
     for child in directory {
         let child = child.map_err(|_| Failure::UnreadableEntry)?;
-        if children.len() as u64 >= remaining {
-            return Err(Failure::MaxEntriesExceeded);
+        children.push((Reverse(child.file_name()), child));
+        if children.len() >= keep.saturating_mul(2) {
+            children.sort_by(|left, right| left.0.cmp(&right.0));
+            children.truncate(keep);
         }
-        children.push(child);
     }
-    children.sort_by_cached_key(|child| Reverse(child.file_name()));
-    Ok(children.into_iter())
+    children.sort_by(|left, right| left.0.cmp(&right.0));
+    children.truncate(keep);
+    Ok(children
+        .into_iter()
+        .map(|(_, child)| child)
+        .collect::<Vec<_>>()
+        .into_iter())
 }
 
 struct Frame {
@@ -267,6 +281,28 @@ mod tests {
             let order: Vec<_> = entries.iter().map(|e| e.relative_path.as_str()).collect();
             assert_eq!(order, expected);
         }
+    }
+
+    #[test]
+    fn a_directory_past_the_entry_budget_keeps_the_per_entry_failure_order() {
+        // `sub` sits at the depth limit and holds more children than the
+        // budget has left. The first child it would visit is too deep, so the
+        // walk reports that, as it would if every name were buffered.
+        let limits = SkillDirectoryLimitsV1 {
+            max_depth: 1,
+            max_entries: 2,
+            max_file_bytes: 1024,
+            max_total_bytes: 4096,
+        };
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("sub")).unwrap();
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            fs::write(root.path().join("sub").join(name), b"x").unwrap();
+        }
+        assert_eq!(
+            collect_entries(root.path(), &limits).unwrap_err(),
+            Failure::MaxDepthExceeded
+        );
     }
 
     #[test]
