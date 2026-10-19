@@ -68,6 +68,18 @@ def test_gate_inventories_reachable_io_and_passes_current_sources() -> None:
         count for category, count in report["inventory_by_category"].items() if category.startswith("unclassified_")
     )
 
+    # The CLI hook command anchors the walk so that the two steps running ahead of any native
+    # call are inside the gate. Asserting the root itself is reachable would prove nothing --
+    # `_reachable_records` seeds itself from `ROOTS` -- so name the callees the root reaches.
+    reachable = {
+        (record.path, record.qualname) for record in MODULE._reachable_records(ROOT, MODULE._function_map(ROOT))
+    }
+    assert (
+        "src/codex_plugin_scanner/guard/runtime/harness_attribution.py",
+        "resolve_runtime_hook_harness",
+    ) in reachable
+    assert ("src/codex_plugin_scanner/guard/cli/commands_support_hook_payload.py", "_load_hook_payload") in reachable
+
 
 def test_gate_rejects_python_content_read_on_native_edge(tmp_path: Path) -> None:
     _copy_gate_sources(tmp_path)
@@ -202,17 +214,6 @@ def test_validation_reloads_sources_between_passes(tmp_path: Path, mutation: str
         edge.write_text(original.replace(marker, marker + '    open("new-secret.txt")\n', 1), encoding="utf-8")
         with pytest.raises(RuntimeError, match="reachable unclassified Python I/O"):
             MODULE.validate(tmp_path)
-
-
-def test_the_cli_hook_command_anchors_the_walk(tmp_path: Path) -> None:
-    """Harness resolution and payload loading run before any native call, so they are in scope."""
-    entry = "src/codex_plugin_scanner/guard/cli/commands_hook.py"
-    assert any(spec.path == entry and spec.name == "_run_guard_hook_command" for spec in MODULE.ROOTS)
-
-    _copy_gate_sources(tmp_path)
-    records = MODULE._function_map(tmp_path)
-    reachable = {(record.path, record.qualname) for record in MODULE._reachable_records(tmp_path, records)}
-    assert (entry, "_run_guard_hook_command") in reachable
 
 
 def test_the_hook_worker_branch_check_ignores_root_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
