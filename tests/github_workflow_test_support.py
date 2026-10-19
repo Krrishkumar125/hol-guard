@@ -116,11 +116,14 @@ def native_lineage_verified(monkeypatch: pytest.MonkeyPatch) -> None:
         record = runtime_module.approval_record_from_approval_request(approval_request)
         if record is None:
             return None
+        request_id = str(approval_request["request_id"])
         return GitHubWorkflowLineage(
-            request_id=str(approval_request["request_id"]),
+            request_id=request_id,
             operation_id=str(operation["operation_id"]),
             session_id=str(session["session_id"]),
             record=record,
+            capability_id=f"gwc-{framed_digest('github-workflow-capability', request_id)}",
+            nonce=framed_digest("github-workflow-nonce", request_id),
         )
 
     monkeypatch.setattr(runtime_module, "github_workflow_validated_lineage", verified)
