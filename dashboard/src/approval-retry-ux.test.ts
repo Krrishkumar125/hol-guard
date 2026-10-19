@@ -79,6 +79,27 @@ const otherGit = nativeBashRequest("33333333333333333333333333333333", gitChain,
 // #3838: approval copy never promises a retry the daemon cannot match.
 assert(retryCannotReuseApproval(unbound), "unbound native review is flagged as not reusable");
 assert(!retryCannotReuseApproval(bound), "bound native review is not flagged");
+for (const item of [
+  normalizeApprovalRequest({ ...unbound, once_only_reason: "script_execution_binding_unavailable" } as never),
+  { ...unbound, once_only_reason: "script_execution_binding_unavailable", exact_action_persistence_eligible: true },
+  { ...bound, once_only_reason: "script_execution_binding_unavailable", exact_action_persistence_eligible: true },
+]) {
+  assert(retryCannotReuseApproval(item), "script delivery refusal wins even without a retry restriction");
+  for (const copy of [retryCannotReuseApprovalHint(item, "Oh My Pi"), retryBlockedApprovalCopy(item, "Oh My Pi")]) {
+    assert(copy.includes("verified snapshot"), "script delivery advice identifies the execution limitation");
+    assert(!/older version|run the command again|new request offers|Always allow exact action/.test(copy),
+      "an unbound script does not receive a legacy retry or persistence promise");
+  }
+  assert(!requestSupportsScope(item, "allow", "artifact"), "stale eligibility cannot allow unbound scripts");
+  assert(requestSupportsScope(item, "block", "artifact"), "script delivery refusal preserves Keep blocked");
+  for (const persistExactAction of [false, true]) {
+    let rejected = false;
+    try {
+      buildDecisionPayload({ item, action: "allow", scope: "artifact", reason: "test", persistExactAction });
+    } catch { rejected = true; }
+    assert(rejected, "both approval durations reject a stale unbound script request");
+  }
+}
 const unboundCopy = buildRetryAfterApprovalCopy(unbound, "allow");
 assert(!unboundCopy.includes("within 15 minutes"), "unbound approval copy drops the retry window");
 assert(unboundCopy.includes("run the command again"), "unbound approval copy sends the agent's retry to a fresh request");

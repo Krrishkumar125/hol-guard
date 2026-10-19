@@ -116,6 +116,9 @@ function declaredScopesForAction(
   item: GuardApprovalRequest,
   action: ApprovalResolutionAction,
 ): DecisionScope[] | null {
+  if (action === "allow" && item.once_only_reason === "script_execution_binding_unavailable") {
+    return [];
+  }
   if (action === "allow" && item.scope_restrictions?.includes("retry_cannot_reuse_approval") &&
       item.exact_action_persistence_eligible !== true) {
     return [];

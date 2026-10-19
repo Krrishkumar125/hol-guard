@@ -24,7 +24,7 @@ const SCOPED_APPROVAL_FAMILIES: [&str; 8] = [
     "prompt-file",
     "tool-action",
 ];
-const ONCE_ONLY_REASONS: [&str; 11] = [
+const ONCE_ONLY_REASONS: [&str; 12] = [
     "no_command_identity",
     "mutable_launcher",
     "compound_command",
@@ -36,6 +36,7 @@ const ONCE_ONLY_REASONS: [&str; 11] = [
     "broad_scope",
     "destructive_command",
     "git_helper_config",
+    "script_execution_binding_unavailable",
 ];
 const GITHUB_WORKFLOW_RECORD_SOURCE: &str = "github_workflow_approval_record";
 
