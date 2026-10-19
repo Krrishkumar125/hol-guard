@@ -218,11 +218,18 @@ pub(super) fn evaluate(
     let metadata = match projection["version"].as_u64() {
         Some(1) => None,
         Some(2) => {
+            // A caller that observed a delivery envelope binds its catalog
+            // digest here. An absent key means no envelope accompanied this
+            // document; a null one means the envelope carried no usable digest.
+            let delivery = request
+                .get("delivery_catalog_digest")
+                .map(|value| value.as_str() == Some(digest));
             if request["cloud_view"]["observation"]["enforcement_catalog_digest"] != digest
                 || request
                     .get("enforcement_catalog_digest")
                     .and_then(Value::as_str)
                     != Some(digest)
+                || delivery == Some(false)
             {
                 return Err("policy_enforcement_digest_mismatch");
             }

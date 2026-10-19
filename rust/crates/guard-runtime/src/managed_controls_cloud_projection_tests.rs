@@ -241,6 +241,29 @@ fn native_complete_view_last_page_proof_growth_and_metadata_binding() {
 }
 
 #[test]
+fn native_delivery_catalog_digest_binds_the_enforcement_identity() {
+    let home = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let request = request(prepared(home.path(), 166, "Selected protection"));
+    let mut bound = request.clone();
+    bound["delivery_catalog_digest"] = json!("a".repeat(64));
+    assert!(
+        run(&bound).get("error").is_none(),
+        "a delivery envelope cut against this enforcement identity was refused"
+    );
+    for substituted in [json!("b".repeat(64)), Value::Null, json!(1)] {
+        let mut mismatched = request.clone();
+        mismatched["delivery_catalog_digest"] = substituted.clone();
+        assert_eq!(
+            run(&mismatched)["error"]["code"],
+            "policy_enforcement_digest_mismatch",
+            "{substituted}"
+        );
+    }
+    // An absent key means no delivery envelope accompanied this document.
+    assert!(run(&request).get("error").is_none());
+}
+
+#[test]
 fn native_v2_delivery_and_ack_round_trip_binds_enforcement_identity() {
     use crate::policy_bundle_delivery::{ack_payload, validate_delivery, AckRequest};
     let projected = proof(&parsed(), &"a".repeat(64), Some(&metadata())).unwrap();

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from .managed_controls_policy_fields import (
+    _UNBOUND,
     ManagedControlsPolicyError,
     ParsedManagedControlsPolicy,
     _without_extension_fields,
@@ -170,6 +171,7 @@ def parsed_managed_controls_from_validated_policy_bundle(
     package_firewall_supported: bool = False,
     guard_home: Path | None = None,
     runtime_summary: dict[str, object] | None = None,
+    delivery_catalog_digest: object = _UNBOUND,
 ):
     """Parse Extension semantics from an already authenticated v2 envelope."""
 
@@ -208,6 +210,7 @@ def parsed_managed_controls_from_validated_policy_bundle(
         package_firewall_supported=package_firewall_supported,
         guard_home=guard_home,
         cloud_view=cloud_view,
+        delivery_catalog_digest=delivery_catalog_digest,
     )
 
 

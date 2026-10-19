@@ -90,6 +90,10 @@ class ParsedManagedControlsPolicy:
         )
 
 
+_UNBOUND: Final = object()
+"""Marks a parse request that no policy delivery envelope accompanied."""
+
+
 def is_mapping(value: object) -> TypeGuard[dict[str, object]]:
     """Return whether a value is a string-keyed object."""
 
@@ -106,6 +110,7 @@ def parse_managed_controls_policy_fields(
     package_firewall_supported: bool = False,
     guard_home: Path | None = None,
     cloud_view: dict[str, object] | None = None,
+    delivery_catalog_digest: object = _UNBOUND,
 ) -> ParsedManagedControlsPolicy:
     """Parse signed policy Extension fields after envelope authenticity is established."""
 
@@ -131,6 +136,10 @@ def parse_managed_controls_policy_fields(
                 "projection": {"version": 2, "catalog_digest": registry.catalog_digest},
             }
         )
+        if delivery_catalog_digest is not _UNBOUND:
+            # A caller that observed a delivery envelope reports its catalog
+            # digest here; the native parse refuses an identity it did not cut.
+            request["delivery_catalog_digest"] = delivery_catalog_digest
     result = native_context_digest(
         "managed_controls_policy_fields",
         {"request": request},

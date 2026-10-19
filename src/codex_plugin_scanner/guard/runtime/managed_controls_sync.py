@@ -44,18 +44,6 @@ def _registry_for_home(guard_home):
     return current_catalog_registry(GuardStore(guard_home))
 
 
-def _registry_for_policy(policy_bundle, guard_home):
-    from ..managed_controls_policy_fields import _without_extension_fields
-
-    document = policy_bundle.get("payload")
-    if isinstance(document, dict) and _without_extension_fields(document):
-        # No Extension identity is consumed or advertised on this legacy path.
-        from .command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
-
-        return BUILT_IN_COMMAND_EXTENSION_REGISTRY
-    return _registry_for_home(guard_home)
-
-
 def effective_managed_controls_for_activation(
     store: GuardStore,
     activation_bundle: dict[str, object],
@@ -143,20 +131,19 @@ def validated_managed_controls_candidate(
     is_v2 = policy_bundle is not None and policy_bundle.get("contractVersion") == POLICY_BUNDLE_V2_CONTRACT
     if not is_v2 or policy_bundle is None:
         return policy_bundle, None, None, None, False
+    delivery_catalog_digest = delivery_payload.get("catalogDigest") if isinstance(delivery_payload, dict) else None
     try:
         parsed = parsed_managed_controls_from_validated_policy_bundle(
             policy_bundle,
-            registry=registry if registry is not None else _registry_for_policy(policy_bundle, guard_home),
+            registry=registry if registry is not None else _registry_for_home(guard_home),
             negotiated_capabilities=negotiated_capabilities,
             guard_home=guard_home,
             runtime_summary=runtime_summary if isinstance(runtime_summary, dict) else None,
+            delivery_catalog_digest=delivery_catalog_digest,
         )
     except ManagedControlsPolicyError as error:
         return None, None, None, error.code, True
     candidate = parsed if parsed.has_extension_semantics else None
-    delivery_catalog_digest = delivery_payload.get("catalogDigest") if isinstance(delivery_payload, dict) else None
-    if parsed.cloud_enforcement_digest is not None and delivery_catalog_digest != parsed.cloud_enforcement_digest:
-        return None, None, None, "policy_enforcement_digest_mismatch", True
     delivery, error = validated_managed_policy_delivery(
         policy_bundle=policy_bundle,
         delivery_field_provided=delivery_field_provided,
