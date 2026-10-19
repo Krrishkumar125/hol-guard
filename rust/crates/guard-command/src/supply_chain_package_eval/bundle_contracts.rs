@@ -52,12 +52,16 @@ pub trait SupplyChainBundleApi {
     ) -> EvalResult<SupplyChainBundleResponse>;
     /// Parsing a stored response is not proof that its cached verdict is current.
     /// Use the native signature/key-state/freshness verifier and paired scope.
+    /// The boolean reports a matching recorded sync keyring, not a new trust
+    /// root. Missing sync context cannot establish a permissive cache hit.
     fn validate_cached_supply_chain_bundle(
         &self,
         response: &SupplyChainBundleResponse,
         workspace_id: &str,
         now: Option<f64>,
-    ) -> EvalResult<()> {
+        sync_keyring: Option<&Value>,
+        synced_bundle_version: Option<&str>,
+    ) -> EvalResult<bool> {
         let decoded;
         let typed = match response.parsed.as_deref() {
             Some(typed) => typed,
@@ -74,14 +78,64 @@ pub trait SupplyChainBundleApi {
                 "Cached bundle belongs to another workspace".into(),
             ));
         }
+        if sync_keyring.is_some_and(|payload| {
+            payload.get("workspace_id").and_then(Value::as_str) != Some(workspace_id)
+        }) {
+            return Err(EvalError::Validation(
+                "Cached keyring belongs to another workspace".into(),
+            ));
+        }
+        let keys = crate::supply_chain_bundle::load_supply_chain_verification_keys(sync_keyring)
+            .map_err(|error| EvalError::Validation(error.to_string()))?;
+        if sync_keyring.is_some() && keys.is_empty() {
+            return Err(EvalError::Validation("Cached sync keyring is empty".into()));
+        }
         crate::supply_chain_bundle::verify_supply_chain_bundle_response(
             typed,
-            None,
-            None,
+            (!keys.is_empty()).then_some(keys.as_slice()),
+            synced_bundle_version,
             now,
             &crate::supply_chain_bundle::RingRsaPssVerify,
         )
-        .map_err(|error| EvalError::Validation(error.to_string()))
+        .map_err(|error| EvalError::Validation(error.to_string()))?;
+        if !keys.is_empty() {
+            let signer = typed
+                .verification_keys
+                .iter()
+                .find(|key| key.key_id == typed.bundle.key_id)
+                .ok_or_else(|| EvalError::Validation("Cached signing key is missing".into()))?;
+            // The response can advertise an old active key after the synced
+            // keyring revoked it. Both views must permit the signing key.
+            // The verifier already requires a matching fingerprint. Inspect
+            // every matching entry so an active alias cannot hide revocation.
+            for current in keys
+                .iter()
+                .filter(|key| key.fingerprint_sha256 == signer.fingerprint_sha256)
+            {
+                let usable = match current.state.as_str() {
+                    "active" => true,
+                    "grace" => {
+                        let clock = now.or_else(|| {
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .ok()
+                                .map(|time| time.as_secs_f64())
+                        });
+                        let until = current
+                            .valid_until_timestamp()
+                            .map_err(|error| EvalError::Validation(error.to_string()))?;
+                        matches!((clock, until), (Some(clock), Some(until)) if clock <= until)
+                    }
+                    _ => false,
+                };
+                if !usable {
+                    return Err(EvalError::Validation(
+                        "Synced signing key is not current".into(),
+                    ));
+                }
+            }
+        }
+        Ok(!keys.is_empty())
     }
     /// `check_supply_chain_bundle_freshness(bundle, now=)` (:114). `now` is
     /// epoch seconds (`None` = wall clock). `EvalError::Validation` maps

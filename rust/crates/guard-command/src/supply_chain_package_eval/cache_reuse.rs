@@ -43,14 +43,19 @@ impl CacheContext<'_, '_> {
                 ))),
             };
         }
-        if self
-            .deps
-            .bundle
-            .validate_cached_supply_chain_bundle(self.bundle, self.workspace_id, self.now)
-            .is_err()
-        {
+        let sync_keyring = self.store.get_sync_payload("supply_chain_bundle_keyring");
+        let Ok(synced_version) = self.synced_bundle_version() else {
             return Ok(None);
-        }
+        };
+        let Ok(has_sync_keyring) = self.deps.bundle.validate_cached_supply_chain_bundle(
+            self.bundle,
+            self.workspace_id,
+            self.now,
+            sync_keyring.as_ref(),
+            synced_version.as_deref(),
+        ) else {
+            return Ok(None);
+        };
         let Some(resolved_targets) = self.locally_resolved_targets() else {
             return Ok(None);
         };
@@ -77,7 +82,9 @@ impl CacheContext<'_, '_> {
             return Ok(None);
         }
         let account_current = self.account_authority_current();
-        if draft.decision != "block" && !account_current {
+        if draft.decision != "block"
+            && (!account_current || !has_sync_keyring || synced_version.is_none())
+        {
             return Ok(None);
         }
         if !account_current {
@@ -90,6 +97,21 @@ impl CacheContext<'_, '_> {
         let mut result = finalize_evaluation(self.deps, &draft, self.intent_hash, self.fingerprint);
         result.cache_status = "hit".into();
         Ok(Some(result))
+    }
+
+    fn synced_bundle_version(&self) -> Result<Option<String>, ()> {
+        let Some(payload) = self
+            .store
+            .get_sync_payload("supply_chain_bundle_entitlement")
+        else {
+            return Ok(None);
+        };
+        if payload.get("workspace_id").and_then(Value::as_str) != Some(self.workspace_id) {
+            return Err(());
+        }
+        optional_string(payload.get("bundle_version"))
+            .map(Some)
+            .ok_or(())
     }
 
     fn locally_resolved_targets(&self) -> Option<Vec<Map<String, Value>>> {

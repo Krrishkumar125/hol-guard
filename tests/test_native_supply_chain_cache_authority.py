@@ -81,3 +81,109 @@ def test_native_cache_reconstructs_current_authority(native_context_digest, tmp_
             assert result.enforcement != "offline_cached"
     finally:
         close_native_residents(guard_home=home)
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "control",
+        "missing-keyring",
+        "keyring-mismatch",
+        "foreign-keyring",
+        "foreign-floor",
+        "newer-floor",
+        "revoked-key",
+        "expired-grace",
+        "missing-floor",
+        "current-grace",
+    ],
+)
+def test_native_cache_honors_synced_context(native_context_digest, tmp_path: Path, monkeypatch, variant: str) -> None:
+    del native_context_digest
+    from codex_plugin_scanner.guard import native_supply_chain_egress
+
+    case = copy.deepcopy(next(case for case in VECTORS["cases"] if case["name"] == "offline_bundle_allow_exception"))
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    home = tmp_path / "home"
+    store = GuardStore(home)
+    row = case["rows"]["guard_supply_chain_bundle_cache"][0]
+    bundle = json.loads(row["response_json"])
+    keyring = {"workspace_id": row["workspace_id"], "keys": bundle["verificationKeys"]}
+    floor = {"workspace_id": row["workspace_id"], "bundle_version": row["bundle_version"]}
+    if variant == "keyring-mismatch":
+        keyring["keys"][0]["fingerprintSha256"] = "f" * 64
+    elif variant in {"revoked-key", "expired-grace", "current-grace"}:
+        keyring["keys"][0]["state"] = "revoked" if variant == "revoked-key" else "grace"
+        keyring["keys"][0]["validUntil"] = (
+            "2027-01-01T00:00:00Z" if variant == "current-grace" else "2020-01-01T00:00:00Z"
+        )
+    elif variant == "foreign-keyring":
+        keyring["workspace_id"] = "other-fixture-workspace"
+    elif variant == "foreign-floor":
+        floor["workspace_id"] = "other-fixture-workspace"
+    elif variant == "newer-floor":
+        floor["bundle_version"] = "1747612800001-newer"
+    missing_key = {
+        "missing-keyring": "supply_chain_bundle_keyring",
+        "missing-floor": "supply_chain_bundle_entitlement",
+    }.get(variant)
+    for key, payload in [("supply_chain_bundle_keyring", keyring), ("supply_chain_bundle_entitlement", floor)]:
+        if key == missing_key:
+            continue
+        case["rows"]["sync_state"].append(
+            {"state_key": key, "payload_json": json.dumps(payload), "updated_at": VECTORS["now"]}
+        )
+    cached = {**case["expect"], "decision": "allow", "policy_action": "allow", "risk_summary": "unverified cached text"}
+    case["rows"]["guard_supply_chain_eval_cache"] = [
+        {
+            **{
+                key: row[key]
+                for key in ["workspace_id", "bundle_version", "feed_snapshot_hash", "policy_hash", "scoring_version"]
+            },
+            "package_intent_hash": case["artifact"]["artifact_id"].rsplit(":", 1)[-1],
+            "decision_json": json.dumps(cached),
+            "updated_at": VECTORS["now"],
+        }
+    ]
+    _seed_rows(home / "guard.db", case["rows"])
+    monkeypatch.setenv(
+        "HOL_GUARD_TEST_SYNC_AUTH_CONTEXT_JSON",
+        json.dumps(
+            {
+                "access_token": "fixture-only-token",
+                "sync_url": "https://hol.org/api/guard/receipts/sync",
+            }
+        ),
+    )
+    monkeypatch.setenv(
+        "HOL_GUARD_TEST_PACKAGE_ENTITLEMENT_JSON", json.dumps({"allowed": True, "reason": "fixture_entitled"})
+    )
+    exchanges = []
+
+    def cloud_is_offline(need):
+        assert need["method"] == "POST"
+        assert need["url"].startswith("https://hol.org/api/guard/supply-chain/evaluate?")
+        exchanges.append(need["url"])
+        return {"kind": "error", "message": "fixture Cloud is offline"}
+
+    monkeypatch.setattr(native_supply_chain_egress, "_fetch_raw", cloud_is_offline)
+    try:
+        result = evaluate_package_request_artifact(
+            artifact=_artifact(case["targets"], case["lockfile_paths"]),
+            store=store,
+            workspace_dir=workspace,
+            now=VECTORS["now"],
+        )
+        assert not any(reason["code"] == "native_supply_chain_eval_unavailable" for reason in result.reasons)
+        assert result.risk_summary != "unverified cached text"
+        if variant in {"control", "current-grace"}:
+            assert result.decision == "allow"
+            assert result.cache_status == "hit"
+            assert not exchanges
+        else:
+            assert result.decision != "allow"
+            assert result.cache_status != "hit"
+            assert exchanges, "the rejected cache must fall through to the current evaluator"
+    finally:
+        close_native_residents(guard_home=home)

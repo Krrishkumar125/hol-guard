@@ -68,6 +68,58 @@ fn attach_allow_cache(case: &mut Value) {
     changed_cache(case);
 }
 
+fn seed_sync_context(case: &mut Value) {
+    let row = &case["rows"]["guard_supply_chain_bundle_cache"][0];
+    let response: Value = serde_json::from_str(row["response_json"].as_str().unwrap()).unwrap();
+    let entries = [
+        (
+            "supply_chain_bundle_keyring",
+            json!({
+                "workspace_id": row["workspace_id"], "keys": response["verificationKeys"]
+            }),
+        ),
+        (
+            "supply_chain_bundle_entitlement",
+            json!({
+                "workspace_id": row["workspace_id"], "bundle_version": row["bundle_version"]
+            }),
+        ),
+    ];
+    for (key, value) in entries {
+        case["rows"]["sync_state"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "state_key": key, "payload_json": serde_json::to_string(&value).unwrap(),
+                "updated_at": "2026-05-19T00:00:00Z"
+            }));
+    }
+}
+
+fn edit_sync_context(case: &mut Value, state_key: &str, edit: impl FnOnce(&mut Value)) {
+    let row = case["rows"]["sync_state"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|row| row["state_key"] == state_key)
+        .unwrap();
+    let mut payload: Value = serde_json::from_str(row["payload_json"].as_str().unwrap()).unwrap();
+    edit(&mut payload);
+    row["payload_json"] = json!(serde_json::to_string(&payload).unwrap());
+}
+
+fn current_cached_allow() -> (Value, Value) {
+    let (vectors, mut case) = fixture_named("offline_bundle_allow_exception");
+    attach_allow_cache(&mut case);
+    case["auth_context_override"] = json!({
+        "access_token": "fixture-only-token", "sync_url": "https://hol.org/api/guard/receipts/sync"
+    });
+    case["entitlement"] = json!({"allowed": true, "reason": "fixture_entitled"});
+    case["offline_egress_error"] = json!("fixture Cloud is offline");
+    seed_sync_context(&mut case);
+    (vectors, case)
+}
+
 fn changed_cache(case: &mut Value) {
     let row = &mut case["rows"]["guard_supply_chain_eval_cache"][0];
     let mut decision: Value = serde_json::from_str(row["decision_json"].as_str().unwrap()).unwrap();
@@ -214,17 +266,118 @@ fn cache_authority_missing_current_session_cannot_promote_cached_signed_allow() 
 
 #[test]
 fn cache_authority_current_session_and_feature_can_reuse_signed_allow_without_egress() {
-    let (vectors, mut case) = fixture_named("offline_bundle_allow_exception");
-    attach_allow_cache(&mut case);
-    case["auth_context_override"] = json!({
-        "access_token": "fixture-only-token", "sync_url": "https://hol.org/api/guard/receipts/sync"
-    });
-    case["entitlement"] = json!({"allowed": true, "reason": "fixture_entitled"});
+    let (vectors, case) = current_cached_allow();
     let result = evaluate(&vectors, &case);
     assert_eq!(result["decision"], "allow");
     assert_eq!(result["cache_status"], "hit");
     assert_eq!(result["entitlement_state"], "premium");
     assert_ne!(result["risk_summary"], "unverified cached text");
+}
+
+#[test]
+fn cache_authority_current_keyring_mismatch_cannot_reuse_a_permissive_verdict() {
+    let (vectors, mut case) = current_cached_allow();
+    edit_sync_context(&mut case, "supply_chain_bundle_keyring", |payload| {
+        payload["keys"][0]["fingerprintSha256"] = json!("f".repeat(64));
+    });
+    let result = evaluate(&vectors, &case);
+    assert_ne!(result["decision"], "allow");
+    assert_ne!(result["cache_status"], "hit");
+}
+
+#[test]
+fn cache_authority_newer_synced_version_cannot_replay_an_older_allow() {
+    let (vectors, mut case) = current_cached_allow();
+    edit_sync_context(&mut case, "supply_chain_bundle_entitlement", |payload| {
+        payload["bundle_version"] = json!("1747612800001-newer");
+    });
+    let result = evaluate(&vectors, &case);
+    assert_ne!(result["decision"], "allow");
+    assert_ne!(result["cache_status"], "hit");
+}
+
+#[test]
+fn cache_authority_foreign_sync_context_cannot_replay_a_permissive_verdict() {
+    for state_key in [
+        "supply_chain_bundle_keyring",
+        "supply_chain_bundle_entitlement",
+    ] {
+        let (vectors, mut case) = current_cached_allow();
+        edit_sync_context(&mut case, state_key, |payload| {
+            payload["workspace_id"] = json!("other-fixture-workspace");
+        });
+        let result = evaluate(&vectors, &case);
+        assert_ne!(result["decision"], "allow", "{state_key}");
+        assert_ne!(result["cache_status"], "hit", "{state_key}");
+    }
+}
+
+#[test]
+fn cache_authority_missing_sync_keyring_cannot_establish_a_permissive_cache_hit() {
+    let (vectors, mut case) = current_cached_allow();
+    case["rows"]["sync_state"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|row| row["state_key"] != "supply_chain_bundle_keyring");
+    let result = evaluate(&vectors, &case);
+    assert_ne!(result["decision"], "allow");
+    assert_ne!(result["cache_status"], "hit");
+}
+
+#[test]
+fn cache_authority_current_key_state_cannot_be_laundered_by_an_old_active_advertisement() {
+    for (state, until) in [
+        ("revoked", None),
+        ("grace", Some("2020-01-01T00:00:00Z")),
+        ("grace", None),
+    ] {
+        let (vectors, mut case) = current_cached_allow();
+        edit_sync_context(&mut case, "supply_chain_bundle_keyring", |payload| {
+            payload["keys"][0]["state"] = json!(state);
+            payload["keys"][0]["validUntil"] = json!(until);
+        });
+        let result = evaluate(&vectors, &case);
+        assert_ne!(result["decision"], "allow", "{state} {until:?}");
+        assert_ne!(result["cache_status"], "hit", "{state} {until:?}");
+    }
+}
+
+#[test]
+fn cache_authority_current_grace_key_retains_a_verified_cache_hit() {
+    let (vectors, mut case) = current_cached_allow();
+    edit_sync_context(&mut case, "supply_chain_bundle_keyring", |payload| {
+        payload["keys"][0]["state"] = json!("grace");
+        payload["keys"][0]["validUntil"] = json!("2027-01-01T00:00:00Z");
+    });
+    let result = evaluate(&vectors, &case);
+    assert_eq!(result["decision"], "allow");
+    assert_eq!(result["cache_status"], "hit");
+}
+
+#[test]
+fn cache_authority_active_alias_cannot_hide_a_current_revocation() {
+    let (vectors, mut case) = current_cached_allow();
+    edit_sync_context(&mut case, "supply_chain_bundle_keyring", |payload| {
+        let mut revoked = payload["keys"][0].clone();
+        revoked["keyId"] = json!("fixture-revoked-alias");
+        revoked["state"] = json!("revoked");
+        payload["keys"].as_array_mut().unwrap().push(revoked);
+    });
+    let result = evaluate(&vectors, &case);
+    assert_ne!(result["decision"], "allow");
+    assert_ne!(result["cache_status"], "hit");
+}
+
+#[test]
+fn cache_authority_missing_sync_version_cannot_establish_a_permissive_cache_hit() {
+    let (vectors, mut case) = current_cached_allow();
+    case["rows"]["sync_state"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|row| row["state_key"] != "supply_chain_bundle_entitlement");
+    let result = evaluate(&vectors, &case);
+    assert_ne!(result["decision"], "allow");
+    assert_ne!(result["cache_status"], "hit");
 }
 
 #[test]
