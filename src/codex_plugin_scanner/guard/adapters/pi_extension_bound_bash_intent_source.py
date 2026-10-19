@@ -44,6 +44,24 @@ BOUND_BASH_INTENT_SOURCE = r"""
           typeof data.intent_id === "string" && /^[0-9a-f]{64}$/.test(data.intent_id)
           ? data.intent_id : null;
       }
+      // OMP print mode records its initial user turn but emits no `input`.
+      // Later sendUserMessage calls can also default to attribution:user;
+      // they must not mint a new intent or override an observed input marker.
+      // Once history exceeds the inspection bound, absence of a recent marker
+      // cannot prove that no older observed user intent exists.
+      if ((boundBashHarness as string) === "omp" && branch.length <= 4096) {
+        const getSessionId = manager && Reflect.get(manager, "getSessionId");
+        if (typeof getSessionId !== "function" || getSessionId.call(manager) !== session) return null;
+        for (let index = 0; index < Math.min(branch.length, 4096); index += 1) {
+          const entry = branch[index];
+          if (entry?.type !== "message" || entry.message?.role !== "user" ||
+              entry.message.attribution !== "user") continue;
+          if (typeof entry.id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(entry.id)) return null;
+          return createHash("sha256").update(JSON.stringify({
+            schema: "guard-bash-host-user-intent.v1", harness: "omp", session, entry_id: entry.id,
+          }), "utf8").digest("hex");
+        }
+      }
     } catch { return null; }
     return null;
   }

@@ -67,7 +67,7 @@ def is_review_row(row: dict[str, Any]) -> bool:
 
 
 class ReviewApprover:
-    """Grant each review row the run creates, as an operator watching the approval UI does.
+    """Resolve lane-owned reviews; Bash lifecycles grant only their staged script.
 
     The grant goes through ``apply_approval_resolution`` with the arguments the daemon's own
     resolve route sends: action ``allow`` and scope ``artifact``. Lifecycle cases explicitly
@@ -169,12 +169,16 @@ class ReviewApprover:
     def _grant(self, row: dict[str, Any], target: str) -> None:
         from codex_plugin_scanner.guard.approvals import apply_approval_resolution
 
-        from .approval_retry_bash import plan, targets_script
+        from .approval_retry_bash import SCRIPT_RELATIVE, plan, targets_script
 
         request_id = str(row.get("request_id") or "")
         lifecycle = plan(self._scenario_id or "")
-        lifecycle_target = lifecycle is not None and targets_script(target)
-        if lifecycle is not None and lifecycle_target and self._target_grants >= lifecycle.max_target_grants:
+        lifecycle_target = (
+            lifecycle is not None
+            and targets_script(target)
+            and Path(shlex.split(target)[1]) == Path(self._workspace) / SCRIPT_RELATIVE
+        )
+        if lifecycle is not None and (not lifecycle_target or self._target_grants >= lifecycle.max_target_grants):
             active = self._active_target_operations()
             artifact_hash = row.get("artifact_hash") if isinstance(row.get("artifact_hash"), str) else None
             with self._lock:
@@ -185,7 +189,7 @@ class ReviewApprover:
                         "artifact_hash": artifact_hash,
                     }
                 )
-                if lifecycle.require_once_contention and active is not None and active > 0:
+                if lifecycle_target and lifecycle.require_once_contention and active is not None and active > 0:
                     self._max_active_operations = max(self._max_active_operations, active)
                     self._lifecycle["once_contention_observed"] = True
             return
@@ -290,12 +294,7 @@ def _names_a_path(word: str) -> bool:
     apart ("status", "config", "run") does. Judged on the word's shape rather than on a
     list of programs, so a program this lane has never run is read the same way.
     """
-    return (
-        word in {".", ".."}
-        or word.startswith(("/", "./", "../", "~", "."))
-        or "/" in word
-        or "." in word
-    )
+    return word in {".", ".."} or word.startswith(("/", "./", "../", "~", ".")) or "/" in word or "." in word
 
 
 def action_key(command: str) -> tuple[str, ...]:

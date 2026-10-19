@@ -374,7 +374,7 @@ def test_lifecycle_approver_uses_one_real_once_resolution_and_withholds_the_dupl
     approver = ReviewApprover(
         object(),
         known_ids=set(),
-        workspace=tmp_path,
+        workspace=Path("/fixture"),
         scenario_id=ONCE_CASE,
     )
     row = {
@@ -395,6 +395,32 @@ def test_lifecycle_approver_uses_one_real_once_resolution_and_withholds_the_dupl
     assert report["granted"][0]["artifact_hash"] == _LIFECYCLE_HASH
 
 
+@pytest.mark.parametrize(
+    "unrelated",
+    [
+        "sleep 3",
+        "echo ready",
+        _LIFECYCLE_COMMAND.replace(" dry", " delete"),
+        _LIFECYCLE_COMMAND.replace("/fixture/", "/other/"),
+    ],
+)
+def test_bash_lifecycle_approver_never_grants_unrelated_pending_actions(monkeypatch, unrelated):
+    from codex_plugin_scanner.guard import approvals
+
+    calls: list[dict] = []
+    monkeypatch.setattr(approvals, "apply_approval_resolution", lambda **kwargs: calls.append(kwargs) or {})
+    approver = ReviewApprover(object(), known_ids=set(), workspace=Path("/fixture"), scenario_id=ONCE_CASE)
+    row = {"request_id": "unrelated-first", "artifact_hash": _LIFECYCLE_HASH}
+    approver._grant(row, unrelated)
+    assert calls == []
+    approver._grant({**row, "request_id": "target"}, _LIFECYCLE_COMMAND)
+    approver._grant({**row, "request_id": "unrelated-after"}, unrelated)
+    assert [call["request_id"] for call in calls] == ["target"]
+    report = approver.report()
+    assert [item["target"] for item in report["withheld"]] == [unrelated, unrelated]
+    assert not report["lifecycle"].get("once_contention_observed")
+
+
 def test_lifecycle_approver_requests_persistence_and_restarts_after_the_grant(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -408,7 +434,7 @@ def test_lifecycle_approver_requests_persistence_and_restarts_after_the_grant(
     approver = ReviewApprover(
         object(),
         known_ids=set(),
-        workspace=tmp_path,
+        workspace=Path("/fixture"),
         scenario_id=PERSISTENT_RESTART_CASE,
         guard_home=guard_home,
     )

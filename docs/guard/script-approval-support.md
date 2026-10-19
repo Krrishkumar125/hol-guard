@@ -17,6 +17,8 @@ The output profile supports one prepared report. Its initialization must be the 
 
 An eligible once grant permits one real invocation. A persistent exact-version grant binds the project, execution context, meaningful arguments, interpreter and executable inputs. Timestamp-only changes and unrelated data edits do not by themselves invalidate an unchanged reviewed version. Changes to script, helper or dependency bytes require reevaluation. A dry-mode grant does not authorize deletion mode.
 
+OMP print mode does not emit the host input event used to distinguish new user requests. The candidate adapter binds its initial durable user turn and retains that intent across programmatic continuations. A later new intent requires an observed human input event; a `user` label alone is insufficient. Multiple print-mode batch prompts without distinct trusted input events remain unqualified as separate user requests.
+
 Every launch still evaluates current policy and extension restrictions. Saved consent cannot override a non-overridable denial, Guard self-approval protection, failed integrity checks or an unbound execution route. A code digest is identity evidence, not a safety verdict about remote targets or mutable services.
 
 Local consent is independent of a Cloud subscription. Cloud dependency evidence uses the existing feature entitlement, freshness and revocation authority. Unknown or stale evidence is not a clean verdict, and purchasing a plan never executes an action.
