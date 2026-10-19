@@ -181,7 +181,7 @@ def test_prompt_transport_rejects_wrong_or_ambiguous_response(monkeypatch, tmp_p
         available=True,
         compatible=True,
         identity=SimpleNamespace(path=tmp_path / "runtime", sha256="a" * 64),
-        capabilities=SimpleNamespace(features=("resident-protocol-v2", "prompt-analyze-v1")),
+        capabilities=SimpleNamespace(features=("resident-protocol-v2", "prompt-analyze-v2")),
     )
     monkeypatch.setattr(native_execution, "native_runtime_status", lambda: status)
     monkeypatch.setattr(native_execution, "native_resident_client_request", lambda **_: json.dumps(payload).encode())

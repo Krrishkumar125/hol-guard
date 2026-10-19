@@ -13,8 +13,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Single feature token for the whole prompt-analysis surface.
-pub const PROMPT_ANALYZE_FEATURE: &str = "prompt-analyze-v1";
+/// Single feature token for the whole prompt-analysis surface. v2 adds the
+/// `artifacts` field for `merge_artifacts`; a v1 resident rejects it.
+pub const PROMPT_ANALYZE_FEATURE: &str = "prompt-analyze-v2";
 pub const PROMPT_ANALYZE_REQUEST_SCHEMA: &str = "guard-prompt-analyze-request.v1";
 pub const PROMPT_ANALYZE_RESULT_SCHEMA: &str = "guard-prompt-analyze-result.v1";
 

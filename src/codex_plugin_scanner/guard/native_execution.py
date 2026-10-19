@@ -60,7 +60,7 @@ _MCP_SESSION_ACCEPTED_STATUS = {
     "mcp_stdio_session_close": frozenset({"closed", "error"}),
     "mcp_stdio_session_cancel": frozenset({"cancelled", "error"}),
 }
-_PROMPT_ANALYZE_FEATURE = "prompt-analyze-v1"
+_PROMPT_ANALYZE_FEATURE = "prompt-analyze-v2"
 
 
 def _request_id(prefix: str) -> str:
