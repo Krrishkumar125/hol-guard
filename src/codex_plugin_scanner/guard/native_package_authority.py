@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .models import GuardArtifact
-from .native_context import _resolve_digest_home, ensure_resident_prerequisite
+from .native_context import _canonical_request_sha256, _resolve_digest_home, ensure_resident_prerequisite
 from .native_resident_client import native_resident_client_request
 from .native_runtime import _isolated_environment, native_runtime_status
 from .native_runtime_resilience import (
@@ -28,6 +28,9 @@ if TYPE_CHECKING:
     from .runtime.package_intent_common import PackageIntent
 
 _MAX_REQUEST_BYTES = 256 * 1024
+# A workspace audit sends one intent holding every scanned lockfile target, so
+# the artifact request takes the same budget as the evaluation it feeds.
+_ARTIFACT_MAX_REQUEST_BYTES = 4 * 1024 * 1024
 _RESIDENT_PROTOCOL_FEATURE = "resident-protocol-v2"
 _PACKAGE_AUTHORITY_FEATURE = "package-authority-v1"
 _REQUEST_SCHEMA = "guard-package-authority-request.v1"
@@ -234,7 +237,12 @@ def _artifact_from_wire(payload: object) -> GuardArtifact:
     runtime_private_metadata = payload["runtime_private_metadata"]
     if not isinstance(metadata, Mapping) or not isinstance(runtime_private_metadata, Mapping):
         raise NativePackageArtifactUnavailableError("native_package_artifact_malformed")
-    if any(not isinstance(value, str) for value in (payload["artifact_id"], payload["name"])):
+    text_fields = ("artifact_id", "name", "harness", "artifact_type", "source_scope", "config_path")
+    if any(not isinstance(payload[key], str) for key in text_fields):
+        raise NativePackageArtifactUnavailableError("native_package_artifact_malformed")
+    # A request artifact launches nothing. A filled launch field is drift, and
+    # the model would otherwise drop it for its default without a trace.
+    if payload["args"] != [] or any(payload[key] is not None for key in ("command", "url", "transport", "publisher")):
         raise NativePackageArtifactUnavailableError("native_package_artifact_malformed")
     return GuardArtifact(
         artifact_id=str(payload["artifact_id"]),
@@ -284,15 +292,27 @@ def package_request_artifact_native(
         "config_path": config_path,
         "source_scope": source_scope,
     }
+    try:
+        request_sha256 = "sha256:" + _canonical_request_sha256(request)
+    except (TypeError, ValueError) as error:
+        raise NativePackageArtifactUnavailableError("native_package_artifact_unavailable") from error
     response = _resident_request(
         operation="package_request_artifact",
         request=request,
         guard_home=home,
         timeout_seconds=timeout_seconds,
         deadline_monotonic=deadline_monotonic,
+        max_request_bytes=_ARTIFACT_MAX_REQUEST_BYTES,
     )
     if response is None:
         raise NativePackageArtifactUnavailableError("native_package_artifact_unavailable")
+    if response.get("request_id") != request["request_id"] or response.get("request_sha256") != request_sha256:
+        # Another request's artifact id would file this review under an approval
+        # it never earned.
+        identity = native_runtime_status().identity
+        if identity is not None:
+            native_record_resident_failure(identity.sha256, home, reason="native_package_request_artifact_unbound")
+        raise NativePackageArtifactUnavailableError("native_package_artifact_unbound")
     return _artifact_from_wire(response.get("payload"))
 
 

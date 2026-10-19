@@ -372,6 +372,7 @@ def _hook_runtime_artifact_with_native(
                 intent=package_intent,
                 config_path=config_path,
                 source_scope=source_scope,
+                guard_home=guard_home,
             )
         )
     tool_request = extract_sensitive_tool_action_request(

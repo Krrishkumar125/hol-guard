@@ -7,6 +7,7 @@ import re
 import shlex
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Literal, cast
 
 from ..models import GuardArtifact
@@ -334,6 +335,8 @@ def build_package_request_artifact(
     *,
     config_path: str,
     source_scope: str,
+    guard_home: Path | None = None,
+    deadline_monotonic: float | None = None,
 ) -> GuardArtifact:
     """Name the review a package request gets, by asking the runtime.
 
@@ -352,6 +355,8 @@ def build_package_request_artifact(
         harness=harness,
         config_path=config_path,
         source_scope=source_scope,
+        guard_home=guard_home,
+        deadline_monotonic=deadline_monotonic,
     )
 
 
