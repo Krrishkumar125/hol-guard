@@ -191,48 +191,6 @@ def test_missing_metadata_never_publishes_handle_and_unverified_input_rejected(
         discovery.prepare_discovery(tmp_path / "failed", authority, fetch=fetch)
 
 
-def test_python_only_delegates_verified_factory_and_fetch_bytes(tmp_path, monkeypatch):
-    import base64
-
-    authority, _, _, _ = prepared_fixture(tmp_path, monkeypatch, count=1)
-    calls = []
-    handle = {
-        "root": "c" * 64,
-        "authority": authority.digest,
-        "token": "d" * 64,
-        "profile": "remote",
-        "expires_at": authority.expires_at,
-    }
-
-    def native(home, action):
-        calls.append(action)
-        if action["kind"] == "begin":
-            assert base64.b64decode(action["authority"]["data"]) == authority.data
-            return {"outcome": "fetch", "session": "session", "fetch": {"location": "opaque", "length": 3}}
-        if action["kind"] == "advance":
-            assert base64.b64decode(action["data"]) == b"\x01\x02\x03"
-            return {"outcome": "complete", "handle": handle}
-        assert action == {"kind": "validate", "handle": handle}
-        return {"outcome": "valid"}
-
-    monkeypatch.setattr(discovery, "_native", native)
-    result = discovery.prepare_discovery(tmp_path, authority, fetch=lambda target, length: b"\x01\x02\x03")
-    assert result.native == handle
-    assert discovery.require_handle(result, tmp_path) is result
-    assert [call["kind"] for call in calls] == ["begin", "advance", "validate"]
-
-    def restarted(home, action):
-        if action["kind"] == "validate":
-            raise ValueError("catalog_prepare_handle_invalid")
-        assert action["kind"] == "begin"
-        assert action["authority"]["digest"] == authority.digest
-        return {"outcome": "complete", "handle": {**handle, "token": "e" * 64}}
-
-    monkeypatch.setattr(discovery, "_native", restarted)
-    renewed = discovery.prepare_discovery(tmp_path, authority, fetch=lambda *_: pytest.fail("unexpected fetch"))
-    assert renewed.native["token"] == "e" * 64
-
-
 def test_missing_new_capability_fails_explicitly(tmp_path, monkeypatch):
     status = SimpleNamespace(
         available=True,

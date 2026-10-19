@@ -20,6 +20,20 @@ _homes = []
 ORIGINAL_NATIVE_CALL = pages.native_call
 
 
+def call_native(process, home, **wire):
+    """JSON-line IO only; the native process owns validation and authority."""
+    process.stdin.write(json.dumps({"guard_home": str(home), **wire}, ensure_ascii=False) + "\n")
+    process.stdin.flush()
+    result = json.loads(process.stdout.readline())
+    if result.get("error") == "catalog_limit":
+        from codex_plugin_scanner.guard.runtime.extension_catalog_sync import ExtensionCatalogLimitError
+
+        raise ExtensionCatalogLimitError("Native catalog limit")
+    if "error" in result:
+        raise ValueError(result["error"])
+    return result["payload"]
+
+
 def synthetic_completion(view, identity, observed_at, call):
     """Synthetic HTTP boundary only; real native challenge/stamp validation.
 
@@ -78,16 +92,7 @@ def native_bridge(monkeypatch):
 
     def request(home, **wire):
         with lock:
-            process.stdin.write(json.dumps({"guard_home": str(home), **wire}, ensure_ascii=False) + "\n")
-            process.stdin.flush()
-            result = json.loads(process.stdout.readline())
-        if result.get("error") == "catalog_limit":
-            from codex_plugin_scanner.guard.runtime.extension_catalog_sync import ExtensionCatalogLimitError
-
-            raise ExtensionCatalogLimitError("Native catalog limit")
-        if "error" in result:
-            raise ValueError(result["error"])
-        return result["payload"]
+            return call_native(process, home, **wire)
 
     monkeypatch.setattr(pages, "native_call", request)
     monkeypatch.setattr(provider, "native_call", request)

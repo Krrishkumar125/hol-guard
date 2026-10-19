@@ -44,35 +44,21 @@ def snapshot(source, core, destination, scale):
     shutil.copyfile(source / docs, destination / docs)
     # A small genuine matcher source, with unique owned identities/executables,
     # plus genuine authored MCP records with unique package launch identities.
-    command = json.loads((source / "contributions/command-sources/command.noodle.json").read_bytes())
-    mcp = json.loads((source / "contributions/mcp-servers/mcp.x-reader.json").read_bytes())
-    command_count = len(list((source / "contributions/command-sources").glob("command.*.json")))
-    mcp_count = len(list((source / "contributions/mcp-servers").glob("mcp.*.json")))
-    for number in range(command_count * (scale - 1)):
-        name = f"bundlescale{number:06}"
-        value = json.loads(json.dumps(command).replace("noodle", name))
-        write(destination / f"contributions/command-sources/command.{name}.json", value)
-        write(
-            destination / f"contracts/extensions/trust/command.{name}.v1.json",
-            {
-                "schemaVersion": "guard.extension-trust-binding.v1",
-                "extension": f"command.{name}",
-                "trustClass": "external",
-            },
-        )
-    # Derive both inventories so new contributions preserve the exact scale.
-    for number in range(mcp_count * (scale - 1)):
-        name = f"bundlescalemcp{number:06}"
-        value = json.loads(json.dumps(mcp).replace("x-reader", name))
-        write(destination / f"contributions/mcp-servers/mcp.{name}.json", value)
-        write(
-            destination / f"contracts/extensions/trust/command.mcp-{name}.v1.json",
-            {
-                "schemaVersion": "guard.extension-trust-binding.v1",
-                "extension": f"command.mcp-{name}",
-                "trustClass": "external",
-            },
-        )
+    for directory, kind, template, prefix, extension_prefix in (
+        ("command-sources", "command", "noodle", "bundlescale", "command."),
+        ("mcp-servers", "mcp", "x-reader", "bundlescalemcp", "command.mcp-"),
+    ):
+        inputs = source / "contributions" / directory
+        text = (inputs / f"{kind}.{template}.json").read_text()
+        count = len(list(inputs.glob(f"{kind}.*.json")))
+        for number in range(count * (scale - 1)):
+            name = f"{prefix}{number:06}"
+            identity = extension_prefix + name
+            write(destination / f"contributions/{directory}/{kind}.{name}.json", json.loads(text.replace(template, name)))
+            write(
+                destination / f"contracts/extensions/trust/{identity}.v1.json",
+                {"schemaVersion": "guard.extension-trust-binding.v1", "extension": identity, "trustClass": "external"},
+            )
 
 
 def run(command, root, environment, log):

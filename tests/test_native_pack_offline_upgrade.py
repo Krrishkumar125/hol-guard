@@ -75,6 +75,10 @@ def test_real_packaged_cross_engine_and_changed_source_offline_api_upgrade(tmp_p
         timeout=180,
     )
     checkpoint = json.loads((tmp_path / "previous-client-checkpoint.json").read_text())
+    # Current operations below use the authenticated packaged compiler. CI's
+    # source-tree overrides must not coexist with that installed identity.
+    monkeypatch.delenv("HOL_GUARD_NATIVE_SOURCE_COMPILER", raising=False)
+    monkeypatch.delenv("HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER", raising=False)
     monkeypatch.syspath_prepend(str(source_root / "scripts"))
     import build_command_pack_bundle as builder
 

@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -41,7 +42,7 @@ from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMA
 from codex_plugin_scanner.guard.runtime.extension_catalog_completion import complete_authenticated_view
 from codex_plugin_scanner.guard.runtime.managed_controls_sync import managed_controls_runtime_sync_posture
 from codex_plugin_scanner.guard.store import GuardStore
-from tests.native_cloud_helpers import prepare_native, raw
+from tests.native_cloud_helpers import call_native, prepare_native, raw
 
 
 def main(data):
@@ -52,18 +53,7 @@ def main(data):
         text=True,
     )
 
-    def call(home, **wire):
-        native.stdin.write(json.dumps({"guard_home": str(home), **wire}) + "\n")
-        native.stdin.flush()
-        reply = json.loads(native.stdout.readline())
-        if reply.get("error") == "catalog_limit":
-            from codex_plugin_scanner.guard.runtime.extension_catalog_sync import ExtensionCatalogLimitError
-
-            raise ExtensionCatalogLimitError("Native catalog limit")
-        if "error" in reply:
-            raise ValueError(reply["error"])
-        return reply["payload"]
-
+    call = partial(call_native, native)
     pages.native_call = provider.native_call = call
     home = (
         Path(data["home"])

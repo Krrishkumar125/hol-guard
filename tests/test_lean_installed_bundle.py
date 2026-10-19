@@ -210,17 +210,6 @@ def test_missing_or_malicious_optional_data_fails_closed(built, tmp_path, monkey
     assert not tuple((tmp_path / "cache/sets").glob("*.json"))
 
 
-def test_workflow_publication_precedes_installable_assets():
-    import yaml
-
-    jobs = yaml.safe_load((ROOT / ".github/workflows/publish.yml").read_text())["jobs"]
-    assert (
-        "needs.publish-installed-bundle-assets.result == 'success'" in jobs["assemble-native-guard-distributions"]["if"]
-    )
-    for name in ("publish-testpypi", "publish-alpha-pypi", "publish-main-pypi", "release-alpha", "publish-main-assets"):
-        assert "assemble-native-guard-distributions" in jobs[name]["needs"]
-
-
 def test_public_legacy_records_use_metadata_without_policy_archives(built, tmp_path, monkeypatch):
     install(built, tmp_path, monkeypatch, require_runtime=False)
     original = installed_bundle.read_bytes

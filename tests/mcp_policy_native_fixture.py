@@ -16,35 +16,13 @@ _BINDINGS: dict[Path, dict] = {}
 def admit_mcp_policy_home(home: Path) -> None:
     """Publish a real signed baseline; request layers never activate a pack."""
     from codex_plugin_scanner.guard.config import GuardConfig
-    from codex_plugin_scanner.guard.native_command_control_authority import (
-        AUTHORITY_FILE_NAME,
-        AUTHORITY_MAX_BYTES,
-        AUTHORITY_SCHEMA,
-        ZERO_DIGEST,
-        authority_binding,
-        encode_authority,
-    )
-    from codex_plugin_scanner.guard.native_command_control_authority_io import (
-        hold_command_control_authority_lock,
-        write_private_state,
-    )
-    from codex_plugin_scanner.guard.native_command_control_binding import (
-        NativeCommandProgramMetadata,
-        build_native_command_control_binding,
-    )
     from codex_plugin_scanner.guard.native_policy_snapshot import (
         _policy_snapshot_push_bytes_v3,
         native_policy_snapshot_v3,
     )
-    from codex_plugin_scanner.guard.native_policy_snapshot_codec import derive_native_policy_verifier_key
     from codex_plugin_scanner.guard.native_policy_snapshot_publisher import provision_native_verifier_key_for_store
     from codex_plugin_scanner.guard.native_resident_client import native_resident_client_request
     from codex_plugin_scanner.guard.native_runtime import _isolated_environment, native_runtime_status
-    from codex_plugin_scanner.guard.runtime.extension_control_authority import (
-        AuthorityHealth,
-        ExtensionControlAuthorityView,
-    )
-    from codex_plugin_scanner.guard.runtime.extension_control_runtime import ExtensionControlRuntimeSnapshot
     from codex_plugin_scanner.guard.store import GuardStore
 
     if _ADMITTED.get(home, 0) > time.monotonic():
@@ -58,44 +36,13 @@ def admit_mcp_policy_home(home: Path) -> None:
         master_key = material[0]
     status = native_runtime_status()
     assert status.identity is not None and status.capabilities is not None, status
-    binding = _BINDINGS.get(home)
-    if binding is None:
-        caps = status.capabilities
-        metadata = NativeCommandProgramMetadata(caps.program_digest, caps.catalog_digest, caps.trust_digest)
-        controls = ExtensionControlRuntimeSnapshot.from_authority_view(
-            ExtensionControlAuthorityView(
-                health=AuthorityHealth.PROTECTED,
-                revision=1,
-                catalog_digest=metadata.catalog_digest,
-                layers=(),
-            )
-        )
-        binding = build_native_command_control_binding(controls, metadata)
-        marker = dict(
-            schema=AUTHORITY_SCHEMA,
-            epoch=1,
-            mutation_revision=1,
-            authority_key_id=ZERO_DIGEST,
-            phase="committed",
-            effective_digest=binding["effective_digest"],
-            recovery=None,
-        )
-        with hold_command_control_authority_lock(home):
-            write_private_state(
-                home,
-                AUTHORITY_FILE_NAME,
-                encode_authority(marker, derive_native_policy_verifier_key(master_key)),
-                AUTHORITY_MAX_BYTES,
-            )
-        binding["authority"] = authority_binding(marker)
-        _BINDINGS[home] = binding
     snapshot = native_policy_snapshot_v3(
         config=GuardConfig(guard_home=home, workspace=None),
         guard_home=home,
         runtime_identity=status.identity.sha256,
         rule_digest=status.capabilities.rule_digest,
         policy_integrity_key=master_key,
-        command_extensions=binding,
+        command_extensions=_BINDINGS.get(home),
     )
     output = native_resident_client_request(
         executable=status.identity.path,
