@@ -151,6 +151,13 @@ impl InspectionHost for ResidentInspectionHost<'_> {
         self.svc_trusted_path_command(command, cwd, home_dir)
     }
 
+    fn bun_script_evidence_complete(&self, script_args: &[String], workspace: &str) -> bool {
+        guard_command::contained_runner::bun_script_evidence_complete(
+            script_args,
+            std::path::Path::new(workspace),
+        )
+    }
+
     fn trusted_git_binary(&self, cwd: &str) -> Option<String> {
         self.svc_trusted_git(cwd)
     }
