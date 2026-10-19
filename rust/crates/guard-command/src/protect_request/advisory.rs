@@ -64,11 +64,27 @@ fn launched_script_signals(request: &ProtectRequest, cwd: Option<&Path>) -> Opti
     }
     if arguments
         .iter()
-        .any(|argument| crate::secret_path_probe::is_request_secret_path(argument, cwd, None))
+        .any(|argument| names_secret_path(argument, cwd))
     {
         signals.push(SCRIPT_SECRET_ARGUMENT.to_owned());
     }
     Some(signals)
+}
+
+/// Whether `argument` is a secret path, or a command string (a script may
+/// hand one to a shell) with a path token under a credential store. Only a
+/// token that spells a path counts: a bare word in prose is data.
+fn names_secret_path(argument: &str, cwd: Option<&Path>) -> bool {
+    let secret = |text: &str| crate::secret_path_probe::is_request_secret_path(text, cwd, None);
+    secret(argument)
+        || argument
+            .split_whitespace()
+            .map(|token| {
+                token.trim_matches(|c| {
+                    matches!(c, '"' | '\'' | ';' | '|' | '&' | '(' | ')' | '<' | '>')
+                })
+            })
+            .any(|token| (token.contains('/') || token.starts_with('~')) && secret(token))
 }
 
 pub(super) fn request_risk_signals(request: &ProtectRequest, cwd: Option<&Path>) -> Vec<String> {

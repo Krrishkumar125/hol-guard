@@ -35,8 +35,9 @@ pub struct ProtectRequestRequestV1 {
     pub command: Vec<String>,
     /// The working directory the command runs in. A custom command that
     /// launches a relative script needs it to read that script; `None` reads
-    /// only an absolute one.
-    #[serde(default)]
+    /// only an absolute one. Omitted from the request (and its digest) when
+    /// absent, so a client without it matches a resident that predates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
 }
 
