@@ -1,7 +1,6 @@
 """Background cache maintenance must survive a security-proof outage."""
 
 import os
-import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -87,24 +86,3 @@ def test_cache_lease_reuses_private_file_io_validation_without_writing_aliases(t
     with pytest.raises(RuntimeError, match="authority_path_invalid"):
         cache_io.Lease(cache)
     assert victim.read_bytes() == b""
-
-
-@pytest.mark.parametrize("progress", [True, False])
-def test_copy_transport_requires_native_copy_progress_not_a_helper_plan(monkeypatch, progress):
-    from codex_plugin_scanner.guard.catalog_delivery import native_transfer_io
-
-    original = native_transfer_io.subprocess.Popen
-    script = "import sys;sys.stdin.read();"
-    if progress:
-        script += 'print(\'{"copy_progress":0,"files":1}\');print(\'{"copy_progress":1,"files":1}\');'
-    script += 'print(\'{"complete":true,"files":1}\')'
-    monkeypatch.setattr(
-        native_transfer_io.subprocess,
-        "Popen",
-        lambda args, **kwargs: original([sys.executable, "-c", script], **kwargs),
-    )
-    if progress:
-        assert native_transfer_io.run("unused", b"{}") == {"complete": True, "files": 1}
-    else:
-        with pytest.raises(ValueError, match="response invalid"):
-            native_transfer_io.run("unused", b"{}")

@@ -153,6 +153,27 @@ fn read<R: BufRead, W: Write>(io: &mut MetadataExchange<R, W>, input: &Value) ->
     Ok(json!({"kind":"compatibility","available":true}))
 }
 
+/// Whether this installation advertises an installed bundle. Only genuine
+/// legacy absence (no bundle data and both release manifests predating the
+/// bundle field) may skip loading; anything else must load and fail closed.
+pub(super) fn presence(input: &Value) -> Result<Value> {
+    let manifests = input["manifests"].as_array().filter(|rows| rows.len() == 2);
+    let (Some(bundle), Some(manifests)) = (input["bundle"].as_bool(), manifests) else {
+        return Err(INVALID);
+    };
+    if !fields(input, &["bundle", "manifests"]) {
+        return Err(INVALID);
+    }
+    let legacy = |value: &Value, schema: &str| {
+        value.is_object() && value["schema"] == schema && value.get("command_pack_bundle").is_none()
+    };
+    let absent = !bundle
+        && (manifests.iter().all(Value::is_null)
+            || (legacy(&manifests[0], "hol-guard-native-runtime.v1")
+                && legacy(&manifests[1], "hol-guard-native-source-compiler.v2")));
+    Ok(json!({"advertised": !absent}))
+}
+
 pub(crate) fn stream() -> Result<Value> {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();

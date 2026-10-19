@@ -33,12 +33,16 @@ def session():
 
 
 def invoke(kind, **fields) -> dict[str, Any]:
+    return _invoke(kind, fields, 60)
+
+
+def _invoke(kind, fields, deadline) -> dict[str, Any]:
     try:
         request = json.dumps({"kind": kind, **fields}, sort_keys=True, separators=(",", ":")).encode()
         with session():
             executable = _EXECUTABLE.get()
             code, stdout, stderr = transport._run_bounded(
-                [str(executable), "pack-lifecycle", "--stdin"], request, timeout=60
+                [str(executable), "pack-lifecycle", "--stdin"], request, timeout=deadline
             )
         # Rust validates each operation's record; this adapter transports heterogeneous JSON values.
         return cast(dict[str, Any], transport._decode_output(stdout, returncode=code, stderr=stderr))
@@ -47,11 +51,8 @@ def invoke(kind, **fields) -> dict[str, Any]:
 
 
 def transfer(**fields):
-    from .native_transfer_io import run
-
-    with session():
-        request = json.dumps({"kind": "offline", **fields}, sort_keys=True, separators=(",", ":")).encode()
-        return run(_EXECUTABLE.get(), request)
+    # Rust bounds each copied file; the longer deadline covers a full catalog copy.
+    return _invoke("offline", fields, 900)
 
 
 def identity(prepared):

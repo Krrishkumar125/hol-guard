@@ -148,3 +148,33 @@ fn admits_bounded_concatenated_metadata_and_rejects_cross_source_children() {
         .unwrap_err()
         .contains("source"));
 }
+
+#[test]
+fn only_genuine_legacy_absence_skips_the_installed_bundle() {
+    let runtime = json!({"schema":"hol-guard-native-runtime.v1"});
+    let compiler = json!({"schema":"hol-guard-native-source-compiler.v2"});
+    let advertised = |bundle: bool, manifests: Value| {
+        presence(&json!({"bundle":bundle,"manifests":manifests})).unwrap()["advertised"]
+            .as_bool()
+            .unwrap()
+    };
+    assert!(!advertised(false, json!([null, null])));
+    assert!(!advertised(false, json!([runtime, compiler])));
+    assert!(advertised(true, json!([null, null])));
+    assert!(advertised(true, json!([runtime, compiler])));
+    let mut bound = runtime.clone();
+    bound["command_pack_bundle"] = json!({});
+    assert!(advertised(false, json!([bound, compiler])));
+    // One missing, swapped or unknown manifest cannot prove legacy absence.
+    assert!(advertised(false, json!([runtime, null])));
+    assert!(advertised(false, json!([compiler, runtime])));
+    assert!(advertised(false, json!(["corrupt", compiler])));
+    for malformed in [
+        json!({"bundle":false}),
+        json!({"bundle":"no","manifests":[null,null]}),
+        json!({"bundle":false,"manifests":[null]}),
+        json!({"bundle":false,"manifests":[null,null],"extra":1}),
+    ] {
+        assert!(presence(&malformed).is_err());
+    }
+}

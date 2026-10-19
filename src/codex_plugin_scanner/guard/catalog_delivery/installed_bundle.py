@@ -83,17 +83,7 @@ def compatibility_payloads(family: str) -> tuple[dict[str, Any], ...] | None:
     """
     if family not in {"commands", "mcp"}:
         raise ValueError("unknown compatibility metadata family")
-    package = _package()
-    directory = package / "guard/contracts/data/extensions/command-pack-bundle"
-    advertised = directory.exists() or directory.is_symlink()
-    for name in ("runtime-manifest.json", "source-compiler-manifest.json"):
-        path = package / "_native" / name
-        if path.exists() or path.is_symlink():
-            manifest = decode(read_bytes(path, limit=65536))
-            if not isinstance(manifest, dict):
-                raise ValueError("installed native manifest invalid")
-            advertised |= "command_pack_bundle" in manifest
-    if not advertised:
+    if not advertised():
         return None
     bundle = load_installed_bundle()
 
@@ -120,6 +110,25 @@ def compatibility_payloads(family: str) -> tuple[dict[str, Any], ...] | None:
     except NativeSourceCompilerError as error:
         raise ValueError(f"installed compatibility metadata unavailable: {error}") from error
     return tuple(cast(list[dict[str, Any]], result["payloads"])) if result["available"] else None
+
+
+def advertised() -> bool:
+    """Ask the native reader whether this installation carries a bundle.
+
+    Only genuine legacy absence skips loading; any other state loads and
+    fails closed in the factory.
+    """
+    package = _package()
+    directory = package / "guard/contracts/data/extensions/command-pack-bundle"
+    manifests = []
+    for name in ("runtime-manifest.json", "source-compiler-manifest.json"):
+        path = package / "_native" / name
+        present = path.exists() or path.is_symlink()
+        manifests.append(decode(read_bytes(path, limit=65536)) if present else None)
+    answer = _native_metadata(
+        "installed-presence", bundle=directory.exists() or directory.is_symlink(), manifests=manifests
+    )
+    return answer["advertised"] is True
 
 
 @dataclass(frozen=True, slots=True, init=False)

@@ -218,6 +218,7 @@ pub(crate) fn evaluate(bytes: &[u8]) -> Result<Value> {
     let input = strict_json::decode(bytes)?;
     match input["operation"].as_str() {
         Some("release-defaults") => release_defaults::select(&input),
+        Some("installed-presence") => compatibility_reader::presence(&input),
         Some("installed-plan") => installed_plan(&input),
         Some("installed") => installed(&input),
         Some("root" | "descriptor") => {

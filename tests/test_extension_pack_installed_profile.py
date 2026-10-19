@@ -11,6 +11,7 @@ import pytest
 from codex_plugin_scanner.guard.catalog_delivery import (
     activation_record,
     activation_transition,
+    installed_bundle,
     preparation,
     preparation_authority,
 )
@@ -76,11 +77,9 @@ def test_installed_capability_does_not_make_unsigned_root_dictionary_authority(i
         preparation.prepare(installed.manifest(), [], delivery.cache, engine="1" * 64, now=10000)
 
 
-def test_absent_legacy_bundle_is_distinct_from_advertised_but_broken_bundle(installed, tmp_path, monkeypatch):
+def test_absent_legacy_bundle_is_distinct_from_advertised_but_broken_bundle(tmp_path, monkeypatch):
     package = tmp_path / "package"
-    monkeypatch.setattr(
-        preparation_authority, "__file__", str(package / "guard/catalog_delivery/preparation_authority.py")
-    )
+    monkeypatch.setattr(installed_bundle, "_package", lambda: package)
     assert preparation_authority.load_installed_bundle() is None
     native = package / "_native"
     native.mkdir(parents=True)
@@ -95,7 +94,6 @@ def test_absent_legacy_bundle_is_distinct_from_advertised_but_broken_bundle(inst
     def broken():
         raise ValueError("advertised bundle invalid")
 
-    module = sys.modules["codex_plugin_scanner.guard.catalog_delivery.installed_bundle"]
-    monkeypatch.setattr(module, "load_installed_bundle", broken, raising=False)
+    monkeypatch.setattr(installed_bundle, "load_installed_bundle", broken)
     with pytest.raises(ValueError, match="advertised bundle invalid"):
         preparation_authority.load_installed_bundle()

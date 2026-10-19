@@ -110,17 +110,7 @@ pub(super) fn batch(
         .len()
         .checked_add(archives.len())
         .ok_or_else(invalid)?;
-    let progress = |copied: usize| -> Result<()> {
-        let mut output = std::io::stdout().lock();
-        serde_json::to_writer(&mut output, &json!({"copy_progress":copied,"files":total}))
-            .map_err(|_| invalid())?;
-        output
-            .write_all(b"\n")
-            .and_then(|_| output.flush())
-            .map_err(|_| invalid())
-    };
-    progress(0)?;
-    for (index, (family, suffix, id, maximum)) in objects
+    for (family, suffix, id, maximum) in objects
         .iter()
         .map(|id| ("objects", "json", id, 65536))
         .chain(
@@ -128,7 +118,6 @@ pub(super) fn batch(
                 .iter()
                 .map(|id| ("archives", "zip", id, 32 * 1024 * 1024)),
         )
-        .enumerate()
     {
         directory(&destination.join(family))?;
         object(
@@ -137,9 +126,6 @@ pub(super) fn batch(
             id,
             maximum,
         )?;
-        if (index + 1) % 128 == 0 || index + 1 == total {
-            progress(index + 1)?;
-        }
     }
     if input["operation"] == "export-copy" {
         publish(&destination.join("root.json"), root)?;
