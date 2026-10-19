@@ -90,6 +90,7 @@ const tabStorage = Object.assign(baseStorage, {
 });
 const documentListeners = new Map<string, Set<(event?: unknown) => void>>();
 const windowListeners = new Map<string, Set<(event?: unknown) => void>>();
+const onceListeners = new Set<(event?: unknown) => void>();
 let unsavedWork = false;
 let beforeUnloadProbes = 0;
 let reloads = 0;
@@ -134,8 +135,9 @@ const fakeDocument = {
       replaced.push(href);
     },
   },
-  addEventListener: (type: string, listener: (event?: unknown) => void) => {
+  addEventListener: (type: string, listener: (event?: unknown) => void, options?: { once?: boolean }) => {
     windowListeners.set(type, (windowListeners.get(type) ?? new Set()).add(listener));
+    if (options?.once) onceListeners.add(listener);
   },
   removeEventListener: (type: string, listener: (event?: unknown) => void) => {
     windowListeners.get(type)?.delete(listener);
@@ -263,6 +265,41 @@ assert(
 assert(reloads === 8, "the same-screen link reloads the document");
 assert(assigned.length === 1, "the same-screen link does not use assign");
 assert(replaced.length === 1 && replaced[0]?.endsWith("#guard-token=b"), "the new fragment is kept for the reload");
+
+// A draft cancels the leave prompt. If the user answers Stay, this attempt never
+// happened, so the tab must get its one recovery back. The draft screen's own
+// handler is registered first, as on the real page, so it runs before ours.
+let draftOpen = false;
+const draftHandler = (event?: unknown) => {
+  if (draftOpen) (event as { defaultPrevented: boolean }).defaultPrevented = true;
+};
+const fireLeave = () => {
+  const event = { defaultPrevented: false };
+  for (const listener of [...(windowListeners.get("beforeunload") ?? [])]) {
+    listener(event);
+    if (onceListeners.has(listener)) {
+      windowListeners.get("beforeunload")?.delete(listener);
+      onceListeners.delete(listener);
+    }
+  }
+};
+windowListeners.get("beforeunload")?.clear();
+onceListeners.clear();
+windowListeners.set("beforeunload", new Set([draftHandler]));
+tabStorage.values.clear();
+
+draftOpen = true;
+assert(loadCurrentDashboardBuild("/protect?desktop_embed=1#guard-token=a"), "a navigation from a stale tab starts a load");
+assert(tabStorage.values.size === 1, "the attempt is claimed before the leave prompt");
+fireLeave();
+assert(tabStorage.values.size === 0, "answering Stay gives the claim back");
+assert(loadCurrentDashboardBuild("/protect?desktop_embed=1#guard-token=a"), "so the next navigation can try again");
+assert(tabStorage.values.size === 1, "and claims it again");
+
+draftOpen = false;
+fireLeave();
+assert(tabStorage.values.size === 1, "a leave nobody cancelled keeps its claim for the new document");
+assert((windowListeners.get("beforeunload")?.size ?? 0) === 1, "the one-shot listener is gone once it has run, only the draft handler stays");
 
 assert(
   isFragmentOnlyChange({ origin, pathname: "/inbox", search: "?x=1" }, new URL(`${origin}/inbox?x=1#f`)),

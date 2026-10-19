@@ -202,6 +202,24 @@ export function dashboardBuildIsStale(): boolean {
 }
 
 /**
+ * A screen holding a draft cancels the leave prompt. If the user answers Stay,
+ * this attempt never happened, so the tab gets its one recovery back. The
+ * listener is added after the claim and runs after the screens' own handlers,
+ * so it sees whether one of them cancelled the event.
+ */
+function releaseClaimIfLeaveIsCancelled(): void {
+  window.addEventListener(
+    "beforeunload",
+    (event) => {
+      if (event.defaultPrevented) {
+        releaseStaleBuildClaim(browserSessionStorage());
+      }
+    },
+    { once: true },
+  );
+}
+
+/**
  * Load `href` (or reload this page) with the bundle the daemon now serves when
  * this tab runs an older one. Returns `true` when the document is leaving.
  */
@@ -209,6 +227,7 @@ export function loadCurrentDashboardBuild(href?: string): boolean {
   if (typeof window === "undefined" || !claimStaleBuildReload(currentBuildState(), browserSessionStorage())) {
     return false;
   }
+  releaseClaimIfLeaveIsCancelled();
   const target = href ? new URL(href, window.location.href) : null;
   if (target === null) {
     window.location.reload();

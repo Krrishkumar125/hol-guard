@@ -16477,10 +16477,22 @@ function isFragmentOnlyChange(current, target2) {
 function dashboardBuildIsStale() {
   return isDashboardBuildStale(currentBuildState());
 }
+function releaseClaimIfLeaveIsCancelled() {
+  window.addEventListener(
+    "beforeunload",
+    (event) => {
+      if (event.defaultPrevented) {
+        releaseStaleBuildClaim(browserSessionStorage());
+      }
+    },
+    { once: true }
+  );
+}
 function loadCurrentDashboardBuild(href) {
   if (typeof window === "undefined" || !claimStaleBuildReload(currentBuildState(), browserSessionStorage())) {
     return false;
   }
+  releaseClaimIfLeaveIsCancelled();
   const target2 = href ? new URL(href, window.location.href) : null;
   if (target2 === null) {
     window.location.reload();
