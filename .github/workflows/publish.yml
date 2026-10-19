@@ -972,19 +972,40 @@ jobs:
       - name: Verify native source compiler output
         shell: bash
         env:
-          RUNTIME: ${{ matrix.runtime }}
+          SOURCE_COMPILER: ${{ matrix.source_compiler }}
         run: |
           # Python instead of jq: the Windows ARM64 runner image does not ship jq.
           python - <<'PY'
           import json
+          import os
+          import subprocess
+          import sys
+          import tempfile
           from pathlib import Path
 
+          sys.path[:0] = [str(Path("scripts").resolve()), str(Path("src").resolve())]
+          from prepare_extension_contribution import _development_release
+          from codex_plugin_scanner.guard.extension_builder.bundle_baseline import authoring_request
+
+          compiler = Path(os.environ["SOURCE_COMPILER"]).resolve(strict=True)
           source = json.loads(Path("rust/crates/guard-command/tests/fixtures/command-source-example.v1.json").read_text(encoding="utf-8"))
           trust = json.loads(Path("contracts/extensions/build-trust-class-map.v1.json").read_text(encoding="utf-8"))
           build = {"schema": "guard.command-extension-build.v1", "sources": [source], "mcp_sources": [], "trust": trust, "base": "packaged"}
-          Path("source-build.json").write_text(json.dumps(build), encoding="utf-8")
+          # Use the same native global admission context as maintainer authoring.
+          with tempfile.TemporaryDirectory(prefix="hol-guard-publish-context-") as scratch:
+              request = authoring_request(
+                  "compile", build, compiler, installed=False,
+                  cache_directory=Path(scratch).resolve(strict=True), development=_development_release,
+              )
+              result = subprocess.run(
+                  [str(compiler), "compile"], input=json.dumps(request), text=True,
+                  stdout=subprocess.PIPE, check=True,
+              )
+          compiled = json.loads(result.stdout)
+          assert any(item["extension_id"] == source["extension"]["extension_id"] for item in compiled["program"]["extensions"])
+          assert compiled["base_program_digest"] and compiled["implementation_digest"]
+          Path("source-compiled.json").write_text(result.stdout, encoding="utf-8")
           PY
-          "$RUNTIME" compile < source-build.json > source-compiled.json
       - name: Rebuild Guard base wheel after projection regeneration
         shell: bash
         env:
