@@ -170,6 +170,13 @@ mod tests {
     // named by a full runtime digest.
     const RUNTIME_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
+    /// The scope is created below an owner-only state base, as a provisioned
+    /// Guard home has one.
+    fn private_state_base(directory: &Path) -> std::path::PathBuf {
+        crate::resident_state::ensure_private_directory(&directory.join("state"), true)
+            .expect("create private state base")
+    }
+
     #[test]
     fn liveness_pipe_remains_open_while_child_runs_and_closes_after_wait() {
         let nonce = SystemTime::now()
@@ -196,7 +203,7 @@ mod tests {
         ];
         // The test process stays alive, so only the supervisor's wait closes the pipe.
         let owner = ManagedOwner {
-            state_base: &directory.join("state"),
+            state_base: &private_state_base(&directory),
             digest: RUNTIME_DIGEST,
             process_id: std::process::id(),
         };
@@ -253,7 +260,7 @@ mod tests {
         // The owner has exited and the state base holds no client leases, so the
         // child must see EOF while it is still running, not after the idle timeout.
         let owner = ManagedOwner {
-            state_base: &directory.join("missing-state"),
+            state_base: &private_state_base(&directory),
             digest: RUNTIME_DIGEST,
             process_id: owner_process_id,
         };
