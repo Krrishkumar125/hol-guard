@@ -17,7 +17,6 @@ from pathlib import Path
 
 from ci.gauntlet.realism_fixtures import activate_script
 
-
 # A source file the parent repository commits before any worktree exists, so
 # the shapes that read a file's history have history to read. Every other file
 # the fixture commits is a line or two, and `git blame -L1,20` on a four-line
@@ -206,19 +205,25 @@ def host_tool_path(home: Path, search_path: str) -> str:
     contained. Stand-ins in a version-manager directory the sandbox accepts go first, as a
     developer's own Node does, and the sandbox finds the same file by the same name. Yarn sits beside
     them because a project that runs ``yarn build`` is as ordinary as one that runs ``npm run build``,
-    and a runner without Yarn would measure a missing binary rather than Guard. The synthetic
-    connector CLIs install into ``~/.local/bin``, which a real login shell has on PATH; it goes first
-    so the fixture CLI, not a host program, is the one a grant was recorded for.
+    and a runner without Yarn would measure a missing binary rather than Guard. SQLite sits there
+    for the same reason from the other direction: every macOS developer has a ``sqlite3``, but where
+    a host keeps it differs, and a hosted runner's copy resolves outside the roots the sandbox
+    executes from, so the gate would be measuring that host's package layout rather than the command
+    a model ran. The synthetic connector CLIs install into ``~/.local/bin``, which a real login
+    shell has on PATH; it goes first so the fixture CLI, not a host program, is the one a grant was
+    recorded for.
     """
     stand_in = "#!/bin/sh\nexit 0\n"
     bun = home / ".bun" / "bin"
     node = home / ".nvm" / "versions" / "node" / "v25.2.1" / "bin"
-    for directory, names in ((bun, ("bun",)), (node, ("node", "npm", "npx", "yarn"))):
+    sqlite = home / ".asdf" / "installs" / "sqlite" / "3.46.1" / "bin"
+    tools = ((bun, ("bun",)), (node, ("node", "npm", "npx", "yarn")), (sqlite, ("sqlite3",)))
+    for directory, names in tools:
         for name in names:
             _write(directory / name, stand_in)
             (directory / name).chmod(0o755)
     local_bin = home / ".local" / "bin"
-    return os.pathsep.join([str(local_bin), str(node), search_path, str(bun)])
+    return os.pathsep.join([str(local_bin), str(node), str(sqlite), search_path, str(bun)])
 
 
 def _application_database(path: Path) -> None:
