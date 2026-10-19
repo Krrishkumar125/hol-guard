@@ -151,6 +151,12 @@ impl InspectionHost for ResidentInspectionHost<'_> {
         self.svc_trusted_path_command(command, cwd, home_dir)
     }
 
+    /// The evidence builder reads the package, lock and executable through the
+    /// crate's `O_NOFOLLOW` integrity helpers, which are POSIX-only, so
+    /// `contained_runner` itself is `cfg(unix)`. Off Unix the resident keeps the
+    /// trait's fail-closed answer and the chain stays unrecognized, exactly as
+    /// it did before this hook was answered anywhere.
+    #[cfg(unix)]
     fn bun_script_evidence_complete(&self, script_args: &[String], workspace: &str) -> bool {
         guard_command::contained_runner::bun_script_evidence_complete(
             script_args,
