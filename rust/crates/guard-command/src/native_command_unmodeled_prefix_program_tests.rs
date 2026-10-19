@@ -1,6 +1,7 @@
 //! Walking a launcher's own options to the program it runs.
 use super::{
-    command_reads_a_program_file, is_launcher, prefix_reads_a_program_file, program_index,
+    command_reads_a_program_file, is_launcher, launch_only, prefix_reads_a_program_file,
+    program_index,
 };
 
 fn program(command: &str) -> Option<&str> {
@@ -185,4 +186,34 @@ fn an_env_that_carries_its_program_in_an_option_launches_it() {
 
 fn dumps(command: &str) -> bool {
     command_reads_a_program_file(command)
+}
+
+/// An `env` that names no program is a wrapper around nothing: it writes the
+/// environment and exits. No launcher grammar covers it, so the wrapper arm
+/// refused it along with the shells, and `env`, `env -0` and
+/// `env | grep '^PATH='` blocked with no approval to give them. The pipeline
+/// behind the dump is read the same way any other text is.
+#[test]
+fn an_env_that_runs_no_program_is_a_launch_of_what_the_text_names() {
+    for command in [
+        "env",
+        "env -0",
+        "env | grep ^PATH=",
+        "/usr/bin/env | head -5",
+        "env -u NODE_OPTIONS | sort",
+        "env FOO=bar",
+    ] {
+        assert!(launch_only(command), "{command}");
+    }
+    // An `env` that does name a program hands it work this scan never read,
+    // and a pipeline member that does keeps its failure too.
+    for command in [
+        "env sh -c id",
+        "env -S bash",
+        "env ./deploy.sh",
+        "env | xargs bash -c",
+        "sudo env",
+    ] {
+        assert!(!launch_only(command), "{command}");
+    }
 }

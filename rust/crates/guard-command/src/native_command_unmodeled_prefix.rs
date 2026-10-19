@@ -153,11 +153,54 @@ fn sources_a_file(piece: &str) -> bool {
 /// in its own argument, `sudo` runs it as somebody else, and an `env` carrying
 /// a live assignment changes what it inherits. Those keep their failure.
 pub(super) fn launch_only(literal: &str) -> bool {
-    let words: Vec<&str> = literal.split_whitespace().collect();
+    let first_piece = literal
+        .split(|character: char| {
+            matches!(
+                character,
+                ';' | '&' | '|' | '(' | ')' | '{' | '}' | '\n' | '`'
+            )
+        })
+        .next()
+        .unwrap_or_default();
+    wrapper_names_its_program(first_piece) && !interpreter_launch_reads_a_file(literal, false)
+}
+
+/// Whether the wrapper the text begins with runs the program the text already
+/// names.
+///
+/// A launcher does when its own grammar counts past its options. An `env`
+/// does too when it hands its environment to no program at all: it writes the
+/// environment and exits, the way `printenv` does, so the rest of the text is
+/// the whole of what runs. No grammar covers that `env`, because it launches
+/// nothing to count options for, and without this arm `env`, `env -0` and
+/// `env | grep '^PATH='` kept the parser's wrapper failure and blocked
+/// outright, with no approval to give them. The dump still reaches the
+/// owners' floor, which is never less than review, so what changes is that it
+/// can be reviewed rather than only refused - a path-spelled `./env` of the
+/// user's own included.
+///
+/// `env` spends a positional only on the program it runs, and the assignments
+/// it carries stand before that program, so they are dropped before the
+/// question is asked. An `env` that does name a program keeps its failure:
+/// that program is one this scan has not read.
+fn wrapper_names_its_program(piece: &str) -> bool {
+    let words: Vec<&str> = piece
+        .split_whitespace()
+        .map(|word| word.trim_matches(['\'', '"']))
+        .filter(|word| !word.is_empty())
+        .collect();
     let Some(first) = words.first() else {
         return false;
     };
-    is_launcher(first) && !interpreter_launch_reads_a_file(literal, false)
+    if command_basename(first) == "env" || command_basename(first) == "env.exe" {
+        let operands: Vec<&str> = words[1..]
+            .iter()
+            .copied()
+            .filter(|word| !is_assignment(word))
+            .collect();
+        return !env_runs_a_program(&operands);
+    }
+    is_launcher(first)
 }
 
 fn command_reads_a_program_file(piece: &str) -> bool {
