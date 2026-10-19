@@ -53,24 +53,51 @@ fn root() -> String {
     std::env::temp_dir().to_string_lossy().into_owned()
 }
 
+const SCRIPTS: [&str; 5] = [
+    "python3 report.py",
+    "python3 -c 'print(1)'",
+    "node report.mjs",
+    "node -e 'console.log(1)'",
+    "npx fixture-runner",
+];
+
+fn script_request(harness: &str, command: &str) -> NativeExactActionRequestV1 {
+    exact_request(&root(), |query| {
+        query["harness"] = json!(harness);
+        query["command"] = json!(command);
+        query["tool_input"] = json!([["command", command]]);
+    })
+}
+
+/// Off the execution-owner route there is no stronger binding to hold a script
+/// to, so refusing the token would leave the review with neither Allow once nor
+/// Always allow (`docs/guard/approval-invariant.md`). The command hash still
+/// binds the approval to this command in this directory.
+#[test]
+fn a_script_review_without_an_owner_route_keeps_both_choices() {
+    for command in SCRIPTS {
+        let (token, reason) = outcome(&script_request("codex", command), Fallback::CommandHash);
+        assert!(token.is_some(), "{command} offers Allow once and Always allow");
+        assert_eq!(reason, None, "{command}");
+    }
+    let first = outcome(&script_request("codex", SCRIPTS[0]), Fallback::CommandHash).0;
+    let second = outcome(&script_request("codex", SCRIPTS[2]), Fallback::CommandHash).0;
+    assert_ne!(first, second, "the hash binds the command it was approved for");
+}
+
+/// On the route that can hold a script to the bytes the user saw, command text
+/// is not a substitute for that binding.
+#[cfg(target_os = "macos")]
 #[test]
 fn command_hash_cannot_replace_an_unavailable_script_execution_owner() {
-    for command in [
-        "python3 report.py",
-        "python3 -c 'print(1)'",
-        "node report.mjs",
-        "node -e 'console.log(1)'",
-        "npx fixture-runner",
-    ] {
-        let request = exact_request(&root(), |query| {
-            query["command"] = json!(command);
-            query["tool_input"] = json!([["command", command]]);
-        });
-        assert_eq!(
-            outcome(&request, Fallback::CommandHash),
-            (None, Some("script_execution_binding_unavailable".into())),
-            "{command}"
-        );
+    for harness in ["omp", "pi"] {
+        for command in SCRIPTS {
+            assert_eq!(
+                outcome(&script_request(harness, command), Fallback::CommandHash),
+                (None, Some("script_execution_binding_unavailable".into())),
+                "{harness} {command}"
+            );
+        }
     }
 }
 

@@ -1,30 +1,37 @@
 # Approval invariant
 
 Content-bound script approvals are an exception to the legacy command-hash
-fallback described below. A script launch without an enforced execution
-binding cannot receive a reusable token merely by hashing its command text.
-Use the supported native owner route described in
-[script approval support](script-approval-support.md); otherwise expose the
-specific unavailable execution capability. Inventory observations do not
-grant permission. Current hard restrictions still apply to every launch.
+fallback described below, and only on the route that can enforce them. On
+the native owner route described in
+[script approval support](script-approval-support.md) a script launch does
+not receive a reusable token merely by hashing its command text: expose the
+specific unavailable execution capability instead. Off that route there is no
+stronger binding to offer in place of the command hash, so withholding the
+token would take both choices off the review and leave the user with nothing;
+those reviews keep the command-hash fallback, which binds the command and not
+the bytes behind it. Inventory observations do not grant permission. Current
+hard restrictions still apply to every launch.
 
 Every executable review can be approved. The user always sees
 **Allow once** and **Always allow**, and an approved command runs. Guard does
 not second-guess the answer.
 
 This is a product rule, not an implementation detail. Supported execution
-routes must offer both choices and honor saved approval. A script without a
-working execution binding is an explicit capability refusal, not an
-executable review: show Keep blocked and verified recovery instructions.
-Recording a decision must not be presented as permission to run that script.
+routes must offer both choices and honor saved approval. On the owner route, a
+script without a working execution binding is an explicit capability refusal,
+not an executable review: show Keep blocked and verified recovery
+instructions. Recording a decision must not be presented as permission to run
+that script.
 
 ## The rule
 
 1. An executable review (`review` or `require-reapproval`) always offers Allow
    once and Always allow. The legacy command-hash fallback below still covers
    other unproven commands, package installs and Guard-control commands.
-   Content-bound scripts without an enforced execution binding are excluded;
-   neither consent duration can create that missing capability.
+   On the native owner route, content-bound scripts without an enforced
+   execution binding are excluded there: neither consent duration can create
+   that missing capability. Every other harness and platform keeps both
+   choices through the command-hash fallback.
 2. Allow once lets the agent's retry of that command through. The retry is a
    new tool call, so the binding leaves out the per-attempt call id (`tool_call_id`
    for Pi and Oh My Pi, `tool_use_id` for Claude Code and Codex) while a session

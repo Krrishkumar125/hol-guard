@@ -114,21 +114,39 @@ fn check_facts(facts: &NativeReviewFactsV1) -> Proof<()> {
     Ok(())
 }
 
+/// Whether this review can reach the native execution owner, which is what
+/// holds a script to the bytes the user saw. The owner route exists only on
+/// macOS and only for the harnesses whose input the owner rewrites
+/// (`native_bash_review_descriptor::validate`). Where it does not exist,
+/// refusing the token would take Allow once and Always allow off the review
+/// without any stronger binding to put in their place, which is what
+/// `docs/guard/approval-invariant.md` forbids.
+fn script_execution_owner_route(query: &NativeExactActionQueryV1) -> bool {
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+    let NativeExactActionQueryV1::ExactAction { harness, .. } = query else {
+        return false;
+    };
+    matches!(harness.as_str(), "omp" | "pi")
+}
+
 /// The token an approval of `query` is saved and matched under: the proven
 /// exact-action token when Guard can prove what the command runs, else the
 /// hash of the command itself (`command_hash`). Every review the user can
-/// answer gets one except when the script execution owner is unavailable:
-/// command text cannot substitute for an enforced code-version binding.
+/// answer gets one except a script review on the execution-owner route, where
+/// command text cannot substitute for the enforced code-version binding that
+/// route does provide.
 pub(super) fn approval_token(
     query: &NativeExactActionQueryV1,
     deadline: Instant,
     engines: &dyn Engines,
 ) -> Proof<String> {
     exact_action(query, deadline, engines).or_else(|reason| {
-        if reason == super::reasons::SCRIPT_DELIVERY
-            || super::launch_evidence::names_script_runtime(query)
-        {
-            Err(reason)
+        let script = reason == super::reasons::SCRIPT_DELIVERY
+            || super::launch_evidence::names_script_runtime(query);
+        if script && script_execution_owner_route(query) {
+            Err(super::reasons::SCRIPT_DELIVERY)
         } else {
             command_hash(query).map_err(|_| reason)
         }

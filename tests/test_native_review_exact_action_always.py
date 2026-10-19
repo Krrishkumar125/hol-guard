@@ -137,7 +137,7 @@ def test_camel_case_harness_payload_offers_the_same_inventory(
     )
     assert camel is not None and camel["inventory_sha256"] == expected
     token, reason = _permission("npx wrangler --version", workspace)
-    assert token is None and reason == "script_execution_binding_unavailable"
+    assert token is not None and reason is None
     assert not _proven("npx wrangler --version", workspace)
 
 
@@ -152,12 +152,20 @@ def test_camel_case_harness_payload_offers_the_same_inventory(
         "python3 -c 1",
     ],
 )
-def test_unowned_script_launch_cannot_use_the_review_command_fallback(
+def test_unowned_script_launch_keeps_the_review_command_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_context_digest: Path, command: str
 ) -> None:
+    """Off the execution-owner route the review keeps both approval choices.
+
+    This harness has no route that can hold a script to the bytes the user saw,
+    so withholding the token would leave the review with neither Allow once nor
+    Always allow (``docs/guard/approval-invariant.md``). The approval binds the
+    command text, which is not a proof of what the script contains.
+    """
+
     workspace = _wrangler_workspace(tmp_path, monkeypatch)
     token, reason = _permission(command, workspace)
-    assert token is None and reason == "script_execution_binding_unavailable"
+    assert token is not None and reason is None
     assert not _proven(command, workspace)
     result, receipt = _verdict(policy_action="block", minimum_action="block")
     assert _permission(command, workspace, result=result, receipt=receipt) == (None, "non_overridable")
@@ -185,14 +193,14 @@ def _changed_rules(result: dict[str, Any], receipt: dict[str, Any]) -> tuple[dic
 def _proven(command: str, workspace: Path) -> bool:
     """Whether Guard proved what ``command`` runs, rather than hashing the command.
 
-    Unowned script launches have no token. Other command-hash fallbacks bind
-    only the command, so a rule change leaves them as they were.
+    A command-hash fallback binds only the command, so a rule change leaves it
+    as it was. A review with no token at all proved nothing either.
     """
 
     result, receipt = _verdict()
     first, reason = _permission(command, workspace, result=result, receipt=receipt)
     if first is None:
-        assert reason == "script_execution_binding_unavailable", command
+        assert reason is not None, command
         return False
     changed_result, changed_receipt = _changed_rules(result, receipt)
     return first != _token(command, workspace, result=changed_result, receipt=changed_receipt)

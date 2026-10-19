@@ -6,8 +6,8 @@ This describes the candidate native Bash execution route. It is not a release or
 | --- | --- |
 | macOS on Apple silicon, pinned OMP or Pi SDK | Native owner delivery, with immutable Bash code and enforced effects; covered by SDK integration tests. A real managed-host consent workflow is a separate acceptance gate. |
 | macOS on Intel | Shares the macOS implementation; installed Intel qualification remains required. |
-| Linux or Windows | The native immutable Bash owner is unavailable. Saving consent cannot create that execution capability. |
-| Other host adapters | This Bash owner is not delivered by their admission hooks. They must not present an unsupported grant as permission to execute reviewed bytes. |
+| Linux or Windows | The native immutable Bash owner is unavailable. Saving consent cannot create that execution capability, so an approval there keeps binding the command hash, as it did before this route existed: both approval choices stay on the review and neither claims the bytes behind the command. |
+| Other host adapters | This Bash owner is not delivered by their admission hooks. They must not present an unsupported grant as permission to execute reviewed bytes; their reviews keep the command-hash approval, which claims the command text only. |
 
 The bounded graph supports literal commands, exact arguments, literal loops, pipelines, sources and mode dispatch. A supported helper is captured Bash code, a specifically constrained system operation, or an eligible hardened compiled image delivered through the native broker. This is not permission to execute an arbitrary binary or arbitrary dynamically discovered code.
 

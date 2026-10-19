@@ -409,4 +409,9 @@ def test_dynamic_bootstrap_cannot_reuse_identity_when_outside_code_changes(
         assert _execute(argv, project, home) == "report\n"
         assert marker.read_text() == "evil"
         assert inventory_before == inventory_after, "observations alone do not prove a closed code identity"
-        assert before == after == (None, "script_execution_binding_unavailable")
+        # Off the execution-owner route the review keeps both approval choices
+        # (``docs/guard/approval-invariant.md``). The token is the command
+        # hash, so it is unchanged by code the observation never closed over:
+        # the approval claims the command, never the bytes behind it.
+        assert before == after
+        assert before[0] is not None and before[1] is None
