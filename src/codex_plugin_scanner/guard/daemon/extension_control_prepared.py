@@ -22,8 +22,21 @@ from ..runtime.generated_command_catalog import GeneratedCommandCatalog
 from .extension_control_errors import ExtensionControlApiError
 
 MAX_CANDIDATES = 8
-CANDIDATE_TTL = 300
 _REQUEST_FIELDS = ("previous_revision", "catalog_digest", "layers", "actor_id", "idempotency_key", "nonce")
+
+
+def expired(candidates):
+    """Ask the runtime which prepared candidates have outlived their admission."""
+
+    if not candidates:
+        return frozenset()
+    response = lifecycle.invoke(
+        "offline",
+        operation="expired-leases",
+        now=time.monotonic(),
+        expires=[None if item is None else item.expires_at for item in candidates],
+    )
+    return frozenset(response["expired"])
 
 
 def request_digest(payload):
@@ -157,10 +170,9 @@ class PreparedControlCandidates:
 
     def get_or_prepare(self, key, factory):
         # Caller serializes preview preparation. No lock is held across apply.
-        now = time.monotonic()
-        for stale in tuple(self.values):
-            if self.values[stale].expires_at <= now:
-                del self.values[stale]
+        keys = tuple(self.values)
+        for index in expired(tuple(self.values[key] for key in keys)):
+            del self.values[keys[index]]
         if key in self.values:
             self.values.move_to_end(key)
             return self.values[key]

@@ -6,7 +6,6 @@ import hashlib
 import json
 import logging
 import threading
-import time
 from collections import OrderedDict
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -56,6 +55,7 @@ from .extension_control_prepared import (
     MAX_CANDIDATES,
     PreparedControlCandidate,
     PreparedControlCandidates,
+    expired,
     prepare_candidate,
     request_digest,
 )
@@ -424,7 +424,7 @@ class ExtensionControlApiService:
             raise ExtensionControlApiError(409, "proof_mismatch")
         mutation = pending.mutation
         candidate = pending.candidate
-        if candidate is not None and candidate.expires_at <= time.monotonic():
+        if candidate is not None and expired((candidate,)):
             raise ExtensionControlApiError(409, "prepared_preview_expired")
         registry = self._registry if candidate is None else candidate.registry
         current = self._live_snapshot(read_only=True)

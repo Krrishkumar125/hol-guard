@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import time
-
-from ..catalog_delivery import lifecycle
+from .extension_control_prepared import expired
 
 
 def expire(service):
@@ -13,11 +11,5 @@ def expire(service):
     with service._preview_lock, service._apply_lock, service._proof_lock:
         candidates = list(service._candidates.values.values())
         candidates.extend(item.candidate for item in service._pending_proofs.values())
-        response = lifecycle.invoke(
-            "offline",
-            operation="expired-leases",
-            now=time.monotonic(),
-            expires=[None if item is None else item.expires_at for item in candidates],
-        )
-        for index in response["expired"]:
+        for index in expired(candidates):
             candidates[index].draft._cache_lease.close()
