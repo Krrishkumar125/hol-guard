@@ -25,6 +25,8 @@ Every launch still evaluates current policy and extension restrictions. Saved co
 
 Local consent is independent of a Cloud subscription. Cloud dependency evidence uses the existing feature entitlement, freshness and revocation authority. Unknown or stale evidence is not a clean verdict, and purchasing a plan never executes an action.
 
+The package evaluator treats stored evaluation JSON as a lookup hint. A cache hit rebuilds its verdict and package details from a currently verified, unexpired signed bundle for the paired workspace, with complete locally pinned target coverage. Reusing a permissive verdict also requires a current trusted session and authoritative feature entitlement. A current saved block may retain a cached Cloud error, but the response is rebuilt without cached entitlement, user copy or Cloud provenance. These checks reuse the existing native bundle verifier; they do not establish a new signing trust root or a monotonic intelligence-generation floor.
+
 The candidate Bash owner currently checks local command and extension policy. It does not yet connect its code-input graph to the package Cloud evaluator. Composed script-dependency entitlement, freshness, revocation and disclosure checks remain delivery gates; existing package-only tests do not establish that integration.
 
 Qualification must distinguish source tests, pinned SDK delivery, exact-wheel real-agent workflows, rendered dashboard behavior and the operator's installed runtime. The admission benchmark in `scripts/bench_native_bash_admission.py` includes policy binding, host observation, IPC, filesystem capture, hashing and the decision store. Its warm 20 ms and cold 100 ms targets remain explicit; a cache change alone does not establish that either target is met.

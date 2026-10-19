@@ -15,7 +15,7 @@ pub struct SupplyChainBundleResponse {
     pub signature_algorithm: String,
     /// `SupplyChainVerificationKey.to_dict()` payloads.
     pub verification_keys: Vec<Map<String, Value>>,
-    /// The typed response the seam already validated. Offline decisions reuse
+    /// The typed response the seam already decoded. Offline decisions reuse
     /// it instead of re-serialising and re-parsing the whole bundle per call;
     /// `None` means a caller must parse from `to_dict()`.
     pub parsed: Option<std::sync::Arc<crate::supply_chain_bundle::SupplyChainBundleResponse>>,
@@ -50,6 +50,39 @@ pub trait SupplyChainBundleApi {
         &self,
         raw_json: &Value,
     ) -> EvalResult<SupplyChainBundleResponse>;
+    /// Parsing a stored response is not proof that its cached verdict is current.
+    /// Use the native signature/key-state/freshness verifier and paired scope.
+    fn validate_cached_supply_chain_bundle(
+        &self,
+        response: &SupplyChainBundleResponse,
+        workspace_id: &str,
+        now: Option<f64>,
+    ) -> EvalResult<()> {
+        let decoded;
+        let typed = match response.parsed.as_deref() {
+            Some(typed) => typed,
+            None => {
+                decoded = crate::supply_chain_bundle::load_supply_chain_bundle_response(
+                    &response.to_dict(),
+                )
+                .map_err(|error| EvalError::Validation(error.to_string()))?;
+                &decoded
+            }
+        };
+        if typed.bundle.workspace_id != workspace_id {
+            return Err(EvalError::Validation(
+                "Cached bundle belongs to another workspace".into(),
+            ));
+        }
+        crate::supply_chain_bundle::verify_supply_chain_bundle_response(
+            typed,
+            None,
+            None,
+            now,
+            &crate::supply_chain_bundle::RingRsaPssVerify,
+        )
+        .map_err(|error| EvalError::Validation(error.to_string()))
+    }
     /// `check_supply_chain_bundle_freshness(bundle, now=)` (:114). `now` is
     /// epoch seconds (`None` = wall clock). `EvalError::Validation` maps
     /// `SupplyChainBundleExpiredError`.
