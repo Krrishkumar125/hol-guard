@@ -375,7 +375,6 @@ _PENDING_AUTHORITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/cli/commands_hook_native_floor.py",
         "src/codex_plugin_scanner/guard/cli/commands_hook_native_prepare.py",
         "src/codex_plugin_scanner/guard/cli/commands_support_codex_paths.py",
-        "src/codex_plugin_scanner/guard/cli/commands_support_hook_state.py",
         "src/codex_plugin_scanner/guard/cli/commands_support_runtime_artifacts.py",
         "src/codex_plugin_scanner/guard/runtime/approval_context.py",
         "src/codex_plugin_scanner/guard/runtime/extension_control_runtime.py",
