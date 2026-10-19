@@ -7,8 +7,11 @@
 //! allowances. The resident reads, verifies, expires, rewrites and deletes
 //! them against the guard store; every integrity failure leaves an audit row
 //! in `guard_events`. The integrity key material and the clock are shipped by
-//! the Python transport, and so are the Python-owned command fingerprints used
-//! as state keys, which the resident treats as opaque.
+//! the Python transport, and so are the Cursor command fingerprints used as
+//! state keys, which the resident treats as opaque. A Claude pending
+//! permission is named by its artifact instead: the resident derives that
+//! row's state key, so the key it is written under and the key it is read back
+//! under have one definition.
 //!
 //! Each request names one `op` and carries only the fields that op reads;
 //! unused fields are omitted. A store that cannot be opened or a request the
@@ -58,6 +61,8 @@ pub struct HookAuthorityStateRequestV1 {
     /// The unsigned state body: the Claude notice or the Cursor pending state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
+    /// A state key the resident itself issued, acted on as given. The Claude
+    /// pending ops take `artifact_id` instead and derive the key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -68,6 +73,9 @@ pub struct HookAuthorityStateRequestV1 {
     pub expected_artifact_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_command: Option<String>,
+    /// The artifact a Claude pending permission belongs to. It names the row:
+    /// the resident derives the pending state key from it, and reads it back as
+    /// the artifact the row has to carry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

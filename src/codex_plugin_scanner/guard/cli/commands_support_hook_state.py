@@ -92,11 +92,6 @@ def _claude_pending_permission_index_key(session_id: str) -> str:
     return f"claude_pending_permissions:{session_id}"
 
 
-def _claude_pending_permission_state_key(session_id: str, artifact_id: str) -> str:
-    fingerprint = hashlib.sha256(artifact_id.encode("utf-8")).hexdigest()[:24]
-    return f"claude_pending_permission:{session_id}:{fingerprint}"
-
-
 def _state_now(now: str | None) -> str:
     return now or _now()
 
@@ -128,19 +123,24 @@ def _load_verified_claude_pending_permission(
     store: GuardStore,
     *,
     session_id: str,
-    pending_key: str,
-    expected_artifact_id: str | None = None,
+    artifact_id: str,
     expected_artifact_hash: str | None = None,
     expected_command: str | None = None,
     now: str | None = None,
 ) -> dict[str, object] | None:
+    """The pending permission the resident holds for this session's artifact.
+
+    The artifact id names the row: the resident derives its state key, so the
+    key the row is stored under and the key it is looked up under come from one
+    implementation.
+    """
+
     reply = hook_authority_state(
         store,
         "claude_load_pending",
         now=_state_now(now),
         session_id=session_id,
-        pending_key=pending_key,
-        expected_artifact_id=expected_artifact_id,
+        artifact_id=artifact_id,
         expected_artifact_hash=expected_artifact_hash,
         expected_command=expected_command,
     )
@@ -271,12 +271,10 @@ def _load_claude_pending_permission(
     session_id = _optional_string(payload.get("session_id"))
     if session_id is None:
         return None
-    pending_key = _claude_pending_permission_state_key(session_id, artifact.artifact_id)
     return _load_verified_claude_pending_permission(
         store,
         session_id=session_id,
-        pending_key=pending_key,
-        expected_artifact_id=artifact.artifact_id,
+        artifact_id=artifact.artifact_id,
         expected_artifact_hash=artifact_hash,
         expected_command=_claude_artifact_command_binding(artifact),
     )
@@ -286,14 +284,14 @@ def _remove_claude_pending_permission(
     store: GuardStore,
     *,
     session_id: str,
-    pending_key: str,
+    artifact_id: str,
 ) -> None:
     hook_authority_state(
         store,
         "claude_remove_pending",
         now=_now(),
         session_id=session_id,
-        pending_key=pending_key,
+        artifact_id=artifact_id,
     )
 
 
@@ -497,7 +495,6 @@ __all__ = [
     "_append_cursor_pending_shell_key",
     "_claude_guard_approval_question_text",
     "_claude_pending_permission_index_key",
-    "_claude_pending_permission_state_key",
     "_cursor_conversation_id",
     "_cursor_native_shell_allow_state_key",
     "_cursor_native_shell_is_approved",
