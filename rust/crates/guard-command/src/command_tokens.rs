@@ -32,8 +32,23 @@ pub fn executable_name(value: Option<&str>) -> Option<String> {
     )
 }
 
+/// Unquoted backslashes stay literal in a Windows command so a Git Bash line
+/// can name `C:\Users\dev` without escaping every separator. A backslash in
+/// front of a shell operator is the one place that reading is wrong: no path
+/// component starts with `;`, `&`, `|`, `<`, `>`, `(` or `)`, so the author can
+/// only mean the POSIX escape. `find … -exec grep -l pattern {} \;` ends every
+/// `-exec` body that way, and reading the `;` as a separator throws the `find`
+/// arguments away and leaves a command no parser can model.
+pub(crate) const SHELL_OPERATORS: &[char] = &[';', '&', '|', '<', '>', '(', ')'];
+
+/// Whether an unquoted `\` escapes `next` while backslashes are otherwise kept
+/// literal. `false` means it is a path separator.
+pub(crate) fn escapes_shell_operator(next: Option<char>) -> bool {
+    next.is_some_and(|value| SHELL_OPERATORS.contains(&value))
+}
+
 /// `_windows_shell_tokens` (:36-92). Quoted POSIX escapes preserved; unquoted
-/// path separators kept literal.
+/// path separators kept literal, apart from the escaped shell operators above.
 #[allow(dead_code)]
 pub fn windows_shell_tokens(command: &str) -> (Vec<String>, bool) {
     let mut tokens: Vec<String> = Vec::new();
@@ -41,7 +56,8 @@ pub fn windows_shell_tokens(command: &str) -> (Vec<String>, bool) {
     let mut started = false;
     let mut quote = '\0';
     let mut escaped = false;
-    for current in command.chars() {
+    let mut characters = command.chars().peekable();
+    while let Some(current) = characters.next() {
         if escaped {
             if quote == '"' && !['"', '\\', '$', '`'].contains(&current) {
                 token.push('\\');
@@ -79,7 +95,11 @@ pub fn windows_shell_tokens(command: &str) -> (Vec<String>, bool) {
             quote = '"';
             started = true;
         } else if current == '\\' {
-            token.push('\\');
+            if escapes_shell_operator(characters.peek().copied()) {
+                token.push(characters.next().expect("peeked operator"));
+            } else {
+                token.push('\\');
+            }
             started = true;
         } else if " \t\r\n".contains(current) {
             if started {
