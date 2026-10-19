@@ -6,9 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 from codex_plugin_scanner.guard.runtime import (
+    extension_catalog_completion,
     extension_catalog_provider,
     extension_catalog_sync,
-    managed_controls_cloud,
     managed_controls_sync,
     runner,
 )
@@ -47,7 +47,7 @@ def completed_catalog(monkeypatch):
     )
     monkeypatch.setattr(extension_catalog_provider, "remember_view", lambda view: view)
     monkeypatch.setattr(extension_catalog_sync, "build_v1_catalog_from_view", lambda _view: {"catalogDigest": "c" * 64})
-    monkeypatch.setattr(managed_controls_cloud, "policy_view_ready", lambda **_kwargs: state.completed)
+    monkeypatch.setattr(extension_catalog_completion, "policy_view_ready", lambda **_kwargs: state.completed)
     read = GuardStore.get_sync_payload
     summary = {
         "policyMetadataIdentity": {

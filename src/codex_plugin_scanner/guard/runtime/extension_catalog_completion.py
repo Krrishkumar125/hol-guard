@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timezone
+from pathlib import Path
 
 from ..oauth_token_claims import decode_oauth_access_token_claims, oauth_claim_string
 from .extension_catalog_pages import encoded, native_call
+from .extension_catalog_provider import observed_view
+
+_UNBOUND = object()
 
 
 def credential_identity(auth_context):
@@ -91,3 +96,57 @@ def complete_authenticated_view(*, store, view, auth_context, url, send):
         "policyMetadataObservedAt": receipt["observedAt"],
         "runtime_credential_id": identity["runtimeId"],
     }
+
+
+def local_policy_view(
+    *, guard_home: Path, runtime_summary: dict[str, object], registry, policy_workspace_id: object = _UNBOUND
+) -> dict[str, object]:
+    """Marshal a previously authenticated session and current local discovery.
+
+    No metadata, enforcement digest or filesystem location from a policy
+    response is accepted here; missing authenticated observation identity fails
+    closed. A caller binding this view to a signed policy envelope passes that
+    envelope's workspace; the native runtime, not this module, decides whether
+    it matches.
+    """
+    from ..catalog_delivery import discovery
+
+    view = observed_view(runtime_summary, guard_home)
+    handle = discovery.require_handle(discovery.installed_discovery(guard_home), guard_home)
+    bound = {} if policy_workspace_id is _UNBOUND else {"policy_workspace_id": policy_workspace_id}
+    return native_call(
+        guard_home,
+        action="policy_view",
+        **bound,
+        runtime_summary={
+            "policyMetadataIdentity": runtime_summary.get("policyMetadataIdentity"),
+            "policyMetadataObservedAt": runtime_summary.get("policyMetadataObservedAt"),
+            "runtime_credential_id": runtime_summary.get("runtime_credential_id"),
+            "runtime_device_id": runtime_summary.get("runtime_device_id"),
+        },
+        view={
+            "token": view.token,
+            "manifest": view.manifest,
+            "discovery_root": view.discovery_root,
+            "discovery_authority": view.discovery_authority,
+        },
+        discovery={"root": handle.root, "authority": handle.authority},
+        enforcement_catalog_digest=registry.catalog_digest,
+        now=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    )
+
+
+def policy_view_ready(*, store, registry) -> bool:
+    """A native policy view is itself the readiness proof for the session.
+
+    The runtime validates the authenticated completed observation before
+    returning one, and an older resident cannot answer the request at all.
+    """
+    summary = getattr(store, "get_sync_payload", lambda _key: None)("runtime_session_summary")
+    if not isinstance(summary, dict):
+        return False
+    try:
+        local_policy_view(guard_home=store.guard_home, runtime_summary=summary, registry=registry)
+    except (ImportError, OSError, RuntimeError, TypeError, ValueError):
+        return False
+    return True

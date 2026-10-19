@@ -19,7 +19,7 @@ from codex_plugin_scanner.guard.policy_bundle_delivery import (
     validated_managed_policy_delivery,
 )
 from codex_plugin_scanner.guard.policy_bundle_parser import policy_bundle_acceptance_checkpoint
-from codex_plugin_scanner.guard.runtime import managed_controls_cloud as cloud
+from codex_plugin_scanner.guard.runtime import extension_catalog_completion as cloud
 from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY as REGISTRY
 from codex_plugin_scanner.guard.runtime.extension_catalog_provider import _raw_extension
 from codex_plugin_scanner.guard.store import GuardStore

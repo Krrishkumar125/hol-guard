@@ -208,7 +208,7 @@ def managed_controls_runtime_sync_posture(
         # Native cache/resident loss is not a usable complete observation.
         return {"managedControlsCapabilities": []}
     from ..native_command_control_authority_io import hold_command_control_authority_lock
-    from .managed_controls_cloud import policy_view_ready
+    from .extension_catalog_completion import policy_view_ready
 
     legacy = {} if catalog is None else {"extensionCatalogDigest": catalog["catalogDigest"]}
     metadata_posture = {**v2, **legacy, "managedControlsCapabilities": [CAPABILITY]}

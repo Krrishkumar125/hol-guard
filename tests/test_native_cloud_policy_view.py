@@ -7,8 +7,8 @@ import pytest
 
 from codex_plugin_scanner.guard.catalog_delivery import discovery
 from codex_plugin_scanner.guard.managed_controls_policy_fields import ManagedControlsPolicyError
+from codex_plugin_scanner.guard.runtime import extension_catalog_completion as cloud
 from codex_plugin_scanner.guard.runtime import extension_catalog_pages as pages
-from codex_plugin_scanner.guard.runtime import managed_controls_cloud as cloud
 from tests.native_cloud_helpers import native_bridge as native_bridge
 from tests.native_cloud_helpers import prepare_native, synthetic_completion
 

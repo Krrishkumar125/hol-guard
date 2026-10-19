@@ -185,7 +185,7 @@ def parsed_managed_controls_from_validated_policy_bundle(
             return None
         if guard_home is None:
             raise ManagedControlsPolicyError("policy_local_view_missing", "An explicit local policy view is required.")
-        from .runtime.managed_controls_cloud import local_policy_view
+        from .runtime.extension_catalog_completion import local_policy_view
 
         try:
             return local_policy_view(
