@@ -7,8 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..oauth_token_claims import decode_oauth_access_token_claims, oauth_claim_string
-from .extension_catalog_pages import encoded, native_call
-from .extension_catalog_provider import observed_view
+from .extension_catalog_pages import encoded, native_call, observed_view
 
 _UNBOUND = object()
 
@@ -110,6 +109,7 @@ def local_policy_view(
     it matches.
     """
     from ..catalog_delivery import discovery
+    from .extension_catalog_pages import native_call
 
     view = observed_view(runtime_summary, guard_home)
     handle = discovery.require_handle(discovery.installed_discovery(guard_home), guard_home)

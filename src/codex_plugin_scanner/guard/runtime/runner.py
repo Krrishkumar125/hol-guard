@@ -4065,7 +4065,7 @@ def _sync_extension_catalog_from_runtime_handshake(
 ) -> dict[str, object]:
     """Upload the canonical catalog only after a digest-bound Cloud request."""
 
-    from .extension_catalog_provider import observed_view
+    from .extension_catalog_pages import observed_view
     from .extension_catalog_sync import build_v1_catalog_from_view
     from .extension_catalog_transfer import catalog_sync_plan, sync_catalog_view
 

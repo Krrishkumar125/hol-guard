@@ -173,8 +173,7 @@ def managed_controls_runtime_sync_posture(
     flags = ManagedControlsFeatureFlags.from_environment()
     if not flags.catalog_sync:
         return {}
-    from .extension_catalog_pages import CAPABILITY
-    from .extension_catalog_provider import prepare_installed_catalog_view, remember_view
+    from .extension_catalog_pages import CAPABILITY, prepare_installed_catalog_view
     from .extension_catalog_sync import ExtensionCatalogLimitError, build_v1_catalog_from_view
 
     try:
@@ -191,7 +190,6 @@ def managed_controls_runtime_sync_posture(
         # The active registry can be sparse. Its availability does not prove
         # complete discovery, including during staged factory integration.
         return {"managedControlsCapabilities": []}
-    view = remember_view(view)
     manifest = view.manifest
     v2: dict[str, object] = {
         "extensionCatalogViewDigest": manifest["catalogDigest"],

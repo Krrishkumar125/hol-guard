@@ -231,7 +231,7 @@ def test_catalog_sync_disabled_never_builds_the_catalog() -> None:
 def test_managed_posture_omits_the_digest_when_the_builder_hits_a_limit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from codex_plugin_scanner.guard.runtime import extension_catalog_provider
+    from codex_plugin_scanner.guard.runtime import extension_catalog_pages
     from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 
     monkeypatch.setenv(GUARD_EXTENSION_CATALOG_SYNC_V1, "true")
@@ -245,7 +245,7 @@ def test_managed_posture_omits_the_digest_when_the_builder_hits_a_limit(
     monkeypatch.setattr(
         managed_controls_sync, "current_catalog_registry", lambda _store: BUILT_IN_COMMAND_EXTENSION_REGISTRY
     )
-    monkeypatch.setattr(extension_catalog_provider, "prepare_installed_catalog_view", over_limit)
+    monkeypatch.setattr(extension_catalog_pages, "prepare_installed_catalog_view", over_limit)
     posture = managed_controls_sync.managed_controls_runtime_sync_posture(
         GuardStore(tmp_path / "guard-home"), generated_at="2026-10-09T00:00:00Z"
     )

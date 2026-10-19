@@ -21,7 +21,7 @@ from codex_plugin_scanner.guard.policy_bundle_delivery import (
 from codex_plugin_scanner.guard.policy_bundle_parser import policy_bundle_acceptance_checkpoint
 from codex_plugin_scanner.guard.runtime import extension_catalog_completion as cloud
 from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY as REGISTRY
-from codex_plugin_scanner.guard.runtime.extension_catalog_provider import _raw_extension
+from codex_plugin_scanner.guard.runtime.extension_catalog_pages import _raw_extension
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.managed_controls_activation_support import CAPABILITIES, managed_bundle
 from tests.native_cloud_helpers import native_bridge as native_bridge

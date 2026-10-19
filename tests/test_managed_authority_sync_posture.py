@@ -7,7 +7,7 @@ import pytest
 
 from codex_plugin_scanner.guard.runtime import (
     extension_catalog_completion,
-    extension_catalog_provider,
+    extension_catalog_pages,
     extension_catalog_sync,
     managed_controls_sync,
     runner,
@@ -41,11 +41,10 @@ def completed_catalog(monkeypatch):
     }
     monkeypatch.setattr(managed_controls_sync, "current_catalog_registry", capture)
     monkeypatch.setattr(
-        extension_catalog_provider,
+        extension_catalog_pages,
         "prepare_installed_catalog_view",
         lambda *_args, **_kwargs: SimpleNamespace(manifest=manifest),
     )
-    monkeypatch.setattr(extension_catalog_provider, "remember_view", lambda view: view)
     monkeypatch.setattr(extension_catalog_sync, "build_v1_catalog_from_view", lambda _view: {"catalogDigest": "c" * 64})
     monkeypatch.setattr(extension_catalog_completion, "policy_view_ready", lambda **_kwargs: state.completed)
     read = GuardStore.get_sync_payload

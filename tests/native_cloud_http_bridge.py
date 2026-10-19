@@ -36,7 +36,6 @@ from codex_plugin_scanner.guard.cli.oauth_client import GuardDpopKeyMaterial
 from codex_plugin_scanner.guard.native_policy_snapshot_publisher import provision_native_verifier_key_for_store
 from codex_plugin_scanner.guard.native_resident_client import close_native_residents
 from codex_plugin_scanner.guard.runtime import extension_catalog_pages as pages
-from codex_plugin_scanner.guard.runtime import extension_catalog_provider as provider
 from codex_plugin_scanner.guard.runtime import runner
 from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY as REGISTRY
 from codex_plugin_scanner.guard.runtime.extension_catalog_completion import complete_authenticated_view
@@ -55,7 +54,7 @@ def main(data):
     )
 
     call = partial(call_native, native)
-    pages.native_call = provider.native_call = call
+    pages.native_call = call
     from codex_plugin_scanner.guard.runtime import extension_catalog_transfer
 
     extension_catalog_transfer.native_call = call
@@ -73,7 +72,7 @@ def main(data):
         if data["action"] == "init":
             store._bootstrap_extension_control_authority(REGISTRY.catalog_digest, key=None)
             provision_native_verifier_key_for_store(store)
-            values = [provider._raw_extension(item) for item in REGISTRY.extensions]
+            values = [pages._raw_extension(item) for item in REGISTRY.extensions]
             count = data.get("count", 166)
             for i in range(count - len(values)):
                 item = raw(i)

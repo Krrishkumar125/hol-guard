@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard.runtime import extension_catalog_pages as pages
-from codex_plugin_scanner.guard.runtime import extension_catalog_provider as provider
 
 NOW = "2026-10-18T00:00:00Z"
 _homes = []
@@ -95,7 +94,6 @@ def native_bridge(monkeypatch):
             return call_native(process, home, **wire)
 
     monkeypatch.setattr(pages, "native_call", request)
-    monkeypatch.setattr(provider, "native_call", request)
     from codex_plugin_scanner.guard.runtime import extension_catalog_transfer
 
     monkeypatch.setattr(extension_catalog_transfer, "native_call", request)

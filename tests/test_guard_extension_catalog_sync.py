@@ -82,7 +82,7 @@ class FakePostureStore:
 
 @pytest.fixture
 def prepared_posture_catalog(monkeypatch: pytest.MonkeyPatch, native_bridge) -> None:
-    from codex_plugin_scanner.guard.runtime import extension_catalog_provider as provider
+    from codex_plugin_scanner.guard.runtime import extension_catalog_pages as pages
     from codex_plugin_scanner.guard.runtime import managed_controls_sync as controls
 
     # Synthetic active-authority adapter for these catalog/session wire units.
@@ -90,13 +90,13 @@ def prepared_posture_catalog(monkeypatch: pytest.MonkeyPatch, native_bridge) -> 
 
     def prepared(_home, *, registry, guard_version, generated_at):
         return prepare_native(
-            values=[provider._raw_extension(item) for item in registry.extensions],
+            values=[pages._raw_extension(item) for item in registry.extensions],
             enforcement_digest=registry.catalog_digest,
             guard_version=guard_version,
             generated_at=generated_at,
         )
 
-    monkeypatch.setattr(provider, "prepare_installed_catalog_view", prepared)
+    monkeypatch.setattr(pages, "prepare_installed_catalog_view", prepared)
 
 
 def registry(*, reverse: bool = False) -> FakeRegistry:

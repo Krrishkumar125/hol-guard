@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -69,8 +70,7 @@ class PreparedCatalogView:
 
     def request_bytes(self, operation: str, ordinal: int | None = None) -> bytes:
         body = bytearray()
-        total = expected = None
-        while total is None or len(body) < total:
+        while True:
             result = native_call(
                 self.guard_home,
                 action="request",
@@ -79,19 +79,16 @@ class PreparedCatalogView:
                 ordinal=ordinal,
                 offset=len(body),
             )
-            # The native runtime enforces the wire budget; these checks only keep
-            # the reassembly loop well formed when chunks arrive out of order.
-            size = result.get("total_bytes")
-            if type(size) is not int or size <= 0 or result.get("offset") != len(body):
-                raise ValueError("Native catalog request chunk is out of sequence")
-            if total is None:
-                total, expected = size, result.get("body_sha256")
-            if size != total or result.get("body_sha256") != expected:
-                raise ValueError("Native catalog request changed between chunks")
             chunk = base64.b64decode(result["body_chunk"], validate=True)
-            if not chunk or len(body) + len(chunk) > total:
-                raise ValueError("Native catalog chunk exceeds the declared body")
+            if not chunk:
+                raise ValueError("Native catalog request chunk is empty")
             body.extend(chunk)
+            # The native runtime bounds the body; reassembly only has to end
+            # and to reproduce exactly the body the runtime digested.
+            if len(body) >= result["total_bytes"]:
+                break
+        if len(body) != result["total_bytes"] or hashlib.sha256(body).hexdigest() != result["body_sha256"]:
+            raise ValueError("Native catalog request reassembled out of sequence")
         return bytes(body)
 
     def pages(self):
@@ -109,3 +106,70 @@ class PreparedCatalogView:
             yield
         finally:
             native_call(self.guard_home, action="release", lease=lease)
+
+
+def _raw_extension(item):
+    """Marshal local objects without computing a Cloud projection in Python."""
+    return {
+        "extension_id": item.extension_id,
+        "version": item.version,
+        "name": item.name,
+        "source": item.source,
+        "executables": item.executables,
+        "ecosystem_ids": item.ecosystem_ids,
+        "risk_classes": item.risk_classes,
+        "delegated_protection": item.delegated_protection,
+        "permissions": [
+            {
+                "extension_id": item.extension_id,
+                "permission_id": p.permission_id,
+                "label": p.label,
+                "configurable": p.configurable,
+                "risk_tier": p.risk_tier,
+                "typed_capabilities": p.typed_capabilities,
+            }
+            for p in item.permissions
+        ],
+    }
+
+
+def prepare_installed_catalog_view(
+    guard_home: Path, *, registry, guard_version: str, generated_at: str
+) -> PreparedCatalogView:
+    from ..catalog_delivery import discovery
+
+    handle = discovery.require_handle(discovery.installed_discovery(guard_home), guard_home)
+    # A root is metadata integrity only. Factory authentication remains required.
+    observation = {
+        "guard_home": str(guard_home.absolute()),
+        "discovery_root": handle.root,
+        "discovery_authority": handle.authority,
+        "enforcement_catalog_digest": registry.catalog_digest,
+        "guard_version": guard_version,
+        "generated_at": generated_at,
+    }
+    draft = native_call(guard_home, action="begin", observation=observation)["draft"]
+    try:
+        for item in registry.extensions:
+            native_call(guard_home, action="append", draft=draft, entry=_raw_extension(item))
+        discovery.require_handle(handle, guard_home)
+        result = native_call(guard_home, action="finish", draft=draft)
+        discovery.require_handle(handle, guard_home)
+        return PreparedCatalogView.from_native(guard_home, result)
+    except BaseException:
+        with suppress(ValueError, RuntimeError, OSError):
+            native_call(guard_home, action="abort", draft=draft)
+        raise
+
+
+def observed_view(session: dict[str, object], guard_home: Path | None = None) -> PreparedCatalogView:
+    if guard_home is None:
+        raise ValueError("Explicit Guard home required for native catalog observation")
+    result = native_call(
+        guard_home,
+        action="observe",
+        view_digest=session.get("extensionCatalogViewDigest"),
+        enforcement_digest=session.get("extensionCatalogEnforcementDigest"),
+        generated_at=session.get("extensionCatalogGeneratedAt"),
+    )
+    return PreparedCatalogView.from_native(guard_home, result)

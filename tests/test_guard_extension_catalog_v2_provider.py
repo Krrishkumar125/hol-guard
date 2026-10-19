@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from codex_plugin_scanner.guard.runtime import extension_catalog_provider as provider
+from codex_plugin_scanner.guard.runtime import extension_catalog_pages as pages
 from codex_plugin_scanner.guard.runtime import runner
 from tests.native_cloud_helpers import native_bridge as native_bridge
 from tests.native_cloud_helpers import prepare_native, raw
@@ -30,7 +30,7 @@ def unit_active_authority(monkeypatch):
 
 @pytest.mark.parametrize("known", [False, True])
 def test_runtime_v2_uses_existing_authenticated_request_transport(monkeypatch, known):
-    view = provider.remember_view(prepare(166))
+    view = prepare(166)
     session = posture(view)
     receiver = Receiver()
     auth = {"synthetic": "context"}
@@ -73,7 +73,7 @@ def test_same_root_heartbeat_retry_reuses_manifest_and_key():
     first = prepare(7)
     again = prepare_native(7, home=first.guard_home, generated_at="2026-10-18T01:00:00Z")
     assert again.manifest == first.manifest and again.token == first.token
-    observed = provider.observed_view(posture(first), first.guard_home)
+    observed = pages.observed_view(posture(first), first.guard_home)
     assert observed.manifest == first.manifest
 
 
@@ -84,7 +84,7 @@ def test_active_catalog_change_during_preparation_withdraws_the_view(monkeypatch
     view = prepare(166)
     registries = iter([SimpleNamespace(catalog_digest="a" * 64), SimpleNamespace(catalog_digest="f" * 64)])
     monkeypatch.setattr(controls, "current_catalog_registry", lambda _: next(registries))
-    monkeypatch.setattr(provider, "prepare_installed_catalog_view", lambda *_, **__: view)
+    monkeypatch.setattr(pages, "prepare_installed_catalog_view", lambda *_, **__: view)
     assert controls.managed_controls_runtime_sync_posture(
         SimpleNamespace(guard_home=view.guard_home), generated_at=NOW
     ) == {"managedControlsCapabilities": []}
@@ -98,7 +98,7 @@ def test_missing_factory_never_advertises_sparse_active_catalog(monkeypatch):
     def unavailable(*args, **kwargs):
         raise ImportError("metadata factory not integrated")
 
-    monkeypatch.setattr(provider, "prepare_installed_catalog_view", unavailable)
+    monkeypatch.setattr(pages, "prepare_installed_catalog_view", unavailable)
     with pytest.raises(RuntimeError, match="discovery factory is unavailable"):
         managed_controls_runtime_sync_posture(SimpleNamespace(guard_home=Path("/fixture")), generated_at=NOW)
 
@@ -114,7 +114,7 @@ def test_oversized_posture_advertises_prepared_transport_only(monkeypatch):
     ):
         monkeypatch.setenv(name, "true")
     view = prepare(1660)
-    monkeypatch.setattr(provider, "prepare_installed_catalog_view", lambda *args, **kwargs: view)
+    monkeypatch.setattr(pages, "prepare_installed_catalog_view", lambda *args, **kwargs: view)
     monkeypatch.setattr(
         controls, "_authority_posture", lambda *args, **kwargs: pytest.fail("legacy delivery advertised")
     )
@@ -133,7 +133,7 @@ def test_native_cache_loss_withdraws_posture_capabilities(monkeypatch):
 
     monkeypatch.setenv("GUARD_EXTENSION_CATALOG_SYNC_V1", "true")
     view = prepare(1)
-    monkeypatch.setattr(provider, "prepare_installed_catalog_view", lambda *_, **__: view)
+    monkeypatch.setattr(pages, "prepare_installed_catalog_view", lambda *_, **__: view)
 
     def unavailable(_):
         raise ValueError("native cache observation was evicted")
@@ -147,7 +147,7 @@ def test_native_cache_loss_withdraws_posture_capabilities(monkeypatch):
 def test_old_server_uploads_same_observed_complete_view(monkeypatch):
     from codex_plugin_scanner.guard.runtime.extension_catalog_sync import build_v1_catalog_from_view
 
-    view = provider.remember_view(prepare(166))
+    view = prepare(166)
     catalog = build_v1_catalog_from_view(view)
     session = {**posture(view), "extensionCatalogDigest": catalog["catalogDigest"]}
     uploads = []
@@ -207,7 +207,6 @@ def test_runtime_json_reply_budget(monkeypatch):
 
 
 def test_provider_delegates_raw_active_metadata_and_factory_authentication(monkeypatch, tmp_path):
-    from codex_plugin_scanner.guard.runtime import extension_catalog_pages as pages
 
     view = prepare_native(2)
     handle = SimpleNamespace(root=view.discovery_root, authority=view.discovery_authority)
@@ -224,7 +223,7 @@ def test_provider_delegates_raw_active_metadata_and_factory_authentication(monke
         SimpleNamespace(installed_discovery=lambda _: handle, require_handle=require),
     )
     active = SimpleNamespace(**{**raw(1), "name": "Active authoritative", "permissions": ()})
-    result = provider.prepare_installed_catalog_view(
+    result = pages.prepare_installed_catalog_view(
         view.guard_home,
         registry=SimpleNamespace(extensions=(active,), catalog_digest="a" * 64),
         guard_version="3.49.0",
