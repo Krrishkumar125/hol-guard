@@ -131,8 +131,8 @@ def prepare_candidate(store, registry, mutation, effective_layers, *, managed_re
         observe_preparation(store, authority)
     try:
         prepared = preparation.prepare(authority, selected, directory, engine=engine, retained_extension_ids=retained)
-    except preparation.UnavailablePackError:
-        lifecycle.invoke("fallback", profile=plan["profile"], reason="unavailable-pack")
+    except preparation.UnavailablePackError as error:
+        lifecycle.invoke("fallback", profile=plan["profile"], reason=error.code)
         from ..catalog_delivery.transport import fetch_root
 
         authority = fetch_root(now=int(time.time()))

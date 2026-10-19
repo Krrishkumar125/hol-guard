@@ -371,3 +371,27 @@ fn selection_uses_existing_composer_and_never_managed_opt_in() {
         json!(["command.external"])
     );
 }
+
+#[test]
+fn fallback_to_remote_is_authorized_only_for_installed_typed_unavailability() {
+    let request = |profile: &str, reason: &str| {
+        evaluate(&json!({"kind":"fallback","profile":profile,"reason":reason}))
+    };
+    let code = crate::pack_preparation::UNAVAILABLE;
+    assert_eq!(
+        request("installed", code).unwrap(),
+        json!({"profile":"remote"})
+    );
+    for (profile, reason) in [
+        ("remote", code),
+        ("committed-subset", code),
+        ("installed", "unavailable-pack"),
+        ("installed", "pack_transfer_budget_exceeded"),
+        ("installed", ""),
+    ] {
+        assert_eq!(
+            request(profile, reason).unwrap_err(),
+            "pack_lifecycle_fallback_not_authorized"
+        );
+    }
+}

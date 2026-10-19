@@ -401,12 +401,13 @@ pub(crate) fn evaluate(input: &Value) -> Result<Value, String> {
             .as_str()
             .ok_or("active_security_directory_missing")?,
     );
-    match proofs::complete(&mut state, &header, directory) {
-        Ok(()) => state.answer(&key),
-        Err(proofs::Failure::Need(reference)) => Ok(json!({"need":reference})),
-        Err(proofs::Failure::Archives(archives)) => Ok(json!({"need_archives":archives})),
-        Err(proofs::Failure::Invalid(code)) => Err(code.into()),
-    }
+    let request = match proofs::complete(&mut state, &header, directory) {
+        Ok(()) => return state.answer(&key),
+        Err(proofs::Failure::Need(reference)) => json!({"need":reference}),
+        Err(proofs::Failure::Archives(archives)) => json!({"need_archives":archives}),
+        Err(proofs::Failure::Invalid(code)) => return Err(code.into()),
+    };
+    crate::pack_preparation::transfer::account(input, request)
 }
 
 #[cfg(test)]

@@ -13,7 +13,10 @@ mod proofs;
 mod targets;
 #[cfg(test)]
 mod tests;
-mod transfer;
+pub(crate) mod transfer;
+/// Stable code for a release that does not publish a requested policy. The
+/// lifecycle fallback operation authorizes a retry only against this code.
+pub(crate) const UNAVAILABLE: &str = "pack_policy_unavailable";
 const MAX_SELECTED: usize = 32768;
 type Result<T> = std::result::Result<T, Failure>;
 enum Failure {
@@ -22,6 +25,7 @@ enum Failure {
     Archives(Value),
     Invalid(String),
     Revoked(String, u64),
+    Unavailable,
 }
 impl From<&str> for Failure {
     fn from(s: &str) -> Self {
@@ -84,9 +88,7 @@ impl Preparation<'_> {
             return Err("pack interface expansion exceeds admission budget".into());
         }
         let record = metadata::lookup(self.directory, &self.root, id, self.defaults.get(id))?
-            .ok_or_else(|| {
-                Failure::from("selected policy is not available in the authenticated release")
-            })?;
+            .ok_or(Failure::Unavailable)?;
         if self.defaults.contains_key(id) && record["trust_class"] == "external" {
             return Err("external policy cannot be selected by defaults".into());
         }
@@ -307,31 +309,22 @@ fn prepare(input: &Value) -> Result<Value> {
     };
     preparation.run()
 }
+fn respond(input: &Value, result: Result<Value>) -> std::result::Result<Value, String> {
+    let offline = input["profile"] == "committed-subset";
+    let response = match result {
+        Ok(value) => value,
+        Err(Failure::Batch(_) | Failure::Need(_) | Failure::Archives(_)) if offline => {
+            return Err("offline subset cannot fetch uncached policy".into())
+        }
+        Err(Failure::Batch(needs)) => json!({"needs":needs}),
+        Err(Failure::Need(reference)) => json!({"need":reference}),
+        Err(Failure::Archives(archives)) => json!({"need_archives":archives}),
+        Err(Failure::Revoked(id, epoch)) => json!({"revoked":id,"epoch":epoch}),
+        Err(Failure::Unavailable) => json!({"unavailable":UNAVAILABLE}),
+        Err(Failure::Invalid(message)) => return Err(message),
+    };
+    transfer::account(input, response)
+}
 pub(crate) fn evaluate(input: &Value) -> std::result::Result<Value, String> {
-    match prepare(input) {
-        Ok(value) => Ok(value),
-        Err(Failure::Batch(needs)) => {
-            if input["profile"] == "committed-subset" {
-                Err("offline subset cannot fetch uncached policy".into())
-            } else {
-                Ok(json!({"needs":needs}))
-            }
-        }
-        Err(Failure::Need(reference)) => {
-            if input["profile"] == "committed-subset" {
-                Err("offline subset cannot fetch uncached policy".into())
-            } else {
-                Ok(json!({"need":reference}))
-            }
-        }
-        Err(Failure::Archives(archives)) => {
-            if input["profile"] == "committed-subset" {
-                Err("offline subset cannot fetch uncached policy".into())
-            } else {
-                Ok(json!({"need_archives":archives}))
-            }
-        }
-        Err(Failure::Revoked(id, epoch)) => Ok(json!({"revoked":id,"epoch":epoch})),
-        Err(Failure::Invalid(message)) => Err(message),
-    }
+    respond(input, prepare(input))
 }

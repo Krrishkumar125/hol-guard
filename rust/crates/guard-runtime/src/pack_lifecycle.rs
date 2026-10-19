@@ -127,7 +127,9 @@ pub(super) fn evaluate(input: &Value) -> Result<Value, String> {
         return selection::select(input);
     }
     if kind == "fallback" {
-        return if input["profile"] == "installed" && input["reason"] == "unavailable-pack" {
+        return if input["profile"] == "installed"
+            && input["reason"] == crate::pack_preparation::UNAVAILABLE
+        {
             Ok(json!({"profile":"remote"}))
         } else {
             Err("pack_lifecycle_fallback_not_authorized".into())

@@ -77,6 +77,10 @@ def _commit(store, captured, activation, result):
         write_private_state(store.guard_home, FILE, result["record"].encode(), MAX_BYTES)
 
 
+def _no_fetch(target, maximum):
+    raise ValueError("active_security_required_proofs_unavailable")
+
+
 def _prepare(store, captured, activation, publication, fetch, *, profile=None, installed_identity=None):
     arguments = dict(
         record=captured,
@@ -93,26 +97,16 @@ def _prepare(store, captured, activation, publication, fetch, *, profile=None, i
     if pending.get("ignored"):
         return None
     directory = activation_store.directory_for_store(store)
-    reader = LocatedStore(directory / "objects", fetch=fetch)
-    transferred = 0
-
-    def transfer(target, maximum):
-        nonlocal transferred
-        if fetch is None:
-            raise ValueError("active_security_required_proofs_unavailable") from None
-        data = fetch(target, maximum)
-        transferred += len(data)
-        if transferred > preparation.MAX_TRANSFER_BYTES:
-            raise ValueError("active_security_transfer_budget_exceeded")
-        return data
-
-    from . import preparation
     from .pack_archives import ingest
 
-    reader.fetch = transfer
+    transfer = fetch or _no_fetch
+    reader = LocatedStore(directory / "objects", fetch=transfer)
+    complete = dict(record=pending["record"], directory=str(directory), **activation)
     try:
-        for _ in range(8192):
-            result = invoke("complete", store, record=pending["record"], directory=str(directory), **activation)
+        # Rust charges each requested object once against one cumulative budget
+        # and bounds the rounds; only the echoed budget is carried between calls.
+        result = invoke("complete", store, **complete)
+        while "need" in result or "need_archives" in result:
             if "need_archives" in result:
                 for archive in result["need_archives"]:
                     ingest(
@@ -121,11 +115,10 @@ def _prepare(store, captured, activation, publication, fetch, *, profile=None, i
                         archive["length"],
                         directory / "objects",
                     )
-                continue
-            if "need" not in result:
-                return result
-            reader.blob(result["need"])
-        raise ValueError("active_security_transfer_budget_exceeded")
+            else:
+                reader.blob(result["need"])
+            result = invoke("complete", store, budget=result["budget"], **complete)
+        return result
     except (ValueError, OSError):
         # A known authenticated newer epoch is retained even if a required
         # proof is missing, corrupt or unavailable. It cannot revive old LKG.

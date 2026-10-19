@@ -42,6 +42,10 @@ def request_metadata(store, active, layers):
         return _request_metadata(store, active, layers)
 
 
+def _no_fetch(target, maximum):
+    raise ValueError("target metadata fetch authority is unavailable")
+
+
 def _request_metadata(store, active, layers):
     result = TargetMetadata(active)
     arguments: dict[str, Any] = dict(
@@ -57,22 +61,10 @@ def _request_metadata(store, active, layers):
             for control in layer.controls
         ],
     )
-    transferred = 0
-    fetch = None
-
-    def bounded_fetch(target, maximum):
-        nonlocal transferred
-        if fetch is None:
-            raise ValueError("target metadata fetch authority is unavailable")
-        data = fetch(target, maximum)
-        transferred += len(data)
-        if transferred > preparation.MAX_TRANSFER_BYTES:
-            raise ValueError("target metadata transfer budget exceeded")
-        return data
-
+    fetch = _no_fetch
     directory = activation_store.prepare_directory_for_store(store)
     with lifecycle.verified_preparation() as invoke:
-        for _ in range(8192):
+        while True:
             response = invoke(**arguments)
             if "authority" in response:
                 profile = response["authority"]
@@ -84,18 +76,18 @@ def _request_metadata(store, active, layers):
                         else None
                     )
                     arguments["committed"] = activation_store.read(store) is not None if authority is None else False
-                    fetch = authority.fetch if authority is not None else None
+                    fetch = authority.fetch if authority is not None else _no_fetch
                 else:
                     authority = transport.fetch_root(now=int(time.time()))
                     fetch = preparation.cached_fetcher(directory / "transfers")
                 arguments[profile] = preparation_authority.publication(authority)[1].decode() if authority else None
             elif "need" in response:
-                LocatedStore(directory / "objects", fetch=bounded_fetch).blob(response["need"])
+                # Rust charges the cumulative transfer budget and bounds the rounds.
+                LocatedStore(directory / "objects", fetch=fetch).blob(response["need"])
+                arguments["budget"] = response["budget"]
             else:
                 for reference in response["catalog_refs"]:
                     value = LocatedStore(directory / "objects").json(reference)[0]
                     result.extensions[value["extension_id"]] = _extension(value)
                 break
-        else:
-            raise ValueError("target metadata transfer budget exceeded")
     return result

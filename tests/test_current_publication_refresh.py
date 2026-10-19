@@ -193,7 +193,7 @@ def test_periodic_publisher_advances_complete_readiness_and_enable_without_packa
     assert ADDED in opened.selected
     assert any("/pack-" in url for url in state.calls)
     state.offline = True
-    with pytest.raises(preparation.UnavailablePackError, match="not available"):
+    with pytest.raises(preparation.UnavailablePackError, match="pack_policy_unavailable"):
         preparation.prepare(state.installed, [ADDED], state.home / "uncached", engine=state.engine)
 
 

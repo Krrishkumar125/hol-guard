@@ -19,12 +19,14 @@ from .transport import cached_fetcher
 
 IDENTITY = re.compile(r"command\.[a-z0-9]+(?:[.-][a-z0-9]+)*")
 MAX_SELECTED = 32768
-MAX_TRANSFER_BYTES = 512 * 1024 * 1024
-MAX_CATALOG_BYTES = 128 * 1024 * 1024
 
 
 class UnavailablePackError(ValueError):
-    """An authenticated release does not include the requested policy."""
+    """An authenticated release does not publish the policy; `code` is Rust's typed reason."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -128,40 +130,28 @@ def _prepare(
             if fetch is None
             else fetch
         )
-        transferred = 0
-
-        def bounded_fetch(target, maximum):
-            nonlocal transferred
-            if profile == "committed-subset":
-                raise ValueError("offline subset cannot fetch uncached policy")
-            data = transfer(target, maximum)
-            transferred += len(data)
-            if transferred > MAX_TRANSFER_BYTES:
-                raise ValueError("pack preparation transfer budget exceeded")
-            return data
-
-        store = LocatedStore(directory / "objects", fetch=bounded_fetch)
+        # Rust charges every requested object against one cumulative budget and
+        # bounds the rounds; the echoed `budget` is the only state carried over.
+        store = LocatedStore(directory / "objects", fetch=transfer)
         result = invoke(**arguments)
-        for _ in range(8192):
+        while True:
             if "revoked" in result:
                 raise RevokedPackError(result["revoked"], result["epoch"])
+            if "unavailable" in result:
+                raise UnavailablePackError(result["unavailable"])
             if "needs" in result:
-                for request in result["needs"]:
-                    if "need" in request:
-                        store.blob(request["need"])
-                    else:
-                        for archive in request["need_archives"]:
-                            stage_archive(directory, archive, bounded_fetch, invoke=invoke)
-            elif "need" in result:
-                store.blob(result["need"])
-            elif "need_archives" in result:
-                for archive in result["need_archives"]:
-                    stage_archive(directory, archive, bounded_fetch, invoke=invoke)
+                requests = result["needs"]
+            elif "need" in result or "need_archives" in result:
+                requests = [result]
             else:
                 break
-            result = invoke(**arguments)
-        else:
-            raise ValueError("pack preparation transfer budget exceeded")
+            for request in requests:
+                if "need" in request:
+                    store.blob(request["need"])
+                else:
+                    for archive in request["need_archives"]:
+                        stage_archive(directory, archive, transfer, invoke=invoke)
+            result = invoke(budget=result["budget"], **arguments)
         prepared = object.__new__(PreparedCommandPacks)
         fields = dict(
             _cache_lease=lease,
@@ -189,8 +179,6 @@ def _prepare(
         for field, item in fields.items():
             object.__setattr__(prepared, field, item)
         return prepared
-    except BaseException as exc:
+    except BaseException:
         lease.close()
-        if isinstance(exc, ValueError) and "selected policy is not available in the authenticated release" in str(exc):
-            raise UnavailablePackError("selected policy is not available in the authenticated release") from exc
         raise
