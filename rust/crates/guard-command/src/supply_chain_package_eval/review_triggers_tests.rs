@@ -73,10 +73,10 @@ fn strict_keeps_unknown_packages_blocked_and_reviews_drift_and_direct_sources() 
 }
 
 #[test]
-fn paranoid_reviews_every_install_and_custom_registry() {
+fn paranoid_blocks_every_install_and_custom_registry() {
     let paranoid = triggers("paranoid", &[]);
-    assert_eq!(paranoid.decision(PACKAGE_INSTALL), "ask");
-    assert_eq!(paranoid.decision(PACKAGE_CUSTOM_REGISTRY), "ask");
+    assert_eq!(paranoid.decision(PACKAGE_INSTALL), "block");
+    assert_eq!(paranoid.decision(PACKAGE_CUSTOM_REGISTRY), "block");
 }
 
 #[test]
