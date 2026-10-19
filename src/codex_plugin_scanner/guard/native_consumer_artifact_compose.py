@@ -97,6 +97,8 @@ _ANSWERS: dict[str, dict[str, str]] = {
 }
 
 _FIELDS["runtime_authoritative"] = frozenset({"runtime", "signals"})
+# Fields a query may omit; the resident decodes an omitted one as null.
+_OPTIONAL_FIELDS: dict[str, frozenset[str]] = {"current_action": frozenset({"low_trust_action"})}
 _ANSWERS["runtime_authoritative"] = {**_ANSWERS["runtime_decision"], "authoritative_decision": "d"}
 
 
@@ -121,7 +123,7 @@ def native_consumer_compose(kind: str, fields: Mapping[str, object], *, guard_ho
     """Return the resident's answer to one composition query, or raise."""
 
     expected = _FIELDS.get(kind)
-    if expected is None or set(fields) != expected:
+    if expected is None or not expected <= set(fields) <= expected | _OPTIONAL_FIELDS.get(kind, frozenset()):
         raise NativeConsumerComposeError("native_consumer_artifact_compose_request_invalid")
     try:
         home = _resolve_digest_home(guard_home)

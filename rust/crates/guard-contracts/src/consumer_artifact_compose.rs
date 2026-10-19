@@ -94,6 +94,11 @@ pub struct ConsumerCurrentActionQueryV1 {
     pub publisher_trust: String,
     pub prior_approvals: i64,
     pub prior_incidents: i64,
+    /// The `low_trust_artifact` action for a first-seen or changed artifact
+    /// whose registry trust score is low; omitted (null) otherwise, so
+    /// requests without it keep their digest.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub low_trust_action: Value,
 }
 
 /// The fields of a resolved saved policy decision that authority reads.
