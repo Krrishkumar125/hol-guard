@@ -205,11 +205,14 @@ def test_runner_code_refuses_unproven_manager_without_losing_verified_fixture(
     manager_kind,
 ):
     del native_context_digest
+    from tests import native_launch_evidence_helpers
     from tests.native_launch_evidence_helpers import _inventory
     from tests.test_native_review_exact_action_always import _wrangler_workspace
 
     project = _wrangler_workspace(tmp_path, monkeypatch)
-    assert _inventory("npx wrangler --version", project) is not None
+    assert _inventory("npx wrangler --version", project) is not None, (
+        native_launch_evidence_helpers.LAST_UNAVAILABLE_REASON
+    )
     manager = tmp_path / "manager-bin" / "npx"
     if manager_kind == "bare-launcher":
         source = manager.read_bytes()

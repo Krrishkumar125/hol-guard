@@ -30,8 +30,15 @@ def _arguments(
     }
 
 
+# The reason the resident gave for the most recent withheld observation, so a
+# regression names its cause instead of only ``None``.
+LAST_UNAVAILABLE_REASON: str | None = None
+
+
 def _inventory(command: str, workspace: Path, **kwargs: Any) -> str | None:
+    global LAST_UNAVAILABLE_REASON
     evidence, reason = native_launch_evidence(**_arguments(command, workspace, **kwargs))
+    LAST_UNAVAILABLE_REASON = reason
     if evidence is None:
         assert isinstance(reason, str)
         return None

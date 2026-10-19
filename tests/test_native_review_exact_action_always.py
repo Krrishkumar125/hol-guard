@@ -23,6 +23,7 @@ from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker
 from codex_plugin_scanner.guard.models import GuardAction, PolicyDecision
 from codex_plugin_scanner.guard.native_decision_receipt import canonical_receipt_bytes
 from codex_plugin_scanner.guard.store import GuardStore
+from tests import native_launch_evidence_helpers
 from tests.native_launch_evidence_helpers import _inventory, _permission
 from tests.test_native_command_observations import _edge, _observations, _receipt
 
@@ -103,7 +104,7 @@ def test_inventory_is_stable_across_sessions_and_observes_the_installed_runner(
 ) -> None:
     workspace = _wrangler_workspace(tmp_path, monkeypatch)
     first = _inventory("npx wrangler --version", workspace, payload_extra={"session_id": "a", "tool_use_id": "1"})
-    assert first is not None
+    assert first is not None, native_launch_evidence_helpers.LAST_UNAVAILABLE_REASON
     assert first == _inventory(
         "npx wrangler --version", workspace, payload_extra={"session_id": "b", "tool_use_id": "2"}
     )
@@ -120,7 +121,7 @@ def test_camel_case_harness_payload_offers_the_same_inventory(
     # ZCode, Devin and Grok send ``toolInput``; the daemon receives that shape unchanged.
     workspace = _wrangler_workspace(tmp_path, monkeypatch)
     expected = _inventory("npx wrangler --version", workspace)
-    assert expected is not None
+    assert expected is not None, native_launch_evidence_helpers.LAST_UNAVAILABLE_REASON
     result, receipt = _verdict()
     camel, _reason = native_launch_evidence(
         harness=_HARNESS,
