@@ -77,12 +77,18 @@ fn script_request(harness: &str, command: &str) -> NativeExactActionRequestV1 {
 fn a_script_review_without_an_owner_route_keeps_both_choices() {
     for command in SCRIPTS {
         let (token, reason) = outcome(&script_request("codex", command), Fallback::CommandHash);
-        assert!(token.is_some(), "{command} offers Allow once and Always allow");
+        assert!(
+            token.is_some(),
+            "{command} offers Allow once and Always allow"
+        );
         assert_eq!(reason, None, "{command}");
     }
     let first = outcome(&script_request("codex", SCRIPTS[0]), Fallback::CommandHash).0;
     let second = outcome(&script_request("codex", SCRIPTS[2]), Fallback::CommandHash).0;
-    assert_ne!(first, second, "the hash binds the command it was approved for");
+    assert_ne!(
+        first, second,
+        "the hash binds the command it was approved for"
+    );
 }
 
 /// On the route that can hold a script to the bytes the user saw, command text
