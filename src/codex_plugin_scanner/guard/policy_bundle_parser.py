@@ -29,6 +29,12 @@ _POLICY_BUNDLE_RULE_MATCHER_FAMILIES = frozenset(
 
 CANONICAL_COMPILE_REJECTION_PREFIX = "canonical_compile_"
 
+# The compiler reports these before it reads any rule and names the policy
+# document in place of a rule, so a rejection for one of them carries no rule id.
+CANONICAL_COMPILE_DOCUMENT_CODES = frozenset(
+    {"invalid_policy_spec", "invalid_policy_rules", "unsupported_policy_budgets"}
+)
+
 # A rule the canonical compiler cannot turn into enforcement rows rejects the
 # whole bundle, so the device keeps the policy it already had. The reason code
 # alone names neither the rule nor what about it is unenforceable, which leaves
@@ -47,11 +53,12 @@ _CANONICAL_COMPILE_REMEDIATION = {
     "unsupported_policy_lifetime": ("Guard enforces lifetime.mode permanent, or until with an expiresAt time."),
     "unsupported_policy_budgets": "Budgets are not enforced by Guard.",
     "command_expression_requires_guard_3_1_runtime": (
-        "Command expressions need Guard 3.1 or newer; this device cannot enforce them yet."
+        "This device does not enforce command expressions; match the rule on tools, artifacts, harnesses, "
+        "publishers or workspaces instead."
     ),
     "policy_compilation_limit": (
         "The rules expand into more enforcement rows than one policy may hold. Split the policy, or list "
-        "fewer tools, artifacts and harnesses per rule."
+        "fewer tools, artifacts, harnesses, publishers and workspaces per rule."
     ),
 }
 
@@ -209,11 +216,15 @@ def policy_bundle_is_version_downgrade(
 
 def policy_bundle_rejection_message(reason: str | None) -> str | None:
     if reason is not None and reason.startswith(CANONICAL_COMPILE_REJECTION_PREFIX):
-        detail = _CANONICAL_COMPILE_REMEDIATION.get(reason[len(CANONICAL_COMPILE_REJECTION_PREFIX) :])
+        code = reason[len(CANONICAL_COMPILE_REJECTION_PREFIX) :]
+        detail = _CANONICAL_COMPILE_REMEDIATION.get(code)
+        subject = "policy" if code in CANONICAL_COMPILE_DOCUMENT_CODES else "rule"
         return (
-            "The policy bundle was not applied because one of its rules cannot be enforced on this device. "
+            "The policy bundle was not applied because "
+            + ("its policy" if subject == "policy" else "one of its rules")
+            + " cannot be enforced on this device. "
             + (f"{detail} " if detail else "")
-            + "Change the rule in Guard Cloud and publish again; this device keeps the policy it already had."
+            + f"Change the {subject} in Guard Cloud and publish again; this device keeps the policy it already had."
         )
     if reason == "inactive_rollout_state":
         return (

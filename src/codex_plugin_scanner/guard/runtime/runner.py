@@ -65,6 +65,7 @@ from ..policy_bundle_delivery import (
     effective_policy_bundle_acknowledgement,
 )
 from ..policy_bundle_parser import (
+    CANONICAL_COMPILE_DOCUMENT_CODES,
     CANONICAL_COMPILE_REJECTION_PREFIX,
     non_empty_string,
     policy_bundle_acceptance_checkpoint,
@@ -782,7 +783,8 @@ def sync_receipts(
             except PolicyCompilationError as error:
                 validated_policy_bundle = None
                 policy_bundle_rejection_reason = f"{CANONICAL_COMPILE_REJECTION_PREFIX}{error.code}"
-                policy_bundle_rejection_rule_id = error.rule_id
+                if error.code not in CANONICAL_COMPILE_DOCUMENT_CODES:
+                    policy_bundle_rejection_rule_id = error.rule_id
             except PolicyBundleNativeError as error:
                 candidate_policy_decisions = []
                 validated_policy_bundle = None
