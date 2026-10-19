@@ -252,3 +252,48 @@ def test_the_remainder_block_says_the_unclassified_io_is_off_the_decision_path(t
 )
 def test_the_remainder_groups_by_subpackage(path: str, expected: str) -> None:
     assert MODULE._subpackage(path) == expected
+
+
+def _module_observations(source: str, path: str = "src/codex_plugin_scanner/guard/subject.py"):
+    tree = ast.parse(source)
+    shadowed = MODULE._shadowed_names(tree)
+    return [
+        observation
+        for record in MODULE._functions(tree, path)
+        for observation in MODULE._observations(record, shadowed)
+    ]
+
+
+def test_a_sibling_export_renamed_over_an_operation_is_not_that_operation() -> None:
+    # `resolve` here is this package's own redaction helper, not `Path.resolve`.
+    source = (
+        "def redact(value):\n"
+        "    from .runtime_resolution import _redact_secrets as resolve\n"
+        "\n"
+        "    return resolve(value)\n"
+    )
+    assert _module_observations(source) == []
+
+
+def test_a_local_wrapper_does_not_excuse_the_call_sites_that_reach_it() -> None:
+    # `sha256` names code in this package, but the gate still owes an entry for
+    # every site that hashes through it.
+    source = (
+        "from .io import sha256\n"
+        "\n"
+        "def digest(value):\n"
+        "    return sha256(value)\n"
+    )
+    assert [item.operation for item in _module_observations(source)] == ["sha256"]
+
+
+def test_an_absolute_import_of_an_operation_is_still_counted() -> None:
+    # Only a relative import can be renamed into a false match; `hashlib` is
+    # still the real thing under any spelling the gate can see.
+    source = (
+        "from hashlib import sha256\n"
+        "\n"
+        "def digest(value):\n"
+        "    return sha256(value).hexdigest()\n"
+    )
+    assert [item.operation for item in _module_observations(source)] == ["sha256"]

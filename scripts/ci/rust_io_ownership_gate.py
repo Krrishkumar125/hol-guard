@@ -215,7 +215,31 @@ def _category(path: str, kind: str) -> str:
     return "unclassified_python_io"
 
 
-def _observations(record: FunctionRecord) -> Iterable[IoObservation]:
+def _shadowed_names(tree: ast.AST) -> frozenset[str]:
+    """Names a sibling module's export was deliberately renamed to here.
+
+    A bare call matches an operation by name alone, so
+    `from .runtime_resolution import _redact_secrets as resolve` would
+    otherwise be read as `Path.resolve`. Only a relative import that renames
+    its target qualifies: the module chose a name that happens to collide,
+    and a relative import can never reach `os`, `pathlib` or `hashlib`.
+    A local wrapper such as `def sha256(...)` keeps counting at every call
+    site, and an absolute `from hashlib import sha256` is untouched.
+    """
+
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.level == 0:
+            continue
+        names.update(
+            alias.asname
+            for alias in node.names
+            if alias.asname is not None and alias.asname != alias.name
+        )
+    return frozenset(names)
+
+
+def _observations(record: FunctionRecord, shadowed: frozenset[str] = frozenset()) -> Iterable[IoObservation]:
     path = record.path
     if record.name in _EQUIVALENCE_FUNCTIONS:
         yield IoObservation(path, record.node.lineno, record.name, "equivalence", _category(path, "equivalence"), True)
@@ -223,6 +247,8 @@ def _observations(record: FunctionRecord) -> Iterable[IoObservation]:
         if isinstance(node, ast.Call):
             name = _call_name(node)
             chain = _attribute_chain(node.func)
+            if isinstance(node.func, ast.Name) and name in shadowed:
+                continue
             kind: str | None = None
             operation: str | None = None
             if (path, chain) in _TRANSPORT_ENCODE_OPERATIONS:
@@ -333,8 +359,9 @@ def _inventory(root: Path, reachable: tuple[FunctionRecord, ...]) -> list[IoObse
         relative = _relative(path, root)
         tree = _parsed_module(path)
         module_records = tuple(_functions(tree, relative))
+        shadowed = _shadowed_names(tree)
         for record in module_records:
-            for observation in _observations(record):
+            for observation in _observations(record, shadowed):
                 observations.append(
                     IoObservation(
                         observation.path,
