@@ -19,8 +19,11 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import build_command_pack_bundle as builder
-import publish_installed_bundle_assets as publisher
+try:
+    import build_command_pack_bundle as builder
+    import publish_installed_bundle_assets as publisher
+finally:
+    sys.path.remove(str(ROOT / "scripts"))
 
 from codex_plugin_scanner.guard.catalog_delivery import installed_bundle, preparation, transport
 from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor
