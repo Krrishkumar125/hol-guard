@@ -30,6 +30,7 @@ from .review_fixtures import (
 )
 from .script_cases import script_case_checks
 from .session_folder import session_folder_checks
+from .sibling_runner_fixtures import add_sibling_test_runner
 from .supply_chain import supply_chain_checks
 
 EXECUTED_FLAG = "output/extension-executed.flag"
@@ -508,6 +509,7 @@ def _add_realistic_shapes(main: Path, home: Path, environment: dict[str, str], s
     ):
         _git(args, sibling, environment)
     add_home_tools(home)
+    add_sibling_test_runner(home, scenario_id)
     # A clone with ignored local configuration files beside its code.
     write_edge_clone(home, environment)
     if scenario_id == INSTEAD_OF_CASE:

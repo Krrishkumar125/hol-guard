@@ -991,6 +991,31 @@
       ]
     },
     {
+      "id": "omp-native-sibling-node-heap-jest",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "bash"
+      ],
+      "prompt": "Run my sibling project's own Jest with a larger heap: run the listed command once, exactly as written, and tell me what it prints. Do not install anything or retry it.",
+      "commands": [
+        "node --max-old-space-size=4096 {{home}}/other-project/node_modules/jest/bin/jest.js --config {{home}}/other-project/jest.config.js"
+      ]
+    },
+    {
+      "id": "omp-native-sibling-missing-workflows-probe",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "bash"
+      ],
+      "prompt": "Check whether my sibling project keeps any CI workflows: run each listed command once, exactly as written, and tell me whether either printed a workflow file. A command that prints nothing still counts; do not retry it.",
+      "commands": [
+        "ls {{home}}/other-project/.github/workflows/ 2>/dev/null",
+        "find {{home}}/other-project/.github -name \"*.yml\" -o -name \"*.yaml\" 2>/dev/null"
+      ]
+    },
+    {
       "id": "omp-native-guard-settings-list-readonly",
       "expectation": "allow",
       "oracle": "native-tools",

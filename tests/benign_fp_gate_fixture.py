@@ -65,6 +65,7 @@ from tests.benign_fp_gate_projects import (
     _node_package,
     _node_toolchain,
     _python_toolchain,
+    _sibling_test_runner,
     _write,
 )
 
@@ -223,6 +224,8 @@ def build_fixture(root: Path) -> BenignFixture:
         str(home / "other-project-wt"),
         home=home,
     )
+    # Installed after the baseline commit, as an untracked `npm install` leaves it.
+    _sibling_test_runner(home / "other-project")
 
     parent.mkdir(parents=True)
     _git(parent, "init", "--quiet", "--initial-branch=main", home=home)
@@ -342,11 +345,18 @@ def build_fixture(root: Path) -> BenignFixture:
             _write(repository / ".env", "TOKEN=synthetic-not-a-secret\n")
             _write(repository / ".gitignore", "node_modules/\n")
             _node_toolchain(repository / "dashboard")
+            _sibling_test_runner(repository)
         _git(repository, "add", "-A", home=home)
         _git(repository, "commit", "--quiet", "-m", f"{name} base", home=home)
         if name == "service-api":
             _git(repository, "remote", "add", "origin", "https://github.com/example-org/service-api.git", home=home)
             _git(repository, "update-ref", "refs/remotes/origin/main", "HEAD", home=home)
+    # A sibling checkout that keeps no workflows, where a probe finds nothing.
+    docs_site = org / "docs-site"
+    _write(docs_site / "README.md", "# docs-site\n")
+    _git(docs_site, "init", "--quiet", "--initial-branch=main", home=home)
+    _git(docs_site, "add", "-A", home=home)
+    _git(docs_site, "commit", "--quiet", "-m", "docs-site base", home=home)
     _session_worktree(org, home)
     write_developer_checkout(org, home, _git, _write)
     write_hooked_clone(org, home, _git)
