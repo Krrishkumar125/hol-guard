@@ -10,7 +10,11 @@ from ..native_codex_tool_output import codex_tool_output_native
 from ..native_context import bound_context_digest_home
 from ..native_path_anchor import anchor_to_process_directory
 from ..native_rich_command_model import NativeCommandModelError
-from ..native_runtime_artifact_identity import data_flow_artifact_id, prompt_multi_artifact_id
+from ..native_runtime_artifact_identity import (
+    NativeRuntimeArtifactIdentityError,
+    data_flow_artifact_id,
+    prompt_multi_artifact_id,
+)
 from ..native_sensitive_request import (
     NativeSensitiveRequestError,
     native_compound_artifact,
@@ -200,7 +204,7 @@ def _hook_runtime_artifact(**kwargs: Any) -> GuardArtifact | None:
     try:
         with bound_context_digest_home(kwargs.get("guard_home")):
             return _hook_runtime_artifact_with_native(**kwargs)
-    except (NativeCommandModelError, NativeSensitiveRequestError):
+    except (NativeCommandModelError, NativeRuntimeArtifactIdentityError, NativeSensitiveRequestError):
         harness = _canonical_harness_name(kwargs["harness"])
         return GuardArtifact(
             artifact_id=f"{harness}:native-command-unavailable",
