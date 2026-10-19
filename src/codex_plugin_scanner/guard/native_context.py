@@ -60,6 +60,7 @@ _RESULT_OPTIONAL_KEYS = {
     "token",
     "digest",
     "validation_reason",
+    "approval_context_token_well_formed",
     "package_context",
     "mcp_server_identity",
     "mcp_tool_identity",
