@@ -23,7 +23,8 @@ def _require(condition: bool) -> None:
 def validate_prepared(payload: object) -> dict[str, object]:
     _require(isinstance(payload, dict))
     assert isinstance(payload, dict)
-    _require(set(payload) == {"subject", "artifact_id", "artifact_hash", "assessment", "consent_required", "review"})
+    required = {"subject", "artifact_id", "artifact_hash", "assessment", "consent_required", "review"}
+    _require(required <= set(payload) <= required | {"dependency_artifact"})
     _require(payload["artifact_id"] == ARTIFACT_ID)
     _require(_token(payload["artifact_hash"]))
     _require(type(payload["consent_required"]) is bool and isinstance(payload["assessment"], list))
@@ -37,6 +38,25 @@ def validate_prepared(payload: object) -> dict[str, object]:
     assert isinstance(subject, dict)
     _require(subject.get("schema") == "guard.bash-subject.v1")
     _require(supported_execution_assurance(subject.get("execution_assurance")))
+    if "dependency_artifact" in payload:
+        artifact = payload["dependency_artifact"]
+        _require(isinstance(artifact, dict))
+        assert isinstance(artifact, dict)
+        metadata = artifact.get("metadata")
+        _require(artifact.get("artifact_type") == "package_request" and isinstance(metadata, dict))
+        assert isinstance(metadata, dict)
+        _require(metadata.get("assessment_only") is True)
+        harness = artifact.get("harness")
+        _require(isinstance(harness, str) and harness in {"omp", "pi"})
+        assert isinstance(harness, str)
+        context = subject.get("context")
+        _require(isinstance(context, dict))
+        assert isinstance(context, dict)
+        _require(context.get("host") == {"omp": "omp-input-rewrite-v1", "pi": "pi-input-mutation-v1"}[harness])
+        _require(isinstance(subject.get("package_bindings"), list) and bool(subject["package_bindings"]))
+        digest = metadata.get("captured_subject_sha256")
+        _require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) is not None)
+        _require(artifact.get("artifact_id") == f"{artifact.get('harness')}:project:package-request:{digest}")
     return payload
 
 

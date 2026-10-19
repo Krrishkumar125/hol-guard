@@ -8,6 +8,24 @@ import sys
 from pathlib import Path
 
 
+def write_fixture(directory: Path, fixtures: Path, compiled: bool, marker: str) -> None:
+    for name in ("maintenance.sh", "fixture-registry"):
+        target = directory / name
+        target.write_bytes((fixtures / name).read_bytes())
+        target.chmod(0o700)
+    if compiled:
+        compile_hardened_helper(directory, marker)
+        (directory / "maintenance.sh").write_text("#!/bin/bash\ncompiled-helper value\n")
+
+
+def externalize_script(script: Path, directory: Path) -> Path:
+    directory.mkdir()
+    external = directory / script.name
+    external.write_bytes(script.read_bytes())
+    external.chmod(0o700)
+    return external
+
+
 def compile_hardened_helper(directory: Path, marker: str) -> Path:
     source = directory / "compiled-helper.c"
     image = directory / "compiled-helper"

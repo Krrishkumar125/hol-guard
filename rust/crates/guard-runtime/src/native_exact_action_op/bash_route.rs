@@ -118,8 +118,12 @@ fn prepare(
         .policy
         .ok_or_else(|| "native_bash_assessment_missing".to_owned())?;
     let review = super::bash_review::review(&assessment, &request.envelope, fence.snapshot())?;
+    let dependency_artifact =
+        super::bash_dependency_artifact::build(&captured.subject, &capture.harness)
+            .map_err(str::to_owned)?;
     Ok(NativeBashPreparedV1 {
         subject: captured.subject,
+        dependency_artifact,
         artifact_id: super::bash_grant::ARTIFACT.into(),
         artifact_hash,
         consent_required: !assessment.allows_without_consent(),

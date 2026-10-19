@@ -4,6 +4,18 @@ use super::{BTreeMap, NativeBashCaptureV1, Result};
 
 use guard_contracts::NATIVE_BASH_SELECTED_ENVIRONMENT_NAMES as SELECTED;
 
+pub(super) fn reject_function(names: &[String], command: &str) -> Result<()> {
+    let encoded = format!("BASH_FUNC_{command}%%");
+    let apple = format!("__BASH_FUNC<{command}>()");
+    if names
+        .iter()
+        .any(|name| name == command || name == &encoded || name == &apple)
+    {
+        return Err("bash_command_environment_value_withheld");
+    }
+    Ok(())
+}
+
 pub(super) fn capture(request: &NativeBashCaptureV1) -> Result<BTreeMap<String, String>> {
     let stamp = &request.execution_environment;
     if !stamp.has_valid_shape() || stamp.home.as_deref() != Some(request.home_dir.as_str()) {

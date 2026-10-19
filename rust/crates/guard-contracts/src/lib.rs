@@ -156,6 +156,8 @@ mod native_exact_action;
 pub use native_exact_action::*;
 mod native_bash_subject;
 pub use native_bash_subject::*;
+mod native_script_dependencies;
+pub use native_script_dependencies::*;
 mod native_bash_launch;
 pub use native_bash_launch::*;
 mod native_bash_review;

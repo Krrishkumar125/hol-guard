@@ -123,6 +123,10 @@ pub struct NativeBashSubjectV1 {
     pub context: NativeBashContextV1,
     pub argv: Vec<String>,
     pub code_inputs: Vec<NativeScriptCodeInputV1>,
+    /// Native-observed package attribution. Empty legacy/local graphs retain
+    /// their wire representation and identity. This is not Cloud intelligence.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub package_bindings: Vec<crate::NativeScriptPackageBindingV1>,
     /// Hashes of behavior-relevant, observed values only. Never raw secrets or
     /// an all-environment digest containing ephemeral/irrelevant host values.
     pub environment_bindings: BTreeMap<String, String>,
@@ -146,6 +150,10 @@ impl NativeBashSubjectV1 {
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
+        let package_bytes = crate::native_script_dependencies::validate_package_bindings(
+            &self.package_bindings,
+            &self.code_inputs,
+        )?;
         if self.argv.is_empty()
             || self.argv.len() > 256
             || self.code_inputs.len() > 64
@@ -262,7 +270,8 @@ impl NativeBashSubjectV1 {
                 .sum::<usize>()
             + self.context.project.len()
             + self.context.cwd.len()
-            + self.context.home.len();
+            + self.context.home.len()
+            + package_bytes;
         if bytes > 1024 * 1024 {
             return Err("native_bash_subject_bounds");
         }
@@ -278,7 +287,7 @@ fn absolute(value: &str) -> bool {
         && text(value)
         && !value.split('/').any(|part| part == "." || part == "..")
 }
-fn digest(value: &str) -> bool {
+pub(super) fn digest(value: &str) -> bool {
     value.len() == 64
         && value
             .bytes()
@@ -286,10 +295,14 @@ fn digest(value: &str) -> bool {
 }
 
 #[cfg(test)]
+#[path = "native_script_dependencies_tests.rs"]
+mod dependency_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    fn subject() -> NativeBashSubjectV1 {
+    pub(super) fn subject() -> NativeBashSubjectV1 {
         serde_json::from_value(serde_json::json!({
             "schema": "guard.bash-subject.v1",
             "context": {"host": "omp-input-rewrite-v1", "host_scope_digest": "a".repeat(64),

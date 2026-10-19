@@ -72,6 +72,9 @@ pub struct NativeBashPrepareRequestV1 {
 #[serde(deny_unknown_fields)]
 pub struct NativeBashPreparedV1 {
     pub subject: NativeBashSubjectV1,
+    /// Assessment input only; the caller cannot turn this into launch consent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependency_artifact: Option<serde_json::Value>,
     pub artifact_id: String,
     pub artifact_hash: String,
     pub assessment: Vec<PreToolResultV1>,

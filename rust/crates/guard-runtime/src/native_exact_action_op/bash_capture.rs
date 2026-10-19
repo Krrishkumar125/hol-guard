@@ -7,7 +7,26 @@ use guard_contracts::{NativeBashCaptureV1, NativeBashSubjectV1};
 mod platform;
 
 #[cfg(target_os = "macos")]
-pub(crate) use platform::{capture_for_launch, CapturedBash};
+pub(crate) use platform::CapturedBash;
+
+#[cfg(target_os = "macos")]
+pub(crate) fn capture_for_launch(
+    request: &NativeBashCaptureV1,
+    snapshot: &crate::policy_enforcement::AdmittedPolicySnapshot,
+) -> std::result::Result<CapturedBash, String> {
+    let mut captured = platform::capture(request, true).map_err(str::to_owned)?;
+    let assessment = super::bash_policy::assess(
+        &captured.graph,
+        request,
+        snapshot,
+        std::time::Instant::now() + std::time::Duration::from_millis(request.budget_ms.min(1000)),
+    )?;
+    if assessment.has_hard_deny() {
+        return Err("bash_current_policy_denied".into());
+    }
+    captured.policy = Some(assessment);
+    Ok(captured)
+}
 
 pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubjectV1, &'static str> {
     #[cfg(target_os = "macos")]

@@ -28,10 +28,10 @@ from codex_plugin_scanner.guard.native_resident_client import (
     native_resident_client_failure_code,
 )
 from codex_plugin_scanner.guard.store import GuardStore
+from tests import omp_bound_bash_package_source as package_fixture
+from tests import omp_bound_bash_sdk_source as sdk_source
 from tests.bash_http_registry import local_registry
 from tests.omp_bound_bash_lifecycle import assert_sdk_host_death_cancels, pause_native_execute_source
-from tests.omp_bound_bash_sdk_source import assert_native_post_review, post_review_source, write_cli_wrapper
-from tests.omp_bound_bash_sdk_source import compile_hardened_helper as _compile_hardened_helper
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="native Bash owner is macOS-only")
 
@@ -77,11 +77,13 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     del native_context_digest
     native_post = duration.startswith("native-post-")
     duration = duration.removeprefix("native-post-")
+    package_source = duration.startswith("package-")
+    duration = duration.removeprefix("package-")
     compiled = duration.startswith("compiled-")
     external = duration.startswith("external-")
     duration = duration.removeprefix("network-").removeprefix("compiled-").removeprefix("external-")
     repo = Path(__file__).resolve().parents[1]
-    sdk_root = repo / "ci" / "pi-exact-continuation"
+    sdk_root = Path(os.environ.get("HOL_GUARD_TEST_SDK_ROOT", repo / "ci" / "pi-exact-continuation"))
     package_name = "@earendil-works/pi-coding-agent" if harness == "pi" else "@oh-my-pi/pi-coding-agent"
     package = sdk_root / "node_modules" / package_name / "package.json"
     if not package.is_file():
@@ -104,14 +106,10 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     execution_cwd.mkdir(parents=True)
     home.mkdir()
     fixtures = Path(__file__).parent / "fixtures" / "script_approvals"
-    for name in ("maintenance.sh", "fixture-registry"):
-        target = execution_cwd / name
-        target.write_bytes((fixtures / name).read_bytes())
-        target.chmod(0o700)
     compiled_marker = "compiled-v1"
-    if compiled:
-        _compile_hardened_helper(execution_cwd, compiled_marker)
-        (execution_cwd / "maintenance.sh").write_text("#!/bin/bash\ncompiled-helper value\n")
+    sdk_source.write_fixture(execution_cwd, fixtures, compiled, compiled_marker)
+    if package_source:
+        package_fixture.setup(execution_cwd)
     if http_registry is not None:
         (execution_cwd / "fixture-registry").write_text(http_registry.helper())
         for name in tuple(os.environ):
@@ -122,12 +120,7 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
         script.write_text(script.read_text() + "\nexit 7\n")
     script = execution_cwd / "maintenance.sh"
     if external:
-        directory = tmp_path / "external-code"
-        directory.mkdir()
-        external_script = directory / script.name
-        external_script.write_bytes(script.read_bytes())
-        external_script.chmod(0o700)
-        script = external_script
+        script = sdk_source.externalize_script(script, tmp_path / "external-code")
         assert not script.is_relative_to(workspace)
     monkeypatch.chdir(workspace)
     monkeypatch.setenv("HOME", str(home))
@@ -192,7 +185,7 @@ def test_pinned_sdk_bash_tool_delivers_consent_and_preserves_execution_cwd(
     package_bootstrap = ""
     if os.environ.get("HOL_GUARD_TEST_USE_INSTALLED") != "1":
         package_bootstrap = f"sys.path.insert(0, {str(repo / 'src')!r})\n"
-    write_cli_wrapper(wrapper, status.identity.path, bootstrap=package_bootstrap, pause=pause_source)
+    sdk_source.write_cli_wrapper(wrapper, status.identity.path, bootstrap=package_bootstrap, pause=pause_source)
     routing = tmp_path / "routing.ts"
     routing.write_text(
         """
@@ -221,7 +214,7 @@ const GUARD_CONTAINED_REQUEST_ROOT = "";
             'const boundBashHarness = "omp";', f'const boundBashHarness = "{harness}";'
         )
         + f"const response = {json.dumps(response)};\n"
-        + post_review_source(
+        + sdk_source.post_review_source(
             native=native_post,
             directory=tmp_path,
             guard=guard,
@@ -298,7 +291,7 @@ pi.on("tool_call", async (event, ctx) => {
             expected_commands = 2 if native_post else 1
             assert decoded.get("acknowledgements") == [{"code": 0, "stderr": ""}] * expected_commands, decoded
             if native_post:
-                assert_native_post_review(decoded, call_id, home, compiled, post_reviewed_calls)
+                sdk_source.assert_native_post_review(decoded, call_id, home, compiled, post_reviewed_calls)
             text = "\n".join(block.get("text", "") for block in decoded.get("result", {}).get("content", []))
             assert "getcwd: cannot access parent directories" not in text, text
         return decoded.get("result"), decoded.get("sdkError")
@@ -319,12 +312,14 @@ pi.on("tool_call", async (event, ctx) => {
             report = home / "maintenance-report.tsv"
             assert close_native_residents(guard_home=guard)
             for iteration in range(1, 11):
+                if package_source:
+                    package_fixture.between_invocations(execution_cwd, duration, iteration)
                 report.write_text(f"must refresh quiet invocation {iteration}")
                 result, error = run(f"persistent-{iteration}")
                 assert error is None and not result.get("isError", False), (result, error)
                 assert "local metadata" in report.read_text()
                 assert store.list_approval_requests() == []
-            if external:
+            if external or package_source:
                 assert http_registry is None
             else:
                 assert http_registry is not None and len(http_registry.requests) == 40
@@ -341,7 +336,7 @@ pi.on("tool_call", async (event, ctx) => {
             assert isinstance(previous_id, str)
             if compiled:
                 compiled_marker = "compiled-v2"
-                _compile_hardened_helper(execution_cwd, compiled_marker)
+                sdk_source.compile_hardened_helper(execution_cwd, compiled_marker)
             else:
                 target = execution_cwd / (
                     "fixture-registry" if duration == "pending-helper-change" else "maintenance.sh"
@@ -374,6 +369,8 @@ pi.on("tool_call", async (event, ctx) => {
         native = envelope["native_bash"]
         assert isinstance(native, dict)
         subject = native["subject"]
+        if package_source:
+            package_fixture.assert_pending_subject(subject)
         assert subject["context"]["cwd"] == str(execution_cwd)
         if compiled:
             assert subject["execution_assurance"] == "macos-hardened-broker-v1"
@@ -416,7 +413,7 @@ pi.on("tool_call", async (event, ctx) => {
             scope_contract_version=version,
             scope_contract_digest=digest,
         )
-        if duration == "persistent-same-intent" and (http_registry is not None or compiled):
+        if duration == "persistent-same-intent" and (http_registry is not None or compiled or package_source):
             assert close_native_residents(guard_home=guard)
         if duration == "host-parent-death":
             configure("host-parent-death-retry")
@@ -453,6 +450,8 @@ pi.on("tool_call", async (event, ctx) => {
             assert "local metadata" in report.read_text()
         if duration in {"persistent", "persistent-same-intent"}:
             for iteration in range(2, 11):
+                if package_source:
+                    package_fixture.between_invocations(execution_cwd, duration, iteration)
                 (execution_cwd / "maintenance.sh").touch()
                 (execution_cwd / "unrelated.txt").write_text(str(iteration))
                 report.write_text(f"must refresh for invocation {iteration}")
@@ -469,6 +468,8 @@ pi.on("tool_call", async (event, ctx) => {
             if compiled:
                 assert close_native_residents(guard_home=guard)
             assert store.list_approval_requests() == []
+            if package_source:
+                package_fixture.assert_changed_version_requires_consent(execution_cwd, report, store, refused)
             if http_registry is not None:
                 assert len(http_registry.requests) == 40
                 assert all(method == "GET" for method, _ in http_registry.requests)

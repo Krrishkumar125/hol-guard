@@ -18,6 +18,8 @@ pub(crate) use bash_delivery::require_owner as require_bash_owner;
 #[cfg(target_os = "macos")]
 mod bash_curl_backend;
 #[cfg(target_os = "macos")]
+mod bash_dependency_artifact;
+#[cfg(target_os = "macos")]
 mod bash_grant;
 #[cfg(target_os = "macos")]
 mod bash_host;

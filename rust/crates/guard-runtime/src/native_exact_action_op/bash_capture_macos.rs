@@ -31,6 +31,9 @@ mod launch_tests;
 #[path = "bash_network_tests.rs"]
 mod network_tests;
 #[cfg(test)]
+#[path = "bash_package_binding_tests.rs"]
+mod package_binding_tests;
+#[cfg(test)]
 #[path = "bash_policy_tests.rs"]
 mod policy_tests;
 #[cfg(test)]
@@ -43,24 +46,17 @@ mod analysis_cache;
 mod native_image;
 #[path = "bash_capture_outputs.rs"]
 mod output_capture;
+#[path = "bash_package_bindings.rs"]
+mod package_bindings;
+#[path = "bash_capture_paths.rs"]
+mod paths;
 #[path = "bash_capture_environment.rs"]
 mod startup_environment;
+#[cfg(test)]
+use super::capture_for_launch;
+use paths::{canonical, text};
 use startup_environment::capture as environment;
 type Result<T> = std::result::Result<T, &'static str>;
-
-fn canonical(value: &str) -> Result<PathBuf> {
-    if guard_command::bash_approval::is_descriptor_reference(value) {
-        return Err("bash_process_descriptor_unproven");
-    }
-    if value.len() > 4096 || !Path::new(value).is_absolute() {
-        return Err("bash_context_path_invalid");
-    }
-    std::fs::canonicalize(value).map_err(|_| "bash_context_path_unavailable")
-}
-
-fn text(path: &Path) -> Result<String> {
-    path.to_str().map(str::to_owned).ok_or("bash_path_encoding")
-}
 
 struct Resolver<'a> {
     cwd: &'a Path,
@@ -132,16 +128,7 @@ impl Resolver<'_> {
     }
 
     fn reject_function(&self, command: &str) -> Result<()> {
-        let encoded = format!("BASH_FUNC_{command}%%");
-        let apple = format!("__BASH_FUNC<{command}>()");
-        if self
-            .names
-            .iter()
-            .any(|name| name == command || name == &encoded || name == &apple)
-        {
-            return Err("bash_command_environment_value_withheld");
-        }
-        Ok(())
+        startup_environment::reject_function(self.names, command)
     }
 
     fn code(&self, requested: &str, resolved: &Path) -> Result<graph::Code> {
@@ -320,25 +307,7 @@ pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubject
     capture(request, false).map(|captured| captured.subject)
 }
 
-pub(crate) fn capture_for_launch(
-    request: &NativeBashCaptureV1,
-    snapshot: &crate::policy_enforcement::AdmittedPolicySnapshot,
-) -> std::result::Result<CapturedBash, String> {
-    let mut captured = capture(request, true).map_err(str::to_owned)?;
-    let assessment = super::super::bash_policy::assess(
-        &captured.graph,
-        request,
-        snapshot,
-        Instant::now() + Duration::from_millis(request.budget_ms.min(1000)),
-    )?;
-    if assessment.has_hard_deny() {
-        return Err("bash_current_policy_denied".into());
-    }
-    captured.policy = Some(assessment);
-    Ok(captured)
-}
-
-fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<CapturedBash> {
+pub(super) fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<CapturedBash> {
     // Resource deadline, not the separately measured installed-latency gate.
     let deadline = Instant::now() + Duration::from_millis(request.budget_ms.min(1000));
     if request.file_creation_mask.is_some_and(|mask| mask > 0o777) {
@@ -466,7 +435,7 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
     let (outputs, report) =
         output_capture::capture(&graph, &resolver, &cwd, &guard_home, bind_outputs)?;
     resolver.check()?;
-    let subject = subject::from_graph(
+    let mut subject = subject::from_graph(
         &graph,
         subject::Observations {
             context: NativeBashContextV1 {
@@ -492,6 +461,10 @@ fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<Captured
             resolved_outputs: &outputs,
         },
     )?;
+    subject.package_bindings =
+        package_bindings::observe(&subject, graph.frozen_source_bytes(), deadline);
+    subject.validate()?;
+    resolver.check()?;
     let network_destinations = resolver.network_destinations.into_inner();
     let brokered_commands = resolver.brokered_commands.into_inner();
     if brokered_commands.len()

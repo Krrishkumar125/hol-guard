@@ -24,7 +24,7 @@ use serde_json::{json, Value};
 
 use crate::package_authority_op::evaluate_supply_chain_eval_with_seams;
 
-const VECTORS: &str = include_str!(concat!(
+pub(crate) const VECTORS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../tests/fixtures/supply-chain-eval/cloud-cases.v1.json"
 ));
@@ -156,7 +156,7 @@ fn sql_value(value: &Value) -> SqlValue {
     }
 }
 
-fn seed_store(db_path: &Path, vectors: &Value, case: &Value) {
+pub(crate) fn seed_store(db_path: &Path, vectors: &Value, case: &Value) {
     let connection = rusqlite::Connection::open(db_path).expect("open store");
     for ddl in vectors["schema_sql"].as_object().expect("schema").values() {
         connection
@@ -304,7 +304,7 @@ fn evaluate_case(vectors: &Value, case: &Value) -> Result<(Value, Vec<(String, V
 /// repeat the request with the outcomes, until the resident answers. The
 /// exchanges go to a loopback server through a hand-written client so the
 /// transport under test is never the thing that fulfils it.
-fn drive(
+pub(crate) fn drive(
     request: &mut SupplyChainEvalRequestV1,
     offline_egress_error: Option<&str>,
 ) -> Result<SupplyChainEvalResultV1, String> {

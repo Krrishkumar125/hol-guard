@@ -102,6 +102,7 @@ pub fn from_graph(
         context: observed.context,
         argv: observed.argv.to_vec(),
         code_inputs: inputs,
+        package_bindings: Vec::new(),
         environment_bindings: observed
             .environment
             .iter()
