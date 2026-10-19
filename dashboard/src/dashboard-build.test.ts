@@ -273,16 +273,17 @@ let draftOpen = false;
 const draftHandler = (event?: unknown) => {
   if (draftOpen) (event as { defaultPrevented: boolean }).defaultPrevented = true;
 };
-const fireLeave = () => {
-  const event = { defaultPrevented: false };
-  for (const listener of [...(windowListeners.get("beforeunload") ?? [])]) {
+const fire = (type: string, event: unknown = {}) => {
+  for (const listener of [...(windowListeners.get(type) ?? [])]) {
     listener(event);
     if (onceListeners.has(listener)) {
-      windowListeners.get("beforeunload")?.delete(listener);
+      windowListeners.get(type)?.delete(listener);
       onceListeners.delete(listener);
     }
   }
 };
+const fireLeave = () => fire("beforeunload", { defaultPrevented: false });
+const pageHideListeners = () => windowListeners.get("pagehide")?.size ?? 0;
 windowListeners.get("beforeunload")?.clear();
 onceListeners.clear();
 windowListeners.set("beforeunload", new Set([draftHandler]));
@@ -296,10 +297,30 @@ assert(tabStorage.values.size === 0, "answering Stay gives the claim back");
 assert(loadCurrentDashboardBuild("/protect?desktop_embed=1#guard-token=a"), "so the next navigation can try again");
 assert(tabStorage.values.size === 1, "and claims it again");
 
+assert(pageHideListeners() === 0, "the next attempt drops the record left over from the earlier Stay");
+
 draftOpen = false;
 fireLeave();
 assert(tabStorage.values.size === 1, "a leave nobody cancelled keeps its claim for the new document");
 assert((windowListeners.get("beforeunload")?.size ?? 0) === 1, "the one-shot listener is gone once it has run, only the draft handler stays");
+assert(pageHideListeners() === 0, "a leave nobody cancelled records nothing on unload");
+
+// A draft cancels the prompt and the user answers Leave. The release ran before
+// the prompt, so the document going away must record the claim again, or a new
+// document that still reads stale would get a second reload for this build.
+draftOpen = true;
+tabStorage.values.clear();
+assert(loadCurrentDashboardBuild("/protect?desktop_embed=1#guard-token=a"), "a navigation from a stale tab starts a load");
+const claimed = [...tabStorage.values.entries()];
+fireLeave();
+assert(tabStorage.values.size === 0, "the claim is released while the prompt is open");
+fire("pagehide", { persisted: false });
+assert(
+  JSON.stringify([...tabStorage.values.entries()]) === JSON.stringify(claimed),
+  "answering Leave records the same claim again for the new document",
+);
+assert(pageHideListeners() === 0, "the unload record runs once");
+draftOpen = false;
 
 assert(
   isFragmentOnlyChange({ origin, pathname: "/inbox", search: "?x=1" }, new URL(`${origin}/inbox?x=1#f`)),
