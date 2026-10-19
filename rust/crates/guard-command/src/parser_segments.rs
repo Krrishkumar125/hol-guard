@@ -83,7 +83,7 @@ fn split_execution_segments_inner(
             // operator that ends the command belongs to the word, so it never
             // separates commands.
             '\\' if preserve_unquoted_backslash => {
-                if crate::command_tokens::escapes_shell_operator(&chars[index + 1..]) {
+                if crate::command_tokens::backslash_escapes_operator(&chars, index) {
                     escaped = true;
                 }
             }

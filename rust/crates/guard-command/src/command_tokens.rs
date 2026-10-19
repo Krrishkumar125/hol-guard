@@ -72,6 +72,14 @@ fn redirection_length(rest: &[char]) -> Option<usize> {
         .iter()
         .take_while(|value| !value.is_whitespace() && !SHELL_OPERATORS.contains(*value))
         .count();
+    // A quote, backtick or `$` lets a shell read an operator inside the target,
+    // so the scan above could stop short of where the shell does.
+    if rest[index..index + target]
+        .iter()
+        .any(|value| matches!(value, '"' | '\'' | '`' | '$'))
+    {
+        return None;
+    }
     (target > 0).then_some(index + target)
 }
 
@@ -112,6 +120,19 @@ pub(crate) fn escapes_shell_operator(rest: &[char]) -> bool {
         };
         rest = &rest[length..];
     }
+}
+
+/// Whether the unquoted `\` at `backslash` in `chars` escapes the operator
+/// after it. Bash pairs a run of backslashes off from the left, so only the
+/// backslash that ends an odd-length run escapes anything: in `job \\&` the
+/// pair is one literal backslash and the `&` still backgrounds the command.
+pub(crate) fn backslash_escapes_operator(chars: &[char], backslash: usize) -> bool {
+    let run = chars[..backslash]
+        .iter()
+        .rev()
+        .take_while(|value| **value == '\\')
+        .count();
+    run % 2 == 0 && escapes_shell_operator(&chars[backslash + 1..])
 }
 
 /// `_windows_shell_tokens` (:36-92). Quoted POSIX escapes preserved; unquoted
@@ -165,7 +186,7 @@ pub fn windows_shell_tokens(command: &str) -> (Vec<String>, bool) {
             quote = '"';
             started = true;
         } else if current == '\\' {
-            if escapes_shell_operator(&chars[index..]) {
+            if backslash_escapes_operator(&chars, index - 1) {
                 token.push(chars[index]);
                 index += 1;
             } else {

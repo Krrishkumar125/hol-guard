@@ -124,6 +124,28 @@ fn an_escaped_operator_with_a_command_after_it_still_separates() {
     );
 }
 
+/// Bash pairs a run of backslashes off from the left, so an even run is only
+/// literal backslashes and the operator after it still acts.
+#[test]
+fn an_even_run_of_backslashes_leaves_the_operator_acting() {
+    assert_eq!(
+        split_execution_segments("sleep 5 \\\\&", true).err(),
+        Some("background_job_not_yet_supported")
+    );
+    assert_eq!(
+        preserved_tokens("echo ok \\\\\\;"),
+        vec!["echo", "ok", "\\\\;"]
+    );
+    assert_eq!(
+        windows_shell_tokens("echo ok \\\\\\;").0,
+        vec!["echo", "ok", "\\\\;"]
+    );
+    assert_eq!(
+        segment_texts("echo ok \\\\\\;"),
+        vec!["echo ok \\\\\\;".to_owned()]
+    );
+}
+
 #[test]
 fn a_path_separator_is_still_a_path_separator() {
     for (command, expected) in [
@@ -222,6 +244,10 @@ fn only_a_redirection_carries_the_escape_past_the_operator() {
         "; 2> ",
         "; 2>/dev/null Remove-Item C:\\Users\\dev",
         "; Remove-Item -Recurse -Force C:\\Users\\dev",
+        // cmd and PowerShell read the operator inside the quotes as part of
+        // the file name and run the command after it.
+        "& 2>\"x&y\" del /q C:\\work",
+        "; 2>'x;y' Remove-Item C:\\Users\\dev",
     ] {
         assert!(!escapes(rest), "{rest}");
     }
