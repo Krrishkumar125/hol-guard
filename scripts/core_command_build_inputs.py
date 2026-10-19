@@ -92,9 +92,13 @@ def pack_descriptors(root, compiler: Path | None, read_object) -> list[dict]:
             / ("guard-command-source.exe" if os.name == "nt" else "guard-command-source")
         )
     sys.path.insert(0, str(root / "scripts"))
-    from build_native_command_packs import stage
-    from command_pack_store import PackReader
-    from extension_delivery_objects import entries
+    try:
+        from build_native_command_packs import stage
+        from command_pack_store import PackReader
+        from extension_delivery_objects import entries
+    finally:
+        # Leaving scripts/ first lets scripts/ci shadow the ci namespace package.
+        sys.path.remove(str(root / "scripts"))
 
     with tempfile.TemporaryDirectory(prefix="hol-guard-descriptors-") as scratch:
         directory = Path(scratch).resolve(strict=True)

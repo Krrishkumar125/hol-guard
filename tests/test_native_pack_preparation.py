@@ -76,7 +76,10 @@ def inventory(tmp_path_factory):
     import sys
 
     sys.path.insert(0, str(root / "scripts"))
-    import build_command_pack_bundle as builder
+    try:
+        import build_command_pack_bundle as builder
+    finally:
+        sys.path.remove(str(root / "scripts"))
 
     package = scratch / "package"
     native = package / "_native"
