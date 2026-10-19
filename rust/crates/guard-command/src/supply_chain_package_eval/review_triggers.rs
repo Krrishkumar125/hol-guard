@@ -186,12 +186,30 @@ fn trigger_reason(code: &str, message: &str) -> Map<String, Value> {
     reason
 }
 
+/// Guard's own distribution from any source: a direct-source install could
+/// replace Guard itself, so its review is never relaxed by a setting.
+fn is_guard_distribution(package: &Map<String, Value>) -> bool {
+    if optional_string(package.get("ecosystem")).as_deref() != Some("pypi") {
+        return false;
+    }
+    optional_string(package.get("name")).is_some_and(|name| {
+        let normalized: String = name
+            .trim()
+            .to_ascii_lowercase()
+            .chars()
+            .map(|c| if matches!(c, '_' | '.') { '-' } else { c })
+            .collect();
+        FIRST_PARTY_PYPI_PACKAGES.contains(normalized.as_str())
+    })
+}
+
 /// Re-resolve every package whose review came only from tunable signals.
 /// Returns true when any package decision changed.
 fn resolve_packages(triggers: &ReviewTriggers, result: &mut PackageEvalResult) -> bool {
     let mut changed = false;
     for package in &mut result.packages {
-        let own_release = package.remove(OWN_PACKAGE_RELEASE_FIELD) == Some(Value::Bool(true));
+        let own_release = package.remove(OWN_PACKAGE_RELEASE_FIELD) == Some(Value::Bool(true))
+            || is_guard_distribution(package);
         let current = decision_of(package);
         if own_release || decision_rank(&current) < decision_rank("ask") {
             continue;
@@ -331,6 +349,17 @@ fn refinalize(
         .sort_by_key(|package| std::cmp::Reverse(decision_rank(&decision_of(package))));
     let mut top_reasons = result.reasons.clone();
     if decision_rank(&decision) < decision_rank("ask") {
+        // A package already carries its own rewording of a tunable reason.
+        let package_codes: BTreeSet<String> = result
+            .packages
+            .iter()
+            .flat_map(package_reasons)
+            .filter_map(|reason| optional_string(reason.get("code")))
+            .collect();
+        top_reasons.retain(|reason| {
+            optional_string(reason.get("code"))
+                .is_none_or(|code| trigger_key(&code).is_none() || !package_codes.contains(&code))
+        });
         record_quietly(&mut top_reasons, "This package");
     }
     let mut reasons: Vec<Map<String, Value>> = Vec::new();

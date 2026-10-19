@@ -210,8 +210,8 @@ SECURITY_LEVEL_RISK_ACTIONS: dict[str, dict[str, GuardAction]] = {
         "package_unknown": "block",
         "package_lockfile_drift": "block",
         "package_direct_source": "block",
-        "package_custom_registry": "require-reapproval",
-        "package_install": "require-reapproval",
+        "package_custom_registry": "block",
+        "package_install": "block",
         "low_trust_artifact": "block",
     },
     "custom": {

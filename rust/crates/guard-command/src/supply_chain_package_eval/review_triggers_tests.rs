@@ -142,6 +142,19 @@ fn guard_own_release_review_is_never_relaxed() {
 }
 
 #[test]
+fn guard_distribution_from_a_direct_source_keeps_its_review() {
+    let mut own = package("ask", &["git_dependency_source"]);
+    own.insert("name".to_string(), Value::String("HOL_Guard".to_string()));
+    own.insert("ecosystem".to_string(), Value::String("pypi".to_string()));
+    let mut other = own.clone();
+    other.insert("ecosystem".to_string(), Value::String("npm".to_string()));
+    let mut result = result_with(vec![own, other]);
+    assert!(resolve_packages(&triggers("balanced", &[]), &mut result));
+    assert_eq!(decision_of(&result.packages[0]), "ask");
+    assert_eq!(decision_of(&result.packages[1]), "monitor");
+}
+
+#[test]
 fn strict_raises_a_tunable_review_to_its_configured_action() {
     let mut result = result_with(vec![package("ask", &["no_cached_match"])]);
     assert!(resolve_packages(&triggers("strict", &[]), &mut result));

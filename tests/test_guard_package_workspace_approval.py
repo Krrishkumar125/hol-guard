@@ -24,14 +24,7 @@ from tests.manifest_install_fixtures import (
     _write_linked_git_worktrees,
     _write_pnpm_workspace,
 )
-
-
-def _review_package_signals(guard_home: Path, *keys: str) -> None:
-    """Opt into reviewing package signals that the default only records."""
-
-    guard_home.mkdir(parents=True, exist_ok=True)
-    lines = "".join(f'{key} = "require-reapproval"\n' for key in keys)
-    (guard_home / "config.toml").write_text(f"[risk_actions]\n{lines}", encoding="utf-8")
+from tests.package_review_settings import review_package_signals
 
 
 def test_workspace_package_approval_is_reused_across_linked_worktrees_with_the_same_dependency_graph(
@@ -46,7 +39,7 @@ def test_workspace_package_approval_is_reused_across_linked_worktrees_with_the_s
     and is still reviewed.
     """
     store = GuardStore(tmp_path / "guard-home")
-    _review_package_signals(tmp_path / "guard-home", "package_unknown", "package_lockfile_drift")
+    review_package_signals(tmp_path / "guard-home", "package_unknown", "package_lockfile_drift")
     workspace_dir = tmp_path / "workspace"
     worktree_dir = tmp_path / "workspace-worktree"
     workspace_dir.mkdir()
@@ -203,7 +196,7 @@ def test_legacy_v1_package_workspace_approval_is_not_reused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store = GuardStore(tmp_path / "guard-home")
-    _review_package_signals(tmp_path / "guard-home", "package_unknown", "package_lockfile_drift")
+    review_package_signals(tmp_path / "guard-home", "package_unknown", "package_lockfile_drift")
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
     _write_linked_git_worktrees(workspace_dir, tmp_path / "unused-linked")
