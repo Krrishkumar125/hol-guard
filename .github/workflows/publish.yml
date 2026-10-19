@@ -781,6 +781,13 @@ jobs:
           name: installed-bundle-assets
           path: installed-bundle-assets/
           if-no-files-found: error
+      - name: Retain the release source compiler for publication checks
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-source-compiler
+          path: rust/target/release/guard-command-source
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload installed canary subject
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1140,6 +1147,12 @@ jobs:
         with:
           name: distributions
           path: dist/
+      # A source checkout has no packaged compiler; verify with the one this
+      # run built from the same source.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: release-source-compiler
+          path: release-source-compiler/
       - name: Verify and publish every immutable data release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1147,6 +1160,8 @@ jobs:
           PYTHONPATH: src
         run: |
           set -euo pipefail
+          chmod 0755 release-source-compiler/guard-command-source
+          export HOL_GUARD_NATIVE_SOURCE_COMPILER="$PWD/release-source-compiler/guard-command-source"
           wheels=(dist/hol_guard-*-py3-none-any.whl)
           test "${#wheels[@]}" -eq 1
           python scripts/publish_installed_bundle_assets.py --directory installed-bundle-assets \
