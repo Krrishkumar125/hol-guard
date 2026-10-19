@@ -189,6 +189,7 @@ def call_op(store: GuardStore, op: str, args: dict[str, object]) -> object:
                 payload=dict(args["payload"]),  # type: ignore[arg-type]
                 now=now,
             )
+            is not None
         }
     if op == "cursor_load_pending_state":
         return {

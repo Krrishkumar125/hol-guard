@@ -136,6 +136,14 @@ def _record_cursor_pending_shell_permission(
         if not indexed:
             if pending_key is not None:
                 store.delete_sync_payload(pending_key)
+            else:
+                # The store failed, so no key came back; name the row by its
+                # command so an older pending row for it does not outlive this.
+                _remove_cursor_pending_shell_permission(
+                    store,
+                    conversation_id=conversation_id,
+                    command=command,
+                )
             return
         write_cursor_shell_binding_file(
             guard_home,
