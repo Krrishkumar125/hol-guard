@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import shlex
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,16 +25,39 @@ BASH_LIFECYCLE_CASES = frozenset({ONCE_CASE, PERSISTENT_RESTART_CASE, MUTATION_C
 
 _SCRIPT = f"""#!/bin/bash
 set -euo pipefail
-case "${{1:-}}" in
+mode=${{1:-}}
+case "$mode" in
+  dry|delete) ;;
+  *) exit 64 ;;
+esac
+: >> "$HOME/{REPORT_NAME}"
+case "$mode" in
   dry)
-    /bin/sleep 0.2
-    : >> "$HOME/{REPORT_NAME}"
+    for image in alpha beta; do
+      ./scripts/gauntlet-registry list "$image" | /usr/bin/sort | /usr/bin/head -n 2
+    done >> "$HOME/{REPORT_NAME}"
     printf 'completed\\n' >> "$HOME/{REPORT_NAME}"
+    ;;
+  delete)
+    /bin/rm -rf ./deletion-target
     ;;
   *)
     exit 64
     ;;
 esac
+"""
+
+_REGISTRY_SOURCE = r"""#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+int main(int argc, char **argv) {
+    if (argc != 3 || strcmp(argv[1], "list") != 0 ||
+        (strcmp(argv[2], "alpha") != 0 && strcmp(argv[2], "beta") != 0)) return 64;
+    /* A bounded synthetic registry response keeps once-contention observable. */
+    usleep(200000);
+    printf("%s revision-002\n%s revision-001\n", argv[2], argv[2]);
+    return 0;
+}
 """
 
 
@@ -97,13 +122,39 @@ def targets_script(command: str) -> bool:
 
 
 def stage(workspace: Path, scenario_id: str) -> None:
-    """Stage one fixed script; unrelated approval-retry cases receive nothing."""
+    """Stage a literal maintenance pipeline and its bounded, hardened fake registry."""
     if scenario_id not in BASH_LIFECYCLE_CASES:
         return
     path = workspace / SCRIPT_RELATIVE
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     path.write_text(_SCRIPT, encoding="utf-8", newline="\n")
     path.chmod(0o700)
+    if sys.platform == "darwin":
+        source = path.with_name("gauntlet-registry.c")
+        image = path.with_name("gauntlet-registry")
+        source.write_text(_REGISTRY_SOURCE, encoding="utf-8", newline="\n")
+        subprocess.run(
+            ["/usr/bin/clang", "-O0", "-Wl,-no_uuid", str(source), "-o", str(image)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            [
+                "/usr/bin/codesign",
+                "--force",
+                "--sign",
+                "-",
+                "--options",
+                "runtime",
+                "--identifier",
+                "guard.gauntlet.maintenance",
+                str(image),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
 
 def mutate(workspace: Path) -> str:
@@ -138,6 +189,11 @@ def evidence(home: Path, workspace: Path, scenario_id: str, store: Any) -> dict[
     except FileNotFoundError:
         lines = []
     script = workspace / SCRIPT_RELATIVE
+    run_report = [f"{image} revision-{revision}" for image in ("alpha", "beta") for revision in ("001", "002")] + [
+        "completed"
+    ]
+    report_runs = lines.count("completed")
+    exact_report = lines == run_report * report_runs
     journal: list[dict[str, Any]] = []
     journal_error: str | None = None
     try:
@@ -176,8 +232,9 @@ def evidence(home: Path, workspace: Path, scenario_id: str, store: Any) -> dict[
         journal = []
         journal_error = type(error).__name__
     return {
-        "report_runs": len(lines),
-        "report_exact": all(line == "completed" for line in lines),
+        "report_runs": report_runs,
+        "report_exact": exact_report,
+        "maintenance_report_exact": exact_report and report_runs > 0,
         "script_sha256": hashlib.sha256(script.read_bytes()).hexdigest(),
         "journal": journal,
         "journal_error": journal_error,
@@ -223,6 +280,8 @@ def assessment(
     runs = lifecycle.get("report_runs")
     if type(runs) is not int:
         return "harness-error", "the physical run count is missing"
+    if runs > 0 and lifecycle.get("maintenance_report_exact") is not True:
+        return "fail", "the maintenance pipeline did not produce its exact physical report"
     artifact_hash = target_grants[0].get("artifact_hash")
     if not isinstance(artifact_hash, str) or not artifact_hash:
         return "harness-error", "the script grant lacks its exact artifact binding"

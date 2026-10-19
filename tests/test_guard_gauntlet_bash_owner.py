@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
 import subprocess
+import sys
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -125,7 +127,7 @@ def test_real_owner_result_and_authenticated_lifecycle_are_required_together(tmp
     assert result["outcome"] == "pass", result
 
 
-@pytest.mark.parametrize("damage", ["request", "receipt", "post", "presentation", "consent", "journal"])
+@pytest.mark.parametrize("damage", ["request", "receipt", "post", "presentation", "consent", "journal", "report"])
 def test_unbound_owner_or_unproved_consent_never_passes(tmp_path: Path, damage: str):
     case = _owner_case(tmp_path)
     if damage == "request":
@@ -140,8 +142,10 @@ def test_unbound_owner_or_unproved_consent_never_passes(tmp_path: Path, damage: 
     elif damage == "consent":
         end = next(e for e in case["events"] if e["type"] == "tool_execution_end")
         end["result"]["content"][0]["text"] = "prefix-native_bash_consent_required-suffix"
-    else:
+    elif damage == "journal":
         case["bash_lifecycle"]["journal"] = []
+    else:
+        case["bash_lifecycle"]["maintenance_report_exact"] = False
     assert assess_case(_scenario(), case)["outcome"] != "pass"
 
 
@@ -227,3 +231,69 @@ def test_real_typescript_observer_captures_only_the_private_owner_request(tmp_pa
     captures = [row for row in rows if row.get("type") == "contained_request_capture"]
     assert len(captures) == (1 if shape == "valid" else 0)
     assert rows[0] == event
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="native Bash owner and hardened broker require macOS")
+def test_staged_realistic_lifecycle_fixture_executes_through_native_owner(native_context_digest, tmp_path, monkeypatch):
+    from ci.gauntlet.approval_retry_bash import (
+        ONCE_CASE,
+        REPORT_NAME,
+        evidence,
+        stage,
+        target_command,
+    )
+    from codex_plugin_scanner.guard.config import update_guard_settings
+    from codex_plugin_scanner.guard.native_resident_client import close_native_residents
+    from codex_plugin_scanner.guard.runtime.bound_bash_sink import run_bound_bash
+    from codex_plugin_scanner.guard.store import GuardStore
+    from tests.test_native_bash_sink_integration import _Secrets
+
+    del native_context_digest
+    workspace = tmp_path / "project"
+    home, guard = workspace / "home", tmp_path / "guard"
+    home.mkdir(parents=True)
+    protected = workspace / "deletion-target" / "keep.txt"
+    protected.parent.mkdir()
+    protected.write_text("protected synthetic deletion sentinel\n")
+    stage(workspace, ONCE_CASE)
+    monkeypatch.chdir(workspace)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    update_guard_settings(guard, {"subprocess_action": "allow"})
+    store = GuardStore(guard, prime_policy_integrity=False)
+    store._policy_integrity_secret_store = _Secrets()
+    try:
+        errors = io.StringIO()
+        status = run_bound_bash(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "bash",
+                "cwd": str(workspace),
+                "tool_input": {"command": target_command(workspace)},
+            },
+            store=store,
+            workspace=workspace,
+            harness="omp",
+            operation_id="gauntlet-fixture-native-test",
+            output=io.StringIO(),
+            errors=errors,
+        )
+        assert status == 0, errors.getvalue()
+        assert protected.read_text() == "protected synthetic deletion sentinel\n"
+        assert (home / REPORT_NAME).read_text().splitlines() == [
+            f"{image} revision-{revision}" for image in ("alpha", "beta") for revision in ("001", "002")
+        ] + ["completed"]
+        assert store.count_approval_requests(status=None) == 0
+        physical = evidence(home, workspace, ONCE_CASE, store)
+        assert physical["report_runs"] == 1
+        assert physical["report_exact"] is True
+        assert physical["maintenance_report_exact"] is True
+        assert physical["journal_error"] is None
+        report = home / REPORT_NAME
+        report.write_text(report.read_text().replace("alpha revision-001", "alpha unexpected"))
+        changed = evidence(home, workspace, ONCE_CASE, store)
+        assert changed["report_runs"] == 1
+        assert changed["report_exact"] is False
+        assert changed["maintenance_report_exact"] is False
+    finally:
+        close_native_residents(guard_home=guard)

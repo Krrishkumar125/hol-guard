@@ -179,6 +179,7 @@ def _lifecycle_case(
         "bash_lifecycle": {
             "report_runs": runs,
             "report_exact": True,
+            "maintenance_report_exact": True,
             "journal": [
                 {
                     "artifact_hash": _LIFECYCLE_HASH,
