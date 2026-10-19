@@ -89,7 +89,7 @@ fn script(path: &str, expected: &str, args: &[String], cwd: &str, ctx: &Ctx) -> 
     } else if super::launcher_sets::is_python_launcher(&name) {
         super::python_script::observe(arguments, cwd, ctx, &interpreter["executable"])
             .map_err(closure_error)?
-    } else if matches!(name.as_str(), "sh" | "bash")
+    } else if matches!(name.as_str(), "sh" | "bash" | "dash" | "ash")
         && arguments.first() == Some(&resolved)
         && source
             .lines()
@@ -100,6 +100,11 @@ fn script(path: &str, expected: &str, args: &[String], cwd: &str, ctx: &Ctx) -> 
                     || name.starts_with("BASH_FUNC_"))
         })
     {
+        // The launcher path is canonical, so a distribution whose /bin/sh is a
+        // link to another POSIX shell names that shell here. Only shells whose
+        // noninteractive script startup reads nothing beyond the guarded
+        // variables above belong in this set: zsh and ksh always source a
+        // startup file, so a comment-only program under them is not empty.
         // Only a truly empty noninteractive shell program is closed here.
         // Shell commands need the existing Bash graph/owning route; a hash
         // or an arbitrary launcher basename cannot substitute for it.
