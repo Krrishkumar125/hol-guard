@@ -50,7 +50,12 @@ from scripts.ci.rust_io_ownership_policy import (
     NATIVE_MODES,
     SCHEMA,
 )
-from scripts.ci.rust_io_ownership_resolver import FunctionIndex, FunctionRecordLike, resolve_call
+from scripts.ci.rust_io_ownership_resolver import (
+    FunctionIndex,
+    FunctionRecordLike,
+    _import_target_path,
+    resolve_call,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,28 +220,52 @@ def _category(path: str, kind: str) -> str:
     return "unclassified_python_io"
 
 
-def _shadowed_names(tree: ast.AST) -> frozenset[str]:
-    """Names a sibling module's export was deliberately renamed to here.
+def _shadowed_names(root: Path, path: str, tree: ast.AST, record: FunctionRecord) -> frozenset[str]:
+    """Names a sibling module's export was deliberately renamed to in scope.
 
     A bare call matches an operation by name alone, so
     `from .runtime_resolution import _redact_secrets as resolve` would
-    otherwise be read as `Path.resolve`. Only a relative import that renames
-    its target qualifies: the module chose a name that happens to collide,
-    and a relative import can never reach `os`, `pathlib` or `hashlib`.
-    A local wrapper such as `def sha256(...)` keeps counting at every call
-    site, and an absolute `from hashlib import sha256` is untouched.
+    otherwise be read as `Path.resolve`. A name qualifies only when all of
+    these hold:
+
+    - a relative import renames a sibling function to it, either at module
+      level or inside this function, so a rename in one function never hides
+      a real operation in another;
+    - neither this function nor the module also binds it through an absolute
+      import or a module-level definition, which would leave the call
+      ambiguous;
+    - the renamed function resolves in the repository and performs no
+      operation of its own. A renamed hashing or filesystem helper keeps
+      counting at every call site, as does a local wrapper such as
+      `def sha256(...)` or an absolute `from hashlib import sha256`.
     """
 
+    module_body = getattr(tree, "body", [])
+    scope = [*module_body, *ast.walk(record.node)]
+    rebound = {
+        item.name for item in module_body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+    for node in scope:
+        if isinstance(node, ast.Import):
+            rebound.update(alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            rebound.update(alias.asname or alias.name for alias in node.names)
     names: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ImportFrom) or node.level == 0:
+    for node in scope:
+        if not isinstance(node, ast.ImportFrom) or node.level == 0 or not node.module:
             continue
-        names.update(
-            alias.asname
-            for alias in node.names
-            if alias.asname is not None and alias.asname != alias.name
-        )
+        target = _import_target_path(root, path, node)
+        for alias in node.names:
+            if alias.asname is None or alias.asname == alias.name or alias.asname in rebound:
+                continue
+            if target is not None and _performs_no_operation(root, target, alias.name):
+                names.add(alias.asname)
     return frozenset(names)
+
+
+def _performs_no_operation(root: Path, path: str, name: str) -> bool:
+    candidates = [record for record in _functions(_parsed_module(root / path), path) if record.qualname == name]
+    return len(candidates) == 1 and next(iter(_observations(candidates[0])), None) is None
 
 
 def _observations(record: FunctionRecord, shadowed: frozenset[str] = frozenset()) -> Iterable[IoObservation]:
@@ -359,8 +388,8 @@ def _inventory(root: Path, reachable: tuple[FunctionRecord, ...]) -> list[IoObse
         relative = _relative(path, root)
         tree = _parsed_module(path)
         module_records = tuple(_functions(tree, relative))
-        shadowed = _shadowed_names(tree)
         for record in module_records:
+            shadowed = _shadowed_names(root, relative, tree, record)
             for observation in _observations(record, shadowed):
                 observations.append(
                     IoObservation(
