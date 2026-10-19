@@ -234,9 +234,9 @@ fn a_linked_worktree_runs_programs_from_its_main_checkout() {
 /// reads its own machine with. `/usr` cannot be taken whole on macOS because
 /// `/usr/local` is writable by an admin user, so each one is named; leaving
 /// `/usr/sbin` and `/sbin` out made `sysctl -n hw.ncpu` unreachable and sent
-/// a command that only reports the CPU count to review.
+/// a command that only reports the CPU count to review. Linux executes all of
+/// `/usr` and `/sbin`, and the sandbox PATH keeps those entries there too.
 #[test]
-#[cfg(target_os = "macos")]
 fn the_sealed_system_program_directories_are_reachable() {
     let root = scratch();
     for program in ["sysctl", "ifconfig", "ping", "netstat"] {

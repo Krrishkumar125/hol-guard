@@ -113,6 +113,9 @@ mod github_command_capabilities_tests;
 pub mod github_workflow_approval_record;
 pub mod github_workflow_authorization;
 pub mod github_workflow_descriptor;
+pub mod github_workflow_lineage;
+#[cfg(test)]
+mod github_workflow_lineage_tests;
 pub mod github_workflow_operations;
 mod harness_config_names;
 mod home_path_text;

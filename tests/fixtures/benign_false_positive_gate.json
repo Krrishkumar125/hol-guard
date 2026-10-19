@@ -4766,6 +4766,182 @@
       "expect": "allow"
     },
     {
+      "id": "sibling-node-heap-jest-config",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "node --max-old-space-size=4096 ${ORG}/service-api/node_modules/jest/bin/jest.js --config ${ORG}/service-api/jest.config.js"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-cd-node-heap-jest-config",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG}/service-api && node --max-old-space-size=4096 node_modules/jest/bin/jest.js --config jest.config.js"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-sibling-node-heap-require-other-checkout",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "node --max-old-space-size=4096 --require=${ORG}/docs-site/README.md ${ORG}/service-api/node_modules/jest/bin/jest.js"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow",
+      "contained_ok": true
+    },
+    {
+      "id": "sibling-ls-missing-github-workflows",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${ORG}/docs-site/.github/workflows/ 2>/dev/null"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-find-missing-github-workflows",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${ORG}/docs-site/.github -name \"*.yml\" -o -name \"*.yaml\" 2>/dev/null"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-find-github-workflow-names",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${ORG}/service-api/.github -name \"*.yml\" -o -name \"*.yaml\" 2>/dev/null"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-sibling-find-github-exec-cat",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${ORG}/service-api/.github -name \"*.yml\" -exec cat {} +"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow",
+      "contained_ok": true
+    },
+    {
+      "id": "neg-sibling-ls-missing-env-below-github",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${ORG}/docs-site/.github/.env.ci 2>/dev/null"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow",
+      "contained_ok": true
+    },
+    {
+      "id": "gauntlet-sibling-node-heap-jest-config",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "node --max-old-space-size=4096 ${HOME}/other-project/node_modules/jest/bin/jest.js --config ${HOME}/other-project/jest.config.js"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gauntlet-sibling-ls-missing-github-workflows",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/other-project/.github/workflows/ 2>/dev/null"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gauntlet-sibling-find-missing-github-workflows",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/other-project/.github -name \"*.yml\" -o -name \"*.yaml\" 2>/dev/null"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "sibling-wc-source-glob",
       "fix_area": "shell",
       "harnesses": [
@@ -8572,6 +8748,57 @@
       },
       "cwd": "org_app",
       "expect": "allow"
+    },
+    {
+      "id": "git-worktree-add-long-lived-clone-existing-branch",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "cursor",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${HOME}/project worktree add ${HOME}/project-report-fix fix/report-export"
+      },
+      "cwd": "parent",
+      "expect": "allow"
+    },
+    {
+      "id": "git-worktree-add-long-lived-clone-new-branch-from-origin",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "cursor",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${HOME}/project worktree add ${HOME}/project-report-followup -b fix/report-followup origin/main"
+      },
+      "cwd": "parent",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-git-worktree-add-long-lived-clone-post-checkout-hook",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "cursor",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${HOME}/project-hooked worktree add ${HOME}/project-hooked-report-fix fix/report-export"
+      },
+      "cwd": "parent",
+      "expect": "not_allow"
     },
     {
       "id": "git-worktree-add-existing-branch-home-tilde",

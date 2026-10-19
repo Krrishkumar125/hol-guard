@@ -267,9 +267,9 @@ _SETTINGS_POLICY_RISK_ACTIONS: dict[str, dict[str, dict[str, str]]] = {
         "ask-all": {"malicious_skill": "require-reapproval"},
     },
     "packages": {
-        "warn": {"package_script": "warn"},
-        "ask-lifecycle": {"package_script": "require-reapproval"},
-        "ask-all": {"package_script": "require-reapproval"},
+        "warn": {"package_script": "warn", "package_install": "allow"},
+        "ask-lifecycle": {"package_script": "require-reapproval", "package_install": "allow"},
+        "ask-all": {"package_script": "require-reapproval", "package_install": "require-reapproval"},
     },
     "output-scanning": {
         "off": {

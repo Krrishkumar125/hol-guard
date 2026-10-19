@@ -65,6 +65,11 @@ pub(super) fn build(
         execution_context_hashes: vec![subject_hash.clone()],
         execution_context_cwds: Vec::new(),
         execution_context_reason_codes: Vec::new(),
+        // The captured attribution carries no manifest, lockfile or
+        // installed-package read, so nothing here establishes that a
+        // runner is already bound to local project state. Claiming it
+        // would suppress the review artifact on unread evidence.
+        routine_local_runner: false,
     };
     let mut artifact =
         build_package_request_artifact(harness, &intent, "captured-script-dependencies", "project");
