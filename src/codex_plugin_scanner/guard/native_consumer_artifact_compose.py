@@ -23,7 +23,7 @@ from .native_hook_artifact_compose import _field_valid
 from .native_runtime import native_runtime_status
 from .native_runtime_resilience import native_record_resident_failure, native_record_resident_success
 
-CONSUMER_ARTIFACT_COMPOSE_FEATURE = "consumer-artifact-compose-v1"
+CONSUMER_ARTIFACT_COMPOSE_FEATURE = "consumer-artifact-compose-v2"
 _REQUEST_SCHEMA = "guard-consumer-artifact-compose-request.v1"
 _RESULT_SCHEMA = "guard-consumer-artifact-compose-result.v1"
 _RESIDENT_CODE = re.compile(r"^native_consumer_artifact_compose_[a-z_]{1,64}$")

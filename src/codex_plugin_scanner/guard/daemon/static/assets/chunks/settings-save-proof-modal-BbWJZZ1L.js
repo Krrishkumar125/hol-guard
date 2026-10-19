@@ -122,7 +122,7 @@ const RISK_CONTROL_CONSEQUENCES = {
   low_trust_artifact: {
     key: "low_trust_artifact",
     example: "A skill, MCP server, or plugin has a HOL Registry trust score below 80",
-    impact: "Guard pauses low-trust skills, MCP servers, and plugins before they run"
+    impact: "Guard flags low-trust skills, MCP servers, and plugins, and pauses them when this action asks for review"
   }
 };
 const SETTINGS_SEARCH_INDEX = [

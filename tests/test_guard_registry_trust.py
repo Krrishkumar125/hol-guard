@@ -74,13 +74,16 @@ def test_unmatched_or_ambiguous_answers_have_no_score(tmp_path: Path, payload: o
     assert registry_trust_score(tmp_path, artifact_type="plugin", name="helper", opener=opener) is None
 
 
-def test_answers_are_cached_and_transport_failures_are_not(tmp_path: Path) -> None:
+def test_answers_are_cached_and_transport_failures_pause_lookups_briefly(tmp_path: Path) -> None:
     failing = _Opener(urllib.error.URLError("offline"))
     assert registry_trust_score(tmp_path, artifact_type="plugin", name="helper", opener=failing, now=1000) is None
-    assert not (tmp_path / registry_trust.CACHE_FILE_NAME).exists()
+    # An offline origin is not asked again for a few minutes, for any plugin.
+    quiet = _Opener()
+    assert registry_trust_score(tmp_path, artifact_type="plugin", name="other", opener=quiet, now=1100) is None
+    assert quiet.requests == []
 
     opener = _Opener(_plugins(("acme/helper", "Helper", 55)))
-    assert registry_trust_score(tmp_path, artifact_type="plugin", name="helper", opener=opener, now=1000) == 55
+    assert registry_trust_score(tmp_path, artifact_type="plugin", name="helper", opener=opener, now=1000 + 6 * 60) == 55
     # The cached answer is reused without another request.
     assert registry_trust_score(tmp_path, artifact_type="plugin", name="Helper", opener=_Opener(), now=2000) == 55
 

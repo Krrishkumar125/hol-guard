@@ -155,6 +155,34 @@ fn guard_distribution_from_a_direct_source_keeps_its_review() {
 }
 
 #[test]
+fn guard_distribution_from_the_registry_follows_settings() {
+    let mut own = package("ask", &["no_cached_match"]);
+    own.insert("name".to_string(), Value::String("hol-guard".to_string()));
+    own.insert("ecosystem".to_string(), Value::String("pypi".to_string()));
+    let mut custom_index = own.clone();
+    custom_index.insert(
+        "reasons".to_string(),
+        Value::Array(vec![Value::Object(reason(PACKAGE_CUSTOM_REGISTRY_CODE))]),
+    );
+    let mut result = result_with(vec![own, custom_index]);
+    assert!(resolve_packages(&triggers("balanced", &[]), &mut result));
+    assert_eq!(decision_of(&result.packages[0]), "monitor");
+    assert_eq!(decision_of(&result.packages[1]), "ask");
+}
+
+#[test]
+fn a_package_script_review_holds_an_install_that_could_run_package_code() {
+    let codes = ["no_cached_match", LIFECYCLE_SCRIPTS_ENABLED_CODE];
+    let mut balanced = result_with(vec![package("ask", &codes)]);
+    assert!(resolve_packages(&triggers("balanced", &[]), &mut balanced));
+    assert_eq!(decision_of(&balanced.packages[0]), "monitor");
+    let ask_lifecycle = triggers("balanced", &[(PACKAGE_SCRIPT, "require-reapproval")]);
+    let mut opted_in = result_with(vec![package("ask", &codes)]);
+    assert!(!resolve_packages(&ask_lifecycle, &mut opted_in));
+    assert_eq!(decision_of(&opted_in.packages[0]), "ask");
+}
+
+#[test]
 fn strict_raises_a_tunable_review_to_its_configured_action() {
     let mut result = result_with(vec![package("ask", &["no_cached_match"])]);
     assert!(resolve_packages(&triggers("strict", &[]), &mut result));

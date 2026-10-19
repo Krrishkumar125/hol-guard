@@ -22,7 +22,7 @@ pub const CONSUMER_ARTIFACT_COMPOSE_REQUEST_SCHEMA: &str =
 pub const CONSUMER_ARTIFACT_COMPOSE_RESULT_SCHEMA: &str =
     "guard-consumer-artifact-compose-result.v1";
 /// Capability advertised by the runtime when this operation is available.
-pub const CONSUMER_ARTIFACT_COMPOSE_FEATURE: &str = "consumer-artifact-compose-v1";
+pub const CONSUMER_ARTIFACT_COMPOSE_FEATURE: &str = "consumer-artifact-compose-v2";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]

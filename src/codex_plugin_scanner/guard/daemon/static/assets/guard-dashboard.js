@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-BIeHiHGS.js","assets/chunks/home-protection-module-BHaRlMcA.js","assets/chunks/fleet-workspace-C6XMgPBt.js","assets/chunks/settings-save-proof-modal-D_SoUkyq.js","assets/chunks/harness-version-label-Dfq_fTOf.js","assets/chunks/connect-guard-cloud-button-Ce_NW13Z.js","assets/chunks/settings-workspace-lFWLQynr.js","assets/chunks/confirm-dialog-Cxs3dXTD.js","assets/chunks/extensions-workspace-CQY8-ycH.js","assets/chunks/app-detail-workspace-CeHXFk-9.js","assets/chunks/policy-workspace-page-Borpv-IL.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-BIeHiHGS.js","assets/chunks/home-protection-module-BHaRlMcA.js","assets/chunks/fleet-workspace-DXfdT9A2.js","assets/chunks/settings-save-proof-modal-BbWJZZ1L.js","assets/chunks/harness-version-label-Dfq_fTOf.js","assets/chunks/connect-guard-cloud-button-Ce_NW13Z.js","assets/chunks/settings-workspace-B9G3KBOY.js","assets/chunks/confirm-dialog-Cxs3dXTD.js","assets/chunks/extensions-workspace-CQY8-ycH.js","assets/chunks/app-detail-workspace-CeHXFk-9.js","assets/chunks/policy-workspace-page-Borpv-IL.js"])))=>i.map(i=>d[i]);
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -35560,8 +35560,8 @@ function useRouteFocus(view, mainSelector = "main#main-content") {
   }, [view, mainSelector]);
 }
 const HomeWorkspace = lazyWorkspace("home-dashboard", () => __vitePreload(() => import("./chunks/home-dashboard-BIeHiHGS.js"), true ? __vite__mapDeps([0,1]) : void 0).then((m) => ({ default: m.HomeWorkspace })));
-const FleetWorkspace = lazyWorkspace("fleet-workspace", () => __vitePreload(() => import("./chunks/fleet-workspace-C6XMgPBt.js"), true ? __vite__mapDeps([2,3,4,5]) : void 0).then((m) => ({ default: m.FleetWorkspace })));
-const SettingsWorkspace = lazyWorkspace("settings-workspace", () => __vitePreload(() => import("./chunks/settings-workspace-lFWLQynr.js"), true ? __vite__mapDeps([6,3,7,5]) : void 0).then((m) => ({ default: m.SettingsWorkspace })));
+const FleetWorkspace = lazyWorkspace("fleet-workspace", () => __vitePreload(() => import("./chunks/fleet-workspace-DXfdT9A2.js"), true ? __vite__mapDeps([2,3,4,5]) : void 0).then((m) => ({ default: m.FleetWorkspace })));
+const SettingsWorkspace = lazyWorkspace("settings-workspace", () => __vitePreload(() => import("./chunks/settings-workspace-B9G3KBOY.js"), true ? __vite__mapDeps([6,3,7,5]) : void 0).then((m) => ({ default: m.SettingsWorkspace })));
 const ExtensionsWorkspace = lazyWorkspace(
   "extensions-workspace",
   () => __vitePreload(() => import("./chunks/extensions-workspace-CQY8-ycH.js"), true ? __vite__mapDeps([8,7]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))

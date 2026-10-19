@@ -47,6 +47,10 @@ CACHE_FILE_NAME = "registry-trust-cache.json"
 _CACHE_SCHEMA = "guard-registry-trust-cache.v1"
 _SCORED_TTL_SECONDS = 24 * 60 * 60
 _UNSCORED_TTL_SECONDS = 6 * 60 * 60
+# After a transport failure, skip the network for a few minutes so an offline
+# device does not wait on every evaluation. No score means no review.
+_UNREACHABLE_KEY = "origin:unreachable"
+_UNREACHABLE_TTL_SECONDS = 5 * 60
 _MAX_CACHE_ENTRIES = 512
 
 # Guard artifact types the registry scores, keyed to the registry kind.
@@ -107,10 +111,16 @@ def registry_trust_score(
     if cached is not None and _fresh(cached, clock):
         score = cached.get("score")
         return score if isinstance(score, int) else None
+    if _recently_unreachable(cache.get(_UNREACHABLE_KEY), clock):
+        return None
     score = _fetch_plugin_score(lookup_name, opener=opener)
     if score is _UNREACHABLE:
-        # A transport failure is not an answer: keep any stale entry and retry later.
+        # A transport failure is not an answer: keep any stale entry and retry
+        # once the marker expires.
+        cache[_UNREACHABLE_KEY] = {"checked_at": clock}
+        _store_cache(guard_home, cache)
         return None
+    cache.pop(_UNREACHABLE_KEY, None)
     cache[key] = {"score": score, "checked_at": clock}
     _store_cache(guard_home, cache)
     return cast(int | None, score)
@@ -212,6 +222,13 @@ def _fresh(entry: Mapping[str, object], now: float) -> bool:
         return False
     ttl = _SCORED_TTL_SECONDS if isinstance(entry.get("score"), int) else _UNSCORED_TTL_SECONDS
     return now - checked_at < ttl
+
+
+def _recently_unreachable(entry: Mapping[str, object] | None, now: float) -> bool:
+    checked_at = entry.get("checked_at") if entry is not None else None
+    if not isinstance(checked_at, (int, float)) or checked_at > now:
+        return False
+    return now - checked_at < _UNREACHABLE_TTL_SECONDS
 
 
 def _cache_path(guard_home: Path | None) -> Path | None:

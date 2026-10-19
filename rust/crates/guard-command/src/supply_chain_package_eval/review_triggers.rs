@@ -22,6 +22,8 @@ pub(crate) const PACKAGE_DIRECT_SOURCE: &str = "package_direct_source";
 pub(crate) const PACKAGE_CUSTOM_REGISTRY: &str = "package_custom_registry";
 /// Every package install or update.
 pub(crate) const PACKAGE_INSTALL: &str = "package_install";
+/// Package code that runs at install or build time.
+const PACKAGE_SCRIPT: &str = "package_script";
 
 const PACKAGE_INSTALL_CODE: &str = "package_install_review";
 const PACKAGE_CUSTOM_REGISTRY_CODE: &str = "package_custom_registry";
@@ -43,7 +45,7 @@ fn trigger_key(code: &str) -> Option<&'static str> {
         | "local_path_dependency_source"
         | "go_replace_local_source"
         | "go_replace_mutable_source" => PACKAGE_DIRECT_SOURCE,
-        "local_build_backend_risk" => "package_script",
+        "local_build_backend_risk" => PACKAGE_SCRIPT,
         PACKAGE_INSTALL_CODE => PACKAGE_INSTALL,
         PACKAGE_CUSTOM_REGISTRY_CODE => PACKAGE_CUSTOM_REGISTRY,
         _ => return None,
@@ -103,7 +105,18 @@ impl ReviewTriggers {
             if is_annotation(&code) {
                 continue;
             }
-            let decision = self.decision(trigger_key(&code)?);
+            let mut decision = self.decision(trigger_key(&code)?);
+            if code == LIFECYCLE_SCRIPTS_ENABLED_CODE {
+                // The install could run package code: a package-script setting
+                // that asks for review holds it, a quieter one leaves it to
+                // the package-unknown action it accompanies.
+                let script = self.decision(PACKAGE_SCRIPT);
+                if decision_rank(script) >= decision_rank("ask")
+                    && decision_rank(script) > decision_rank(decision)
+                {
+                    decision = script;
+                }
+            }
             if resolved.is_none_or(|current| decision_rank(decision) > decision_rank(current)) {
                 resolved = Some(decision);
             }
@@ -186,10 +199,19 @@ fn trigger_reason(code: &str, message: &str) -> Map<String, Value> {
     reason
 }
 
-/// Guard's own distribution from any source: a direct-source install could
-/// replace Guard itself, so its review is never relaxed by a setting.
-fn is_guard_distribution(package: &Map<String, Value>) -> bool {
+/// Guard's own distribution from a direct source or custom registry: such an
+/// install could replace Guard itself, so its review is never relaxed by a
+/// setting. A plain registry install follows the user's settings.
+fn is_guard_distribution_off_registry(package: &Map<String, Value>) -> bool {
     if optional_string(package.get("ecosystem")).as_deref() != Some("pypi") {
+        return false;
+    }
+    let off_registry = package_reasons(package).iter().any(|reason| {
+        optional_string(reason.get("code"))
+            .and_then(|code| trigger_key(&code))
+            .is_some_and(|key| key == PACKAGE_DIRECT_SOURCE || key == PACKAGE_CUSTOM_REGISTRY)
+    });
+    if !off_registry {
         return false;
     }
     optional_string(package.get("name")).is_some_and(|name| {
@@ -209,7 +231,7 @@ fn resolve_packages(triggers: &ReviewTriggers, result: &mut PackageEvalResult) -
     let mut changed = false;
     for package in &mut result.packages {
         let own_release = package.remove(OWN_PACKAGE_RELEASE_FIELD) == Some(Value::Bool(true))
-            || is_guard_distribution(package);
+            || is_guard_distribution_off_registry(package);
         let current = decision_of(package);
         if own_release || decision_rank(&current) < decision_rank("ask") {
             continue;
