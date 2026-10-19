@@ -5,8 +5,15 @@ from __future__ import annotations
 import json
 
 _ENVIRONMENT_NAMES = (
-    "LANG", "LC_ALL", "LC_CTYPE", "LC_COLLATE", "LC_MESSAGES", "LC_NUMERIC",
-    "LC_TIME", "LC_MONETARY", "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LC_COLLATE",
+    "LC_MESSAGES",
+    "LC_NUMERIC",
+    "LC_TIME",
+    "LC_MONETARY",
+    "TMPDIR",
 )
 
 

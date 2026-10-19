@@ -8,19 +8,23 @@ Use the supported native owner route described in
 specific unavailable execution capability. Inventory observations do not
 grant permission. Current hard restrictions still apply to every launch.
 
-Every command Guard pauses for review can be approved. The user always sees
+Every executable review can be approved. The user always sees
 **Allow once** and **Always allow**, and an approved command runs. Guard does
 not second-guess the answer.
 
-This is a product rule, not an implementation detail. Do not add a code path
-that pauses a command without offering both choices, or that ignores an
-approval the user has given.
+This is a product rule, not an implementation detail. Supported execution
+routes must offer both choices and honor saved approval. A script without a
+working execution binding is an explicit capability refusal, not an
+executable review: show Keep blocked and verified recovery instructions.
+Recording a decision must not be presented as permission to run that script.
 
 ## The rule
 
-1. A review (`review` or `require-reapproval`) always offers Allow once and
-   Always allow. That includes commands Guard cannot prove, commands that run
-   outside the workspace sandbox, package installs and Guard-control commands.
+1. An executable review (`review` or `require-reapproval`) always offers Allow
+   once and Always allow. The legacy command-hash fallback below still covers
+   other unproven commands, package installs and Guard-control commands.
+   Content-bound scripts without an enforced execution binding are excluded;
+   neither consent duration can create that missing capability.
 2. Allow once lets the agent's retry of that command through. The retry is a
    new tool call, so the binding leaves out the per-attempt call id (`tool_call_id`
    for Pi and Oh My Pi, `tool_use_id` for Claude Code and Codex) while a session
@@ -51,7 +55,8 @@ the command, and it also binds Guard's rule set and extensions. Editing the
 script or changing those rules makes it a new command, so Guard asks once more
 and both choices are offered again.
 
-When Guard cannot prove it, for example an executable outside the workspace
+For commands outside the content-bound script exception, when Guard cannot
+prove the action, for example an executable outside the workspace
 roots, a helper-selecting Git config or a mutable script launcher, the token
 falls back to `native-command-hash-v1`. That hash covers:
 

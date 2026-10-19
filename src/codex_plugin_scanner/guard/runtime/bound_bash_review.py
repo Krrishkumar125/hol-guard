@@ -12,8 +12,14 @@ if TYPE_CHECKING:
 
 
 def queue_bound_bash_review(
-    prepared: dict[str, object], payload: dict[str, object], *, store: GuardStore,
-    harness: str, workspace: Path, home: Path, errors: TextIO,
+    prepared: dict[str, object],
+    payload: dict[str, object],
+    *,
+    store: GuardStore,
+    harness: str,
+    workspace: Path,
+    home: Path,
+    errors: TextIO,
 ) -> None:
     from ..daemon.hook_native_review_approval import queue_native_pre_tool_review
     from ..daemon.native_review_records import record_silent_native_review_event
@@ -24,15 +30,27 @@ def queue_bound_bash_review(
         raise NativeBashError("native_bash_review_evidence_invalid")
     decision = review["decision"]
     receipt = validate_native_decision_receipt(review.get("receipt"))
-    if receipt is None or not receipt_matches_edge({
-        "harness": harness, "event_name": "PreToolUse", "payload_kind": receipt["payload_kind"],
-        "result": decision,
-    }, receipt):
+    if receipt is None or not receipt_matches_edge(
+        {
+            "harness": harness,
+            "event_name": "PreToolUse",
+            "payload_kind": receipt["payload_kind"],
+            "result": decision,
+        },
+        receipt,
+    ):
         raise NativeBashError("native_bash_review_evidence_invalid")
     queued = queue_native_pre_tool_review(
-        store, harness=harness, payload=payload, native_result=decision, native_receipt=receipt,
-        workspace=workspace, guard_home=Path(store.guard_home), home_dir=home,
-        exact_token=str(prepared["artifact_hash"]), review_binding=str(prepared["artifact_hash"]),
+        store,
+        harness=harness,
+        payload=payload,
+        native_result=decision,
+        native_receipt=receipt,
+        workspace=workspace,
+        guard_home=Path(store.guard_home),
+        home_dir=home,
+        exact_token=str(prepared["artifact_hash"]),
+        review_binding=str(prepared["artifact_hash"]),
         bound_bash=prepared,
     )
     if queued is None:

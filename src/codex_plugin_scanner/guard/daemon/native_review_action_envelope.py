@@ -19,16 +19,30 @@ def native_review_tool_name(payload: Mapping[str, object]) -> str:
 
 
 def native_review_action_envelope(
-    *, harness: str, payload: Mapping[str, object],
-    native_receipt: Mapping[str, object] | None = None, workspace: Path | None,
-    guard_home: Path | None = None, home_dir: Path | None, deadline: float | None = None,
+    *,
+    harness: str,
+    payload: Mapping[str, object],
+    native_receipt: Mapping[str, object] | None = None,
+    workspace: Path | None,
+    guard_home: Path | None = None,
+    home_dir: Path | None,
+    deadline: float | None = None,
 ) -> dict[str, object] | None:
     """Store the canonical redacted envelope used by live revalidation."""
     try:
-        envelope = normalize_harness_payload(
-            harness, "PreToolUse", dict(payload), workspace=workspace,
-            home_dir=home_dir, guard_home=guard_home, deadline=deadline,
-        ).with_pre_execution_result("review").to_dict()
+        envelope = (
+            normalize_harness_payload(
+                harness,
+                "PreToolUse",
+                dict(payload),
+                workspace=workspace,
+                home_dir=home_dir,
+                guard_home=guard_home,
+                deadline=deadline,
+            )
+            .with_pre_execution_result("review")
+            .to_dict()
+        )
     except ValueError:
         return None
     validated = validate_native_decision_receipt(native_receipt)

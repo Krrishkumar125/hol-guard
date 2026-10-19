@@ -24,6 +24,7 @@ pub(super) fn before_fork() {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn set_before_fork(hook: impl FnOnce() + 'static) {
     BEFORE_FORK.with(|slot| {
         assert!(slot.replace(Some(Box::new(hook))).is_none());

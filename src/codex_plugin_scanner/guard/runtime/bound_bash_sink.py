@@ -23,15 +23,23 @@ if TYPE_CHECKING:
 
 
 def _authorization(
-    store: GuardStore, prepared: dict[str, object], *, harness: str, workspace: Path,
+    store: GuardStore,
+    prepared: dict[str, object],
+    *,
+    harness: str,
+    workspace: Path,
 ) -> dict[str, object]:
     lookup = store.resolve_policy_decision_lookup(
-        harness, str(prepared["artifact_id"]), artifact_hash=str(prepared["artifact_hash"]),
-        workspace=str(workspace), consume_one_shot=False,
+        harness,
+        str(prepared["artifact_id"]),
+        artifact_hash=str(prepared["artifact_hash"]),
+        workspace=str(workspace),
+        consume_one_shot=False,
     )
     trust = lookup.get("trust_status")
     if (
-        lookup.get("ignored_local_integrity") is not None or not isinstance(trust, dict)
+        lookup.get("ignored_local_integrity") is not None
+        or not isinstance(trust, dict)
         or trust.get("remembered_rules") == "disabled_degraded"
     ):
         raise NativeBashError("native_bash_saved_decision_unreadable")
@@ -61,19 +69,30 @@ def _authorization(
     # Do not invoke claim_approval_reuse_decisions here: the native owner must
     # claim atomically with journal reservation at its final launch barrier.
     return {
-        "kind": "saved_grant", "claim": {
-            "schema": "guard-claim-approval-reuse-request.v1", "request_id": request_id(),
-            "store_path": str(store.path), "guard_home": str(store.guard_home),
-            "decisions": [decision], "now": now, "consume_local_once": True,
+        "kind": "saved_grant",
+        "claim": {
+            "schema": "guard-claim-approval-reuse-request.v1",
+            "request_id": request_id(),
+            "store_path": str(store.path),
+            "guard_home": str(store.guard_home),
+            "decisions": [decision],
+            "now": now,
+            "consume_local_once": True,
             **store._claim_integrity_evidence([decision], now),
         },
     }
 
 
 def run_bound_bash(
-    payload: dict[str, object], *, store: GuardStore, workspace: Path,
-    harness: str, operation_id: str, timeout_seconds: int = 120,
-    output: TextIO | None = None, errors: TextIO | None = None,
+    payload: dict[str, object],
+    *,
+    store: GuardStore,
+    workspace: Path,
+    harness: str,
+    operation_id: str,
+    timeout_seconds: int = 120,
+    output: TextIO | None = None,
+    errors: TextIO | None = None,
     host_owner_pid: int | None = None,
     tool_call_id: str | None = None,
 ) -> int:
@@ -82,9 +101,12 @@ def run_bound_bash(
     from ..native_hook_edge import _encode_hook_envelope
 
     if (
-        harness not in {"omp", "pi"} or re.fullmatch(r"[A-Za-z0-9_.:-]{16,128}", operation_id) is None
-        or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 120
-        or payload.get("hook_event_name") != "PreToolUse" or payload.get("tool_name") != "bash"
+        harness not in {"omp", "pi"}
+        or re.fullmatch(r"[A-Za-z0-9_.:-]{16,128}", operation_id) is None
+        or type(timeout_seconds) is not int
+        or not 1 <= timeout_seconds <= 120
+        or payload.get("hook_event_name") != "PreToolUse"
+        or payload.get("tool_name") != "bash"
         or not isinstance(payload.get("tool_input"), dict)
     ):
         raise NativeBashError("native_bash_sink_request_invalid")
@@ -97,19 +119,34 @@ def run_bound_bash(
     # The host has already applied a tool-level cwd. Do not interpret it twice
     # or judge the launch against the earlier session directory's overlays.
     payload = {
-        **payload, "cwd": str(cwd),
+        **payload,
+        "cwd": str(cwd),
         "tool_input": {key: value for key, value in tool_input.items() if key != "cwd"},
     }
-    capture = observe_host({
-        "harness": harness, "command": command, "cwd": str(cwd),
-        "workspace": str(workspace.resolve(strict=True)), "home_dir": "",
-        "guard_home": str(store.guard_home), "environment": {}, "file_creation_mask": None,
-        "execution_environment": {
-            "path": "", "environment_names": [], "environment_digest": "", "home": None,
-            "git_pager_disabled": False, "pager_disabled": False, "xdg_config_home": None,
-            "git_config_no_system": False,
-        }, "budget_ms": 5000,
-    }, cwd=cwd)
+    capture = observe_host(
+        {
+            "harness": harness,
+            "command": command,
+            "cwd": str(cwd),
+            "workspace": str(workspace.resolve(strict=True)),
+            "home_dir": "",
+            "guard_home": str(store.guard_home),
+            "environment": {},
+            "file_creation_mask": None,
+            "execution_environment": {
+                "path": "",
+                "environment_names": [],
+                "environment_digest": "",
+                "home": None,
+                "git_pager_disabled": False,
+                "pager_disabled": False,
+                "xdg_config_home": None,
+                "git_config_no_system": False,
+            },
+            "budget_ms": 5000,
+        },
+        cwd=cwd,
+    )
     home = Path(str(capture["home_dir"]))
     worker = HookWorker(store=store, workspace=cwd, home_dir=home, wait_for_native_policy=False)
     try:
@@ -118,32 +155,57 @@ def run_bound_bash(
             raise NativeBashError("native_bash_policy_not_ready")
         encoded = _encode_hook_envelope(
             payload={**payload, HOOK_EXECUTION_ENVIRONMENT_KEY: capture["execution_environment"]},
-            harness=harness, event="PreToolUse", guard_home=Path(store.guard_home),
-            home_dir=home, cwd=cwd, source_ref_external_allowed=False,
-            deadline_budget_ms=5000, snapshot=snapshot, execution_context_supported=True,
+            harness=harness,
+            event="PreToolUse",
+            guard_home=Path(store.guard_home),
+            home_dir=home,
+            cwd=cwd,
+            source_ref_external_allowed=False,
+            deadline_budget_ms=5000,
+            snapshot=snapshot,
+            execution_context_supported=True,
             request_id=request_id(),
         )
         if encoded is None:
             raise NativeBashError("native_bash_envelope_unavailable")
         envelope = json.loads(encoded)
-        prepared = prepare({
-            "schema": "guard-native-bash-prepare-request.v1", "request_id": request_id(),
-            "capture": capture, "envelope": envelope, "budget_ms": 5000,
-        }, guard_home=Path(store.guard_home))
+        prepared = prepare(
+            {
+                "schema": "guard-native-bash-prepare-request.v1",
+                "request_id": request_id(),
+                "capture": capture,
+                "envelope": envelope,
+                "budget_ms": 5000,
+            },
+            guard_home=Path(store.guard_home),
+        )
         authorization = _authorization(store, prepared, harness=harness, workspace=workspace)
-        result = execute({
-            "schema": "guard-native-bash-execute-request.v1", "request_id": request_id(),
-            "operation_id": operation_id, "capture": capture, "envelope": envelope,
-            **({"tool_call_id": tool_call_id} if tool_call_id is not None else {}),
-            "authorization": authorization, "timeout_ms": timeout_seconds * 1000,
-        }, guard_home=Path(store.guard_home), cwd=cwd, host_owner_pid=host_owner_pid)
+        result = execute(
+            {
+                "schema": "guard-native-bash-execute-request.v1",
+                "request_id": request_id(),
+                "operation_id": operation_id,
+                "capture": capture,
+                "envelope": envelope,
+                **({"tool_call_id": tool_call_id} if tool_call_id is not None else {}),
+                "authorization": authorization,
+                "timeout_ms": timeout_seconds * 1000,
+            },
+            guard_home=Path(store.guard_home),
+            cwd=cwd,
+            host_owner_pid=host_owner_pid,
+        )
         if result["status"] == "error" and result["code"] == "native_bash_consent_required":
             from .bound_bash_review import queue_bound_bash_review
 
             queue_bound_bash_review(
-                {**prepared, "review_lineage": result["review_lineage"]}, payload,
-                store=store, harness=harness, workspace=workspace,
-                home=home, errors=errors or sys.stderr,
+                {**prepared, "review_lineage": result["review_lineage"]},
+                payload,
+                store=store,
+                harness=harness,
+                workspace=workspace,
+                home=home,
+                errors=errors or sys.stderr,
             )
         return render_result(result, output=output or sys.stdout, errors=errors or sys.stderr)
     finally:
@@ -166,11 +228,17 @@ def render_result(result: dict[str, object], *, output: TextIO, errors: TextIO) 
     if result["status"] != "ok" or not isinstance(payload, dict):
         print(str(result["code"]), file=errors)
         if result["code"] == "native_bash_operation_kept_blocked":
-            print("This user request remains blocked. Guard will not ask again for its retries. "
-                  "A new user request can be reviewed separately.", file=errors)
+            print(
+                "This user request remains blocked. Guard will not ask again for its retries. "
+                "A new user request can be reviewed separately.",
+                file=errors,
+            )
         elif result["code"] == "native_bash_review_lineage_unavailable":
-            print("The pending review could not be verified. Keep this operation blocked and "
-                  "check the local review store before retrying.", file=errors)
+            print(
+                "The pending review could not be verified. Keep this operation blocked and "
+                "check the local review store before retrying.",
+                file=errors,
+            )
         return 125
     return _exit_status(payload)
 
