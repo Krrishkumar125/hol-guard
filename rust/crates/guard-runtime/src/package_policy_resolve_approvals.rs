@@ -10,7 +10,7 @@ use super::{field_or_null, has_token, is_int, non_empty_text, text_is, LOCAL_HAR
 /// artifact still earns a fresh approval whatever scope saved the row.
 fn binds_request_artifact(decision: &Map<String, Value>, artifact_id: &str) -> bool {
     has_token(decision)
-        && non_empty_text(decision, "artifact_id").map_or(true, |saved| saved == artifact_id)
+        && non_empty_text(decision, "artifact_id").is_none_or(|saved| saved == artifact_id)
 }
 
 pub(super) fn is_fresh_artifact_approval(

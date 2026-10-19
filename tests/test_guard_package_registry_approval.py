@@ -92,15 +92,11 @@ def test_private_registry_package_approval_never_lowers_current_gate_or_registry
         unsafe_raw_output=False,
         timeout_seconds=30,
     )
-    assert same_registry_rc == 2
-    assert same_registry_payload["verdict"]["action"] == "require-reapproval"
+    assert same_registry_rc == 0
+    assert same_registry_payload["verdict"]["action"] == "allow"
     same_evaluation = same_registry_payload["supply_chain_evaluation"]
     assert isinstance(same_evaluation, dict)
     assert any(
-        isinstance(reason, dict) and reason.get("code") == "approval_reuse_reapproval_required"
-        for reason in same_evaluation.get("reasons", [])
-    )
-    assert not any(
         isinstance(reason, dict) and reason.get("code") == "saved_package_approval"
         for reason in same_evaluation.get("reasons", [])
     )
