@@ -22851,9 +22851,14 @@ def test_sync_receipts_rolls_back_to_last_good_bundle_on_canonical_compile_failu
 
     assert store.get_sync_payload("policy_bundle") == last_good
     assert store.get_sync_payload("policy_bundle_last_good") == last_good
-    assert store.get_sync_payload("policy_bundle_last_error") == {
-        "reason": "canonical_compile_unsupported_policy_match"
-    }
+    last_error = store.get_sync_payload("policy_bundle_last_error")
+    assert last_error["reason"] == "canonical_compile_unsupported_policy_match"
+    # The rejection names the rule that refused to compile and what Guard can
+    # enforce instead; the bare code alone left an administrator with a
+    # published policy that never applied and nothing to act on.
+    assert last_error["ruleId"] == "rule.unsupported-operation"
+    assert "packages, domains or paths" in last_error["message"]
+    assert "keeps the policy it already had" in last_error["message"]
     assert [decision["owner"] for decision in store.list_policy_decisions()] == ["legacy-last-good"]
     rollback_events = store.list_events(event_name="policy_bundle/rollback")
     assert rollback_events[-1]["payload"] == {
