@@ -9,6 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+# Advertised protocol name only. The native runtime defines and enforces the
+# v2 wire contract; nothing here restates its limits or its upload policy.
+CAPABILITY = "extension-catalog.v2"
+
+
 def encoded(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
 

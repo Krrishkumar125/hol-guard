@@ -49,32 +49,16 @@ def policy_view_ready(*, store, registry) -> bool:
     """Require the compatible native proof path against an authenticated view.
 
     Authority health and atomic application prerequisites are checked by the
-    caller. The production parser must return an actual v2 proof, so an older
-    resident cannot gain capabilities by ignoring new request fields.
+    caller. A native policy view is itself the readiness proof: the runtime
+    validates the authenticated completed observation before returning one, and
+    an older resident cannot answer the request at all. Nothing here fabricates
+    a policy document or restates a negotiated capability set.
     """
-    from ..managed_controls_policy_fields import parse_managed_controls_policy_fields
-
     summary = getattr(store, "get_sync_payload", lambda _key: None)("runtime_session_summary")
     if not isinstance(summary, dict):
         return False
     try:
-        view = local_policy_view(guard_home=store.guard_home, runtime_summary=summary, registry=registry)
-        parsed = parse_managed_controls_policy_fields(
-            {
-                "x-hol-extension-controls": {
-                    "schemaVersion": "guard.extension-controls.v1",
-                    "authorityMode": "managed-restrictive",
-                    "controls": [],
-                },
-                "spec": {"rules": []},
-            },
-            registry=registry,
-            guard_home=store.guard_home,
-            cloud_view=view,
-            negotiated_capabilities=frozenset(
-                {"extension-control-layer.v1", "policy-extension-targets.v1", "managed-controls-atomic-apply.v1"}
-            ),
-        )
-        return parsed.cloud_projection_digest is not None
+        local_policy_view(guard_home=store.guard_home, runtime_summary=summary, registry=registry)
     except (ImportError, OSError, RuntimeError, TypeError, ValueError):
         return False
+    return True

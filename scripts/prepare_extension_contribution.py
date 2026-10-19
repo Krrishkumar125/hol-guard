@@ -167,8 +167,9 @@ def _run(command: list[str], *, input_bytes: bytes | None = None) -> bytes:
 def _validate_fixture(compiler: Path, path: Path) -> str:
     fixture = _load_object(path)
     sys.path.insert(0, str(ROOT / "src"))
-    from codex_plugin_scanner.guard.extension_builder.bundle_baseline import authoring_request
     from extension_development_staging import development_release
+
+    from codex_plugin_scanner.guard.extension_builder.bundle_baseline import authoring_request
 
     with tempfile.TemporaryDirectory(prefix="hol-guard-prepare-context-") as scratch:
         request = authoring_request(
