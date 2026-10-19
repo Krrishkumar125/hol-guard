@@ -3,11 +3,28 @@
 //! scratch files in it (a patch to check, a log to read back, a workspace from
 //! `mktemp -d`). Only its owner can create an entry in it, so a file below it
 //! belongs to that user and is not system state, even though it sits below
-//! `/private/var`. The shared `/tmp` is already outside the system roots; this
-//! directory is narrower than that. Every other screen still runs on the path,
-//! so a credential or sensitive file kept there keeps its review.
+//! `/private/var`. Every other screen still runs on the path, so a credential
+//! or sensitive file kept there keeps its review.
+//!
+//! Reading any entry below the directory is routine. Changing files is quiet
+//! only inside a workspace created below it; the directory itself is not a
+//! workspace.
 
 use std::path::Path;
+
+/// Whether `canonical` lies inside the session's working directory and that
+/// directory sits strictly below the home owner's private temporary directory.
+pub(super) fn inside_private_temporary_workspace(
+    canonical: &Path,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    cwd.and_then(|cwd| std::fs::canonicalize(cwd).ok())
+        .is_some_and(|workspace| {
+            canonical.starts_with(&workspace)
+                && inside_private_temporary_directory(&workspace, home_dir)
+        })
+}
 
 /// Whether `canonical` lies strictly below the home owner's private
 /// temporary directory, and that directory is owned by the home owner with no

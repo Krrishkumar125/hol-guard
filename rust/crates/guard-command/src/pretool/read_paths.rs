@@ -283,28 +283,27 @@ fn path_gate(
     read_only: bool,
     credential_names: bool,
 ) -> bool {
-    if !location_allowed(
-        canonical,
-        home_dir,
-        cwd,
-        verified_temporary,
-        credential_names,
-    ) || !(guard_secure_fs::hidden_read_parts_allowed(canonical)
-        || (read_only && guard_secure_fs::hidden_empty_work_tree_file(canonical))
-        || (read_only && project_dotfile_read(canonical, home_dir))
-        || guard_safety_doc(canonical, home_dir)
+    // Reading a scratch file in the private temporary directory is routine.
+    let temporary = verified_temporary
         || (read_only
-            && (agent_skill_document(canonical, home_dir)
-                || agent_home_state(canonical, home_dir)
-                || project_skill_document(canonical, home_dir, cwd)
-                || codex_notes_document(canonical, home_dir)
-                || harness_notes::harness_home_document(canonical, home_dir)
-                || git_ref_document(canonical, home_dir, cwd)
-                || git_config_document(canonical, cwd)
-                || worktree_gitfile(canonical)
-                || scratch::workspace_scratch_read(canonical, home_dir, cwd)
-                || virtualenv_activation_script(canonical)))
-        || (read_only && execution_output_log(canonical, home_dir)))
+            && private_temporary::inside_private_temporary_directory(canonical, home_dir));
+    if !location_allowed(canonical, home_dir, cwd, temporary, credential_names)
+        || !(guard_secure_fs::hidden_read_parts_allowed(canonical)
+            || (read_only && guard_secure_fs::hidden_empty_work_tree_file(canonical))
+            || (read_only && project_dotfile_read(canonical, home_dir))
+            || guard_safety_doc(canonical, home_dir)
+            || (read_only
+                && (agent_skill_document(canonical, home_dir)
+                    || agent_home_state(canonical, home_dir)
+                    || project_skill_document(canonical, home_dir, cwd)
+                    || codex_notes_document(canonical, home_dir)
+                    || harness_notes::harness_home_document(canonical, home_dir)
+                    || git_ref_document(canonical, home_dir, cwd)
+                    || git_config_document(canonical, cwd)
+                    || worktree_gitfile(canonical)
+                    || scratch::workspace_scratch_read(canonical, home_dir, cwd)
+                    || virtualenv_activation_script(canonical)))
+            || (read_only && execution_output_log(canonical, home_dir)))
     {
         return false;
     }
@@ -412,7 +411,7 @@ fn location_allowed(
         "/private/var",
     ];
     !((!verified_temporary
-        && !private_temporary::inside_private_temporary_directory(canonical, home_dir)
+        && !private_temporary::inside_private_temporary_workspace(canonical, home_dir, cwd)
         && ROOTS
             .iter()
             .any(|prefix| lowered == *prefix || lowered.starts_with(&format!("{prefix}/"))))
