@@ -44,6 +44,17 @@ def framed_digest(purpose: str, payload: object) -> str:
     return hashlib.sha256(canonical_framed_payload(purpose, payload)).hexdigest()
 
 
+def capability_id(request_id: str) -> str:
+    """The id a workflow capability for ``request_id`` is stored under.
+
+    Spelled out here rather than imported from the runtime, so a drift in the
+    resident's derivation fails a test instead of silently renaming every
+    capability the store already holds.
+    """
+
+    return f"gwc-{framed_digest('github-workflow-capability', request_id)}"
+
+
 def binding(
     *,
     operation: str = "lock-issue",
