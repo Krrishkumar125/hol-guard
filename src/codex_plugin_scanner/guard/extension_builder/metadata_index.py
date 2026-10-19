@@ -57,7 +57,7 @@ def exchange(compiler, operation, records, directory, *, fetch=None, archive=Non
                     send({"ok": True})
                 elif kind == "object":
                     data = base64.b64decode(row["data"], validate=True)
-                    if len(data) != row["length"] or len(data) > 64 * 1024:
+                    if len(data) > 64 * 1024:
                         raise ValueError("native authoring object exceeds budget")
                     publish_object(directory, row["sha256"], data)
                 elif kind == "compatibility-record":
@@ -93,15 +93,3 @@ def exchange(compiler, operation, records, directory, *, fetch=None, archive=Non
                 process.stdin.close()
             if process.stdout:
                 process.stdout.close()
-
-
-def write_index(directory: Path, catalog, engine: str, source_context: str, *, compiler=None):
-    """Maintainer integrity input, never installed authority; native production."""
-    from .native_source_compiler import find_packaged_source_compiler
-
-    if compiler is None:
-        compiler = find_packaged_source_compiler()
-    header = {"count": len(catalog), "engine": engine, "source_context": source_context}
-    return exchange(compiler, "authoring-index", (item for batch in ([header], catalog) for item in batch), directory)[
-        "metadata_index"
-    ]
