@@ -179,7 +179,14 @@ fn child_exit_before_readiness_closes_ack_channel_without_claim() {
         Isolation::default(),
         &mut gate,
     );
-    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::UnexpectedEof);
+    // The child may exit before or after the owner reaches the acknowledgement
+    // read; both orders leave the frame unacknowledged, so the owner either
+    // reports the closed channel or returns the child's own exit without a
+    // claim. Neither order may claim the launch.
+    match result {
+        Ok(output) => assert_eq!(output.exit_code, Some(125)),
+        Err(error) => assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof),
+    }
     assert_eq!((gate.commits, gate.releases), (0, 0));
 }
 
