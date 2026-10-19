@@ -29,8 +29,11 @@ struct Frame {
 impl Frame {
     /// Buffers the directory's child names in descending raw-byte order, so
     /// grants come out in the same order whatever the filesystem's readdir
-    /// order is. A directory with more children than the remaining entry
-    /// budget fails before the walk visits any of them.
+    /// order is. `remaining` is the entry budget left after every name already
+    /// visited or still buffered by an ancestor frame, so the whole stack never
+    /// holds more than the budget; a directory that would push past it fails
+    /// before the walk visits any of its children, since every buffered name
+    /// is visited (and counted) unless the walk fails first.
     fn new(path: PathBuf, file: File, remaining: usize, deadline: Instant) -> Result<Self> {
         let duplicate = file.try_clone().map_err(|_| MESSAGE)?;
         let directory = Dir::from_fd(duplicate.into()).map_err(|_| MESSAGE)?;
@@ -50,6 +53,9 @@ impl Frame {
             names.push(name.to_owned());
         }
         names.sort_unstable_by(|left, right| right.as_bytes().cmp(left.as_bytes()));
+        if Instant::now() >= deadline {
+            return Err(TIME_BUDGET);
+        }
         Ok(Self {
             path,
             file,
@@ -124,6 +130,8 @@ pub(super) fn collect_with_candidates(
         limit,
         deadline,
     )?];
+    // Names read into a frame but not yet visited, across the whole stack.
+    let mut buffered = stack[0].names.len();
     let mut visited = 0;
     let mut grants = Vec::new();
     let mut candidates = Candidates::new();
@@ -136,6 +144,7 @@ pub(super) fn collect_with_candidates(
             continue;
         };
         let name = owned.as_c_str();
+        buffered -= 1;
         visited += 1;
         if visited > limit {
             return Err(ENTRY_BUDGET);
@@ -171,7 +180,9 @@ pub(super) fn collect_with_candidates(
                 metadata.st_dev as u64,
                 metadata.st_ino as u64,
             )?;
-            stack.push(Frame::new(path, file, limit - visited, deadline)?);
+            let frame = Frame::new(path, file, limit - visited - buffered, deadline)?;
+            buffered += frame.names.len();
+            stack.push(frame);
         } else if kind == libc::S_IFREG && metadata.st_nlink == 1 {
             grants.push((path, metadata.st_dev as u64, metadata.st_ino as u64));
         }
