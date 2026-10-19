@@ -21,7 +21,6 @@ from ..extension_builder.native_source_compiler import NativeSourceCompilerError
 from .authority import decode
 from .containers import location, maximum, member
 
-SCHEMA = "guard.command-pack-bundle.v1"
 MANIFEST = "command-pack-bundle.v1.json"
 PREFIX = "codex_plugin_scanner/guard/contracts/data/extensions/command-pack-bundle/"
 ROOT = PREFIX + MANIFEST
