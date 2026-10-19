@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import importlib
 import json
+import sys
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from scripts import native_directory_inventory
 
+# The script imports its siblings by bare name, as it does when run directly.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 preparation = importlib.import_module("prepare_extension_directory")
 
 
