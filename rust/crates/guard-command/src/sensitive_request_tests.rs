@@ -569,7 +569,7 @@ fn a_write_artifact_query_names_the_action_class() {
         "file_write_artifact",
         &json!({
             "tool_name": "Write",
-            "arguments": {"file_path": "~/.ssh/authorized_keys", "content": "x"},
+            "arguments": {"file_path": "~/.ssh/id_rsa", "content": "x"},
             "cwd": "/work",
             "home_dir": "/home/user",
             "protected_paths": {},
@@ -580,11 +580,11 @@ fn a_write_artifact_query_names_the_action_class() {
     )
     .expect("answered");
 
+    // The path is one `classify_path` flags, so a missing match or artifact
+    // is a regression rather than a case to skip.
     let artifact = &reply["artifact"];
-    if artifact.is_null() {
-        assert_eq!(reply["match"], Value::Null);
-        return;
-    }
+    assert!(!reply["match"].is_null(), "expected a write match: {reply}");
+    assert!(!artifact.is_null(), "expected a write artifact: {reply}");
     assert_eq!(artifact["artifact_type"], json!("tool_action_request"));
     assert_eq!(
         artifact["metadata"]["action_class"],
