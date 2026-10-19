@@ -532,7 +532,7 @@
       },
       {
         "path": "src/codex_plugin_scanner/guard/runtime/node_semver.py",
-        "reason": "Reviewed and retained in runtime scope: cli/commands_support_runtime_artifacts imports node_semver_spec_matches at module load to check that an installed Node package version satisfies its declared range when it builds runtime artifacts. The local tool eligibility decision that used to reach it eagerly now runs in the resident, so it is reached through that lazily loaded artifact module and stays counted."
+        "reason": "Reviewed and retained in runtime scope: the routine local runner verdict that used to import node_semver_spec_matches now runs in the resident package intent parser, so the artifact module no longer reaches this. scripts/record_direct_tool_vectors binds node_semver_spec_matches into the services it replays direct tool vectors through, which is a recording harness rather than an enforcement path; the module stays counted until that harness reads the native verdict."
       },
       {
         "path": "src/codex_plugin_scanner/guard/retry_lineage.py",
