@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from codex_plugin_scanner.guard import native_catalog_read as native
-from codex_plugin_scanner.guard.catalog_delivery import discovery, discovery_ready, installed_bundle
+from codex_plugin_scanner.guard.catalog_delivery import discovery, installed_bundle
 from tests.test_catalog_discovery_backend import prepared_fixture
 
 
@@ -74,10 +74,10 @@ def test_first_http_call_never_waits_for_cold_preparation(tmp_path, monkeypatch)
         assert release.wait(10)
         return object()
 
-    monkeypatch.setattr(discovery_ready, "_home", None)
-    monkeypatch.setattr(discovery_ready, "_handle", None)
-    monkeypatch.setattr(discovery_ready, "_worker", None)
-    monkeypatch.setattr(discovery_ready, "_retry_after", 0.0)
+    monkeypatch.setattr(discovery, "_home", None)
+    monkeypatch.setattr(discovery, "_handle", None)
+    monkeypatch.setattr(discovery, "_worker", None)
+    monkeypatch.setattr(discovery, "_retry_after", 0.0)
     monkeypatch.setattr(installed_bundle, "load_installed_bundle", load)
     monkeypatch.setattr(discovery, "prepare_discovery", lambda *_: handle)
     (tmp_path / "binary").write_bytes(b"test")
@@ -95,16 +95,16 @@ def test_first_http_call_never_waits_for_cold_preparation(tmp_path, monkeypatch)
         assert entered.wait(1)
         assert result.status == 503
         assert elapsed < 2.0
-        worker = discovery_ready._worker
+        worker = discovery._worker
         with pytest.raises(ValueError, match="preparing"):
-            discovery_ready.installed_ready(tmp_path)
-        assert discovery_ready._worker is worker
+            discovery.installed_discovery(tmp_path)
+        assert discovery._worker is worker
     finally:
         release.set()
         worker.join(5)
-    assert discovery_ready.installed_ready(tmp_path) is handle
-    discovery_ready.invalidate(tmp_path, handle)
-    assert discovery_ready._handle is None
+    assert discovery.installed_discovery(tmp_path) is handle
+    discovery.invalidate(tmp_path, handle)
+    assert discovery._handle is None
 
 
 def test_old_prepare_capability_is_explicitly_unsupported(tmp_path, monkeypatch):
@@ -148,23 +148,23 @@ def test_real_native_cold_read_returns_preparing_before_factory_finishes(tmp_pat
 
     provision(tmp_path)
     monkeypatch.setattr(installed_bundle, "load_installed_bundle", load)
-    monkeypatch.setattr(discovery_ready, "_home", None)
-    monkeypatch.setattr(discovery_ready, "_handle", None)
-    monkeypatch.setattr(discovery_ready, "_worker", None)
-    monkeypatch.setattr(discovery_ready, "_retry_after", 0.0)
+    monkeypatch.setattr(discovery, "_home", None)
+    monkeypatch.setattr(discovery, "_handle", None)
+    monkeypatch.setattr(discovery, "_worker", None)
+    monkeypatch.setattr(discovery, "_retry_after", 0.0)
     started = time.monotonic()
     try:
         result = native.native_catalog_read(
             guard_home=tmp_path, route="index", query="", if_none_match=None, expected_catalog_digest="b" * 64
         )
         elapsed = time.monotonic() - started
-        worker = discovery_ready._worker
+        worker = discovery._worker
         assert result.status == 503 and result.error_code == "catalog_read_model_unavailable"
         assert entered.wait(1)
         assert elapsed < 2.0
     finally:
         release.set()
-        if discovery_ready._worker is not None:
+        if discovery._worker is not None:
             worker.join(5)
 
 

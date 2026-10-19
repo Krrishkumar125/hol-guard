@@ -19,7 +19,6 @@ from types import SimpleNamespace
 
 from codex_plugin_scanner.guard.catalog_delivery import (
     authority,
-    current_cache,
     current_refresh,
     installed_bundle,
     transport,
@@ -160,7 +159,7 @@ def setup(tmp_path, monkeypatch):
         key = os.path.normcase(os.path.abspath(home))
         assert key not in getattr(_LOCKS, "active", {}), "network IO under mutation lease"
 
-    real_stage, real_prepare = current_cache.stage, current_refresh.prepare_discovery
+    real_stage, real_prepare = current_refresh._stage, current_refresh.prepare_discovery
 
     @contextmanager
     def stage(*args, **kwargs):
@@ -172,7 +171,7 @@ def setup(tmp_path, monkeypatch):
         unleased()
         return real_prepare(*args, **kwargs)
 
-    monkeypatch.setattr(current_cache, "stage", stage)
+    monkeypatch.setattr(current_refresh, "_stage", stage)
     monkeypatch.setattr(current_refresh, "prepare_discovery", prepare)
 
     def signature(data):

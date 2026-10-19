@@ -5,9 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from ..catalog_delivery import activation_store, preparation, preparation_authority, transport
+from ..catalog_delivery import activation_store, lifecycle, preparation, preparation_authority, transport
 from ..catalog_delivery.located_store import LocatedStore
-from ..catalog_delivery.preparation_transport import verified_preparation
 from ..runtime.generated_command_catalog_loader import _extension
 
 
@@ -72,7 +71,7 @@ def _request_metadata(store, active, layers):
         return data
 
     directory = activation_store.prepare_directory_for_store(store)
-    with verified_preparation() as invoke:
+    with lifecycle.verified_preparation() as invoke:
         for _ in range(8192):
             response = invoke(**arguments)
             if "authority" in response:

@@ -50,6 +50,17 @@ def _invoke(kind, fields, deadline) -> dict[str, Any]:
         raise ValueError(f"native_pack_lifecycle_unavailable: {exc}") from exc
 
 
+@contextmanager
+def verified_preparation():
+    """Pin verified bytes for all requests; never accept an executable from callers."""
+    with session():
+
+        def invoke_pinned(kind="preparation", **fields):
+            return invoke(kind, **fields)
+
+        yield invoke_pinned
+
+
 def transfer(**fields):
     # Rust bounds each copied file; the longer deadline covers a full catalog copy.
     return _invoke("offline", fields, 900)

@@ -4135,7 +4135,7 @@ class GuardDaemonServer:
             try:
                 if periodic:
                     from ..catalog_delivery.active_security import observe
-                    from ..catalog_delivery.discovery_ready import request_refresh
+                    from ..catalog_delivery.discovery import request_refresh
 
                     next_security_refresh = time.monotonic() + 300.0
                     # Security observation must not wait for complete discovery

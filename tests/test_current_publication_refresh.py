@@ -16,7 +16,6 @@ from codex_plugin_scanner.guard.catalog_delivery import (
     active_security,
     current_refresh,
     discovery,
-    discovery_ready,
     lifecycle_store,
     preparation,
     preparation_authority,
@@ -31,7 +30,7 @@ def publication(tmp_path, monkeypatch, native_hook_force):
     for field, value in dict(
         _home=None, _worker=None, _handle=None, _retry_after=0.0, _refresh_worker=None, _refresh_after=0.0
     ).items():
-        monkeypatch.setattr(discovery_ready, field, value)
+        monkeypatch.setattr(discovery, field, value)
     monkeypatch.setattr(discovery, "_cached", None)
     state = setup(tmp_path, monkeypatch)
     real_current = current_refresh.refresh
@@ -44,12 +43,12 @@ def publication(tmp_path, monkeypatch, native_hook_force):
             raise
 
     monkeypatch.setattr(current_refresh, "refresh", capture)
-    real_refresh = discovery_ready._refresh
-    monkeypatch.setattr(discovery_ready, "_refresh", lambda home, store: real_refresh(home, store or state.store))
+    real_refresh = discovery._refresh
+    monkeypatch.setattr(discovery, "_refresh", lambda home, store: real_refresh(home, store or state.store))
     monkeypatch.setattr(preparation_authority, "load_installed_bundle", lambda: state.installed)
     yield state
     for field in ("_worker", "_refresh_worker"):
-        worker = getattr(discovery_ready, field)
+        worker = getattr(discovery, field)
         if worker is not None:
             worker.join(60)
             assert not worker.is_alive()
@@ -58,7 +57,7 @@ def publication(tmp_path, monkeypatch, native_hook_force):
 
 def workers():
     for field in ("_worker", "_refresh_worker"):
-        worker = getattr(discovery_ready, field)
+        worker = getattr(discovery, field)
         if worker is not None:
             worker.join(60)
             assert not worker.is_alive()
@@ -80,7 +79,7 @@ def periodic(state):
         extension_control_api=SimpleNamespace(expire_prepared_cache_leases=lambda: None),
     )
     daemon = SimpleNamespace(_shutdown_started=Stop(), _server=server, _extension_control_refresh_interval_seconds=0.1)
-    discovery_ready._refresh_after = 0
+    discovery._refresh_after = 0
     GuardDaemonServer._refresh_extension_control_loop(daemon)
     workers()
 

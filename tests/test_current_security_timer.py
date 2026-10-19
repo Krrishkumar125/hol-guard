@@ -11,7 +11,7 @@ from codex_plugin_scanner.guard.catalog_delivery import (
     active_security,
     cache_io,
     current_refresh,
-    discovery_ready,
+    discovery,
     transport,
 )
 from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer
@@ -25,7 +25,7 @@ def test_real_revocation_observation_runs_while_complete_view_is_blocked(device,
     from codex_plugin_scanner.guard.catalog_delivery import preparation_authority
 
     for field, value in dict(_home=None, _refresh_worker=None, _refresh_after=0.0, _handle=None).items():
-        monkeypatch.setattr(discovery_ready, field, value)
+        monkeypatch.setattr(discovery, field, value)
     entered, release = threading.Event(), threading.Event()
 
     def blocked(store):
@@ -59,8 +59,8 @@ def test_real_revocation_observation_runs_while_complete_view_is_blocked(device,
         )
         GuardDaemonServer._refresh_extension_control_loop(daemon)
 
-    discovery_ready.request_refresh(device.guard_home, store=device)
-    worker = discovery_ready._refresh_worker
+    discovery.request_refresh(device.guard_home, store=device)
+    worker = discovery._refresh_worker
     try:
         assert entered.wait(5)
         tick()

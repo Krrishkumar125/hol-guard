@@ -6,12 +6,18 @@ the brief protected-cursor CAS lease. Failed preparation retains the old view.
 
 from __future__ import annotations
 
+import os
+import tempfile
 import time
+from contextlib import contextmanager
+from itertools import islice
+from pathlib import Path
 from typing import Any
 
+from ..extension_builder.io import checked_path, read_bytes
 from ..native_command_control_authority_store import _key
-from . import active_security, current_cache, lifecycle, lifecycle_store, transport
-from .authority import VerifiedDistribution
+from . import active_security, lifecycle, lifecycle_store, transport
+from .authority import MAX_PROVENANCE_BYTES, VerifiedDistribution, verify_distribution
 from .discovery import prepare_discovery
 
 PREFIX = "guard-command-discovery-current"
@@ -44,6 +50,56 @@ def _invoke(store, captured, **fields):
     )
 
 
+# Bounded cache IO for the existing authenticated publisher factory.
+
+
+@contextmanager
+def _stage(directory, authority, provenance):
+    directory = checked_path(directory)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    pending = []
+    try:
+        for suffix, data in (("root", authority.data), ("provenance", provenance)) if provenance is not None else ():
+            path = checked_path(directory / (authority.digest + "." + suffix))
+            with tempfile.NamedTemporaryFile(dir=directory, prefix=".publication-", delete=False) as stream:
+                temporary = Path(stream.name)
+                pending.append((temporary, path))
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+        yield pending
+    finally:
+        for temporary, _ in pending:
+            temporary.unlink(missing_ok=True)
+
+
+def _publish(pending):
+    for temporary, path in pending:
+        os.replace(temporary, path)
+
+
+def _load(directory, retained, *, now):
+    # The native protected cursor selects the digest, never an unsigned file or
+    # request Root. A torn cache pair fails verification without changing it.
+    if retained is None:
+        raise ValueError("discovery_current_cached_publication_unavailable")
+    root = retained["root"]
+    data = read_bytes(directory / (root + ".root"), limit=65536)
+    provenance = read_bytes(directory / (root + ".provenance"), limit=MAX_PROVENANCE_BYTES)
+    return verify_distribution(data, provenance, expected_source_sha=retained["source"], now=now, offline=True)
+
+
+def _filenames(directory):
+    with os.scandir(checked_path(directory)) as entries:
+        return [entry.name for entry in islice(entries, 8193)]
+
+
+def _remove(directory, names):
+    # Names are the native cache plan, never paths supplied by an HTTP caller.
+    for name in names:
+        checked_path(directory / name).unlink(missing_ok=True)
+
+
 def refresh(store):
     """Fixed verified factory -> native monotonic cursor -> complete handle."""
     captured = _capture(store)
@@ -71,7 +127,7 @@ def refresh(store):
     # Write/fsync the bounded factory bytes before the lease; only rename the
     # prepared files during the protected cursor commit.
     with (
-        current_cache.stage(directory, authority, provenance[0] if provenance else None) as pending,
+        _stage(directory, authority, provenance[0] if provenance else None) as pending,
         store._extension_control_authority_lock(),
     ):
         if _capture(store) != captured:
@@ -86,7 +142,7 @@ def refresh(store):
         backend.set_secret(store._build_scoped_secret_ref(PREFIX), result["record"])
         if _read(store) != result["record"]:
             raise ValueError("discovery_current_protected_write_mismatch")
-        current_cache.publish(pending)
+        _publish(pending)
         _prune(store, directory)
     handle = prepare_discovery(
         store.guard_home,
@@ -108,8 +164,8 @@ def refresh(store):
 
 def _prune(store, directory):
     complete = store._get_policy_integrity_secret_from_store(store._build_scoped_secret_ref(COMPLETE))
-    plan = _invoke(store, _capture(store), complete=complete, files=current_cache.filenames(directory))
-    current_cache.remove(directory, plan["remove"])
+    plan = _invoke(store, _capture(store), complete=complete, files=_filenames(directory))
+    _remove(directory, plan["remove"])
 
 
 def restore(store):
@@ -118,7 +174,7 @@ def restore(store):
     complete = store._get_policy_integrity_secret_from_store(store._build_scoped_secret_ref(COMPLETE))
     retained = _invoke(store, (captured[0], complete, captured[2]))["retained"]
     directory = store.guard_home / "command-packs" / "current-publication"
-    authority = current_cache.load(directory, retained, now=int(time.time()))
+    authority = _load(directory, retained, now=int(time.time()))
     _invoke(store, captured, publication=authority.data.decode(), now=time.time(), restore=True, complete=complete)
     handle = prepare_discovery(
         store.guard_home, authority, fetch=transport.cached_fetcher(store.guard_home / "command-packs" / "transfers")

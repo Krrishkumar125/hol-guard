@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from codex_plugin_scanner.guard.catalog_delivery import active_security, cache_io, discovery_ready
+from codex_plugin_scanner.guard.catalog_delivery import active_security, cache_io, discovery
 from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer
 
 
@@ -29,7 +29,7 @@ def test_periodic_cleanup_runs_after_security_observation(monkeypatch, tmp_path,
 
     monkeypatch.setattr(active_security, "observe", observe)
     monkeypatch.setattr(cache_io, "cleanup", cleanup)
-    monkeypatch.setattr(discovery_ready, "request_refresh", lambda home, *, store: calls.append("discovery"))
+    monkeypatch.setattr(discovery, "request_refresh", lambda home, *, store: calls.append("discovery"))
     daemon = SimpleNamespace(
         _shutdown_started=SimpleNamespace(wait=lambda interval: next(waits)),
         _extension_control_refresh_interval_seconds=1,

@@ -40,18 +40,14 @@ def native(kind, **fields):
 
 @pytest.fixture(autouse=True)
 def compiled_lifecycle(monkeypatch):
-    from codex_plugin_scanner.guard.catalog_delivery import preparation
-    from codex_plugin_scanner.guard.daemon import extension_control_targets
-
     # These wire tests pin the compiled CLI directly. The packaged bridge tests
     # retain the production session, manifest factory and executable verification.
     def verified_preparation():
         return nullcontext(lambda kind="preparation", **fields: native(kind, **fields))
 
-    monkeypatch.setattr(preparation, "verified_preparation", verified_preparation)
-    # Target metadata owns a separate imported transport binding. Route it to
-    # the same compiled candidate rather than the absent installed manifest.
-    monkeypatch.setattr(extension_control_targets, "verified_preparation", verified_preparation)
+    # Preparation and target metadata both resolve the transport through the
+    # lifecycle module, so one patch routes both to the compiled candidate.
+    monkeypatch.setattr(lifecycle, "verified_preparation", verified_preparation)
     assert BINARY.is_file(), "explicitly pin the compiled candidate with HOL_GUARD_NATIVE_BINARY"
     monkeypatch.setattr(lifecycle, "invoke", native)
     original = lifecycle.installed_identity

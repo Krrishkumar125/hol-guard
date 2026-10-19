@@ -201,7 +201,7 @@ def native_catalog_read(
         and handle is not None
         and "handle" in envelope["request"]
     ):
-        from .catalog_delivery.discovery_ready import invalidate
+        from .catalog_delivery.discovery import invalidate
 
         invalidate(guard_home, handle)
     return result

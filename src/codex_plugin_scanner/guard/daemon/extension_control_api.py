@@ -55,6 +55,7 @@ from .extension_control_prepared import (
     MAX_CANDIDATES,
     PreparedControlCandidate,
     PreparedControlCandidates,
+    expire_leases,
     expired,
     prepare_candidate,
     request_digest,
@@ -397,9 +398,7 @@ class ExtensionControlApiService:
         return response
 
     def expire_prepared_cache_leases(self):
-        from .extension_control_cache import expire
-
-        expire(self)
+        expire_leases(self)
 
     def apply(self, payload: dict[str, object]) -> dict[str, object]:
         with self._apply_lock:

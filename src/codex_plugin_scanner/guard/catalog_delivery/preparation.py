@@ -14,7 +14,6 @@ from .located_store import LocatedStore
 from .metadata_objects import encoded
 from .pack_store import PackReader
 from .preparation_authority import publication
-from .preparation_transport import verified_preparation
 from .revocations import RevokedPackError
 from .transport import cached_fetcher
 
@@ -77,7 +76,7 @@ def prepare(
     verified, enabled_external_ids, directory: Path, *, engine: str, retained_extension_ids=(), now=None, fetch=None
 ):
     publication(verified)
-    with verified_preparation() as invoke:
+    with lifecycle.verified_preparation() as invoke:
         return _prepare(
             verified,
             enabled_external_ids,
