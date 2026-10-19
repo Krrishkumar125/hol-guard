@@ -252,7 +252,7 @@ class ReviewApprover:
                 if self._worker.prepare_workspace_policy(Path(self._workspace), deadline=time.monotonic() + 15) is None:
                     raise RuntimeError("Bash lifecycle policy transition was not published")
                 self._lifecycle["policy_denied"] = True
-            if lifecycle.restart_after_first_grant or lifecycle.mutate_after_first_grant:
+            if lifecycle.restart_after_first_grant:
                 if self._guard_home is None or not close_native_residents(guard_home=self._guard_home):
                     raise RuntimeError("Bash lifecycle resident restart failed")
                 self._lifecycle["resident_restarted"] = True

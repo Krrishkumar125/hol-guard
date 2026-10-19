@@ -351,21 +351,29 @@ def test_bash_lifecycle_approver_never_grants_unrelated_pending_actions(monkeypa
     assert not report["lifecycle"].get("once_contention_observed")
 
 
-def test_lifecycle_approver_requests_persistence_and_restarts_after_the_grant(
+@pytest.mark.parametrize("scenario_id,restarted", [(PERSISTENT_RESTART_CASE, True), (MUTATION_CASE, False)])
+def test_lifecycle_transition_restarts_only_the_requested_restart_case(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    scenario_id: str,
+    restarted: bool,
 ):
+    from ci.gauntlet import approval_retry_bash
     from codex_plugin_scanner.guard import approvals, native_resident_client
 
     calls: list[dict] = []
+    closed: list[Path] = []
     monkeypatch.setattr(approvals, "apply_approval_resolution", lambda **kwargs: calls.append(kwargs) or {})
-    monkeypatch.setattr(native_resident_client, "close_native_residents", lambda guard_home: True)
+    monkeypatch.setattr(
+        native_resident_client, "close_native_residents", lambda guard_home: closed.append(guard_home) or True
+    )
+    monkeypatch.setattr(approval_retry_bash, "mutate", lambda workspace: None)
     guard_home = tmp_path / "guard-home"
     approver = ReviewApprover(
         object(),
         known_ids=set(),
         workspace=Path("/fixture"),
-        scenario_id=PERSISTENT_RESTART_CASE,
+        scenario_id=scenario_id,
         guard_home=guard_home,
     )
     approver._grant(
@@ -379,4 +387,5 @@ def test_lifecycle_approver_requests_persistence_and_restarts_after_the_grant(
     )
 
     assert calls[0]["persist_policy"] is True
-    assert approver.report()["lifecycle"] == {"resident_restarted": True}
+    assert bool(closed) is restarted
+    assert approver.report()["lifecycle"] == ({"resident_restarted": True} if restarted else {"script_mutated": True})

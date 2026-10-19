@@ -291,6 +291,47 @@ fn bash_post_delivery_pending_review_is_control_only_and_missing_journal_never_p
 }
 
 #[test]
+fn bash_post_delivery_busy_call_is_signed_control_and_never_a_completion_or_ack() {
+    let (_root, request) = tests::fixture();
+    let (store, envelope) = policy_store(&request);
+    let execution = invocation(&request, &envelope);
+    assert_eq!(execute(&execution, &store).status, "ok");
+    let registration = store
+        .bash_launches()
+        .register(&execution.operation_id)
+        .unwrap();
+    let mut busy = execution.clone();
+    busy.tool_call_id = Some("concurrent-rejected-sdk-call".into());
+    assert!(verify(&post(&busy, 125), &store).is_none());
+    let rejected = execute(&busy, &store);
+    assert_eq!(rejected.code, "native_bash_operation_active");
+    assert!(rejected.operation.is_none() && rejected.payload.is_none());
+    drop(registration);
+    // The real owner may finish and acknowledge before the rejected call's
+    // result hook arrives. Its control witness must remain valid afterwards.
+    assert!(ack(&execution, &store, 0).acknowledged);
+    let proof = verify(&post(&busy, 125), &store).unwrap();
+    assert!(!proof.clean_completion());
+    assert!(verify(&post(&busy, 0), &store).is_none());
+    assert!(!ack(&busy, &store, 125).acknowledged);
+    assert!(!ack(&busy, &store, 0).acknowledged);
+    let connection = Connection::open(execution.authorization.store_path()).unwrap();
+    let count: i64 = connection
+        .query_row("SELECT count(*) FROM guard_bash_operations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        count, 1,
+        "busy delivery must not allocate another execution"
+    );
+    connection
+        .execute("DELETE FROM guard_bash_invocations", [])
+        .unwrap();
+    assert!(verify(&post(&busy, 125), &store).is_none());
+}
+
+#[test]
 fn bash_post_delivery_nonzero_completion_preserves_exact_status_and_can_acknowledge() {
     let (_root, request) = tests::fixture();
     let script = Path::new(&request.cwd).join("maintenance.sh");

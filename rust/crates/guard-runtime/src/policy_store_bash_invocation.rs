@@ -30,6 +30,8 @@ struct Record {
     completed: bool,
     acknowledged: bool,
     calls: BTreeMap<String, u64>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    busy_calls: BTreeMap<String, u64>,
 }
 
 pub(crate) struct Invocation {
@@ -96,13 +98,21 @@ fn read(journal: &BashOperationJournal<'_>, base_id: &str) -> rusqlite::Result<O
     if record.schema != PURPOSE
         || record.base_id != base_id
         || record.operation_id != operation_id(base_id, record.generation)
-        || record.calls.len() > MAX_CALLS
+        || record.calls.len() + record.busy_calls.len() > MAX_CALLS
         || record.calls.is_empty()
-        || record.calls.iter().any(|(key, generation)| {
-            key.len() != 64
-                || !key.bytes().all(|byte| byte.is_ascii_hexdigit())
-                || *generation > record.generation
-        })
+        || record
+            .calls
+            .iter()
+            .chain(&record.busy_calls)
+            .any(|(key, generation)| {
+                key.len() != 64
+                    || !key.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    || *generation > record.generation
+            })
+        || record
+            .busy_calls
+            .keys()
+            .any(|key| record.calls.contains_key(key))
         || record.acknowledged && !record.completed
         || record.completed && record.reserved == Some(false)
     {
@@ -139,6 +149,32 @@ fn transaction<T>(
 }
 
 impl BashOperationJournal<'_> {
+    /// Authenticate a rejected concurrent SDK call without allocating a run,
+    /// claiming consent, completing an operation, or acknowledging delivery.
+    #[cfg(target_os = "macos")]
+    pub(crate) fn record_busy_call(
+        &self,
+        harness: &str,
+        project: &str,
+        call_id: &str,
+    ) -> rusqlite::Result<()> {
+        let digest = call_digest(call_id)?;
+        transaction(self, || {
+            let mut record = read(self, self.operation_id)?.ok_or_else(invalid)?;
+            if record.harness != harness
+                || record.project != project
+                || record.artifact_hash != self.artifact_hash
+                || record.calls.contains_key(&digest)
+                || (record.calls.len() + record.busy_calls.len() >= MAX_CALLS
+                    && !record.busy_calls.contains_key(&digest))
+            {
+                return Err(invalid());
+            }
+            record.busy_calls.insert(digest.clone(), record.generation);
+            write(self, &record)
+        })
+    }
+
     /// Bind a reply to the authenticated allocation for this base and SDK call.
     /// Reading an allocation never reserves, completes or acknowledges it.
     pub(crate) fn reply_invocation_matches(
@@ -178,6 +214,9 @@ impl BashOperationJournal<'_> {
             return Err(invalid());
         }
         let digest = call_digest(call_id)?;
+        if record.busy_calls.get(&digest) == Some(&record.generation) {
+            return Ok((observed_exit == 125).then_some(false));
+        }
         let Some(generation) = record.calls.get(&digest) else {
             return Ok(None);
         };
@@ -259,8 +298,12 @@ impl BashOperationJournal<'_> {
                 completed: false,
                 acknowledged: false,
                 calls: BTreeMap::new(),
+                busy_calls: BTreeMap::new(),
             });
             if record.harness != harness || record.project != project {
+                return Err(invalid());
+            }
+            if record.busy_calls.contains_key(&call_digest) {
                 return Err(invalid());
             }
             if record.artifact_hash != self.artifact_hash
@@ -298,7 +341,7 @@ impl BashOperationJournal<'_> {
             let generation = if let Some(generation) = record.calls.get(&call_digest) {
                 *generation
             } else {
-                if record.calls.len() >= MAX_CALLS {
+                if record.calls.len() + record.busy_calls.len() >= MAX_CALLS {
                     return Err(invalid());
                 }
                 if record.acknowledged {

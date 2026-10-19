@@ -250,6 +250,13 @@ fn execute(
     {
         Ok(registration) => registration,
         Err(reason) => {
+            if reason == "native_bash_operation_active"
+                && request.tool_call_id.is_some()
+                && record_busy_call(request, store).is_err()
+            {
+                result.code = "native_bash_busy_observation_unavailable".into();
+                return;
+            }
             result.code = reason;
             return;
         }
@@ -326,6 +333,39 @@ fn execute(
             .into();
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn record_busy_call(
+    request: &NativeBashExecuteRequestV1,
+    store: &PolicySnapshotStore,
+) -> Result<(), String> {
+    let fence = store.fence_for_launch(&request.envelope)?;
+    let captured = super::bash_capture::capture_for_launch(&request.capture, fence.snapshot())?;
+    let hash =
+        super::bash_grant::binding(&captured.subject, fence.snapshot()).map_err(str::to_owned)?;
+    fence.require_current()?;
+    let project = std::fs::canonicalize(&request.capture.workspace)
+        .map_err(|_| "native_bash_busy_project_unavailable")?;
+    let journal =
+        crate::policy_store::policy_store_approval::bash_journal::BashOperationJournal::open(
+            store,
+            request.authorization.store_path(),
+            &request.operation_id,
+            &hash,
+        )?;
+    journal
+        .record_busy_call(
+            &request.capture.harness,
+            project
+                .to_str()
+                .ok_or("native_bash_busy_project_unavailable")?,
+            request
+                .tool_call_id
+                .as_deref()
+                .ok_or("native_bash_busy_call_unavailable")?,
+        )
+        .map_err(|_| "native_bash_busy_observation_unavailable".into())
 }
 
 #[cfg(not(target_os = "macos"))]
