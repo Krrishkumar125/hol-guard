@@ -345,6 +345,12 @@ def _artifact(value: object) -> GuardArtifact:
     """
 
     wire = _object(value, _ARTIFACT_FIELDS)
+    # A file request artifact carries no launch fields; a reply that fills one
+    # has drifted from the builder and would otherwise lose that data silently.
+    if any(wire[name] is not None for name in ("command", "url", "transport", "publisher")):
+        raise _invalid()
+    if wire["args"] != [] or wire["runtime_private_metadata"] != {}:
+        raise _invalid()
     metadata = wire["metadata"]
     if not isinstance(metadata, dict) or not all(isinstance(key, str) for key in metadata):
         raise _invalid()

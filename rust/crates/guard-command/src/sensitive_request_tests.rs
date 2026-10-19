@@ -596,3 +596,21 @@ fn a_write_artifact_query_names_the_action_class() {
         "{artifact_id}"
     );
 }
+
+/// A review names the file, not its whole path. Windows paths split on `\`
+/// there, the way `Path(...).name` read them; elsewhere `\` is part of a name.
+#[test]
+fn an_artifact_name_is_the_last_path_component() {
+    use crate::sfrs_requests::artifact_file_name;
+
+    assert_eq!(artifact_file_name("/home/user/.ssh/id_rsa"), "id_rsa");
+    let windows_path = "C:\\Users\\dev\\.ssh\\id_rsa";
+    assert_eq!(
+        artifact_file_name(windows_path),
+        if cfg!(windows) {
+            "id_rsa"
+        } else {
+            windows_path
+        }
+    );
+}
