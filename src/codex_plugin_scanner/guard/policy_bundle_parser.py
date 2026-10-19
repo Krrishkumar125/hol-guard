@@ -53,8 +53,9 @@ _CANONICAL_COMPILE_REMEDIATION = {
     "unsupported_policy_lifetime": ("Guard enforces lifetime.mode permanent, or until with an expiresAt time."),
     "unsupported_policy_budgets": "Budgets are not enforced by Guard.",
     "command_expression_requires_guard_3_1_runtime": (
-        "This device does not enforce command expressions; match the rule on tools, artifacts, harnesses, "
-        "publishers or workspaces instead."
+        "This device does not enforce command expressions, so the rule stays unapplied. A tool match is "
+        "not a substitute: it covers every call to that tool, not only this command, so widen the rule "
+        "only as a deliberate policy decision."
     ),
     "policy_compilation_limit": (
         "The rules expand into more enforcement rows than one policy may hold. Split the policy, or list "
