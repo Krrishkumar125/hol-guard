@@ -8,7 +8,7 @@ Reviewed source: `8de2fb9c3c9e25b69e95c283fdad4ed4c638cc0f`.
 
 The rule reports "Command Argument Injection via faulty LLM-supplied CLI
 arguments" against the `subprocess.run(argv, check=False)` call in
-`_run_native_bridge`. No element of that argv is model-supplied, and nothing
+`main`. No element of that argv is model-supplied, and nothing
 derived from the reported source can become a separate argument to the child.
 
 `argv[0]` is the native runtime path. `_native_bridge_executable` resolves it
