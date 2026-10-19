@@ -232,20 +232,31 @@ pub(crate) fn execute_authorized(
                 replayed: false,
             })
         }
-        Err(error) => Err(LaunchFailure {
-            error,
-            grant_claimed: gate.grant_claimed(),
-            dispatch_acknowledged: gate.dispatched,
-            operation: if gate.claimed {
-                journal.uncertain(gate.dispatched).ok().map(Box::new)
+        Err(error) => {
+            let mut code = gate
+                .saved_authority_refused
+                .then_some("native_bash_saved_authority_changed");
+            let operation = if gate.claimed {
+                match journal.uncertain(gate.dispatched) {
+                    Ok(operation) => Some(Box::new(operation)),
+                    Err(_) => {
+                        eprintln!("native_bash_uncertain_record_unavailable");
+                        code = Some("native_bash_uncertain_record_unavailable");
+                        None
+                    }
+                }
             } else {
                 None
-            },
-            code: gate
-                .saved_authority_refused
-                .then_some("native_bash_saved_authority_changed"),
-            review_lineage: None,
-        }),
+            };
+            Err(LaunchFailure {
+                error,
+                grant_claimed: gate.grant_claimed(),
+                dispatch_acknowledged: gate.dispatched,
+                operation,
+                code,
+                review_lineage: None,
+            })
+        }
     }
 }
 

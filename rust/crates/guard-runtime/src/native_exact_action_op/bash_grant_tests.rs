@@ -18,6 +18,8 @@ use std::sync::atomic::AtomicBool;
 mod journal_tests;
 #[path = "bash_grant_lifecycle_tests.rs"]
 mod lifecycle_tests;
+#[path = "bash_queue_scope_tests.rs"]
+mod queue_scope_tests;
 #[path = "bash_grant_review_fixture.rs"]
 mod review_fixture;
 #[path = "bash_grant_route_tests.rs"]

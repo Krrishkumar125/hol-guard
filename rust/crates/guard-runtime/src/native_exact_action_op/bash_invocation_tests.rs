@@ -4,6 +4,28 @@ use guard_contracts::NativeBashAckResultV1;
 #[path = "bash_post_delivery_tests.rs"]
 mod post_delivery_tests;
 
+#[test]
+fn bash_reply_rejects_a_different_authenticated_invocation_for_the_current_call() {
+    let (_root, request) = tests::fixture();
+    let (store, envelope) = policy_store(&request);
+    let mut execution = invocation(&request, &envelope);
+    let first = execute(&execution, &store);
+    assert_eq!(first.status, "ok", "{}", first.code);
+    let old_id = first.operation.unwrap().operation_id;
+    assert!(ack(&execution, &store, 0).acknowledged);
+    execution.tool_call_id = Some("sdk-call-1".into());
+    let mut current = execute(&execution, &store);
+    let backed = crate::native_exact_action_op::bash_route::reply_is_backed;
+    assert!(backed(&execution, &store, &current));
+    let actual_id = current.operation.as_ref().unwrap().operation_id.clone();
+    assert_ne!(actual_id, old_id);
+    current.operation.as_mut().unwrap().operation_id = old_id;
+    assert!(!backed(&execution, &store, &current));
+    current.operation.as_mut().unwrap().operation_id = actual_id;
+    execution.tool_call_id = Some("unallocated-sdk-call".into());
+    assert!(!backed(&execution, &store, &current));
+}
+
 fn invocation(
     request: &NativeBashCaptureV1,
     envelope: &GuardHookEnvelopeV2,

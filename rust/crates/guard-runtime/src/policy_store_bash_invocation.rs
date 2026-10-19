@@ -139,6 +139,28 @@ fn transaction<T>(
 }
 
 impl BashOperationJournal<'_> {
+    /// Bind a reply to the authenticated allocation for this base and SDK call.
+    /// Reading an allocation never reserves, completes or acknowledges it.
+    pub(crate) fn reply_invocation_matches(
+        &self,
+        harness: &str,
+        project: &str,
+        call_id: &str,
+        returned_id: &str,
+        artifact_hash: &str,
+    ) -> rusqlite::Result<bool> {
+        let Some(record) = read(self, self.operation_id)? else {
+            return Ok(false);
+        };
+        let Some(generation) = record.calls.get(&call_digest(call_id)?) else {
+            return Ok(false);
+        };
+        Ok(record.harness == harness
+            && record.project == project
+            && record.artifact_hash == artifact_hash
+            && returned_id == operation_id(self.operation_id, *generation))
+    }
+
     /// A signed invocation may explain its own control/result delivery, never
     /// authorize another execution. The bool identifies a clean current result
     /// eligible for a later SDK acknowledgement.

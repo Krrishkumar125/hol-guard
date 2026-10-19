@@ -635,10 +635,12 @@ fn dispatch(
             resolve_harness_native_approval_request(connection, guard_home, args)
         }
         "resolve_request_with_queue_result" => {
-            queue_result::resolve_request_with_queue_result(connection, guard_home, args)
+            queue_result::resolve_request_with_queue_result(connection, guard_home, args, owner)
         }
         "resolve_native_workspace_review_request" => {
-            queue_result::resolve_native_workspace_review_request(connection, guard_home, args)
+            queue_result::resolve_native_workspace_review_request(
+                connection, guard_home, args, owner,
+            )
         }
         "resolve_matching_duplicate_requests" => {
             resolve_matching_duplicate_requests(connection, source, guard_home, args)

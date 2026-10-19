@@ -10,7 +10,6 @@ Only aggregate synthetic measurements and artifact provenance are emitted.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import platform
@@ -24,8 +23,9 @@ from pathlib import Path
 from typing import TextIO
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT / "src") not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT / "src"))
+for _import_root in (_REPO_ROOT, _REPO_ROOT / "src"):
+    if str(_import_root) not in sys.path:
+        sys.path.insert(0, str(_import_root))
 
 from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker  # noqa: E402
 from codex_plugin_scanner.guard.hook_execution_environment import (  # noqa: E402
@@ -44,6 +44,8 @@ from codex_plugin_scanner.guard.native_policy_snapshot import (  # noqa: E402
 from codex_plugin_scanner.guard.native_resident_client import close_native_residents  # noqa: E402
 from codex_plugin_scanner.guard.runtime.bound_bash_sink import _authorization  # noqa: E402
 from codex_plugin_scanner.guard.store import GuardStore  # noqa: E402
+from scripts.bench_guard_native_release_gate import _percentile  # noqa: E402
+from scripts.installed_canary_proof import sha256_file as _sha256  # noqa: E402
 
 _MAX_WARM_P95_MS = 20.0
 _MAX_COLD_P95_MS = 100.0
@@ -73,11 +75,6 @@ class _Case:
     mutable: Path
     code_inputs: int
     source_bytes: int
-
-
-def _percentile(values: list[float], quantile: float) -> float:
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, max(0, int(len(ordered) * quantile)))]
 
 
 def _summary(values: list[float]) -> dict[str, float | int]:
@@ -302,14 +299,6 @@ def _command_output(argv: list[str]) -> str | None:
         return None
     value = result.stdout.strip()
     return value or None
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _write_report(report: dict[str, object], destination: Path | None, output: TextIO) -> None:

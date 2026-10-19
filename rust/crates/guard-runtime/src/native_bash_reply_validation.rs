@@ -196,6 +196,7 @@ pub(crate) fn executed(value: &Value, request: &Value) -> bool {
 
 /// Validate at the existing owning native client boundary, without another
 /// resident round trip or copying large completion output through adapters.
+#[cfg(any(test, target_os = "macos"))]
 pub(crate) fn bound_execution(value: &Value, request: &Value) -> bool {
     let expected = crate::package_authority_op::request_digest_with_limit(
         request,

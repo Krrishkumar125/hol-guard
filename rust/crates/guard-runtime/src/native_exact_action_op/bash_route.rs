@@ -187,7 +187,47 @@ pub(crate) fn execute_request(
     {
         execute(request, store, &mut result, cancellation);
     }
+    #[cfg(target_os = "macos")]
+    if !reply_is_backed(request, store, &result) {
+        return Err("native_bash_response_invocation_mismatch".into());
+    }
     crate::encode_response(&result)
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn reply_is_backed(
+    request: &NativeBashExecuteRequestV1,
+    store: &PolicySnapshotStore,
+    result: &NativeBashExecuteResultV1,
+) -> bool {
+    let returned = result
+        .operation
+        .as_ref()
+        .map(|value| (&value.operation_id, &value.artifact_hash))
+        .or_else(|| {
+            result
+                .review_lineage
+                .as_ref()
+                .map(|value| (&value.operation_id, &value.artifact_hash))
+        });
+    let Some((id, hash)) = returned else {
+        return true;
+    };
+    let Some(call) = request.tool_call_id.as_deref() else {
+        return id == &request.operation_id;
+    };
+    let Ok(journal) = crate::policy_store::policy_store_approval::bash_journal::BashOperationJournal::open_for_delivery(
+        store, request.authorization.store_path(), &request.operation_id,
+    ) else { return false };
+    journal
+        .reply_invocation_matches(
+            &request.capture.harness,
+            &request.capture.workspace,
+            call,
+            id,
+            hash,
+        )
+        .unwrap_or(false)
 }
 
 #[cfg(target_os = "macos")]

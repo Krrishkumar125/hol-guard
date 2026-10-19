@@ -185,14 +185,15 @@ CONTAINED_TEST_HELPERS_SOURCE = (
         toolCwd: (input as Record<string, unknown>).cwd ?? null,
         command: (input as Record<string, unknown>).command,
       }), "utf8").digest("hex");
+      const timeoutSeconds = boundBash && typeof (input as Record<string, unknown>).timeout === "number"
+        ? Math.max(1, Math.min(120, Math.ceil((input as Record<string, unknown>).timeout as number))) : 120;
       const args = boundBash ? [
         "execute-bound-bash", "--harness", boundBashHarness, "--operation-id", operationId,
         "--host-owner-pid", String(process.pid),
         "--tool-call-id", key,
         "--guard-home", GUARD_HOME, "--workspace", snapshot.cwd,
         "--request-file", requestPath, "--request-sha256", digest,
-        "--timeout-seconds", String(typeof (input as Record<string, unknown>).timeout === "number"
-          ? Math.max(1, Math.min(120, Math.ceil((input as Record<string, unknown>).timeout as number))) : 120),
+        "--timeout-seconds", String(timeoutSeconds),
       ] : [
         "execute-contained-test", "--guard-home", GUARD_HOME, "--workspace", snapshot.cwd,
         "--request-file", requestPath, "--request-sha256", digest,

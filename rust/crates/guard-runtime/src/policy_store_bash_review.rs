@@ -187,11 +187,15 @@ impl BashOperationJournal<'_> {
         if matches != 1 {
             return Ok(false);
         }
+        // Scope projection also presents a resolved allow. This read grants
+        // nothing: pending-request verification and authenticated consent
+        // consumption remain separate execution checks.
         let row: Option<(String, String, String)> = connection
             .query_row(
                 "SELECT artifact_type,raw_command_text,
              CASE WHEN length(action_envelope_json)<=1048576 THEN action_envelope_json END
-             FROM approval_requests WHERE request_id=?1 AND status='pending' AND harness=?2
+             FROM approval_requests WHERE request_id=?1
+             AND (status='pending' OR (status='resolved' AND resolution_action='allow')) AND harness=?2
              AND artifact_id=?3 AND artifact_hash=?4 AND workspace IS ?5",
                 params![
                     request_id,
