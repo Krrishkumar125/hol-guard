@@ -65,7 +65,19 @@ for (const width of [1440, 390]) {
       allowed_scopes_by_action: { allow: ["artifact"], block: ["artifact"] },
     };
     await page.setViewportSize({ width, height: 900 });
-    await mountApprovalFixture(page, bodies, item);
+    await mountApprovalFixture(page, bodies, item, {
+      settingsPayload: {
+        ...defaultSettingsPayload,
+        settings: {
+          ...defaultSettingsPayload.settings,
+          approval_gate: {
+            enabled: true, configured: true, cooldown_seconds: 0,
+            cooldown_active: false, cooldown_expires_at: null, locked_until: null,
+            fail_closed: true, strict_all_decisions: true, totp_enabled: false,
+          },
+        },
+      },
+    });
     await page.goto(`/requests/${item.request_id}?${DAEMON}`);
     await expect(page.getByRole("radio", { name: /^Run once/ })).toBeChecked();
     const persistent = page.getByRole("radio", { name: /^Always allow this version in this project/ });
