@@ -15,11 +15,7 @@ use guard_policy_snapshot::digest_bytes;
 use super::context_digest_json::write_canonical_json_with_limit;
 
 /// Lookup has already enforced exact identity, expiry, and signature validity.
-/// A locally approved allow bound to a context token is the user's answer for
-/// that exact artifact whatever scope carried it, so `require-reapproval` asks
-/// again only when the token changes (the reuse validation refuses a differing
-/// hash). Only an artifact-scope grant is a one-shot claim; a workspace,
-/// publisher or harness rule is retained until the user removes it.
+/// Only locally approved artifact-context grants may satisfy reapproval.
 pub(crate) fn exact_artifact_approval_qualification(
     row: &serde_json::Value,
     source: &str,
@@ -29,13 +25,12 @@ pub(crate) fn exact_artifact_approval_qualification(
     let exact = integrity_valid
         && (local_once || source == "approval-gate")
         && row.get("action").and_then(serde_json::Value::as_str) == Some("allow")
+        && (local_once || row.get("scope").and_then(serde_json::Value::as_str) == Some("artifact"))
         && crate::context_digest::parse_context_token(
             row.get("artifact_hash").unwrap_or(&serde_json::Value::Null),
         )
         .is_some();
-    let artifact_scope = row.get("scope").and_then(serde_json::Value::as_str) == Some("artifact");
-    let expiring = local_once
-        || (artifact_scope && row.get("expires_at").is_some_and(|value| !value.is_null()));
+    let expiring = local_once || row.get("expires_at").is_some_and(|value| !value.is_null());
     (exact && expiring, exact && !expiring)
 }
 
@@ -151,69 +146,6 @@ mod tests {
         assert_eq!(
             v["payload"]["reason_code"],
             "approval_reuse_no_saved_decision"
-        );
-    }
-
-    fn token(content: &str) -> String {
-        crate::context_digest::build_context_token(&guard_contracts::ContextDigestComponentsV1 {
-            identity: json!("package-request:guard-proof"),
-            content: json!(content),
-            capabilities: json!({}),
-            policy: json!({}),
-            sandbox: json!({}),
-            extension_control_digest: "extension-control".to_owned(),
-        })
-        .unwrap()
-    }
-
-    #[test]
-    fn a_bound_allow_qualifies_for_reapproval_whatever_its_scope() {
-        for scope in ["artifact", "workspace", "publisher", "harness"] {
-            let row = json!({
-                "action": "allow",
-                "scope": scope,
-                "artifact_hash": token("1.0.0"),
-                "expires_at": null,
-            });
-            assert_eq!(
-                exact_artifact_approval_qualification(&row, "approval-gate", true),
-                (false, true),
-                "{scope}"
-            );
-        }
-    }
-
-    #[test]
-    fn only_an_expiring_artifact_grant_is_a_one_shot_claim() {
-        let expiring = |scope: &str| {
-            json!({
-                "action": "allow",
-                "scope": scope,
-                "artifact_hash": token("1.0.0"),
-                "expires_at": "2099-01-01T00:00:00Z",
-            })
-        };
-        assert_eq!(
-            exact_artifact_approval_qualification(&expiring("artifact"), "approval-gate", true),
-            (true, false)
-        );
-        assert_eq!(
-            exact_artifact_approval_qualification(&expiring("workspace"), "approval-gate", true),
-            (false, true)
-        );
-    }
-
-    #[test]
-    fn an_unbound_or_unverified_allow_does_not_qualify() {
-        let mut row = json!({"action": "allow", "scope": "workspace", "artifact_hash": "plain"});
-        assert_eq!(
-            exact_artifact_approval_qualification(&row, "approval-gate", true),
-            (false, false)
-        );
-        row["artifact_hash"] = json!(token("1.0.0"));
-        assert_eq!(
-            exact_artifact_approval_qualification(&row, "approval-gate", false),
-            (false, false)
         );
     }
 

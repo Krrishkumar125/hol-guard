@@ -193,11 +193,8 @@ fn integer_id(row: &Map<String, Value>) -> Option<&Value> {
 }
 
 /// What a successful claim does to this selected `allow`. Package local-once
-/// approvals are reusable and stay; expiring artifact-scope `approval-gate`
-/// policy rows are the only policy decisions the claim transaction deletes. A
-/// workspace, publisher or harness rule is the user's retained answer and
-/// stays until they remove it, so a row naming one of those scopes is never
-/// consumed.
+/// approvals are reusable and stay; expiring `approval-gate` policy rows are
+/// the only policy decisions the claim transaction deletes.
 pub(crate) fn claim_disposition(decision: &Map<String, Value>) -> Option<Disposition> {
     if text(decision, "action") != Some("allow") {
         return None;
@@ -216,9 +213,8 @@ pub(crate) fn claim_disposition(decision: &Map<String, Value>) -> Option<Disposi
     let expiring = decision
         .get("expires_at")
         .is_some_and(|value| !value.is_null());
-    let one_shot_scope = text(decision, "scope").is_none_or(|scope| scope == "artifact");
     Some(
-        if text(decision, "source") == Some(APPROVAL_GATE_SOURCE) && expiring && one_shot_scope {
+        if text(decision, "source") == Some(APPROVAL_GATE_SOURCE) && expiring {
             Disposition::Consumed
         } else {
             Disposition::Retained

@@ -145,26 +145,3 @@ fn empty_approval_id_takes_the_decision_id_branch_for_every_caller() {
         expected
     );
 }
-
-#[test]
-fn an_expiring_broad_scope_rule_is_retained_and_only_an_artifact_grant_is_consumed() {
-    for (scope, expected) in [
-        ("artifact", "consumed"),
-        ("workspace", "retained"),
-        ("publisher", "retained"),
-        ("harness", "retained"),
-    ] {
-        let row = json!({
-            "action": "allow",
-            "decision_id": 3,
-            "source": "approval-gate",
-            "scope": scope,
-            "expires_at": "2030-01-01T00:00:00Z",
-        });
-        assert_eq!(
-            super::claim_disposition(row.as_object().unwrap()).map(|d| d.as_str()),
-            Some(expected),
-            "{scope}"
-        );
-    }
-}

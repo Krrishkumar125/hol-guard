@@ -37,20 +37,18 @@ pub(super) fn is_fresh_artifact_approval(
         && has_token(decision)
 }
 
-/// A retained allow bound to the request's artifact. An artifact-scope grant
-/// that expires is the short-lived one handled above; a workspace, publisher or
-/// harness rule is durable until the user removes it, so it never expires into
-/// the one-shot path and the identical retry keeps running.
+/// A retained allow bound to the request's artifact, whatever scope saved it.
+/// Only a row with no expiry qualifies: an expiring grant is the short-lived
+/// one handled above, and the claim transaction deletes expiring rows, so a
+/// durable rule is never selected through this path with an expiry.
 pub(super) fn is_durable_exact_artifact_approval(
     decision: &Map<String, Value>,
     artifact_id: &str,
 ) -> bool {
-    let one_shot =
-        text_is(decision, "scope", "artifact") && !field_or_null(decision, "expires_at").is_null();
     is_int(decision.get("decision_id"))
         && text_is(decision, "action", "allow")
         && text_is(decision, "source", "approval-gate")
-        && !one_shot
+        && field_or_null(decision, "expires_at").is_null()
         && binds_request_artifact(decision, artifact_id)
 }
 
