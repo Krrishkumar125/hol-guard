@@ -412,7 +412,7 @@ fn location_allowed(
         "/private/var",
     ];
     !((!verified_temporary
-        && !private_temporary::inside_private_temporary_workspace(canonical, home_dir, cwd)
+        && !private_temporary::inside_private_temporary_directory(canonical, home_dir)
         && ROOTS
             .iter()
             .any(|prefix| lowered == *prefix || lowered.starts_with(&format!("{prefix}/"))))
