@@ -217,3 +217,21 @@ fn an_env_that_runs_no_program_is_a_launch_of_what_the_text_names() {
         assert!(!launch_only(command), "{command}");
     }
 }
+
+/// An assignment ends `env`'s option parsing, so a flag standing after one is
+/// the name of the program it runs. Reading the operands out of order would
+/// read `env PATH=. -i` as a dump and hand a file named `-i` an approval.
+#[test]
+fn an_option_after_an_env_assignment_is_the_program_it_runs() {
+    for command in [
+        "env PATH=. -i",
+        "env FOO=bar sh -c id",
+        "env -u NODE_OPTIONS FOO=bar ./deploy.sh",
+        "env FOO=bar -0",
+    ] {
+        assert!(!launch_only(command), "{command}");
+    }
+    for command in ["env FOO=bar BAZ=qux", "env -i FOO=bar"] {
+        assert!(launch_only(command), "{command}");
+    }
+}

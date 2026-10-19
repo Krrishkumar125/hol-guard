@@ -309,6 +309,11 @@ class CredentialSeed:
     def seeded(self) -> int:
         return len(self._pairs) + int(self.keychain)
 
+    @property
+    def files_seeded(self) -> int:
+        """How many login files the fixture HOME carries of its own."""
+        return len(self._pairs)
+
     def write_back(self) -> None:
         """Replace the operator's login with a refreshed copy, never a stale or wider-readable one.
 
@@ -380,8 +385,18 @@ def keep_login_shell_path(home: Path, path: str) -> None:
         profile.write(f"export PATH={shlex.quote(path)}\n")
 
 
-def credential_environment(harness: Harness) -> dict[str, str]:
-    """Forward only this harness's own login variables, never other credentials."""
+def credential_environment(harness: Harness, *, login_seeded: bool = False) -> dict[str, str]:
+    """Forward only this harness's own login variables, never other credentials.
+
+    The CLI's tool children inherit whatever it was started with, so a key in
+    this environment is one the model's own commands can print. When the
+    fixture HOME already carries the CLI's login file, the CLI reads it from
+    there and the variable buys nothing, so it is withheld and no command can
+    reach it. An operator who authenticates by key alone has no such file, and
+    the variable is forwarded; the exported transcripts redact it.
+    """
+    if login_seeded:
+        return {}
     return {key: os.environ[key] for key in harness.credential_env if os.environ.get(key)}
 
 

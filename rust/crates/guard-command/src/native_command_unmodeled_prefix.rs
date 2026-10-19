@@ -180,9 +180,12 @@ pub(super) fn launch_only(literal: &str) -> bool {
 /// user's own included.
 ///
 /// `env` spends a positional only on the program it runs, and the assignments
-/// it carries stand before that program, so they are dropped before the
-/// question is asked. An `env` that does name a program keeps its failure:
-/// that program is one this scan has not read.
+/// it carries stand before that program. They are read in the order the text
+/// wrote them rather than dropped, because an assignment ends option parsing:
+/// in `env PATH=. -i` the `-i` is the program name, not a flag, and dropping
+/// the assignment first would read that command as a dump. An `env` that does
+/// name a program keeps its failure: that program is one this scan has not
+/// read.
 fn wrapper_names_its_program(piece: &str) -> bool {
     let words: Vec<&str> = piece
         .split_whitespace()
@@ -193,12 +196,7 @@ fn wrapper_names_its_program(piece: &str) -> bool {
         return false;
     };
     if command_basename(first) == "env" || command_basename(first) == "env.exe" {
-        let operands: Vec<&str> = words[1..]
-            .iter()
-            .copied()
-            .filter(|word| !is_assignment(word))
-            .collect();
-        return !env_runs_a_program(&operands);
+        return !env_runs_a_program(&words[1..]);
     }
     is_launcher(first)
 }
@@ -207,7 +205,11 @@ fn command_reads_a_program_file(piece: &str) -> bool {
     let words: Vec<&str> = piece
         .split_whitespace()
         .map(|word| word.trim_matches(['\'', '"']))
-        .filter(|word| !word.is_empty() && !is_assignment(word))
+        .filter(|word| !word.is_empty())
+        // Only the assignments a command carries in front of it belong to the
+        // shell; one further along is an argument, and dropping it would move
+        // the program this scan reads.
+        .skip_while(|word| is_assignment(word))
         // `nohup` is a shell prefix and a launcher at once. Skipping it here
         // would hand the script behind it to the program scan as the program
         // itself, so a launcher stops the skip and keeps its own grammar.
@@ -293,6 +295,12 @@ fn env_runs_a_program(words: &[&str]) -> bool {
     while let Some(word) = words.get(index) {
         if *word == "--" {
             return words.get(index + 1).is_some();
+        }
+        // An assignment is the first operand that is not an option, so it ends
+        // option parsing: every word after it is an assignment or the program,
+        // and `env PATH=. -i` runs a program named `-i`.
+        if is_assignment(word) {
+            return words[index..].iter().any(|word| !is_assignment(word));
         }
         if !word.starts_with('-') || *word == "-" {
             return true;

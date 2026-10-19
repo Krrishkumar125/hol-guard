@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from copy import deepcopy
+from unittest import mock
 
 import pytest
 
@@ -524,3 +526,23 @@ def test_a_forwarded_provider_credential_never_reaches_exported_evidence():
     # An unset credential has no value to hide, and an empty replacement key
     # would rewrite every position in every exported string.
     assert "" not in replacements
+
+
+def test_a_seeded_login_file_withholds_the_credential_variable() -> None:
+    """A credential the CLI does not need is one the model's commands cannot print.
+
+    Redaction hides a key the transcript already captured; withholding it keeps
+    the key out of the tool children altogether, so no spelling of the dump -
+    encoded, split or reported by a tool - can carry it into the bundle. The
+    operator who authenticates by key alone has no login file, and the variable
+    is still forwarded for them.
+    """
+    from ci.gauntlet.harnesses import adapter, credential_environment
+
+    spec = adapter("claude-code")
+    names = [name for name in spec.credential_env if name]
+    assert names, "the claude-code adapter forwards at least one credential variable"
+    with mock.patch.dict(os.environ, {name: "sk-ant-not-a-real-key" for name in names}, clear=False):
+        assert credential_environment(spec, login_seeded=True) == {}
+        forwarded = credential_environment(spec, login_seeded=False)
+    assert sorted(forwarded) == sorted(names)

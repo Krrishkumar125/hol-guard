@@ -230,7 +230,7 @@ def run_harness_case(
                 case["watch_binding_before"] = _watch_binding(worker.store)
             seed = CredentialSeed(spec, Path.home(), fixture.home)
             case["credentials_seeded"] = seed.seeded
-            login_environment = credential_environment(spec)
+            login_environment = credential_environment(spec, login_seeded=bool(seed.files_seeded))
             case["credential_env"] = sorted(login_environment)
             add_credential_redactions(replacements, login_environment)
             case["hook_install"] = install_harness_hooks(

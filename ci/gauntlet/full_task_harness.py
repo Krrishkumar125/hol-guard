@@ -190,7 +190,7 @@ def run_harness_full_task(
             worker = daemon._server.hook_worker
             seed = CredentialSeed(spec, Path.home(), fixture.home)
             case["credentials_seeded"] = seed.seeded
-            login_environment = credential_environment(spec)
+            login_environment = credential_environment(spec, login_seeded=bool(seed.files_seeded))
             case["credential_env"] = sorted(login_environment)
             add_credential_redactions(replacements, login_environment)
             case["hook_install"] = install_harness_hooks(

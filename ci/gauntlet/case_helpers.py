@@ -111,9 +111,11 @@ def _fixture_replacements(fixture: Fixture) -> dict[str, str]:
 def add_credential_redactions(replacements: dict[str, str], login_environment: dict[str, str]) -> None:
     """Hide the provider credentials the harness is handed from every exported transcript.
 
-    The harness CLI needs its own login, and its tool children inherit that
-    environment, so any command the model runs can print a live key into the
-    transcript: ``env`` and ``printenv`` say so outright, but so does a build
+    A fixture HOME that carries the CLI's login file is handed no credential
+    variable at all, so there is nothing in the tool children to print. This
+    is the backstop for the operator who authenticates by key alone: that CLI
+    needs its own login in the environment, and its tool children inherit it,
+    so any command the model runs can print a live key into the transcript: ``env`` and ``printenv`` say so outright, but so does a build
     that echoes its environment or a tool that reports its configuration. The
     case JSON those transcripts land in is packed into the public evidence
     bundle, so the value has to be unreadable before it is written, not merely
