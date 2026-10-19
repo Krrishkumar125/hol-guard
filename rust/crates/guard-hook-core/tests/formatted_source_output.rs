@@ -253,6 +253,39 @@ fn resolved_directory_target_is_rechecked_before_inline_output_allow() {
         review_post_tool(&swapped_request).reason_code,
         "sensitive_path"
     );
+
+    // A credential store inside the workspace keeps its review, both named
+    // directly and behind a feature-named link swapped in after PreToolUse.
+    let store = workspace.join("config/prod-secrets");
+    std::fs::create_dir_all(&store).unwrap();
+    let mut store_request = feature_request.clone();
+    store_request.payload["tool_input"]["path"] = json!("config/prod-secrets");
+    store_request.payload["resolved_directory_target"] = json!(store.to_string_lossy());
+    assert_eq!(
+        review_post_tool(&store_request).reason_code,
+        "sensitive_path"
+    );
+    let feature_link = workspace.join("src/lib/authorization");
+    std::os::unix::fs::symlink(&store, &feature_link).unwrap();
+    let mut feature_link_request = feature_request.clone();
+    feature_link_request.payload["tool_input"]["path"] = json!("src/lib/authorization");
+    feature_link_request.payload["resolved_directory_target"] =
+        json!(feature_link.to_string_lossy());
+    assert_eq!(
+        review_post_tool(&feature_link_request).reason_code,
+        "sensitive_path"
+    );
+
+    // So does a credential-named file inside the workspace.
+    let key_file = workspace.join("config/credentials");
+    std::fs::write(&key_file, "placeholder\n").unwrap();
+    let mut key_file_request = feature_request.clone();
+    key_file_request.payload["tool_input"]["path"] = json!("config/credentials");
+    key_file_request.payload["resolved_directory_target"] = json!(key_file.to_string_lossy());
+    assert_eq!(
+        review_post_tool(&key_file_request).reason_code,
+        "sensitive_path"
+    );
 }
 
 #[cfg(unix)]
