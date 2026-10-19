@@ -529,6 +529,39 @@ def test_a_forwarded_provider_credential_never_reaches_exported_evidence():
     assert "" not in replacements
 
 
+def test_a_credential_handed_on_in_an_encoding_is_redacted_too():
+    """Replacing the literal value leaves every reversible spelling of it readable.
+
+    A model that pipes its environment through ``base64``, a client that logs a
+    percent-encoded header, a tool that hex-escapes what it sends: each writes
+    bytes the bundle's reader can turn straight back into a live key. Redact
+    the spellings alongside the literal one.
+    """
+    import base64
+    from urllib.parse import quote
+
+    from ci.gauntlet.case_helpers import add_credential_redactions
+
+    key = "sk-ant-not-a-real-key"
+    replacements: dict[str, str] = {}
+    add_credential_redactions(replacements, {"ANTHROPIC_API_KEY": key})
+    raw = key.encode("utf-8")
+    spellings = (
+        key,
+        base64.b64encode(raw).decode("ascii"),
+        base64.b64encode(raw).decode("ascii").rstrip("="),
+        base64.urlsafe_b64encode(raw).decode("ascii"),
+        raw.hex(),
+        raw.hex().upper(),
+        quote(key, safe=""),
+    )
+    transcript = [{"output": "\n".join(spellings)}]
+    redacted = str(redact_value(transcript, replacements))
+    for spelling in spellings:
+        assert spelling not in redacted, spelling
+    assert "<anthropic_api_key-redacted>" in redacted
+
+
 def test_a_seeded_login_file_withholds_the_credential_variable() -> None:
     """A credential the CLI does not need is one the model's commands cannot print.
 

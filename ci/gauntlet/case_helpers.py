@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import shlex
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from .agent_prompt import scenario_prompt
 from .catalog import Scenario
@@ -108,6 +110,35 @@ def _fixture_replacements(fixture: Fixture) -> dict[str, str]:
     return replacements
 
 
+def _credential_spellings(value: str) -> tuple[str, ...]:
+    """The forms a transcript can carry a credential in that still read back as the key.
+
+    Replacing the literal value covers the command that prints the environment
+    as it stands. It does not cover the one that hands the same bytes on in a
+    reversible encoding: a request body built with ``base64``, a header dumped
+    by a client that percent-encodes it, a hex-escaped log line. Each of those
+    is as readable to whoever downloads the public bundle as the raw key, so
+    each spelling is redacted alongside the literal one. Encodings that destroy
+    the value, such as a hash, need no entry; a key split across lines or
+    reassembled from pieces cannot be matched and is the reason the seeded
+    login path withholds the variable rather than relying on this backstop.
+    """
+    raw = value.encode("utf-8")
+    encoded = {
+        value,
+        base64.b64encode(raw).decode("ascii"),
+        base64.b64encode(raw).decode("ascii").rstrip("="),
+        base64.urlsafe_b64encode(raw).decode("ascii"),
+        base64.urlsafe_b64encode(raw).decode("ascii").rstrip("="),
+        raw.hex(),
+        raw.hex().upper(),
+        quote(value, safe=""),
+        shlex.quote(value),
+        json.dumps(value)[1:-1],
+    }
+    return tuple(spelling for spelling in encoded if spelling)
+
+
 def add_credential_redactions(replacements: dict[str, str], login_environment: dict[str, str]) -> None:
     """Hide the provider credentials the harness is handed from every exported transcript.
 
@@ -121,11 +152,13 @@ def add_credential_redactions(replacements: dict[str, str], login_environment: d
     its environment or a tool that reports its configuration. The case JSON
     those transcripts land in is packed into the public evidence bundle, so the
     value has to be unreadable before it is written, not merely unlikely to
-    appear.
+    appear - in any spelling it can still be read back from.
     """
     for name, value in login_environment.items():
-        if value:
-            replacements[value] = f"<{name.lower()}-redacted>"
+        if not value:
+            continue
+        for spelling in _credential_spellings(value):
+            replacements[spelling] = f"<{name.lower()}-redacted>"
 
 
 def read_case_logs(
