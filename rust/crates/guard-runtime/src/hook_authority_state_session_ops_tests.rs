@@ -133,6 +133,8 @@ struct Inputs {
     cursor_keys: BTreeSet<String>,
     commands: BTreeSet<String>,
     sessions: BTreeSet<String>,
+    /// Session and artifact of every Claude pending row, plus an absent pair.
+    claude_artifacts: BTreeSet<(String, String)>,
 }
 
 fn inputs(connection: &Connection) -> Inputs {
@@ -141,6 +143,10 @@ fn inputs(connection: &Connection) -> Inputs {
         cursor_keys: BTreeSet::from([format!("{CURSOR_PENDING}absent-conversation:0")]),
         commands: BTreeSet::from(["true".to_owned()]),
         sessions: BTreeSet::from(["absent-session".to_owned()]),
+        claude_artifacts: BTreeSet::from([(
+            "absent-session".to_owned(),
+            "absent-artifact".to_owned(),
+        )]),
     };
     for (key, (payload, _)) in owned_rows(connection) {
         if let Some(owner) = key.strip_prefix(CURSOR_INDEX) {
@@ -155,6 +161,11 @@ fn inputs(connection: &Connection) -> Inputs {
         } else if let Some(rest) = key.strip_prefix(CLAUDE_PENDING) {
             if let Some((owner, _)) = rest.rsplit_once(':') {
                 found.sessions.insert(owner.to_owned());
+                if let Some(artifact) = payload.get("artifact_id").and_then(Value::as_str) {
+                    found
+                        .claude_artifacts
+                        .insert((owner.to_owned(), artifact.to_owned()));
+                }
             }
         }
         if let Some(command) = payload.get("command").and_then(Value::as_str) {
@@ -179,6 +190,15 @@ fn python_cursor_fingerprint(command: &str) -> Option<String> {
     let mut hasher = Sha256::new();
     hasher.update(normalized.as_bytes());
     Some(hex::encode(hasher.finalize())[..24].to_owned())
+}
+
+/// The key the retired `_claude_pending_permission_state_key` wrote, spelled
+/// out here so the resident's own derivation has something to agree with.
+fn python_claude_pending_key(session_id: &str, artifact_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(artifact_id.as_bytes());
+    let fingerprint = hex::encode(hasher.finalize());
+    format!("{CLAUDE_PENDING}{session_id}:{}", &fingerprint[..24])
 }
 
 fn copy_of(path: &Path, label: &str) -> PathBuf {
@@ -351,6 +371,48 @@ fn session_ops_match_the_op_sequences_they_replace() {
                         },
                     );
                 }
+            }
+            for (session, artifact) in &found.claude_artifacts {
+                let label = format!("{name} step {step}: {session} {artifact}");
+                let pending_key = python_claude_pending_key(session, artifact);
+                compared += 1;
+                agree(
+                    &path,
+                    &format!("{label} load"),
+                    |at| {
+                        base.call(
+                            at,
+                            "claude_load_pending",
+                            json!({ "session_id": session, "pending_key": pending_key,
+                                "expected_artifact_id": artifact }),
+                        )
+                    },
+                    |at| {
+                        base.call(
+                            at,
+                            "claude_load_pending",
+                            json!({ "session_id": session, "artifact_id": artifact }),
+                        )
+                    },
+                );
+                agree(
+                    &path,
+                    &format!("{label} remove"),
+                    |at| {
+                        base.call(
+                            at,
+                            "claude_remove_pending",
+                            json!({ "session_id": session, "pending_key": pending_key }),
+                        )
+                    },
+                    |at| {
+                        base.call(
+                            at,
+                            "claude_remove_pending",
+                            json!({ "session_id": session, "artifact_id": artifact }),
+                        )
+                    },
+                );
             }
             for session in &found.sessions {
                 agree(

@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-from codex_plugin_scanner.guard.cli import commands_support_hook_state as hook_state  # noqa: E402
+from codex_plugin_scanner.guard.cli import commands_support_hook_state as hook_state  # noqa: E402,F401
 
 OUT = ROOT / "rust/crates/guard-runtime/tests/fixtures/hook_authority_state_vectors.json.gz"
 KEY = bytes(range(32))
@@ -26,6 +26,18 @@ CODE = "0123456789ab"
 
 def key_b64() -> str:
     return base64.urlsafe_b64encode(KEY).rstrip(b"=").decode("ascii")
+
+
+def claude_pending_key(session_id: str, artifact_id: str) -> str:
+    """The key a Claude pending permission is stored under.
+
+    The derivation lives here rather than in the CLI module it was recorded
+    from: the resident names these rows now, and the recorded vectors are the
+    independent account of what the retired Python wrote.
+    """
+
+    fingerprint = hashlib.sha256(artifact_id.encode("utf-8")).hexdigest()[:24]
+    return f"claude_pending_permission:{session_id}:{fingerprint}"
 
 
 def cursor_fingerprint(command: str) -> str:
@@ -50,7 +62,7 @@ def cursor_allow_key(conversation_id: str, command: str) -> str:
 
 
 def pending_keys(session_id: str, *artifact_ids: str) -> list[str]:
-    return [hook_state._claude_pending_permission_state_key(session_id, artifact_id) for artifact_id in artifact_ids]
+    return [claude_pending_key(session_id, artifact_id) for artifact_id in artifact_ids]
 
 
 def claude_artifact(artifact_id: str = "claude-code:runtime:file-read:.env", **extra: object) -> dict[str, object]:

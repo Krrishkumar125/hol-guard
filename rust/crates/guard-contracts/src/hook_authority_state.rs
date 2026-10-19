@@ -65,8 +65,9 @@ pub struct HookAuthorityStateRequestV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
     /// A pending row's key, as the resident issued it — read out of a session
-    /// or conversation index. `cursor_remove_pending` accepts `command`
-    /// instead and derives the key itself.
+    /// or conversation index — and acted on as given. `cursor_remove_pending`
+    /// accepts `command` and the Claude pending ops take `artifact_id` instead;
+    /// for those the resident derives the key itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -77,6 +78,9 @@ pub struct HookAuthorityStateRequestV1 {
     pub expected_artifact_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_command: Option<String>,
+    /// The artifact a Claude pending permission belongs to. It names the row:
+    /// the resident derives the pending state key from it, and reads it back as
+    /// the artifact the row has to carry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -252,3 +252,89 @@ def test_the_remainder_block_says_the_unclassified_io_is_off_the_decision_path(t
 )
 def test_the_remainder_groups_by_subpackage(path: str, expected: str) -> None:
     assert MODULE._subpackage(path) == expected
+
+
+def _module_observations(root: Path, source: str) -> list[tuple[str, str]]:
+    path = _write_guard_fixture(root, "subject", source)
+    tree = ast.parse(source)
+    return [
+        (record.qualname, observation.operation)
+        for record in MODULE._functions(tree, path)
+        for observation in MODULE._observations(record, MODULE._shadowed_names(root, path, tree, record))
+    ]
+
+
+_REDACTION_HELPER = "def _redact_secrets(value):\n    return value[:4]\n"
+
+
+def test_a_sibling_export_renamed_over_an_operation_is_not_that_operation(tmp_path: Path) -> None:
+    # `resolve` here is this package's own redaction helper, not `Path.resolve`.
+    _write_guard_fixture(tmp_path, "runtime_resolution", _REDACTION_HELPER)
+    source = (
+        "def redact(value):\n"
+        "    from .runtime_resolution import _redact_secrets as resolve\n"
+        "\n"
+        "    return resolve(value)\n"
+    )
+    assert _module_observations(tmp_path, source) == []
+
+
+def test_a_renamed_sibling_that_does_io_is_still_counted(tmp_path: Path) -> None:
+    # The helper hashes executable bytes, so every call site that reaches it
+    # under an operation's name keeps its entry.
+    _write_guard_fixture(
+        tmp_path,
+        "executables",
+        "import hashlib\n\ndef _executable_sha256(path):\n    return hashlib.sha256(path.read_bytes()).hexdigest()\n",
+    )
+    source = "from .executables import _executable_sha256 as sha256\n\ndef digest(path):\n    return sha256(path)\n"
+    assert _module_observations(tmp_path, source) == [("digest", "sha256")]
+
+
+def test_an_unresolved_renamed_sibling_is_still_counted(tmp_path: Path) -> None:
+    source = "def redact(value):\n    from .missing import _redact_secrets as resolve\n\n    return resolve(value)\n"
+    assert _module_observations(tmp_path, source) == [("redact", "resolve")]
+
+
+def test_a_rename_in_one_function_does_not_hide_an_operation_in_another(tmp_path: Path) -> None:
+    _write_guard_fixture(tmp_path, "runtime_resolution", _REDACTION_HELPER)
+    source = (
+        "def load(path):\n"
+        "    return path.exists()\n"
+        "\n"
+        "def check(path):\n"
+        "    return exists(path)\n"
+        "\n"
+        "def redact(value):\n"
+        "    from .runtime_resolution import _redact_secrets as exists\n"
+        "\n"
+        "    return exists(value)\n"
+    )
+    assert _module_observations(tmp_path, source) == [("load", "exists"), ("check", "exists")]
+
+
+def test_a_name_the_module_also_binds_absolutely_is_still_counted(tmp_path: Path) -> None:
+    _write_guard_fixture(tmp_path, "runtime_resolution", _REDACTION_HELPER)
+    source = (
+        "from os.path import exists\n"
+        "\n"
+        "def redact(value):\n"
+        "    from .runtime_resolution import _redact_secrets as exists\n"
+        "\n"
+        "    return exists(value)\n"
+    )
+    assert _module_observations(tmp_path, source) == [("redact", "exists")]
+
+
+def test_a_local_wrapper_does_not_excuse_the_call_sites_that_reach_it(tmp_path: Path) -> None:
+    # `sha256` names code in this package, but the gate still owes an entry for
+    # every site that hashes through it.
+    source = "from .io import sha256\n\ndef digest(value):\n    return sha256(value)\n"
+    assert _module_observations(tmp_path, source) == [("digest", "sha256")]
+
+
+def test_an_absolute_import_of_an_operation_is_still_counted(tmp_path: Path) -> None:
+    # Only a relative import can be renamed into a false match; `hashlib` is
+    # still the real thing under any spelling the gate can see.
+    source = "from hashlib import sha256\n\ndef digest(value):\n    return sha256(value).hexdigest()\n"
+    assert _module_observations(tmp_path, source) == [("digest", "sha256")]
