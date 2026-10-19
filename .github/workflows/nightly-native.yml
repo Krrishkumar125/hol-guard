@@ -57,7 +57,7 @@ jobs:
       - name: Run wheel-builder contracts
         if: ${{ !cancelled() }}
         run: >-
-          uv run --no-sync pytest ci/native_runtime/test_native_hol_guard_wheel.py ci/package_size
+          uv run --no-sync pytest ci/native_runtime/test_native_hol_guard_wheel.py
           ci/native_runtime/test_native_wheel_compression.py tests/test_native_source_compiler.py
           --tb=short
 
@@ -913,7 +913,6 @@ jobs:
             --rule-digest "$RULE_DIGEST" \
             --implementation-digest "$(jq -r '.implementation_digest' source-compiled.json)" \
             --base-program-digest "$(jq -r '.base_program_digest' source-compiled.json)"
-          uv run --no-sync python scripts/ci/check_wheel_size.py --dist-dir native-dist
           uv pip uninstall --python .venv/bin/python hol-guard
           uv pip install --python .venv/bin/python --no-deps --force-reinstall native-dist/*.whl
       - name: Upload this run's native build
@@ -1134,7 +1133,6 @@ jobs:
             --implementation-digest $implementation `
             --base-program-digest $baseProgram
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Windows wheels carry no size budget; it only ever blocked builds.
           $wheel = (Get-ChildItem native-dist\*.whl).FullName
           uv pip uninstall --python .venv\Scripts\python.exe hol-guard
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

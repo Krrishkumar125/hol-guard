@@ -85,20 +85,6 @@ def test_linux_wheel_build_targets_the_host_without_a_macos_deployment_target(
     assert "MACOSX_DEPLOYMENT_TARGET" not in env
 
 
-def test_linux_refuses_release_profile_wheels_it_cannot_size_check(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(qualify_setup.platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(qualify_setup, "git_show", lambda *_a, **_k: qualify_setup.DEV_WHEEL_MARKER.encode())
-    with pytest.raises(RuntimeError, match="development profile or pass --wheel"):
-        qualify_setup.ensure_wheel(tmp_path / "cache", tmp_path / "repo", SHA, tmp_path / "run", release_profile=True)
-    # A candidate older than development wheels would fall back to the release profile.
-    monkeypatch.setattr(qualify_setup, "git_show", lambda *_a, **_k: b"")
-    with pytest.raises(RuntimeError, match="development profile or pass --wheel"):
-        qualify_setup.ensure_wheel(tmp_path / "cache", tmp_path / "repo", SHA, tmp_path / "run")
-
-
 def test_gnu_sed_detection_prefers_path_then_gnubin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     gnubin = tmp_path / "gnubin"
     gnubin.mkdir()

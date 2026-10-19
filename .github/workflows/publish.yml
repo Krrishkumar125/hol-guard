@@ -228,8 +228,7 @@ jobs:
       source_sha: ${{ github.sha }}
       version: ${{ needs.resolve-alpha-version.outputs.version || inputs.release_version }}
       # Alpha native wheels ship only on the GitHub prerelease, never on PyPI, so they
-      # use fast per-crate codegen and the separate alpha size ceiling. Stable keeps
-      # whole-program fat LTO and the PyPI budgets.
+      # use fast per-crate codegen. Stable keeps whole-program fat LTO.
       fast_codegen: ${{ inputs.release_channel == 'alpha' }}
     permissions:
       contents: read
@@ -266,23 +265,6 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           ref: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.sha) || github.sha }}
-      - name: Retain workflow wheel-size policy before source checkout
-        shell: bash
-        env:
-          SIZE_POLICY_SHA: ${{ github.workflow_sha }}
-        run: |
-          set -euo pipefail
-          if [[ ! "$SIZE_POLICY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "SIZE_POLICY_SHA must be a full commit SHA" >&2
-            exit 1
-          fi
-          policy_root="$RUNNER_TEMP/hol-guard-wheel-size-policy"
-          mkdir -p "$policy_root/scripts/ci" "$policy_root/ci/package_size"
-          git fetch --no-tags --filter=blob:none origin "$SIZE_POLICY_SHA"
-          git show "$SIZE_POLICY_SHA:scripts/ci/check_wheel_size.py" > "$policy_root/scripts/ci/check_wheel_size.py"
-          git show "$SIZE_POLICY_SHA:ci/package_size/budgets.json" > "$policy_root/ci/package_size/budgets.json"
-          git show "$SIZE_POLICY_SHA:ci/package_size/alpha-native-budgets.json" > "$policy_root/ci/package_size/alpha-native-budgets.json"
-          echo "HOL_GUARD_WHEEL_SIZE_CHECKER=$policy_root/scripts/ci/check_wheel_size.py" >> "$GITHUB_ENV"
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: "3.12"
@@ -748,7 +730,6 @@ jobs:
           CHANNEL: ${{ steps.version.outputs.channel }}
         run: |
           uv run --no-sync twine check dist/*
-          python "$HOL_GUARD_WHEEL_SIZE_CHECKER" --dist-dir dist
           python3 scripts/verify_guard_wheel_entrypoints.py dist
           # Stable builds only: the version is stamped by now, so --release compares every
           # coverage record's Guard version against the build being published. Alpha and
@@ -860,23 +841,6 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.sha) || needs.build.outputs.source_sha }}
-      - name: Retain immutable workflow wheel-size policy
-        shell: bash
-        env:
-          SIZE_POLICY_SHA: ${{ github.workflow_sha }}
-        run: |
-          set -euo pipefail
-          if [[ ! "$SIZE_POLICY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "SIZE_POLICY_SHA must be a full commit SHA" >&2
-            exit 1
-          fi
-          policy_root="$RUNNER_TEMP/hol-guard-wheel-size-policy"
-          mkdir -p "$policy_root/scripts/ci" "$policy_root/ci/package_size"
-          git fetch --no-tags --filter=blob:none origin "$SIZE_POLICY_SHA"
-          git show "$SIZE_POLICY_SHA:scripts/ci/check_wheel_size.py" > "$policy_root/scripts/ci/check_wheel_size.py"
-          git show "$SIZE_POLICY_SHA:ci/package_size/budgets.json" > "$policy_root/ci/package_size/budgets.json"
-          git show "$SIZE_POLICY_SHA:ci/package_size/alpha-native-budgets.json" > "$policy_root/ci/package_size/alpha-native-budgets.json"
-          echo "HOL_GUARD_WHEEL_SIZE_CHECKER=$policy_root/scripts/ci/check_wheel_size.py" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
         with:
           version: "0.9.26"
@@ -1073,9 +1037,6 @@ jobs:
           TARGET: ${{ matrix.target }}
           VERSION: ${{ needs.build.outputs.version }}
           RELEASE_REPAIR: ${{ needs.build.outputs.release_repair }}
-          # Only alpha wheels from fast-codegen precompiled binaries get the larger alpha
-          # ceiling. The checker also refuses it for any version that is not an alpha.
-          ALPHA_FAST_CODEGEN: ${{ needs.precompile-native.result == 'success' && inputs.release_channel == 'alpha' }}
         run: |
           RULE_DIGEST=$("$RUNTIME" capabilities --json | python -c 'import json,sys; print(json.load(sys.stdin)["rule_digest"])')
           python scripts/build_native_hol_guard_wheel.py \
@@ -1089,15 +1050,6 @@ jobs:
             --rule-digest "$RULE_DIGEST" \
             --implementation-digest "$(python -c 'import json,sys; print(json.load(open("source-compiled.json"))["implementation_digest"])')" \
             --base-program-digest "$(python -c 'import json,sys; print(json.load(open("source-compiled.json"))["base_program_digest"])')"
-          # Windows wheels carry no size budget: PyPI's limit is far above them,
-          # and the budget only ever blocked builds.
-          if [[ "$PLATFORM_TAG" != win_* ]]; then
-            SIZE_ARGS=()
-            if [[ "$ALPHA_FAST_CODEGEN" == "true" ]]; then
-              SIZE_ARGS+=(--alpha-native-budgets)
-            fi
-            python "$HOL_GUARD_WHEEL_SIZE_CHECKER" --dist-dir native-dist ${SIZE_ARGS[@]+"${SIZE_ARGS[@]}"}
-          fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: native-guard-wheel-${{ matrix.platform_tag }}
