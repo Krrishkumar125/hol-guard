@@ -185,6 +185,15 @@ pub enum ContextDigestKindV1 {
         saved_token: Value,
         current_token: Value,
     },
+    /// Whether an opaque value is a well-formed v1 approval-context token.
+    ///
+    /// Callers that only need to tell a context token apart from a legacy
+    /// artifact hash ask this instead of decoding the token themselves: the
+    /// token's grammar has exactly one owner, and a second decoder could
+    /// disagree with it about what counts as a token.
+    ApprovalContextTokenWellFormed {
+        token: Value,
+    },
     /// Domain-separated digest over a configured environment subset.
     ///
     /// `values` carries caller-ordered `["key", value]` pairs because distinct
@@ -456,6 +465,9 @@ pub struct ContextDigestResultV1 {
     /// These kinds always produce it; `Option` keeps it absent on other kinds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_identity: Option<Value>,
+    /// `approval_context_token_well_formed` verdict.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_context_token_well_formed: Option<bool>,
     /// `runtime_launch_identity_matches` verdict.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_identity_match: Option<bool>,

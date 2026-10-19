@@ -439,6 +439,9 @@ fn evaluate_request(
         } => {
             result.validation_reason = validate_context_tokens(saved_token, current_token);
         }
+        ContextDigestKindV1::ApprovalContextTokenWellFormed { token } => {
+            result.approval_context_token_well_formed = Some(parse_context_token(token).is_some());
+        }
         ContextDigestKindV1::ConfiguredEnvironmentHash {
             values,
             configured_keys,
@@ -817,6 +820,7 @@ fn evaluate_context_digest_request_inner(
         token: None,
         digest: None,
         validation_reason: None,
+        approval_context_token_well_formed: None,
         mcp_launch_environment: None,
         package_context: None,
         mcp_server_identity: None,
