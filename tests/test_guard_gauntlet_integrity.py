@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from copy import deepcopy
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -546,3 +547,30 @@ def test_a_seeded_login_file_withholds_the_credential_variable() -> None:
         assert credential_environment(spec, login_seeded=True) == {}
         forwarded = credential_environment(spec, login_seeded=False)
     assert sorted(forwarded) == sorted(names)
+
+
+def test_an_unreadable_login_copy_is_not_a_login(tmp_path: Path) -> None:
+    """A login the CLI cannot read leaves the key to forward, not to withhold.
+
+    Withholding the variable is right only where the fixture HOME can
+    authenticate without it. An empty or truncated copy authenticates nothing,
+    and treating it as a login would fail every case of that run on the CLI's
+    own sign-in rather than on anything Guard decided.
+    """
+    from ci.gauntlet.harnesses import CredentialSeed, adapter
+
+    spec = adapter("claude-code")
+    relative = spec.credential_files[0]
+    logins = (
+        (b'{"claudeAiOauth": {"accessToken": "not-a-real-token"}}', True),
+        (b"", False),
+        (b"{", False),
+        (b"{}", False),
+    )
+    for payload, usable in logins:
+        source, fixture = tmp_path / payload.hex() / "source", tmp_path / payload.hex() / "fixture"
+        (source / relative).parent.mkdir(mode=0o700, parents=True)
+        (source / relative).write_bytes(payload)
+        fixture.mkdir(mode=0o700, parents=True)
+        seed = CredentialSeed(spec, source, fixture)
+        assert seed.login_usable is usable, payload

@@ -16,6 +16,7 @@ from .agent_prompt import fixture_authorization
 from .approval_retry import ReviewApprover, write_review_config
 from .approval_rows import approval_rows
 from .business_policy import BUSINESS_CASES, BUSINESS_CLI_CASES, bind_business_snapshot, install_business_policy
+from .case_helpers import add_credential_redactions
 from .catalog import WATCH_COMMAND, WATCH_PROMPT, Scenario
 from .cleanup import cleanup_case_resources
 from .connector_fixtures import CONNECTOR_PROFILE, connector_checks, stage_connector_case, state_digest
@@ -37,7 +38,6 @@ from .host_process import clean_environment, realistic_environment, run_process
 from .input_evidence import redact_value
 from .provider import LoopbackCollector
 from .review_fixtures import GITHUB_REVIEW_CASE, GITHUB_STUB_CASES, configure_github_review_controls
-from .case_helpers import add_credential_redactions
 from .runner import FIXTURE_SYSTEM_CONTEXT, _fixture_replacements, _scenario_prompt, _watch_binding
 from .script_cases import stage_script_cases
 from .session_folder import seed_session_folder
@@ -230,7 +230,7 @@ def run_harness_case(
                 case["watch_binding_before"] = _watch_binding(worker.store)
             seed = CredentialSeed(spec, Path.home(), fixture.home)
             case["credentials_seeded"] = seed.seeded
-            login_environment = credential_environment(spec, login_seeded=bool(seed.files_seeded))
+            login_environment = credential_environment(spec, login_seeded=seed.login_usable)
             case["credential_env"] = sorted(login_environment)
             add_credential_redactions(replacements, login_environment)
             case["hook_install"] = install_harness_hooks(

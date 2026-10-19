@@ -293,14 +293,16 @@ fn reads_a_program_file(words: &[&str], index: usize) -> bool {
 fn env_runs_a_program(words: &[&str]) -> bool {
     let mut index = 0;
     while let Some(word) = words.get(index) {
+        // `--` ends option parsing, and so does an assignment, which is the
+        // first operand that is not an option. What follows either is the same
+        // run both times: assignments, then the program if the text names one.
+        // `env PATH=. -i` runs a program named `-i`, and `env -- FOO=bar` sets
+        // a variable for nothing and prints the environment.
         if *word == "--" {
-            return words.get(index + 1).is_some();
+            return operands_name_a_program(&words[index + 1..]);
         }
-        // An assignment is the first operand that is not an option, so it ends
-        // option parsing: every word after it is an assignment or the program,
-        // and `env PATH=. -i` runs a program named `-i`.
         if is_assignment(word) {
-            return words[index..].iter().any(|word| !is_assignment(word));
+            return operands_name_a_program(&words[index..]);
         }
         if !word.starts_with('-') || *word == "-" {
             return true;
@@ -312,6 +314,13 @@ fn env_runs_a_program(words: &[&str]) -> bool {
         }
     }
     false
+}
+
+/// Whether a run of `env` operands that can no longer hold options names a
+/// program. Every assignment in it is an environment update; the first word
+/// that is not one is the program, whatever shape it has.
+fn operands_name_a_program(operands: &[&str]) -> bool {
+    operands.iter().any(|operand| !is_assignment(operand))
 }
 
 /// Whether this option leaves `env` printing its environment, and if so whether

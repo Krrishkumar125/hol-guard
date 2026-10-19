@@ -235,3 +235,16 @@ fn an_option_after_an_env_assignment_is_the_program_it_runs() {
         assert!(launch_only(command), "{command}");
     }
 }
+
+/// `--` ends option parsing the same way an assignment does, and what stands
+/// after it is read the same way: `env -- FOO=bar` sets a variable for nothing
+/// and prints the environment, so it is a dump rather than a launch.
+#[test]
+fn an_env_that_names_no_program_after_a_double_dash_is_a_dump() {
+    for command in ["env -- FOO=bar", "env --", "env -i -- FOO=bar BAZ=qux"] {
+        assert!(launch_only(command), "{command}");
+    }
+    for command in ["env -- sh -c id", "env -- FOO=bar ./deploy.sh", "env -- -i"] {
+        assert!(!launch_only(command), "{command}");
+    }
+}

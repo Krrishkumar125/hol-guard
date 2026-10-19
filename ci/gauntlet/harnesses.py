@@ -286,6 +286,7 @@ class CredentialSeed:
 
     def __init__(self, harness: Harness, source_home: Path, fixture_home: Path):
         self._pairs: list[tuple[Path, Path, bytes]] = []
+        self._readable = False
         for relative in harness.credential_files:
             source, target = source_home / relative, fixture_home / relative
             try:
@@ -297,6 +298,7 @@ class CredentialSeed:
             if os.name == "posix":
                 target.chmod(0o600)
             self._pairs.append((source, target, data))
+            self._readable = self._readable or _login_readable(data)
         self.keychain = False
         keychains = source_home / "Library" / "Keychains"
         if harness.macos_keychain and sys.platform == "darwin" and keychains.is_dir():
@@ -310,9 +312,9 @@ class CredentialSeed:
         return len(self._pairs) + int(self.keychain)
 
     @property
-    def files_seeded(self) -> int:
-        """How many login files the fixture HOME carries of its own."""
-        return len(self._pairs)
+    def login_usable(self) -> bool:
+        """Whether the fixture HOME carries a login file the CLI can read."""
+        return self._readable
 
     def write_back(self) -> None:
         """Replace the operator's login with a refreshed copy, never a stale or wider-readable one.
@@ -342,6 +344,23 @@ class CredentialSeed:
                     os.replace(temporary, source)
                 finally:
                     temporary.unlink(missing_ok=True)
+
+
+def _login_readable(data: bytes) -> bool:
+    """Whether a copied login file is one the CLI can actually read.
+
+    Every CLI this runner drives keeps its login as a JSON object. An empty,
+    truncated or unparsable copy is one the CLI ignores, so a fixture HOME
+    carrying only that has no login at all and still needs the key forwarded;
+    withholding it there would fail the case on authentication rather than on
+    anything Guard did. Whether the tokens inside are still honoured cannot be
+    known without spending one, so a readable file counts as a login.
+    """
+    try:
+        payload = json.loads(data)
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return isinstance(payload, dict) and bool(payload)
 
 
 _LOCK_WAIT_SECONDS = 60
@@ -390,10 +409,12 @@ def credential_environment(harness: Harness, *, login_seeded: bool = False) -> d
 
     The CLI's tool children inherit whatever it was started with, so a key in
     this environment is one the model's own commands can print. When the
-    fixture HOME already carries the CLI's login file, the CLI reads it from
-    there and the variable buys nothing, so it is withheld and no command can
-    reach it. An operator who authenticates by key alone has no such file, and
-    the variable is forwarded; the exported transcripts redact it.
+    fixture HOME already carries a login file the CLI can read, the CLI
+    authenticates from there and the variable buys nothing, so it is withheld
+    and no command can reach it. An operator who authenticates by key alone has
+    no such file, and so does one whose copy is empty or unparsable: the
+    variable is forwarded rather than failing the case on authentication, and
+    the exported transcripts redact it.
     """
     if login_seeded:
         return {}
