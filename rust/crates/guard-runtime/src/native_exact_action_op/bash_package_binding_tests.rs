@@ -346,3 +346,81 @@ fn bash_package_binding_immutable_launch_uses_the_captured_dependency_body() {
     assert_eq!(result.stdout, b"reviewed");
     assert_eq!(std::fs::read_to_string(&sentinel).unwrap(), "protected");
 }
+
+#[test]
+fn bash_package_binding_omp_preview_uses_the_hosts_tool_directory() {
+    use crate::policy_enforcement::{
+        tests::{policy, snapshot},
+        AdmittedPolicySnapshot,
+    };
+    use guard_contracts::{GuardHookEnvelopeV2, GuardHookSourceMetadataV2};
+    use serde_json::json;
+    let (_root, mut request, package) = fixture();
+    let session = request.cwd.clone();
+    let child = Path::new(&session).join("subproject");
+    std::fs::create_dir(&child).unwrap();
+    std::fs::rename(package.parent().unwrap(), child.join("node_modules")).unwrap();
+    std::fs::rename(
+        Path::new(&session).join("maintenance.sh"),
+        child.join("maintenance.sh"),
+    )
+    .unwrap();
+    request.command = format!("/bin/bash '{}' dry", child.join("maintenance.sh").display());
+    request.cwd = text(&child).unwrap();
+    let mut current = snapshot(policy("allow"));
+    current.command_extensions = Some(super::policy_tests::protected_controls());
+    let current = AdmittedPolicySnapshot::new(current).unwrap();
+    let captured = capture_for_launch(&request, &current).unwrap();
+    let decision = captured.policy.unwrap().decisions.remove(0);
+    assert!(decision.command_extensions.is_some());
+    let mut envelope = GuardHookEnvelopeV2 {
+        schema: guard_contracts::GUARD_HOOK_ENVELOPE_V2_SCHEMA.into(),
+        request_id: None,
+        harness: "omp".into(),
+        event: "PreToolUse".into(),
+        recording_only: false,
+        deadline_budget_ms: Some(1000),
+        policy_generation: 0,
+        policy_snapshot: json!({}),
+        raw_payload: json!({"tool_name":"bash","tool_input":{"command":request.command,"cwd":"subproject"},
+            "guard_bound_bash_host":{"schema":"guard-native-bash-host-delivery.v3","host":"omp-input-rewrite-v1",
+                "owner_pid":std::process::id(),"environment":request.environment,"file_creation_mask":0o022}}),
+        source: GuardHookSourceMetadataV2 {
+            cwd: Some(session),
+            home_dir: request.home_dir,
+            guard_home: request.guard_home,
+            source_ref_external_allowed: false,
+            execution_environment: Some(request.execution_environment),
+        },
+    };
+    let result = super::super::super::bash_delivery::require_owner(
+        &envelope,
+        Some(&current),
+        decision.clone(),
+    );
+    assert_eq!(
+        result.reason_code,
+        guard_contracts::NATIVE_BASH_DELIVERY_REASON,
+        "{}",
+        result.reason
+    );
+    assert_eq!(result.minimum_action, "sandbox-required");
+    for invalid in [json!("missing-directory"), json!({"path":"subproject"})] {
+        envelope.raw_payload["tool_input"]["cwd"] = invalid;
+        let refused = super::super::super::bash_delivery::require_owner(
+            &envelope,
+            Some(&current),
+            decision.clone(),
+        );
+        assert_eq!(refused.minimum_action, "block");
+        assert!(refused
+            .reason
+            .contains("bash_working_directory_unavailable"));
+    }
+    let mut deny = decision;
+    deny.minimum_action = "block".into();
+    deny.reason_code = "current_extension_denied".into();
+    let refused =
+        super::super::super::bash_delivery::require_owner(&envelope, Some(&current), deny);
+    assert_eq!(refused.reason_code, "current_extension_denied");
+}

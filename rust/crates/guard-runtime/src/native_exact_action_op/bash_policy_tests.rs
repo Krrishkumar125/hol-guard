@@ -25,7 +25,7 @@ fn closed_bash_graph_can_run_without_consent_when_current_policy_allows_every_ef
     );
 }
 
-fn protected_controls() -> NativeCommandControlBindingV1 {
+pub(super) fn protected_controls() -> NativeCommandControlBindingV1 {
     let program = guard_command::native_command_program::packaged_command_program().unwrap();
     let mut binding: NativeCommandControlBindingV1 = serde_json::from_value(json!({
         "schema":"guard.native-command-control-binding.v1",

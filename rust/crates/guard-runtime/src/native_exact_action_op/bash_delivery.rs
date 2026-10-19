@@ -81,10 +81,22 @@ pub(crate) fn require_owner(
     ) else {
         return unavailable(result, "bash_host_context_unavailable");
     };
+    let execution_cwd = if envelope.harness == "omp" {
+        match guard_command::pretool::generic::omp_bash_execution_directory(
+            &envelope.raw_payload,
+            Some(&envelope.source.home_dir),
+            Some(cwd),
+        ) {
+            Ok(Some(path)) => path,
+            _ => return unavailable(result, "bash_working_directory_unavailable"),
+        }
+    } else {
+        cwd.clone()
+    };
     let capture = guard_contracts::NativeBashCaptureV1 {
         harness: envelope.harness.clone(),
         command: command.into(),
-        cwd: cwd.clone(),
+        cwd: execution_cwd,
         workspace: cwd.clone(),
         home_dir: envelope.source.home_dir.clone(),
         guard_home: envelope.source.guard_home.clone(),
