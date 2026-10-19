@@ -88,6 +88,7 @@ def assess(
             "command": row["input"].get("command"),
             "decision": row["decision"],
             "reason_code": row["reason_code"],
+            "tool_call_id": row["tool_call_id"],
         }
         if row["reason_code"] == "native_bash_owner_required":
             call = by_id.get(row["tool_call_id"])
@@ -108,7 +109,7 @@ def assess(
                 if isinstance(content, list)
                 else set()
             )
-            codes = lines & {"native_bash_consent_required", "native_policy_block"}
+            codes = lines & {"native_bash_consent_required", "native_policy_block", "native_bash_operation_active"}
             if call["is_error"] is True and len(codes) == 1:
                 decision["execution_reason_code"] = codes.pop()
         decisions.append(decision)

@@ -34,6 +34,25 @@ struct Record {
     busy_calls: BTreeMap<String, u64>,
 }
 
+impl Record {
+    fn new(journal: &BashOperationJournal<'_>, harness: &str, project: &str) -> Self {
+        Self {
+            schema: PURPOSE.into(),
+            base_id: journal.operation_id.into(),
+            harness: harness.into(),
+            project: project.into(),
+            generation: 0,
+            operation_id: operation_id(journal.operation_id, 0),
+            artifact_hash: journal.artifact_hash.into(),
+            reserved: Some(false),
+            completed: false,
+            acknowledged: false,
+            calls: BTreeMap::new(),
+            busy_calls: BTreeMap::new(),
+        }
+    }
+}
+
 pub(crate) struct Invocation {
     base_id: String,
     call_digest: String,
@@ -99,7 +118,7 @@ fn read(journal: &BashOperationJournal<'_>, base_id: &str) -> rusqlite::Result<O
         || record.base_id != base_id
         || record.operation_id != operation_id(base_id, record.generation)
         || record.calls.len() + record.busy_calls.len() > MAX_CALLS
-        || record.calls.is_empty()
+        || (record.calls.is_empty() && record.busy_calls.is_empty())
         || record
             .calls
             .iter()
@@ -160,7 +179,8 @@ impl BashOperationJournal<'_> {
     ) -> rusqlite::Result<()> {
         let digest = call_digest(call_id)?;
         transaction(self, || {
-            let mut record = read(self, self.operation_id)?.ok_or_else(invalid)?;
+            let mut record = read(self, self.operation_id)?
+                .unwrap_or_else(|| Record::new(self, harness, project));
             if record.harness != harness
                 || record.project != project
                 || record.artifact_hash != self.artifact_hash
@@ -286,20 +306,8 @@ impl BashOperationJournal<'_> {
         }
         let call_digest = call_digest(call_id)?;
         let allocated = transaction(self, || {
-            let mut record = read(self, base_id)?.unwrap_or_else(|| Record {
-                schema: PURPOSE.into(),
-                base_id: base_id.into(),
-                harness: harness.into(),
-                project: project.into(),
-                generation: 0,
-                operation_id: operation_id(base_id, 0),
-                artifact_hash: self.artifact_hash.into(),
-                reserved: Some(false),
-                completed: false,
-                acknowledged: false,
-                calls: BTreeMap::new(),
-                busy_calls: BTreeMap::new(),
-            });
+            let mut record =
+                read(self, base_id)?.unwrap_or_else(|| Record::new(self, harness, project));
             if record.harness != harness || record.project != project {
                 return Err(invalid());
             }

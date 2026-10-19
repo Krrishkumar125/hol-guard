@@ -195,16 +195,27 @@ def evidence(home: Path, workspace: Path, scenario_id: str, store: Any) -> dict[
     report_runs = lines.count("completed")
     exact_report = lines == run_report * report_runs
     journal: list[dict[str, Any]] = []
+    busy_calls: list[dict[str, Any]] = []
     journal_error: str | None = None
     try:
         from codex_plugin_scanner.guard.local_authority_integrity import verify_local_authority_payload
 
         verifier_key, verifier_key_id = _journal_verifier(store)
         with store._connect() as connection:
-            rows = connection.execute(
-                "SELECT payload, integrity FROM guard_bash_operations ORDER BY operation_id"
-            ).fetchall()
-        for payload_text, integrity_text in rows:
+            rows = [
+                (_JOURNAL_PURPOSE, *row)
+                for row in connection.execute(
+                    "SELECT payload, integrity FROM guard_bash_operations ORDER BY operation_id"
+                )
+            ]
+            if connection.execute("SELECT 1 FROM sqlite_master WHERE name='guard_bash_invocations'").fetchone():
+                rows += [
+                    ("guard-native-bash-invocation-lifetime-v1", *row)
+                    for row in connection.execute(
+                        "SELECT payload, integrity FROM guard_bash_invocations ORDER BY base_id"
+                    )
+                ]
+        for purpose, payload_text, integrity_text in rows:
             payload = json.loads(payload_text)
             integrity = json.loads(integrity_text)
             if not isinstance(payload, dict) or not isinstance(integrity, dict):
@@ -214,10 +225,15 @@ def evidence(home: Path, workspace: Path, scenario_id: str, store: Any) -> dict[
                 integrity,
                 key=verifier_key,
                 key_id=verifier_key_id,
-                purpose=_JOURNAL_PURPOSE,
+                purpose=purpose,
             )
             if verification.status != "valid":
                 raise RuntimeError("native Bash journal record failed integrity verification")
+            if purpose != _JOURNAL_PURPOSE:
+                for digest, generation in payload.get("busy_calls", {}).items():
+                    if generation == payload.get("generation"):
+                        busy_calls.append({"call_sha256": digest, "artifact_hash": payload.get("artifact_hash")})
+                continue
             completion = payload.get("completion")
             journal.append(
                 {
@@ -230,6 +246,7 @@ def evidence(home: Path, workspace: Path, scenario_id: str, store: Any) -> dict[
             )
     except Exception as error:
         journal = []
+        busy_calls = []
         journal_error = type(error).__name__
     return {
         "report_runs": report_runs,
@@ -238,6 +255,7 @@ def evidence(home: Path, workspace: Path, scenario_id: str, store: Any) -> dict[
         "script_sha256": hashlib.sha256(script.read_bytes()).hexdigest(),
         "journal": journal,
         "journal_error": journal_error,
+        "busy_calls": busy_calls,
     }
 
 
@@ -321,13 +339,32 @@ def assessment(
         ]
         if transition.get("policy_denied") is not True or not hard:
             return "fail", "current deny policy did not stop the approved script before effects"
-    if current.require_once_contention and (
-        transition.get("once_contention_observed") is not True
-        or grants.get("max_active_operations", 0) < 1
-        or not any(row.get("artifact_hash") == artifact_hash for row in target_withheld)
-        or len(script_decisions) < 3
-    ):
-        return "not-exercised", "a duplicate retry was not reviewed while the once-authorized launch was active"
+    if current.require_once_contention:
+        successful = {row.get("tool_call_id") for row in script_decisions if row.get("decision") == "allow"}
+        busy = {
+            row.get("tool_call_id")
+            for row in script_decisions
+            if row.get("execution_reason_code") == "native_bash_operation_active" and row.get("decision") == "deny"
+        }
+        signed = {
+            row.get("call_sha256")
+            for row in lifecycle.get("busy_calls", [])
+            if row.get("artifact_hash") == artifact_hash
+        }
+        batches = [
+            {call.get("id") for call in event.get("calls", [])}
+            for event in case.get("events", [])
+            if event.get("type") == "model_turn"
+        ]
+        overlap = any(
+            batch & successful
+            and any(
+                isinstance(call, str) and hashlib.sha256(call.encode()).hexdigest() in signed for call in batch & busy
+            )
+            for batch in batches
+        )
+        if not overlap or len(script_decisions) < 3:
+            return "not-exercised", "concurrent SDK calls lack a signed native rejection beside the once-authorized run"
     if current.persist and not all(row.get("persist_policy") is True for row in target_grants):
         return "harness-error", "the lifecycle scenario did not request persistent exact-version consent"
     if not current.persist and any(row.get("persist_policy") for row in target_grants):

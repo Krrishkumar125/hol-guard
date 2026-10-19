@@ -7,8 +7,10 @@ reuses an approval is answered only by running the lane against a harness CLI.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -191,7 +193,32 @@ def test_bash_concurrency_spends_a_once_grant_for_only_one_real_effect():
     assert bash_lifecycle_assessment(CONCURRENCY_CASE, case, decisions)[0] == "not-exercised"
     case["approval_grants"]["max_active_operations"] = 1
     case["approval_grants"]["lifecycle"]["once_contention_observed"] = True
+    assert bash_lifecycle_assessment(CONCURRENCY_CASE, case, decisions)[0] == "not-exercised"
+    for index, row in enumerate(decisions):
+        row["tool_call_id"] = f"c{index}"
+    decisions[2]["execution_reason_code"] = "native_bash_operation_active"
+    case["events"] = [{"type": "model_turn", "calls": [{"id": "c1"}, {"id": "c2"}]}]
+    case["bash_lifecycle"]["busy_calls"] = [
+        {
+            "call_sha256": hashlib.sha256(b"c2").hexdigest(),
+            "artifact_hash": _LIFECYCLE_HASH,
+        }
+    ]
     assert bash_lifecycle_assessment(CONCURRENCY_CASE, case, decisions)[0] == "pass"
+    for damage in ("missing", "foreign", "digest", "sequential", "not-busy"):
+        broken = deepcopy(case)
+        changed = deepcopy(decisions)
+        if damage == "missing":
+            broken["bash_lifecycle"]["busy_calls"] = []
+        elif damage == "foreign":
+            broken["bash_lifecycle"]["busy_calls"][0]["artifact_hash"] = "foreign"
+        elif damage == "digest":
+            broken["bash_lifecycle"]["busy_calls"][0]["call_sha256"] = "0" * 64
+        elif damage == "sequential":
+            broken["events"] = [{"type": "model_turn", "calls": [{"id": call}]} for call in ("c1", "c2")]
+        else:
+            changed[2]["execution_reason_code"] = "native_policy_block"
+        assert bash_lifecycle_assessment(CONCURRENCY_CASE, broken, changed)[0] != "pass", damage
 
 
 @pytest.mark.parametrize(("runs", "journal_runs"), [(0, 1), (1, 0)])
@@ -220,7 +247,8 @@ def test_bash_lifecycle_ignores_completed_operations_for_other_artifacts():
     assert bash_lifecycle_assessment(ONCE_CASE, case, decisions)[0] == "fail"
 
 
-def test_bash_lifecycle_evidence_verifies_native_journal_integrity(tmp_path: Path):
+@pytest.mark.parametrize("tamper_table", ["guard_bash_operations", "guard_bash_invocations"])
+def test_bash_lifecycle_evidence_verifies_native_journal_integrity(tmp_path: Path, tamper_table: str):
     from codex_plugin_scanner.guard.local_authority_integrity import sign_local_authority_payload
     from codex_plugin_scanner.guard.native_policy_snapshot_codec import (
         derive_native_policy_verifier_key,
@@ -250,6 +278,22 @@ def test_bash_lifecycle_evidence_verifies_native_journal_integrity(tmp_path: Pat
             "INSERT INTO guard_bash_operations VALUES(?, ?, ?)",
             ("op-1", json.dumps(payload), json.dumps(integrity)),
         )
+        busy = {
+            "generation": 0,
+            "artifact_hash": _LIFECYCLE_HASH,
+            "busy_calls": {hashlib.sha256(b"busy-call").hexdigest(): 0},
+        }
+        signed_busy = sign_local_authority_payload(
+            busy,
+            key=verifier_key,
+            key_id=native_policy_verifier_key_id(verifier_key),
+            purpose="guard-native-bash-invocation-lifetime-v1",
+            signed_at="2026-10-18T00:00:00+00:00",
+        )
+        connection.execute("CREATE TABLE guard_bash_invocations(base_id TEXT, payload TEXT, integrity TEXT)")
+        connection.execute(
+            "INSERT INTO guard_bash_invocations VALUES(?, ?, ?)", ("base-1", json.dumps(busy), json.dumps(signed_busy))
+        )
 
     class Store:
         def _connect(self):
@@ -265,6 +309,12 @@ def test_bash_lifecycle_evidence_verifies_native_journal_integrity(tmp_path: Pat
     stage_bash_lifecycle(workspace, ONCE_CASE)
     summary = bash_lifecycle_evidence(home, workspace, ONCE_CASE, Store())
     assert summary["journal_error"] is None
+    assert summary["busy_calls"] == [
+        {
+            "call_sha256": hashlib.sha256(b"busy-call").hexdigest(),
+            "artifact_hash": _LIFECYCLE_HASH,
+        }
+    ]
     assert summary["journal"] == [
         {
             "authorization": "saved_grant",
@@ -277,7 +327,7 @@ def test_bash_lifecycle_evidence_verifies_native_journal_integrity(tmp_path: Pat
 
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "UPDATE guard_bash_operations SET payload=?",
+            f"UPDATE {tamper_table} SET payload=?",
             (json.dumps({**payload, "artifact_hash": "tampered"}),),
         )
     assert bash_lifecycle_evidence(home, workspace, ONCE_CASE, Store())["journal_error"] == "RuntimeError"

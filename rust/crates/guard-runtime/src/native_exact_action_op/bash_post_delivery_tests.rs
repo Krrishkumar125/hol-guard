@@ -295,7 +295,6 @@ fn bash_post_delivery_busy_call_is_signed_control_and_never_a_completion_or_ack(
     let (_root, request) = tests::fixture();
     let (store, envelope) = policy_store(&request);
     let execution = invocation(&request, &envelope);
-    assert_eq!(execute(&execution, &store).status, "ok");
     let registration = store
         .bash_launches()
         .register(&execution.operation_id)
@@ -307,6 +306,10 @@ fn bash_post_delivery_busy_call_is_signed_control_and_never_a_completion_or_ack(
     assert_eq!(rejected.code, "native_bash_operation_active");
     assert!(rejected.operation.is_none() && rejected.payload.is_none());
     drop(registration);
+    assert!(!verify(&post(&busy, 125), &store)
+        .unwrap()
+        .clean_completion());
+    assert_eq!(execute(&execution, &store).status, "ok");
     // The real owner may finish and acknowledge before the rejected call's
     // result hook arrives. Its control witness must remain valid afterwards.
     assert!(ack(&execution, &store, 0).acknowledged);
