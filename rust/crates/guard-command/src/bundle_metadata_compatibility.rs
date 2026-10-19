@@ -161,7 +161,7 @@ pub(super) fn presence(input: &Value) -> Result<Value> {
     let (Some(bundle), Some(manifests)) = (input["bundle"].as_bool(), manifests) else {
         return Err(INVALID);
     };
-    if !fields(input, &["bundle", "manifests"]) {
+    if !fields(input, &["operation", "bundle", "manifests"]) {
         return Err(INVALID);
     }
     let legacy = |value: &Value, schema: &str| {

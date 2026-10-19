@@ -153,8 +153,15 @@ fn admits_bounded_concatenated_metadata_and_rejects_cross_source_children() {
 fn only_genuine_legacy_absence_skips_the_installed_bundle() {
     let runtime = json!({"schema":"hol-guard-native-runtime.v1"});
     let compiler = json!({"schema":"hol-guard-native-source-compiler.v2"});
+    // Drive the dispatcher so the request carries its operation key, as
+    // the Python caller sends it.
+    let ask = |request: Value| {
+        let mut request = request;
+        request["operation"] = json!("installed-presence");
+        super::super::evaluate(&serde_json::to_vec(&request).unwrap())
+    };
     let advertised = |bundle: bool, manifests: Value| {
-        presence(&json!({"bundle":bundle,"manifests":manifests})).unwrap()["advertised"]
+        ask(json!({"bundle":bundle,"manifests":manifests})).unwrap()["advertised"]
             .as_bool()
             .unwrap()
     };
@@ -175,6 +182,6 @@ fn only_genuine_legacy_absence_skips_the_installed_bundle() {
         json!({"bundle":false,"manifests":[null]}),
         json!({"bundle":false,"manifests":[null,null],"extra":1}),
     ] {
-        assert!(presence(&malformed).is_err());
+        assert!(ask(malformed).is_err());
     }
 }
