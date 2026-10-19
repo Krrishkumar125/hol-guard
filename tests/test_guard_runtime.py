@@ -10642,14 +10642,26 @@ def test_hook_runtime_artifact_combines_package_tool_and_data_flow_findings(tmp_
         workspace=workspace_dir,
     )
     assert action is not None
-    data_flow_signals = guard_commands_module._runtime_action_data_flow_signals(action, workspace=workspace_dir)
+    data_flow_signals, data_flow_artifact = guard_commands_module._runtime_action_data_flow_signals(
+        action,
+        workspace=workspace_dir,
+        naming=guard_commands_module._runtime_data_flow_naming(
+            harness="codex",
+            payload=payload,
+            action_envelope=action,
+            home_dir=home_dir,
+            workspace=workspace_dir,
+        ),
+    )
     assert data_flow_signals
+    assert data_flow_artifact is not None
 
     artifact = guard_commands_module._hook_runtime_artifact(
         harness="codex",
         payload=payload,
         action_envelope=action,
         data_flow_signals=data_flow_signals,
+        data_flow_artifact=data_flow_artifact,
         home_dir=home_dir,
         guard_home=home_dir,
         workspace=workspace_dir,
