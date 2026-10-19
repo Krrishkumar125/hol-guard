@@ -1,5 +1,13 @@
 # Approval invariant
 
+Content-bound script approvals are an exception to the legacy command-hash
+fallback described below. A script launch without an enforced execution
+binding cannot receive a reusable token merely by hashing its command text.
+Use the supported native owner route described in
+[script approval support](script-approval-support.md); otherwise expose the
+specific unavailable execution capability. Inventory observations do not
+grant permission. Current hard restrictions still apply to every launch.
+
 Every command Guard pauses for review can be approved. The user always sees
 **Allow once** and **Always allow**, and an approved command runs. Guard does
 not second-guess the answer.

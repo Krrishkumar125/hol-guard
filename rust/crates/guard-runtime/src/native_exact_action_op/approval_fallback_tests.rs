@@ -54,6 +54,27 @@ fn root() -> String {
 }
 
 #[test]
+fn command_hash_cannot_replace_an_unavailable_script_execution_owner() {
+    for command in [
+        "python3 report.py",
+        "python3 -c 'print(1)'",
+        "node report.mjs",
+        "node -e 'console.log(1)'",
+        "npx fixture-runner",
+    ] {
+        let request = exact_request(&root(), |query| {
+            query["command"] = json!(command);
+            query["tool_input"] = json!([["command", command]]);
+        });
+        assert_eq!(
+            outcome(&request, Fallback::CommandHash),
+            (None, Some("script_execution_binding_unavailable".into())),
+            "{command}"
+        );
+    }
+}
+
+#[test]
 fn an_unprovable_command_still_gets_an_approval_token() {
     let request = exact_request(&root(), |_| {});
     let (strict, reason) = outcome(&request, Fallback::Strict);

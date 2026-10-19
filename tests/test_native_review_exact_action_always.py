@@ -137,7 +137,7 @@ def test_camel_case_harness_payload_offers_the_same_inventory(
     )
     assert camel is not None and camel["inventory_sha256"] == expected
     token, reason = _permission("npx wrangler --version", workspace)
-    assert token is not None and reason is None
+    assert token is None and reason == "script_execution_binding_unavailable"
     assert not _proven("npx wrangler --version", workspace)
 
 
@@ -152,12 +152,12 @@ def test_camel_case_harness_payload_offers_the_same_inventory(
         "python3 -c 1",
     ],
 )
-def test_unowned_script_launch_uses_the_review_command_fallback(
+def test_unowned_script_launch_cannot_use_the_review_command_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, native_context_digest: Path, command: str
 ) -> None:
     workspace = _wrangler_workspace(tmp_path, monkeypatch)
     token, reason = _permission(command, workspace)
-    assert token is not None and reason is None
+    assert token is None and reason == "script_execution_binding_unavailable"
     assert not _proven(command, workspace)
     result, receipt = _verdict(policy_action="block", minimum_action="block")
     assert _permission(command, workspace, result=result, receipt=receipt) == (None, "non_overridable")
@@ -185,14 +185,15 @@ def _changed_rules(result: dict[str, Any], receipt: dict[str, Any]) -> tuple[dic
 def _proven(command: str, workspace: Path) -> bool:
     """Whether Guard proved what ``command`` runs, rather than hashing the command.
 
-    Every review gets a token. A proven token also binds the rules that judged
-    the command; the command-hash fallback binds only the command, so a rule
-    change leaves it as it was (docs/guard/approval-invariant.md).
+    Unowned script launches have no token. Other command-hash fallbacks bind
+    only the command, so a rule change leaves them as they were.
     """
 
     result, receipt = _verdict()
-    first = _token(command, workspace, result=result, receipt=receipt)
-    assert first is not None, f"every review offers Always allow: {command}"
+    first, reason = _permission(command, workspace, result=result, receipt=receipt)
+    if first is None:
+        assert reason == "script_execution_binding_unavailable", command
+        return False
     changed_result, changed_receipt = _changed_rules(result, receipt)
     return first != _token(command, workspace, result=changed_result, receipt=changed_receipt)
 

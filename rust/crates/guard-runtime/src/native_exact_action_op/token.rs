@@ -108,14 +108,22 @@ fn check_facts(facts: &NativeReviewFactsV1) -> Proof<()> {
 /// The token an approval of `query` is saved and matched under: the proven
 /// exact-action token when Guard can prove what the command runs, else the
 /// hash of the command itself (`command_hash`). Every review the user can
-/// answer gets one, so every review offers Always allow
-/// (`docs/guard/approval-invariant.md`).
+/// answer gets one except when the script execution owner is unavailable:
+/// command text cannot substitute for an enforced code-version binding.
 pub(super) fn approval_token(
     query: &NativeExactActionQueryV1,
     deadline: Instant,
     engines: &dyn Engines,
 ) -> Proof<String> {
-    exact_action(query, deadline, engines).or_else(|reason| command_hash(query).map_err(|_| reason))
+    exact_action(query, deadline, engines).or_else(|reason| {
+        if reason == super::reasons::SCRIPT_DELIVERY
+            || super::launch_evidence::names_script_runtime(query)
+        {
+            Err(reason)
+        } else {
+            command_hash(query).map_err(|_| reason)
+        }
+    })
 }
 
 /// The hash of the command a review paused: harness, tool, a shell's command
