@@ -174,3 +174,55 @@ fn a_quoted_backslash_reads_as_it_always_did() {
         vec!["echo", "C:\\Users\\dev"]
     );
 }
+
+fn escapes(rest: &str) -> bool {
+    let chars: Vec<char> = rest.chars().collect();
+    crate::command_tokens::escapes_shell_operator(&chars)
+}
+
+#[test]
+fn an_inert_redirection_after_an_escaped_operator_does_not_end_the_command() {
+    // `find … \; 2>/dev/null` is the shape an agent writes to drop the
+    // permission errors it cannot avoid. A redirection names no program, so
+    // PowerShell and cmd run nothing through it either and the escape stays
+    // safe to read.
+    for command in [
+        "find src -type f -name \"*.ts\" -exec grep -l retryLimit {} \\; 2>/dev/null",
+        "find src -exec cat {} \\; 2>&1",
+    ] {
+        assert_eq!(
+            segment_texts(command),
+            vec![command.to_owned()],
+            "{command}"
+        );
+    }
+    assert_eq!(
+        segment_texts("find src -exec grep -l retryLimit {} \\; 2>/dev/null | head -5"),
+        vec![
+            "find src -exec grep -l retryLimit {} \\; 2>/dev/null".to_owned(),
+            "head -5".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn only_a_redirection_carries_the_escape_past_the_operator() {
+    // A redirection runs nothing, so the words it spells are not a command
+    // either reading would launch. Everything else after the operator is.
+    for rest in [
+        "; 2>/dev/null",
+        "; 2>&1 | tail -5",
+        "; >out.txt",
+        "; >> build/log.txt",
+    ] {
+        assert!(escapes(rest), "{rest}");
+    }
+    for rest in [
+        "; >(cat /etc/passwd)",
+        "; 2> ",
+        "; 2>/dev/null Remove-Item C:\\Users\\dev",
+        "; Remove-Item -Recurse -Force C:\\Users\\dev",
+    ] {
+        assert!(!escapes(rest), "{rest}");
+    }
+}
