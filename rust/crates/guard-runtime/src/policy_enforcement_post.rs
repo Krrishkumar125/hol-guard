@@ -3,8 +3,6 @@ use super::policy_enforcement_helpers::policy_floor_with_cause_and_delivery;
 use super::*;
 use crate::bash_post_delivery::VerifiedBashDelivery;
 
-#[path = "policy_enforcement_omp_eval.rs"]
-mod eval_output;
 #[path = "policy_enforcement_post_action.rs"]
 mod post_action;
 

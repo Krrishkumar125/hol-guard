@@ -49,7 +49,9 @@ def test_native_hook_routes_only_supported_bound_owners(native_context_digest, t
     store._policy_integrity_secret_store = _Secrets()
     worker = HookWorker(store=store, workspace=project, home_dir=home, wait_for_native_policy=False)
     try:
-        assert worker.prepare_workspace_policy(project, deadline=time.monotonic() + 25) is not None
+        assert worker.prepare_workspace_policy(project, deadline=time.monotonic() + 25) is not None, (
+            worker.policy_snapshot_publisher.last_error
+        )
         payload = {
             "hook_event_name": "PreToolUse", "tool_name": "bash", "session_id": "delivery-session",
             "tool_call_id": "delivery-call", "cwd": str(project),

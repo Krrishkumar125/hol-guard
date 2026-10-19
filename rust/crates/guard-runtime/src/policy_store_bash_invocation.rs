@@ -184,10 +184,10 @@ impl BashOperationJournal<'_> {
         } else if completion.cancelled || completion.output_limited {
             125
         } else {
-            match completion.exit_code {
-                Some(code @ 0..=255) => code,
-                _ => 125,
-            }
+            completion
+                .exit_code
+                .filter(|code| (0..=255).contains(code))
+                .unwrap_or(125)
         };
         if observed_exit != exit {
             return Ok(None);

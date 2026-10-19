@@ -92,7 +92,7 @@ pub(crate) fn verify(
         || args[5] != observation.operation_id
         || args[9] != observation.tool_call_id
         || args[11] != request.guard_home
-        || !args[7].parse::<i32>().ok().is_some_and(|pid| pid > 1)
+        || args[7].parse::<i32>().ok().is_none_or(|pid| pid <= 1)
         || !args[19]
             .parse::<u32>()
             .ok()

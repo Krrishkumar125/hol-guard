@@ -367,6 +367,8 @@ pub(crate) fn apply_pre_tool_policy(
     Ok(output)
 }
 
+#[path = "policy_enforcement_omp_eval.rs"]
+mod eval_output;
 #[path = "policy_enforcement_post.rs"]
 mod post;
 #[cfg(test)]
