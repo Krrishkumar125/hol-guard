@@ -46,6 +46,11 @@ def redact_value(value: Any, replacements: dict[Redaction, str]) -> Any:
     A plain key is replaced literally. A compiled one stands for a secret the
     transcript may have folded or re-encoded, and is substituted through a
     function so its placeholder is never read as a backreference.
+
+    A mapping is rewritten on both sides. A tool that reports per-path or
+    per-token results names them in its property names, so a secret reaches the
+    export as readably from a key as from a value, and a path alias belongs on
+    a key for the same reason.
     """
     if isinstance(value, str):
         for old, new in sorted(replacements.items(), key=_redaction_order):
@@ -57,7 +62,7 @@ def redact_value(value: Any, replacements: dict[Redaction, str]) -> Any:
     if isinstance(value, list):
         return [redact_value(item, replacements) for item in value]
     if isinstance(value, dict):
-        return {key: redact_value(item, replacements) for key, item in value.items()}
+        return {redact_value(key, replacements): redact_value(item, replacements) for key, item in value.items()}
     return value
 
 

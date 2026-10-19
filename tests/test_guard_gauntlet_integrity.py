@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -612,6 +613,34 @@ def test_a_credential_piped_through_base64_with_a_trailing_newline_is_redacted()
     whole = flat[: (len(raw) // 3) * 4]
     assert whole not in redacted
     assert "<anthropic_api_key-redacted>" in redacted
+
+
+def test_a_credential_named_in_a_property_name_is_redacted() -> None:
+    """A tool that keys its report by the value reports the key in a property name.
+
+    ``jq`` grouping a report by token, a cache keyed by credential and an
+    environment map inverted for lookup all put the secret on the left of the
+    colon. A redaction that rewrites only values hands the public bundle a
+    readable key, so the mapping is rewritten on both sides.
+    """
+    from ci.gauntlet.case_helpers import add_credential_redactions
+
+    key = "sk-ant-api03-" + "aB3dE6gH9jK2mN5p" * 7
+    replacements: dict = {}
+    add_credential_redactions(replacements, {"ANTHROPIC_API_KEY": key})
+    redacted = redact_value({"tokens": {key: {"source": key}}}, replacements)
+    assert key not in json.dumps(redacted)
+    assert redacted == {"tokens": {"<anthropic_api_key-redacted>": {"source": "<anthropic_api_key-redacted>"}}}
+
+
+def test_a_fixture_path_in_a_property_name_is_aliased() -> None:
+    """A per-file report names the file in its property name, and the alias belongs there too."""
+    workspace = Path("/fixture/home/project")
+    replacements = fixture_path_aliases({str(workspace): "{{workspace}}"})
+    report = {str(workspace / "src/app.ts"): {"errors": 0}}
+    redacted = redact_value(report, replacements)
+    assert str(workspace) not in json.dumps(redacted)
+    assert redacted == {"{{workspace}}/src/app.ts": {"errors": 0}}
 
 
 def test_a_seeded_login_file_withholds_the_credential_variable() -> None:
