@@ -41,10 +41,27 @@ pub fn executable_name(value: Option<&str>) -> Option<String> {
 /// arguments away and leaves a command no parser can model.
 pub(crate) const SHELL_OPERATORS: &[char] = &[';', '&', '|', '<', '>', '(', ')'];
 
-/// Whether an unquoted `\` escapes `next` while backslashes are otherwise kept
-/// literal. `false` means it is a path separator.
-pub(crate) fn escapes_shell_operator(next: Option<char>) -> bool {
-    next.is_some_and(|value| SHELL_OPERATORS.contains(&value))
+/// Whether an unquoted `\` escapes the operator that starts `rest` while
+/// backslashes are otherwise kept literal. `false` keeps the backslash literal
+/// and lets the operator act as one.
+///
+/// A Windows agent may run this text in PowerShell or cmd, where `\` is never
+/// an escape: `echo hi \; Remove-Item C:\Users\dev` runs `Remove-Item` there.
+/// The escape is read only where both readings name the same programs, which
+/// is when nothing but blanks follows the operator before the text ends or a
+/// real `;`, `|`, `&` or newline separates the next command. Anything else,
+/// including a bare carriage return PowerShell may read as a line break, keeps
+/// the literal reading, so the operator still splits the line and every word
+/// after it is reviewed as a command.
+pub(crate) fn escapes_shell_operator(rest: &[char]) -> bool {
+    let Some((operator, after)) = rest.split_first() else {
+        return false;
+    };
+    SHELL_OPERATORS.contains(operator)
+        && after
+            .iter()
+            .find(|value| !matches!(value, ' ' | '\t'))
+            .is_none_or(|value| matches!(value, ';' | '|' | '&' | '\n'))
 }
 
 /// `_windows_shell_tokens` (:36-92). Quoted POSIX escapes preserved; unquoted
@@ -56,8 +73,11 @@ pub fn windows_shell_tokens(command: &str) -> (Vec<String>, bool) {
     let mut started = false;
     let mut quote = '\0';
     let mut escaped = false;
-    let mut characters = command.chars().peekable();
-    while let Some(current) = characters.next() {
+    let chars: Vec<char> = command.chars().collect();
+    let mut index = 0usize;
+    while index < chars.len() {
+        let current = chars[index];
+        index += 1;
         if escaped {
             if quote == '"' && !['"', '\\', '$', '`'].contains(&current) {
                 token.push('\\');
@@ -95,8 +115,9 @@ pub fn windows_shell_tokens(command: &str) -> (Vec<String>, bool) {
             quote = '"';
             started = true;
         } else if current == '\\' {
-            if escapes_shell_operator(characters.peek().copied()) {
-                token.push(characters.next().expect("peeked operator"));
+            if escapes_shell_operator(&chars[index..]) {
+                token.push(chars[index]);
+                index += 1;
             } else {
                 token.push('\\');
             }

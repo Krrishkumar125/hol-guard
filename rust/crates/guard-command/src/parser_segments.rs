@@ -79,10 +79,11 @@ fn split_execution_segments_inner(
         match current {
             '\'' => quote = Quote::Single,
             '"' => quote = Quote::Double,
-            // The escape that survives `preserve_unquoted_backslash`: the
-            // operator belongs to the word, so it never separates commands.
+            // The escape that survives `preserve_unquoted_backslash`: an
+            // operator that ends the command belongs to the word, so it never
+            // separates commands.
             '\\' if preserve_unquoted_backslash => {
-                if crate::command_tokens::escapes_shell_operator(chars.get(index + 1).copied()) {
+                if crate::command_tokens::escapes_shell_operator(&chars[index + 1..]) {
                     escaped = true;
                 }
             }
