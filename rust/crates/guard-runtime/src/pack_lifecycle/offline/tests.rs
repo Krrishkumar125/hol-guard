@@ -74,6 +74,11 @@ fn offline_cleanup_fences_live_leases_and_collects_orphans_after_crash() {
     std::fs::write(&orphan, b"orphan").unwrap();
     let interrupted = directory.join("objects/.obj-abcdefgh");
     std::fs::write(&interrupted, b"interrupted").unwrap();
+    // An abandoned pack preparation write counts toward the budget too.
+    let preparing = directory.join("objects/.prepare-4242-7");
+    std::fs::write(&preparing, b"preparing").unwrap();
+    let unrelated = directory.join("objects/.prepare-x-7");
+    std::fs::write(&unrelated, b"unrelated").unwrap();
     let request =
         json!({"directory":directory,"key":"01".repeat(32),"activations":[],"maximum_bytes":0});
     let lease = std::fs::File::open(directory.join(".cache-lease")).unwrap();
@@ -82,9 +87,11 @@ fn offline_cleanup_fences_live_leases_and_collects_orphans_after_crash() {
     assert!(orphan.exists());
     drop(lease); // kernel lease recovery, including process termination
     let result = cleanup::run(&request).unwrap();
-    assert_eq!(result["evicted"], 2);
+    assert_eq!(result["evicted"], 3);
     assert!(!orphan.exists());
     assert!(!interrupted.exists());
+    assert!(!preparing.exists());
+    assert!(unrelated.exists());
     assert_eq!(cleanup::run(&request).unwrap()["evicted"], 0);
 }
 

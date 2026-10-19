@@ -238,6 +238,13 @@ pub(super) fn run(input: &Value) -> Result<Value> {
                             .bytes()
                             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
                 })
+            }) || name.strip_prefix(".prepare-").is_some_and(|tail| {
+                // pack_preparation::cache writes `.prepare-<pid>-<serial>`.
+                tail.split_once('-').is_some_and(|(pid, serial)| {
+                    [pid, serial].iter().all(|part| {
+                        (1..=20).contains(&part.len()) && part.bytes().all(|b| b.is_ascii_digit())
+                    })
+                })
             });
             if id.is_none() && !temporary {
                 continue;
