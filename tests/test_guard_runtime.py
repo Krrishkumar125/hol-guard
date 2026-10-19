@@ -174,6 +174,17 @@ def _isolate_codex_runtime_marker(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CODEX_HOME", raising=False)
 
 
+def _claude_pending_permission_state_key(session_id: str, artifact_id: str) -> str:
+    """The key the resident derives for a Claude pending permission.
+
+    Spelled out here so the legacy-row tests below can seed the exact row the
+    resident will look up for an artifact.
+    """
+
+    fingerprint = hashlib.sha256(artifact_id.encode("utf-8")).hexdigest()[:24]
+    return f"claude_pending_permission:{session_id}:{fingerprint}"
+
+
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -10032,7 +10043,7 @@ def test_guard_hook_claude_ask_user_question_unsigned_legacy_pending_state_canno
     session_id = "session-claude-legacy-pending"
     artifact_id = "claude-code:runtime:file-read:.env"
     now = "2026-04-24T00:00:00+00:00"
-    pending_key = guard_commands_module._claude_pending_permission_state_key(session_id, artifact_id)
+    pending_key = _claude_pending_permission_state_key(session_id, artifact_id)
     store.set_sync_payload(
         pending_key,
         {
@@ -10105,7 +10116,7 @@ def test_guard_hook_claude_ask_user_question_unsigned_bound_pending_cannot_persi
     now = "2026-04-24T00:00:00+00:00"
     approval_code = "abc123abc123"
     approval_question = guard_commands_module._claude_guard_approval_question_text(approval_code)
-    pending_key = guard_commands_module._claude_pending_permission_state_key(session_id, artifact_id)
+    pending_key = _claude_pending_permission_state_key(session_id, artifact_id)
     store.set_sync_payload(
         pending_key,
         {
