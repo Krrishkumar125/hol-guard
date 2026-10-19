@@ -171,12 +171,15 @@ def approval_context_token_is_well_formed(token: object, *, keep_prefixed_when_u
     shown to be a context token is treated as a legacy hash and never mints
     reuse on its own.  A policy key works the other way round, because a
     harness or global row drops a hash that is not a token and so binds to the
-    whole artifact family.  ``keep_prefixed_when_unavailable`` lets that caller
-    keep any value carrying the token prefix while the authority is down,
-    which keeps the narrower key.
+    whole artifact family, and the stored Claude permission key would fall
+    back to an exact-command key that omits the policy and sandbox components.
+    ``keep_prefixed_when_unavailable`` lets those callers keep any value
+    carrying the token prefix while the authority is down, which keeps the
+    narrower key.
     """
 
-    if not isinstance(token, str) or not token:
+    # Only the prefix is read here, so a legacy hash costs no native round trip.
+    if not isinstance(token, str) or not token.startswith(APPROVAL_CONTEXT_TOKEN_PREFIX):
         return False
     try:
         result = _context_digest_result(
@@ -184,7 +187,7 @@ def approval_context_token_is_well_formed(token: object, *, keep_prefixed_when_u
             {"token": token},
         )
     except (NativeContextDigestUnavailableError, TypeError):
-        return keep_prefixed_when_unavailable and token.startswith(APPROVAL_CONTEXT_TOKEN_PREFIX)
+        return keep_prefixed_when_unavailable
     return result.get("approval_context_token_well_formed") is True
 
 

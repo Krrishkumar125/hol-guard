@@ -446,9 +446,13 @@ def _persist_claude_native_permission_policy(
     )
     # V1 approval-context tokens already bind the full tool identity and are
     # the only values that may authorize P44 approval reuse.  Keep the legacy
-    # exact-command key only for legacy callers/blocks.
+    # exact-command key only for legacy callers/blocks.  The command key omits
+    # the token's policy and sandbox components, so a token the native check
+    # cannot answer for is kept rather than swapped for the wider key.
     stored_artifact_hash = (
-        artifact_hash if approval_context_token_is_well_formed(artifact_hash) else exact_artifact_hash or artifact_hash
+        artifact_hash
+        if approval_context_token_is_well_formed(artifact_hash, keep_prefixed_when_unavailable=True)
+        else exact_artifact_hash or artifact_hash
     )
     try:
         if artifact_type == "tool_action_request" and exact_artifact_hash is None:
