@@ -112,6 +112,9 @@ pub(crate) fn verify(
     {
         return None;
     }
+    // OMP may report the physical cwd through macOS's /tmp alias. Match the
+    // same canonical project used by the authenticated invocation allocation.
+    let project = Path::new(&args[13]).canonicalize().ok()?;
     store.require_guard_home(&request.guard_home).ok()?;
     let store_path = Path::new(&request.guard_home).join("guard.db");
     let journal = BashOperationJournal::open_for_delivery(
@@ -123,7 +126,7 @@ pub(crate) fn verify(
     let clean_completion = journal
         .confirm_delivery_call(
             &request.harness,
-            &args[13],
+            project.to_str()?,
             &observation.tool_call_id,
             observation.exit_code,
         )

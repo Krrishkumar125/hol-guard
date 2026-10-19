@@ -84,6 +84,17 @@ fn bash_post_delivery_requires_signed_matching_call_and_never_acknowledges_it() 
     assert!(verify(&post, &store).is_none());
     assert_eq!(execute(&execution, &store).status, "ok");
     assert!(verify(&post, &store).unwrap().clean_completion());
+    let physical = std::fs::canonicalize(&request.workspace).unwrap();
+    let physical = physical.to_str().unwrap();
+    let alias = physical.strip_prefix("/private").unwrap_or(physical);
+    assert_ne!(alias, physical, "fixture must exercise a macOS path alias");
+    let mut aliased = post.clone();
+    aliased.cwd = Some(alias.into());
+    aliased.payload["tool_input"]["command"] = json!(post.payload["tool_input"]["command"]
+        .as_str()
+        .unwrap()
+        .replace(&format!("'{}'", request.workspace), &format!("'{alias}'")));
+    assert!(verify(&aliased, &store).unwrap().clean_completion());
     for variant in [
         "call",
         "unknown-call",

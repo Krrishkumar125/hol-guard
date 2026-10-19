@@ -17,8 +17,8 @@ import pytest
 
 from ci.gauntlet.bash_owner_wrapper import normalized_argv
 from ci.gauntlet.case_helpers import _fixture_replacements
-from ci.gauntlet.contained_core import request_proofs
-from ci.gauntlet.evidence import assess_case
+from ci.gauntlet.contained_core import contained_calls, request_proofs
+from ci.gauntlet.evidence import assess_case, reconcile
 from ci.gauntlet.fixtures import create_fixture
 from ci.gauntlet.input_evidence import input_digest
 from tests.test_guard_gauntlet_approval_retry_omp import _case, _scenario
@@ -125,6 +125,17 @@ def _owner_case(tmp_path: Path):
 def test_real_owner_result_and_authenticated_lifecycle_are_required_together(tmp_path: Path):
     result = assess_case(_scenario(), _owner_case(tmp_path))
     assert result["outcome"] == "pass", result
+
+
+def test_protection_consent_lane_requires_the_same_complete_owner_binding(tmp_path: Path):
+    case = _owner_case(tmp_path)
+    calls, errors = reconcile(case["events"])
+    assert not errors
+    assert contained_calls("deny", case, calls) == ({}, None)
+    bound, error = contained_calls("deny", case, calls, approval_retry=True)
+    assert error is None and set(bound) == {"c1", "c2"}
+    case["contained_request_proofs"][0]["request_sha256"] = "0" * 64
+    assert contained_calls("deny", case, calls, approval_retry=True)[1] is not None
 
 
 @pytest.mark.parametrize("damage", ["request", "receipt", "post", "presentation", "consent", "journal", "report"])

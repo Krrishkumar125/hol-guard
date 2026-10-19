@@ -337,7 +337,7 @@ def contained_calls(
     Only a call Guard denied for containment whose host input differs from the reviewed input is a
     contained rewrite; any other deny keeps the ordinary judgement and still counts as interruption.
     """
-    if expectation != "allow":
+    if expectation != "allow" and not approval_retry:
         return {}, None
     observations = [row for row in case.get("guard_observations", []) if isinstance(row, dict)]
     proofs = case.get("contained_request_proofs", [])
@@ -348,6 +348,8 @@ def contained_calls(
         rows = [row for row in observations if row.get("tool_call_id") == call.get("id")]
         pre = [row for row in rows if row.get("event") == "PreToolUse"]
         reviewed = pre[0].get("input") if len(pre) == 1 else None
+        if expectation != "allow" and (not pre or pre[0].get("reason_code") != "native_bash_owner_required"):
+            continue
         if (
             not isinstance(reviewed, dict)
             or pre[0].get("decision") != "deny"
