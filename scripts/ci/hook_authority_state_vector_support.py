@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import sys
 from pathlib import Path
 
@@ -25,6 +26,27 @@ CODE = "0123456789ab"
 
 def key_b64() -> str:
     return base64.urlsafe_b64encode(KEY).rstrip(b"=").decode("ascii")
+
+
+def cursor_fingerprint(command: str) -> str:
+    """The digest both Cursor state keys are built from.
+
+    The derivation lives here rather than in the CLI module it was recorded
+    from: the resident names these rows now, and the recorded vectors are the
+    independent account of what the retired Python wrote.
+    """
+
+    from codex_plugin_scanner.guard.adapters.cursor_native_approval import normalize_cursor_shell_command
+
+    return hashlib.sha256(normalize_cursor_shell_command(command).encode("utf-8")).hexdigest()[:24]
+
+
+def cursor_pending_key(conversation_id: str, command: str) -> str:
+    return f"cursor_pending_shell:{conversation_id}:{cursor_fingerprint(command)}"
+
+
+def cursor_allow_key(conversation_id: str, command: str) -> str:
+    return f"cursor_native_shell_allow:{conversation_id}:{cursor_fingerprint(command)}"
 
 
 def pending_keys(session_id: str, *artifact_ids: str) -> list[str]:
