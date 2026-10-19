@@ -85,6 +85,17 @@ def test_linux_wheel_build_targets_the_host_without_a_macos_deployment_target(
     assert "MACOSX_DEPLOYMENT_TARGET" not in env
 
 
+def test_linux_refuses_a_release_wheel_whose_script_still_runs_the_size_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(qualify_setup.platform, "machine", lambda: "x86_64")
+    script = b"python scripts/ci/check_wheel_size.py --dist-dir native-dist\n"
+    monkeypatch.setattr(qualify_setup, "git_show", lambda *_a, **_k: script)
+    with pytest.raises(RuntimeError, match="development profile or pass --wheel"):
+        qualify_setup.ensure_wheel(tmp_path / "cache", tmp_path / "repo", SHA, tmp_path / "run", release_profile=True)
+
+
 def test_gnu_sed_detection_prefers_path_then_gnubin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     gnubin = tmp_path / "gnubin"
     gnubin.mkdir()
