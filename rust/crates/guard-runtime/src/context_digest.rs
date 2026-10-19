@@ -506,6 +506,15 @@ fn evaluate_request(
                 guard_command::mcp_arguments::redact_json(material).map_err(|_| ERR_ARGUMENTS)?,
             );
         }
+        ContextDigestKindV1::NativeBashReplyValidation {
+            reply_kind,
+            material,
+            request,
+        } => {
+            result.native_bash_reply_valid = Some(crate::native_bash_reply_validation::validate(
+                reply_kind, material, request,
+            ));
+        }
         ContextDigestKindV1::McpLaunchEnvironment {
             inherited,
             configured,
@@ -838,6 +847,7 @@ fn evaluate_context_digest_request_inner(
         mcp_tool_identity: None,
         browser_mcp: None,
         mcp_redacted_value: None,
+        native_bash_reply_valid: None,
         runtime_identity: None,
         runtime_identity_match: None,
         runtime_identity_reusable: None,

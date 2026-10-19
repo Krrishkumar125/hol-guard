@@ -523,6 +523,7 @@ mod mcp_tool_policy_revalidate;
 mod memory_pattern;
 #[cfg(target_os = "macos")]
 mod native_bash_client;
+mod native_bash_reply_validation;
 mod native_bash_review_descriptor;
 mod native_bash_review_scope;
 mod native_decision_receipt;

@@ -42,9 +42,18 @@ pub(crate) fn run(
     };
     let state_base = state_base.to_owned();
     let timeout = crate::managed_resident::client_timeout(&payload);
-    wait_for_owner(alive, host, move || {
+    let request = value
+        .get("request")
+        .cloned()
+        .ok_or("native_bash_client_request_invalid")?;
+    let response = wait_for_owner(alive, host, move || {
         crate::managed_resident::client_request(&state_base, &payload, timeout)
-    })
+    })?;
+    let reply = crate::strict_json_value(&response)?;
+    if !crate::native_bash_reply_validation::bound_execution(&reply, &request) {
+        return Err("native_bash_response_invalid".into());
+    }
+    Ok(response)
 }
 
 fn owner_refused_before_request(value: &serde_json::Value) -> Result<Vec<u8>, String> {

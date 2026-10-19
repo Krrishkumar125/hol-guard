@@ -126,6 +126,9 @@ def test_runtime_without_pending_lineage_capability_is_not_used(monkeypatch):
     with pytest.raises(bridge.NativeBashError, match="native_bash_owner_unavailable"):
         bridge.runtime_status()
     status.capabilities.features.add("native-bash-invocation-lifetime-v1")
+    with pytest.raises(bridge.NativeBashError, match="native_bash_owner_unavailable"):
+        bridge.runtime_status()
+    status.capabilities.features.add("native-bash-reply-validation-v1")
     assert bridge.runtime_status() is status
 
 

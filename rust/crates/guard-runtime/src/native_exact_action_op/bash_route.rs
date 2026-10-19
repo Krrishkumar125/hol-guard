@@ -85,7 +85,14 @@ pub(crate) fn prepare_request(
         prepare(request, store)
     };
     let (status, code, payload) = match result {
-        Ok(payload) => ("ok", "ok".to_owned(), Some(payload)),
+        Ok(payload) => {
+            let value =
+                serde_json::to_value(&payload).map_err(|_| "native_bash_response_invalid")?;
+            if !crate::native_bash_reply_validation::prepared(&value) {
+                return Err("native_bash_response_invalid".into());
+            }
+            ("ok", "ok".to_owned(), Some(payload))
+        }
         Err(code) => (failure_status(&code), code, None),
     };
     crate::encode_response(&NativeBashPrepareResultV1 {

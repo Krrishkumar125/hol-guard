@@ -7,6 +7,7 @@ import os
 import re
 import uuid
 from pathlib import Path
+from typing import cast
 
 from .codex_hook_launch_runtime import run_isolated_hook_process
 from .native_context import _canonical_request_sha256
@@ -53,6 +54,7 @@ def runtime_status() -> NativeRuntimeStatus:
             HOST_LIVENESS_FEATURE,
             "native-bash-invocation-lifetime-v1",
             "native-bash-review-lineage-v1",
+            "native-bash-reply-validation-v1",
             "resident-protocol-v2",
         }.issubset(status.capabilities.features)
     ):
@@ -150,8 +152,6 @@ def observe_host(capture: dict[str, object], *, cwd: Path) -> dict[str, object]:
 
 
 def prepare(request: dict[str, object], *, guard_home: Path) -> dict[str, object]:
-    from .native_bash_reply import validate_prepared
-
     status = runtime_status()
     _ = encode(request)
     result = _resident_request(
@@ -170,7 +170,7 @@ def prepare(request: dict[str, object], *, guard_home: Path) -> dict[str, object
     validate_reply(result, request, kind="prepare", statuses=frozenset({"ok", "error", "denied", "unavailable"}))
     if result["status"] != "ok":
         raise NativeBashError(str(result["code"]))
-    return validate_prepared(result["payload"])
+    return cast(dict[str, object], result["payload"])
 
 
 def verify_review_request(request: dict[str, object], *, guard_home: Path) -> None:
@@ -211,8 +211,6 @@ def execute(
     cwd: Path,
     host_owner_pid: int | None = None,
 ) -> dict[str, object]:
-    from .native_bash_reply import validate_executed
-
     status = runtime_status()
     assert status.identity is not None
     timeout_ms = request.get("timeout_ms")
@@ -252,7 +250,6 @@ def execute(
         statuses=frozenset({"ok", "error", "recorded"}),
         extra=frozenset({"grant_claimed", "dispatch_acknowledged", "replayed", "operation", "review_lineage"}),
     )
-    validate_executed(result, request)
     return result
 
 
