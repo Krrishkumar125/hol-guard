@@ -342,6 +342,9 @@ mod shell_secret_read_support;
 pub mod shell_secret_reads;
 mod shell_structure;
 pub mod source_cli;
+pub mod tool_action_identity;
+#[cfg(test)]
+mod tool_action_identity_tests;
 pub mod typescript_launch_evidence;
 mod unmodeled_shell_artifact;
 

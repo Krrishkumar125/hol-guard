@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from pathlib import Path
 
 from ...models import GuardArtifact
+from ...native_tool_action_identity import tool_action_request_artifact_id
 from ...redaction import redact_text
 from ..command_decision_adapter import effect_decision_to_dict
 from ..command_evaluation import CompositeCommandEvaluation, evaluate_command
@@ -117,21 +116,9 @@ def build_tool_action_request_artifact(
         command_rule_matches = []
         risk_classes = list(risk_classes_for_command_action(request.action_class))
     wrapper_chain = tuple(dict.fromkeys((*command.wrapper_chain, *request.wrapper_chain)))
-    fingerprint_payload = {
-        "harness": harness,
-        "tool_name": request.normalized_tool_name,
-        "command_text": request.command_text,
-        "action_class": request.action_class,
-        "shell_execution_context_hash": request.shell_execution_context_hash,
-        "interpreter_executable_identities": request.interpreter_executable_identities,
-    }
-    if request.script_read_identity_sha256 is not None:
-        fingerprint_payload["script_read_identity_sha256"] = request.script_read_identity_sha256
-    if request.restricted_profile_version is not None:
-        fingerprint_payload["restricted_profile_version"] = request.restricted_profile_version
-    if request.pytest_config_identity_sha256 is not None:
-        fingerprint_payload["pytest_config_identity_sha256"] = request.pytest_config_identity_sha256
-    fingerprint = hashlib.sha256(json.dumps(fingerprint_payload, sort_keys=True).encode("utf-8")).hexdigest()
+    # The artifact id is the key a saved approval for this action is stored
+    # under, so the resident derives it and this side never recomputes it.
+    artifact_id = tool_action_request_artifact_id(harness, request, source_scope=source_scope)
     display_command_text = redact_text(request.command_text).text
     display_raw_command_text = (
         redact_text(request.raw_command_text).text if request.raw_command_text is not None else None
@@ -160,7 +147,7 @@ def build_tool_action_request_artifact(
             "effective_cwd": effective_cwds[-1] if effective_cwds else None,
         }
     return GuardArtifact(
-        artifact_id=f"{harness}:{source_scope}:tool-action:{fingerprint}",
+        artifact_id=artifact_id,
         name=f"{request.tool_name} {request.action_class}",
         harness=harness,
         artifact_type="tool_action_request",

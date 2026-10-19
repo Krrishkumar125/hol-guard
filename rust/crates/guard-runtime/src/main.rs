@@ -682,6 +682,7 @@ mod supply_chain_eval_caller;
 mod supply_chain_eval_rounds;
 mod supply_chain_eval_seams;
 mod supply_chain_eval_transport;
+mod tool_action_identity_op;
 mod totp;
 #[cfg(windows)]
 mod windows_node_build;

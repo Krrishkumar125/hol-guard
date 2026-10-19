@@ -42,6 +42,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::MCP_CLASSIFICATION_FEATURE,
     guard_contracts::PROMPT_ANALYZE_FEATURE,
     guard_contracts::DATA_FLOW_ANALYZE_FEATURE,
+    guard_contracts::TOOL_ACTION_REQUEST_IDENTITY_FEATURE,
     guard_contracts::POLICY_DECISION_LOOKUP_FEATURE,
     guard_contracts::RUNTIME_SAVED_REUSE_FEATURE,
     guard_contracts::POLICY_LOOKUP_MEMORY_FEATURE,

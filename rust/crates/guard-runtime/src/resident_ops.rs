@@ -574,6 +574,9 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::DataFlowAnalyze(request) => {
                 crate::data_flow_analyze_op::evaluate_data_flow_analyze(&request)
             }
+            ResidentOperationV1::ToolActionRequestIdentity(request) => {
+                crate::tool_action_identity_op::evaluate_tool_action_request_identity(&request)
+            }
             #[cfg(not(unix))]
             ResidentOperationV1::ContainedNodeExecute(_)
             | ResidentOperationV1::ContainedTypescriptExecute(_)
