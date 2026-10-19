@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from .commands_support_hook_payload import _hook_action_envelope
     from .commands_support_hook_state import (
         _append_cursor_pending_shell_key,
-        _claude_pending_permission_state_key,
         _cursor_conversation_id,
         _cursor_pending_shell_state_key,
         _cursor_shell_command_from_payload,
@@ -580,7 +579,7 @@ def _persist_claude_native_permission_for_runtime_artifact(
         _remove_claude_pending_permission(
             store,
             session_id=session_id,
-            pending_key=_claude_pending_permission_state_key(session_id, artifact.artifact_id),
+            artifact_id=artifact.artifact_id,
         )
     return True, saved_policy
 
