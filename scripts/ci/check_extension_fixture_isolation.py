@@ -165,7 +165,7 @@ def exercise(root: Path, target: Path, results: list[dict[str, object]]) -> None
                     "import json,sys; from pathlib import Path; "
                     "sys.path.insert(0,sys.argv[3]); "
                     "from codex_plugin_scanner.guard.extension_builder.bundle_baseline import authoring_request; "
-                    "from extension_development_staging import development_release; "
+                    "from prepare_extension_contribution import _development_release as development_release; "
                     "json.dump(authoring_request('test',json.load(sys.stdin),Path(sys.argv[1]),"
                     "installed=False,cache_directory=Path(sys.argv[2]).resolve(),"
                     "development=development_release),sys.stdout)",
