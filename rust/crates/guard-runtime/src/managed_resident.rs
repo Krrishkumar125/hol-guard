@@ -148,10 +148,8 @@ fn combine_liveness(
 }
 
 pub(crate) fn stop_managed(state_base: &Path, retire_clients: bool) -> Result<(), String> {
-    // Materialize the current runtime scope even when no resident state is
-    // present.  This keeps the stop command's authenticated, private-home
-    // contract deterministic for callers that use it to initialize a fresh
-    // scope before publishing test or recovery state.
+    // Materialize the private runtime scope even without resident state, so
+    // stop can initialize it before publishing test or recovery state.
     let digest = runtime_digest()?;
     let _ = state_scope(state_base, &digest)?;
     let request = br#"{"operation":"shutdown","request":{}}"#;

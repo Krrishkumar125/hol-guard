@@ -56,6 +56,8 @@ pub(crate) fn capture(
         #[cfg(target_os = "macos")]
         CaptureMode::Hardened => (None, Some(hardened_spawn::Prepared::prepare(&command)?)),
     };
+    #[cfg(not(target_os = "macos"))]
+    let _: Option<()> = hardened;
     crate::source_launch::validate_deferred_outputs(&isolation, source_gate.as_ref())?;
     let window = RequestWindow { deadline, cancel };
     window.require_launch()?;

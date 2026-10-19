@@ -13239,6 +13239,9 @@ function hasCompleteScopeContractBinding(item) {
   return typeof item.scope_contract_version === "string" && item.scope_contract_version.length > 0 && typeof item.scope_contract_digest === "string" && item.scope_contract_digest.length > 0;
 }
 function declaredScopesForAction(item, action) {
+  if (action === "allow" && item.once_only_reason === "script_execution_binding_unavailable") {
+    return [];
+  }
   if (action === "allow" && item.scope_restrictions?.includes("retry_cannot_reuse_approval") && item.exact_action_persistence_eligible !== true) {
     return [];
   }
@@ -14268,7 +14271,7 @@ function searchQueue(items, term) {
   });
 }
 function retryCannotReuseApproval(item) {
-  return item.scope_restrictions?.includes("retry_cannot_reuse_approval") === true;
+  return item.once_only_reason === "script_execution_binding_unavailable" || item.scope_restrictions?.includes("retry_cannot_reuse_approval") === true;
 }
 function oneTimeRetryWindowMinutes(item) {
   return item.artifact_id.includes(":native-pretool:") ? 5 : 15;
@@ -14289,9 +14292,15 @@ function legacyRequestNextStep(item, harness) {
   return labels === null ? retry : `${retry} To let ${harness} run commands like this, set ${labels} to Allow in Extensions.`;
 }
 function retryCannotReuseApprovalHint(item, harness) {
+  if (item.once_only_reason === "script_execution_binding_unavailable") {
+    return onceOnlyReasonCopy(item.once_only_reason);
+  }
   return `An older version of Guard recorded this request, so Run once cannot reach ${harness}'s retry. ${legacyRequestNextStep(item, harness)}`;
 }
 function retryBlockedApprovalCopy(item, harness) {
+  if (item.once_only_reason === "script_execution_binding_unavailable") {
+    return `Decision recorded. ${onceOnlyReasonCopy(item.once_only_reason)}`;
+  }
   return `Decision recorded. ${legacyRequestNextStep(item, harness)}`;
 }
 function receiptDescribesRequest(item, receipt) {
