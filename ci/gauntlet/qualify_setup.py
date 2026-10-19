@@ -38,7 +38,7 @@ GNU_SED_DIRS = (
     Path("/usr/local/opt/gnu-sed/libexec/gnubin"),
 )
 LOCK_DIR = "ci/pi-exact-continuation"
-# The local Linux wheel is never published, so the release size budgets do not cover it.
+# The local Linux wheel is a host glibc build that is never published.
 LINUX_LOCAL_TAG = "linux_x86_64"
 
 

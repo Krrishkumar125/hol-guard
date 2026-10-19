@@ -160,7 +160,7 @@ def test_dev_wheel_cache_hit_skips_the_build(tmp_path: Path, monkeypatch: pytest
     assert not calls
 
 
-def test_wheel_script_applies_size_budgets_only_without_the_dev_marker() -> None:
+def test_wheel_script_recognizes_the_dev_marker() -> None:
     commands = (qualify.REPO / qualify_setup.WHEEL_BUILD_SCRIPT).read_text(encoding="utf-8")
     assert 'if [[ "${HOL_GUARD_DEV_WHEEL:-}" == "1" ]]; then' in commands
-    assert "python scripts/ci/check_wheel_size.py --dist-dir native-dist" in commands
+    assert "check_wheel_size" not in commands

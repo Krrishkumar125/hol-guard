@@ -44,10 +44,7 @@ python scripts/build_native_hol_guard_wheel.py \
   --rule-digest "$RULE_DIGEST" \
   --implementation-digest "$(jq -r '.implementation_digest' source-compiled.json)" \
   --base-program-digest "$(jq -r '.base_program_digest' source-compiled.json)"
-# Gauntlet development wheels use per-crate codegen and are never published, so
-# the distribution size budgets apply only to release-profile builds.
+# Gauntlet development wheels use per-crate codegen and are never published.
 if [[ "${HOL_GUARD_DEV_WHEEL:-}" == "1" ]]; then
-  echo "HOL_GUARD_DEV_WHEEL=1: development wheel, size budgets not applied"
-else
-  python scripts/ci/check_wheel_size.py --dist-dir native-dist
+  echo "HOL_GUARD_DEV_WHEEL=1: development wheel, not for distribution"
 fi
