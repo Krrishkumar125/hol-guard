@@ -250,6 +250,9 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                     "envelope_digest": verified.envelope_digest,
                 }))
             }
+            ResidentOperationV1::DirectoryTrust(request) => {
+                crate::directory_trust::evaluate_directory_trust_request(&request)
+            }
             ResidentOperationV1::ContextDigest(request) => {
                 crate::context_digest::evaluate_context_digest_request(&request)
             }
@@ -633,6 +636,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::NativeBashAck(request) => Some(&request.guard_home),
         ResidentOperationV1::NativeBashReviewCheck(request) => Some(&request.guard_home),
         ResidentOperationV1::ArchiveAcquisition(request) => Some(&request.guard_home),
+        ResidentOperationV1::DirectoryTrust(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirect(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirectEvidenceDrain(request) => Some(&request.guard_home),
         ResidentOperationV1::McpRelayDecide(request) => Some(&request.guard_home),

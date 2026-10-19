@@ -414,6 +414,22 @@ pub struct HookReviewResponseV1 {
     pub observed_policy_action: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub observe_mode: bool,
+    /// Whether the harness must keep this output away from the model. It is
+    /// the edge's own answer rather than something a receiver infers from
+    /// `decision` and `model_output_action`, so a later verdict or output
+    /// action cannot change what masking means without changing it here.
+    ///
+    /// It is always serialized, including when false: a receiver that cannot
+    /// find the answer withholds the output rather than guessing one.
+    #[serde(default)]
+    pub output_masked: bool,
+}
+
+/// Masking follows the verdict and the output action together: a denial masks,
+/// and so does an output action that withholds the original text. An excerpt
+/// replacement is not masking -- the model still reads what the review passed.
+fn masks_output(decision: &str, model_output_action: &str) -> bool {
+    decision == "deny" || model_output_action == "block"
 }
 
 impl HookReviewResponseV1 {
@@ -429,6 +445,7 @@ impl HookReviewResponseV1 {
             policy_action: Some("allow".into()),
             observed_policy_action: None,
             observe_mode: false,
+            output_masked: masks_output("allow", "allow_original"),
         }
     }
 
@@ -444,6 +461,7 @@ impl HookReviewResponseV1 {
             policy_action: None,
             observed_policy_action: None,
             observe_mode: false,
+            output_masked: masks_output("deny", "block"),
         }
     }
 
@@ -463,6 +481,7 @@ impl HookReviewResponseV1 {
             policy_action: None,
             observed_policy_action: None,
             observe_mode: false,
+            output_masked: masks_output("allow", "replace_with_reviewed_excerpt"),
         }
     }
 
@@ -480,7 +499,17 @@ impl HookReviewResponseV1 {
         self.policy_action = Some("allow".into());
         self.observed_policy_action = Some("block".into());
         self.observe_mode = true;
+        self.seal_output_mask();
         self
+    }
+
+    /// Re-derive the masking answer from the current verdict and output action.
+    ///
+    /// Policy may rewrite either one after the review built this response, so
+    /// the resident seals the answer on the way out instead of trusting every
+    /// writer to keep a derived field in step.
+    pub fn seal_output_mask(&mut self) {
+        self.output_masked = masks_output(&self.decision, &self.model_output_action);
     }
 }
 
@@ -514,6 +543,49 @@ mod tests {
         assert!(encoded.get("reason").is_none());
         assert_eq!(encoded["decision"], "allow");
         assert_eq!(encoded["reason_code"], "output_scan_allow");
+    }
+
+    #[test]
+    fn every_edge_response_carries_its_own_masking_answer() {
+        // Masking is the edge's answer, so it must hold for every response the
+        // edge can build, including one an observe-mode downgrade rewrote.
+        let excerpt = HookReviewResponseV1::reviewed_excerpt("excerpt", "why", "text".into());
+        let responses = [
+            HookReviewResponseV1::allow("output_scan_allow"),
+            HookReviewResponseV1::deny("source_secret_match", "blocked"),
+            excerpt,
+            HookReviewResponseV1::deny("source_secret_match", "blocked").observed(None),
+        ];
+        for response in responses {
+            assert_eq!(
+                response.output_masked,
+                masks_output(&response.decision, &response.model_output_action),
+                "{} / {}",
+                response.decision,
+                response.model_output_action
+            );
+        }
+    }
+
+    #[test]
+    fn sealing_follows_a_verdict_a_later_writer_rewrote() {
+        // Observe mode rewrites a denial into an allow after the review built
+        // the response. The seal is what keeps the masking answer honest.
+        let mut response = HookReviewResponseV1::deny("source_secret_match", "blocked");
+        assert!(response.output_masked);
+        response.decision = "allow".into();
+        response.model_output_action = "allow_original".into();
+        response.seal_output_mask();
+        assert!(!response.output_masked);
+    }
+
+    #[test]
+    fn only_a_denial_or_a_withheld_output_masks() {
+        assert!(masks_output("deny", "block"));
+        assert!(masks_output("allow", "block"));
+        assert!(!masks_output("allow", "allow_original"));
+        // An excerpt is what the review passed, so the model may read it.
+        assert!(!masks_output("allow", "replace_with_reviewed_excerpt"));
     }
 
     #[test]

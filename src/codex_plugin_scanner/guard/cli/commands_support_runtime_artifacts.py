@@ -382,7 +382,6 @@ def _hook_runtime_artifact_with_native(
                     prompt_text=prompt_text,
                     home_dir=home_dir,
                     config_path=config_path,
-                    guard_home=guard_home,
                 )
                 if attachment_artifact is not None:
                     return attachment_artifact

@@ -743,12 +743,20 @@ jobs:
           uv run --no-sync python -m build
           mv pyproject.toml.bak pyproject.toml
       - name: Verify distributions
+        env:
+          CHANNEL: ${{ steps.version.outputs.channel }}
         run: |
           uv run --no-sync twine check dist/*
           python "$HOL_GUARD_WHEEL_SIZE_CHECKER" --dist-dir dist
           python3 scripts/verify_guard_wheel_entrypoints.py dist
+          # Stable builds only: the version is stamped by now, so --release compares every
+          # coverage record's Guard version against the build being published. Alpha and
+          # canary versions never equal the release a record is promoted for.
+          release_args=()
+          if [[ "$CHANNEL" == "stable" ]]; then release_args+=(--release); fi
           for wheel in dist/*.whl; do
-            uv run --no-sync python scripts/ci/validate_harness_version_coverage.py --wheel "$wheel"
+            uv run --no-sync python scripts/ci/validate_harness_version_coverage.py \
+              "${release_args[@]}" --wheel "$wheel"
           done
       - name: Record immutable distribution hashes
         run: |

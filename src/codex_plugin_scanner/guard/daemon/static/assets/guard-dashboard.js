@@ -16489,10 +16489,40 @@ function isFragmentOnlyChange(current, target2) {
 function dashboardBuildIsStale() {
   return isDashboardBuildStale(currentBuildState());
 }
+let restoreClaimOnLeave = null;
+function releaseClaimIfLeaveIsCancelled(build) {
+  if (restoreClaimOnLeave !== null) {
+    window.removeEventListener("pagehide", restoreClaimOnLeave);
+    restoreClaimOnLeave = null;
+  }
+  window.addEventListener(
+    "beforeunload",
+    (event) => {
+      if (!event.defaultPrevented) {
+        return;
+      }
+      const storage = browserSessionStorage();
+      releaseStaleBuildClaim(storage);
+      const restore = () => {
+        restoreClaimOnLeave = null;
+        try {
+          storage?.setItem(DASHBOARD_BUILD_RELOAD_STORAGE_KEY, build);
+        } catch {
+        }
+      };
+      restoreClaimOnLeave = restore;
+      window.addEventListener("pagehide", restore, { once: true });
+    },
+    { once: true }
+  );
+}
 function loadCurrentDashboardBuild(href) {
-  if (typeof window === "undefined" || !claimStaleBuildReload(currentBuildState(), browserSessionStorage())) {
+  const state = currentBuildState();
+  const storage = browserSessionStorage();
+  if (typeof window === "undefined" || state.serverBuild === null || !claimStaleBuildReload(state, storage)) {
     return false;
   }
+  releaseClaimIfLeaveIsCancelled(state.serverBuild);
   const target2 = href ? new URL(href, window.location.href) : null;
   if (target2 === null) {
     window.location.reload();

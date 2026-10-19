@@ -239,6 +239,7 @@ mod direct_tool_context_op;
 #[cfg(test)]
 mod direct_tool_context_tests;
 mod direct_tool_managed_bun;
+mod directory_trust;
 mod discovery_placement_op;
 mod edge;
 mod edge_git_push;
@@ -267,6 +268,7 @@ mod guard_config_update_coerce;
 mod guard_config_update_harness;
 mod guard_config_update_settings;
 mod guard_config_update_value;
+mod guard_paths;
 mod guard_store_advisory_cache;
 #[cfg(test)]
 mod guard_store_advisory_cache_vectors_tests;
@@ -424,6 +426,8 @@ mod hook_direct;
 mod hook_direct_counters;
 mod hook_direct_evidence;
 mod hook_env_stamp;
+#[cfg(all(test, unix))]
+mod mcp_config_discovery_tests;
 // The seams the evidence writer runs on. Each is reached through
 // hook_evidence_writer_op; the readers also have their own tests.
 #[allow(dead_code)]
@@ -441,6 +445,7 @@ mod hook_evidence_store_timeout;
 #[allow(dead_code)]
 mod hook_evidence_store_wire;
 mod hook_evidence_writer_op;
+mod hook_path_rules;
 mod hook_policy_config;
 mod hook_process_spawn;
 mod hook_render_op;

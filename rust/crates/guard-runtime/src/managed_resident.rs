@@ -30,6 +30,10 @@ mod managed_resident_windows;
 #[path = "managed_resident_owner_lock.rs"]
 mod owner_lock;
 pub(crate) use owner_lock::ManagedOwnerLock;
+#[path = "managed_resident_exit.rs"]
+mod exit_record;
+#[path = "resident_failure_log.rs"]
+mod resident_failure_log;
 #[path = "resident_state_retirement.rs"]
 mod resident_state_retirement;
 #[path = "resident_restart_budget.rs"]
@@ -182,7 +186,12 @@ pub(crate) fn stop_managed(state_base: &Path, retire_clients: bool) -> Result<()
     .is_ok()
     {
         containment::wait_for_stop_containment(&scope, &digest, deadline, &process_ids)?;
-        let _ = restart_budget::clear(&scope);
+        // The children are gone; clear the budget only under the startup
+        // lock, since a start that got there first has already charged it.
+        let startup = exit_record::quiesce_under_startup_lock(state_base, &digest, &scope)?;
+        if startup.is_some() {
+            let _ = restart_budget::clear(&scope);
+        }
         return Ok(());
     }
     // Clean up after a resident that died without a shutdown request, so
@@ -314,6 +323,10 @@ pub(crate) fn supervise_managed_for_owner(
     {
         let executable = std::env::current_exe()
             .map_err(|_| "native_resident_runtime_path_failed".to_owned())?;
+        // Resolve the scope and claim it first: a failure here must leave
+        // no serving child, and a stop must see this supervisor inside the
+        // scope from before the spawn until its exit record is written.
+        let supervised = exit_record::supervised_scope(state_base, expected_digest)?;
         let mut child = Command::new(&executable);
         child
             .arg("serve-managed")
@@ -327,11 +340,15 @@ pub(crate) fn supervise_managed_for_owner(
             .arg(expected_digest)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            // Keep the stderr of a resident whose one-shot client is already
+            // gone, so a denied tool call leaves its cause in the scope.
+            .stderr(Stdio::piped());
         // Keep the serving child in the supervisor's group for joint containment.
+        let started = Instant::now();
         let mut child = child
             .spawn()
             .map_err(|_| "native_resident_spawn_failed".to_owned())?;
+        let stderr_record = exit_record::capture_resident_stderr(&mut child);
         let mut liveness_writer = child
             .stdin
             .take()
@@ -353,12 +370,15 @@ pub(crate) fn supervise_managed_for_owner(
         let status = child
             .wait()
             .map_err(|_| "native_resident_supervisor_wait_failed".to_owned())?;
+        let ran_for = started.elapsed();
         child_done.store(true, Ordering::Release);
         let _ = watcher.join();
-        restart_budget::finish_supervised_exit(
-            &state_scope(state_base, expected_digest)?,
-            status.success(),
-        )
+        exit_record::record_supervised_run(supervised, stderr_record, status, ran_for);
+        if status.success() {
+            Ok(())
+        } else {
+            Err("native_resident_managed_exit_failed".to_owned())
+        }
     }
 }
 

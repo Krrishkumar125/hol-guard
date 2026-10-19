@@ -95,10 +95,24 @@ fn unreachable_from(
     }
 }
 
+/// The macOS system directories that hold programs, named one by one because
+/// `/usr` cannot be taken whole: `/usr/local` is writable by any admin user,
+/// so a subpath of `/usr` would let a command run something it had just
+/// placed there. The sealed directories beside `/usr/bin` carry the tools a
+/// session reads its own machine with - `sysctl`, `ioreg`, `system_profiler`,
+/// `scutil`, `netstat`, `ifconfig`, `ping`, `diskutil list` - and leaving
+/// them out meant a command as ordinary as `sysctl -n hw.ncpu` could not be
+/// contained and was reviewed instead. Linux already executes all of `/usr`
+/// and `/sbin`, so this is the same posture spelled out for a platform where
+/// the parent directory is not uniformly system-owned. The names that change
+/// the machine are refused individually by the profile's privilege denials,
+/// as they already are in `/usr/bin`.
+pub(super) const MAC_PROGRAM_ROOTS: &[&str] = &["/bin", "/usr/bin", "/usr/sbin", "/sbin"];
+
 /// Directories the sandbox may execute from on this platform.
 pub(super) fn executable_roots(workspace: &Path, exec_roots: Vec<PathBuf>) -> Vec<PathBuf> {
     let system: &[&str] = if cfg!(target_os = "macos") {
-        &["/bin", "/usr/bin"]
+        MAC_PROGRAM_ROOTS
     } else {
         &["/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64"]
     };

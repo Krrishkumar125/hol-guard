@@ -59,6 +59,7 @@ def test_lane_catalog_carries_retry_and_bash_lifecycle_cases():
         "approved-retry-reworded-command",
         "approved-retry-unbindable-command",
         *BASH_LIFECYCLE_CASES,
+        "approved-retry-environment-dump",
     }
     ordinary = [scenario for scenario in scenarios if scenario.oracle == "approved-retry"]
     lifecycle = [scenario for scenario in scenarios if scenario.oracle == BASH_LIFECYCLE_ORACLE]
@@ -82,6 +83,16 @@ def test_lane_catalog_carries_retry_and_bash_lifecycle_cases():
     assert by_id["approved-retry-unbindable-command"].commands == ("git status --short",)
     assert by_id["approved-retry-env-prefixed-command"].commands == ("LC_ALL=C ls -la",)
     assert by_id["approved-retry-reworded-command"].commands == ()
+    # A bare `env` prints the environment and runs nothing, and Guard refused it
+    # outright rather than queueing a row, so the operator had nothing to approve
+    # and the agent had no way forward. This lane is the only one that tells an
+    # unapprovable refusal apart from a review: a case that is merely stopped
+    # passes every single-shot lane.
+    # `env -i` clears the environment rather than printing it: the harness CLI
+    # is handed its own provider login and its tool children inherit it, and
+    # this lane's transcripts are packed into the public evidence bundle, so
+    # the case must not ask a model to print the environment it runs in.
+    assert by_id["approved-retry-environment-dump"].commands == ("env -i",)
 
 
 def test_core_catalog_never_carries_the_lane_oracle():

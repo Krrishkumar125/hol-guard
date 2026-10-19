@@ -401,7 +401,7 @@ fn evaluate_validated_envelope(
                 deadline_budget_ms: envelope.deadline_budget_ms,
             };
             let native = review_post_tool(&request);
-            let evaluated = if let Some(snapshot) = policy_snapshot {
+            let mut evaluated = if let Some(snapshot) = policy_snapshot {
                 let delivery = origin_store
                     .and_then(|store| crate::bash_post_delivery::verify(&request, store));
                 crate::policy_enforcement::apply_post_tool_policy_with_delivery(
@@ -414,6 +414,10 @@ fn evaluate_validated_envelope(
             } else {
                 native
             };
+            // The policy join above may rewrite the verdict or the output
+            // action, so the answer to "may the model read this" is settled
+            // here, once, after everything that can change it has run.
+            evaluated.seal_output_mask();
             let receipt = receipt_from_post_tool(
                 &envelope,
                 policy_snapshot.map(AdmittedPolicySnapshot::snapshot),

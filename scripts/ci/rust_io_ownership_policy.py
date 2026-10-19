@@ -264,6 +264,9 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         # JSON-safe DTO copy shared by the native runner-authority and MCP
         # tool-evidence projections; it carries no decision.
         "src/codex_plugin_scanner/guard/runtime/json_safe_copy.py",
+        # Decodes the bounded resident attachment-scan reply into an
+        # artifact; the scan, its bounds and its verdict are all Rust.
+        "src/codex_plugin_scanner/guard/cli/commands_support_codex_prompt_attachments.py",
         "src/codex_plugin_scanner/guard/native_runtime.py",
         "src/codex_plugin_scanner/guard/native_context.py",
     }
@@ -371,7 +374,6 @@ _PENDING_AUTHORITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/cli/commands_support_codex_commands.py",
         "src/codex_plugin_scanner/guard/cli/commands_support_codex_git_config.py",
         "src/codex_plugin_scanner/guard/cli/commands_support_codex_paths.py",
-        "src/codex_plugin_scanner/guard/cli/commands_support_codex_prompt_attachments.py",
         "src/codex_plugin_scanner/guard/cli/commands_support_codex_reads.py",
         "src/codex_plugin_scanner/guard/cli/commands_support_hook_state.py",
         "src/codex_plugin_scanner/guard/cli/commands_support_runtime_artifacts.py",
