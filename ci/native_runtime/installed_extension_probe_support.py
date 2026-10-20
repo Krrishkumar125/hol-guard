@@ -476,14 +476,16 @@ _PACK_ASSET = re.compile(r"pack-[0-9a-f]{64}\.zip")
 def serve_release_assets(directory: Path) -> None:
     """Answer pack release downloads from this build's exported assets.
 
-    An unreleased build has no published pack release yet. Native code still
-    builds the release URL and the consumer still checks each digest; only the
-    HTTP fetch reads the copy the build exported.
+    An unreleased build has no published pack release yet; native code still
+    builds the release URL and checks each digest. Other fetches stay live.
     """
     from codex_plugin_scanner.guard.catalog_delivery import transport
 
+    fetch = transport.download
+
     def download(url: str, maximum: int) -> bytes:
-        _require(url.startswith(_RELEASE_DOWNLOAD), "release_asset_url")
+        if not url.startswith(_RELEASE_DOWNLOAD):
+            return fetch(url, maximum)
         tag, _, asset = url.removeprefix(_RELEASE_DOWNLOAD).partition("/")
         _require(
             _RELEASE_TAG.fullmatch(tag) is not None and _PACK_ASSET.fullmatch(asset) is not None,
@@ -492,9 +494,6 @@ def serve_release_assets(directory: Path) -> None:
         path = directory / tag / asset
         _require(path.is_file() and not path.is_symlink(), "release_asset_missing")
         _require(path.stat().st_size <= maximum, "release_asset_too_large")
-        with path.open("rb") as stream:
-            data = stream.read(maximum + 1)
-        _require(len(data) <= maximum, "release_asset_too_large")
-        return data
+        return path.read_bytes()
 
     transport.download = download
