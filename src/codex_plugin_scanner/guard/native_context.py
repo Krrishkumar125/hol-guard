@@ -630,10 +630,17 @@ _UNBOUND_PREFIX = "guard-context-unbound:"
 def is_unbound_context_digest(value: object) -> bool:
     """``True`` for a digest that names material nothing has bound.
 
-    The runtime emits these for a component it could not digest. Nothing on
-    this side produces one: a digest either comes back from the resident or
-    the call raises, so an absent resident cannot hand back a value that
-    reads like a bound one.
+    The runtime emits these for a component it could not digest, and a few
+    Python paths emit one deliberately for material there is no resident
+    question for: the unbound approval-context sentinel, a configured
+    environment with nothing configured, and a shell context the caller
+    could not observe. A sentinel never parses as a token and never
+    authorizes reuse, so recognizing one is how a caller tells an unbound
+    component from a bound digest.
+
+    What no Python path does is hand back a *bound*-looking digest when the
+    resident is unreachable: `native_context_digest` either answers from the
+    resident or raises.
     """
 
     return isinstance(value, str) and value.startswith(_UNBOUND_PREFIX)
