@@ -84,6 +84,7 @@ pub fn directory(home: &Path) -> Result<PathBuf> {
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                #[cfg_attr(not(unix), allow(unused_mut))]
                 let mut builder = fs::DirBuilder::new();
                 #[cfg(unix)]
                 {
