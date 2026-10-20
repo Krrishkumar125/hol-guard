@@ -43,7 +43,8 @@ pub struct ApprovalPersistSelectRequestV1 {
     pub persist_policy: Option<bool>,
     /// Whether `ApprovalScopeSelect` narrowed the client's choice. A narrowed
     /// selection is never remembered, because the user did not choose it.
-    #[serde(default)]
+    /// Required: a caller that omits this gate is refused rather than read as
+    /// an unnarrowed choice the user never made.
     pub scope_narrowed: bool,
     /// The contract version the client echoed back, absent for a legacy
     /// client that never read one.

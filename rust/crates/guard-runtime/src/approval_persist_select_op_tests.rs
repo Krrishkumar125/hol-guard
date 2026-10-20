@@ -184,13 +184,10 @@ fn an_unbound_allow_saved_against_the_exact_action_still_resolves() {
     );
     assert_eq!(saved["outcome"], json!("selected"));
     assert_eq!(saved["persist_policy"], json!(true));
-    assert_eq!(
-        saved["contract"]["scope_restrictions"]
-            .as_array()
-            .expect("restrictions")
-            .contains(&json!("retry_cannot_reuse_approval")),
-        true
-    );
+    assert!(saved["contract"]["scope_restrictions"]
+        .as_array()
+        .expect("restrictions")
+        .contains(&json!("retry_cannot_reuse_approval")));
     // The same request resolved once only has no binding left to run under.
     let once = persist(
         unbound_but_persistable(),
@@ -272,4 +269,28 @@ fn an_action_or_scope_guard_does_not_record_is_refused_before_the_contract() {
         json!("unsupported_approval_scope")
     );
     assert_eq!(unsupported_scope["contract"], Value::Null);
+}
+
+#[test]
+fn a_request_without_the_narrowing_gate_is_refused() {
+    // `scope_narrowed` decides whether a selection may be saved at all, so a
+    // caller that leaves it out must fail to decode rather than read as false.
+    let mut wire = serde_json::to_value(ApprovalPersistSelectRequestV1 {
+        schema: APPROVAL_PERSIST_SELECT_REQUEST_SCHEMA.to_owned(),
+        request_id: "persist".to_owned(),
+        item: persistable_package(),
+        action: "allow".to_owned(),
+        applied_scope: "artifact".to_owned(),
+        persist_policy: Some(true),
+        scope_narrowed: false,
+        contract_version: None,
+        contract_digest: None,
+    })
+    .expect("wire");
+    assert!(serde_json::from_value::<ApprovalPersistSelectRequestV1>(wire.clone()).is_ok());
+    wire.as_object_mut()
+        .expect("object")
+        .remove("scope_narrowed")
+        .expect("gate present");
+    assert!(serde_json::from_value::<ApprovalPersistSelectRequestV1>(wire).is_err());
 }

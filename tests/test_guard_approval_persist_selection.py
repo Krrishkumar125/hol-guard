@@ -7,11 +7,13 @@ from typing import Any
 import pytest
 
 from codex_plugin_scanner.guard import native_approval_persist_select as adapter
+from codex_plugin_scanner.guard.approval_persist_select_support import (
+    resolve_request_persistence_selection,
+)
 from codex_plugin_scanner.guard.approval_scope_support import (
     ApprovalScopeContract,
     IneligibleApprovalScopeError,
     StaleApprovalScopeContractError,
-    resolve_request_persistence_selection,
 )
 from codex_plugin_scanner.guard.native_approval_scope import ApprovalScopeUnavailableError
 

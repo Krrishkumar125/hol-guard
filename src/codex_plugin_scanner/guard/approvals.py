@@ -23,13 +23,13 @@ from .adapters import get_adapter
 from .adapters.base import HarnessContext
 from .approval_gate import ApprovalGateGrant, ApprovalGateInput, require_approval_decision
 from .approval_once_eligibility import requires_local_once_approval
+from .approval_persist_select_support import resolve_request_persistence_selection
 from .approval_resolution import require_resolvable_approval_request
 from .approval_scope_support import (
     RETRY_CANNOT_REUSE_APPROVAL,
     apply_scope_surfaces,
     package_request_portable_workspace_scope,
     request_scope_observation,
-    resolve_request_persistence_selection,
     resolve_request_scope_selection,
     resolve_request_workspace_scope,
     scope_payload_for_request,
