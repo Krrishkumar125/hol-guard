@@ -46,6 +46,18 @@ const MAX_SERIALIZED_RECORD_BYTES: usize = 16 * 1024 * 1024;
 /// wakeup gets, so a stop asking for no drain at all still collects a worker
 /// that had nothing to do.
 const WORKER_EXIT_GRACE: Duration = Duration::from_millis(250);
+/// A record whose store write failed waits this long before its next attempt,
+/// doubling with each further failure up to [`RETRY_BACKOFF_CAP`]: the
+/// `min(1.0, 0.05 * 2 ** (attempt - 1))` the Python writer waited.
+const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(50);
+const RETRY_BACKOFF_CAP: Duration = Duration::from_secs(1);
+
+/// The wait before the attempt that follows failure number `attempt`.
+fn retry_backoff(attempt: u32) -> Duration {
+    RETRY_BACKOFF_BASE
+        .saturating_mul(1 << attempt.saturating_sub(1).min(5))
+        .min(RETRY_BACKOFF_CAP)
+}
 
 // ---------------------------------------------------------------------------
 // Dependency seams — traits replacing unported modules (see TODO(deps)).
@@ -925,7 +937,8 @@ struct EvidenceState {
     /// `_receipt_seen` OrderedDict (insertion-ordered dedupe + LRU eviction).
     receipt_seen: HashSet<String>,
     receipt_seen_order: VecDeque<String>,
-    /// `_retry_attempts` — `record_id` → attempt count.
+    /// `_retry_attempts` — `record_id` → failed attempts, which set the
+    /// backoff before the next one.
     retry_attempts: HashMap<String, u32>,
     /// `_in_flight`.
     in_flight: bool,
@@ -1642,35 +1655,62 @@ impl EvidenceWorker {
                         }
                     }
                     PersistOutcome::Retry => {
+                        // A failed write is most often another writer holding
+                        // the store for longer than this one's short lock
+                        // budget. The record is already in the journal, so it
+                        // stays there and goes to the back of the queue, where
+                        // one the store keeps refusing cannot hold up the rest.
+                        // A stop that runs out of drain time leaves it for the
+                        // next writer to replay, and nothing here counts it as
+                        // dropped.
                         let attempt = state
                             .retry_attempts
                             .get(&record.record_id())
                             .copied()
                             .unwrap_or(0)
-                            + 1;
+                            .saturating_add(1);
                         state.retry_attempts.insert(record.record_id(), attempt);
-                        if attempt >= 3 {
-                            let _ = state.durable.remove(&record.record_id());
-                            state.retry_attempts.remove(&record.record_id());
-                            state.dropped += 1;
-                            state.failures += 1;
-                            if record.is_receipt() {
-                                state.receipt_dropped += 1;
-                                state.receipt_failures += 1;
-                            }
-                            state.degraded = true;
-                            match self.rewrite_journal(&record.record_id()) {
-                                Ok(invalid_records) => state.failures += invalid_records,
-                                Err(_) => state.failures += 1,
-                            }
-                        } else {
-                            state.queued_bytes += record.payload_bytes();
-                            state.records.push_front(record.clone());
+                        state.failures += 1;
+                        if record.is_receipt() {
+                            state.receipt_failures += 1;
                         }
+                        state.degraded = true;
+                        state.queued_bytes += record.payload_bytes();
+                        state.records.push_back(record.clone());
+                        state = self.back_off(state, Instant::now() + retry_backoff(attempt));
                     }
                 }
                 state.in_flight = false;
             }
+        }
+    }
+
+    /// Keep the worker off the store until `resume_at`, so a write that just
+    /// met a lock is not asked again before the writer holding it can finish.
+    ///
+    /// The wait releases the shared state, so submissions keep queueing behind
+    /// it, and a stop cuts it short at its drain deadline, the bound it already
+    /// puts on every record it waits for.
+    fn back_off<'state>(
+        &'state self,
+        mut state: MutexGuard<'state, EvidenceState>,
+        resume_at: Instant,
+    ) -> MutexGuard<'state, EvidenceState> {
+        loop {
+            let until = match state.drain_deadline {
+                Some(deadline) if state.stopping => resume_at.min(deadline),
+                _ => resume_at,
+            };
+            let remaining = until.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return state;
+            }
+            let (guard, _) = self
+                .condition
+                .1
+                .wait_timeout(state, remaining)
+                .unwrap_or_else(|e| e.into_inner());
+            state = guard;
         }
     }
 

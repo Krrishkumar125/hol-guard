@@ -165,7 +165,8 @@ def _validate_tests_and_provenance(root: Path) -> None:
             "a_repeated_receipt_is_deduplicated_rather_than_queued_twice",
             "a_full_receipt_queue_drops_the_overflow_instead_of_blocking",
             "a_receipt_left_in_the_journal_is_recovered_by_the_next_writer",
-            "a_store_that_keeps_failing_drops_a_receipt_after_bounded_retries",
+            "a_receipt_outlasts_a_briefly_locked_store",
+            "a_receipt_the_store_keeps_refusing_stays_journaled_for_the_next_writer",
         ),
         "receipt fault tests",
     )
