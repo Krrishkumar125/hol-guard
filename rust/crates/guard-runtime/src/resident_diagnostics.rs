@@ -303,20 +303,32 @@ pub(crate) fn enabled() -> bool {
 }
 
 fn emit(phase: Phase, status: Status, elapsed: Duration) {
-    // A broken diagnostic sink must not change native wire/error results.
-    // Render only finite phase/status labels and elapsed time into a bounded
-    // stack buffer. Helper stderr and the shared resident sink stay separate.
-    let mut line = [0u8; PHASE_LINE_BYTES];
-    let mut output = Cursor::new(line.as_mut_slice());
-    if writeln!(
-        output,
+    emit_line(format_args!(
         "native_resident_phase phase={} status={} elapsed_ms={}",
         phase.label(),
         status.label(),
         elapsed.as_millis()
-    )
-    .is_ok()
-    {
+    ));
+}
+
+/// Records a finite count next to the phase lines, such as how many resident
+/// states one discovery pass returned. Only fixed names and numbers are
+/// written, never paths or request data.
+pub(crate) fn note(name: &'static str, value: usize) {
+    if enabled() {
+        emit_line(format_args!(
+            "native_resident_note name={name} value={value}"
+        ));
+    }
+}
+
+fn emit_line(arguments: std::fmt::Arguments<'_>) {
+    // A broken diagnostic sink must not change native wire/error results.
+    // Render only finite labels and numbers into a bounded stack buffer.
+    // Helper stderr and the shared resident sink stay separate.
+    let mut line = [0u8; PHASE_LINE_BYTES];
+    let mut output = Cursor::new(line.as_mut_slice());
+    if writeln!(output, "{arguments}").is_ok() {
         let length = output.position() as usize;
         let mut sink = PHASE_OUTPUT
             .lock()

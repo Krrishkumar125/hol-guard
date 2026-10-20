@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::resident_diagnostics::note;
+
 use super::{
     durable_runtime_digest, ensure_private_directory_under, private_root_for_state_base,
     process_start_marker, read_state_file_raw, validate_package_process_identity,
@@ -121,8 +123,10 @@ fn discover_states(
         match load_scope_states(&path, &digest_prefix, &private_root, &mut budget) {
             Ok(found) => states.extend(found),
             Err(error) if error == "native_resident_state_list_failed" => return Err(error),
-            Err(_) => {}
+            Err(_) => note("discovery_preferred_scope_failed", 1),
         }
+    } else {
+        note("discovery_preferred_scope_missing", 1);
     }
     // Only a `RuntimeDigest` caller names a preferred scope, so only its
     // states reach this check; a `SameExecutable` caller passes no preferred
@@ -168,7 +172,7 @@ fn discover_states(
                 Err(_) if budget.exhausted => {
                     return Err("native_resident_state_list_failed".to_owned())
                 }
-                Err(_) => {}
+                Err(_) => note("discovery_fallback_scope_failed", 1),
             }
         }
     }
@@ -261,6 +265,7 @@ fn load_scope_states(
     let scope = ensure_private_directory_under(scope, private_root, true)?;
     let mut paths = state_paths_with_budget(&scope, budget)?;
     paths.sort_by_key(|path| std::cmp::Reverse(generation_number(path).unwrap_or(0)));
+    note("discovery_state_files", paths.len());
     let mut states = Vec::new();
     for (attempted, path) in paths.into_iter().enumerate() {
         if attempted >= MAX_STATE_READ_ATTEMPTS || states.len() == MAX_STATE_FILES {
@@ -269,6 +274,7 @@ fn load_scope_states(
         // Count actual reads only; a per-scope limit may stop before this read.
         budget.consume(true)?;
         let Ok(state) = read_state_file_raw(&path, private_root) else {
+            note("discovery_state_read_failed", 1);
             continue;
         };
         let digest = state.runtime_sha256.clone();
@@ -277,6 +283,7 @@ fn load_scope_states(
             || !digest[..16].eq_ignore_ascii_case(digest_prefix)
             || validate_state(&scope, &state, &digest).is_err()
         {
+            note("discovery_state_invalid", 1);
             continue;
         }
         states.push((scope.clone(), digest, state));
