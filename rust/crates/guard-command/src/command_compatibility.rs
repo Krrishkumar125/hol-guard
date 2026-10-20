@@ -21,6 +21,7 @@ mod git;
 mod github;
 
 pub use catalog::compatibility_rule_ids;
+pub(crate) use domains::docker_segment_settles_uncertainty;
 pub(crate) use environment::{
     code_or_redirect_environment_name, credential_routing_environment_name, inert_environment_name,
     plain_printed_name,

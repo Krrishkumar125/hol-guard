@@ -296,6 +296,11 @@ pub(super) fn finish(
         Some(_) => return None,
     };
     let mut envelope = review_envelope(envelope)?;
+    if matches!(envelope.get("command_category"), None | Some(Value::Null)) {
+        if let Some(category) = result_command_category(result) {
+            envelope.insert("command_category".to_owned(), Value::String(category));
+        }
+    }
     if let Some(receipt) = receipt
         .and_then(Value::as_object)
         .filter(|receipt| receipt.contains_key("origin_authentication"))
@@ -396,6 +401,60 @@ fn review_envelope(envelope: Value) -> Option<Map<String, Value>> {
     Some(envelope)
 }
 
+fn result_command_category(result: &Object) -> Option<String> {
+    let evidence = result.get("command_extensions")?.as_object()?;
+    ["observations", "permission_observations"]
+        .into_iter()
+        .filter_map(|key| Some((key, evidence.get(key)?.as_array()?)))
+        .flat_map(|(key, items)| items.iter().map(move |item| (key, item)))
+        .filter_map(|(key, item)| {
+            let obj = item.as_object()?;
+            let empty_segments = key == "observations"
+                && obj
+                    .get("effective_segment_indexes")
+                    .and_then(Value::as_array)
+                    .is_some_and(Vec::is_empty);
+            (!empty_segments)
+                .then(|| obj.get("extension_id")?.as_str())
+                .flatten()
+                .filter(|id| id.starts_with("command."))
+                .map(str::to_owned)
+        })
+        .next()
+}
+
+fn only_container_runtime_uncertainties(evidence: &Object, count: u64) -> bool {
+    let permission_uncertain = evidence
+        .get("permission_observations")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                item.as_object()
+                    .and_then(|obj| obj.get("uncertainty_reasons"))
+                    .is_some_and(truthy)
+            })
+        });
+    count > 0
+        && !permission_uncertain
+        && evidence
+            .get("observations")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                let mut matched = 0u64;
+                for obj in items.iter().filter_map(Value::as_object) {
+                    if obj.get("uncertainty_reasons").is_some_and(truthy) {
+                        if obj.get("rule_id").and_then(Value::as_str)
+                            != Some("command.container-runtime.docker-sensitive")
+                        {
+                            return false;
+                        }
+                        matched += 1;
+                    }
+                }
+                matched == count
+            })
+}
+
 /// `native_review_policy_binding` for the edge's own receipt, which matches
 /// the edge result by construction: a command-extension review needs the
 /// typed binding facts, or the daemon creates no approval.
@@ -462,7 +521,12 @@ pub(super) fn allow_hint_candidate(payload: &Map<String, Value>, result: &Object
         Some(Value::Number(count)) => count.as_f64() == Some(0.0),
         _ => false,
     };
-    if !certain
+    let settleable_container_uncertainty = !certain
+        && binding
+            .get("uncertainty_count")
+            .and_then(Value::as_u64)
+            .is_some_and(|count| only_container_runtime_uncertainties(evidence, count));
+    if !(certain || settleable_container_uncertainty)
         || !binding
             .get("observations_digest")
             .is_some_and(Value::is_string)
