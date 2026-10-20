@@ -31,6 +31,7 @@ from .native_context import (
 )
 from .native_execution import _resident_request
 from .native_mcp_tool_evidence import _arguments_dto
+from .native_policy_lookup_compose import PolicyLookupComposeUnavailableError
 from .native_runtime import native_runtime_status
 from .native_runtime_resilience import native_record_resident_failure, native_record_resident_success
 from .runtime.json_safe_copy import json_safe_copy
@@ -336,18 +337,23 @@ class _Effects:
         return {"decision": None if decision is None else json_safe_copy(dict(decision))}
 
     def _need_policy_lookup(self, need: Mapping[str, Any]) -> object:
-        lookup = self.store.resolve_policy_decision_lookup_with_memory_pattern(
-            need["harness"],
-            need["artifact_id"],
-            artifact_hash=need["artifact_hash"],
-            workspace=need["workspace"],
-            publisher=need["publisher"],
-            runtime_exact_match_context=need["runtime_exact_match_context"],
-            memory_command=need["memory_command"],
-            memory_artifact_type=need["memory_artifact_type"],
-            memory_artifact_name=need["memory_artifact_name"],
-            consume_one_shot=False,
-        )
+        try:
+            lookup = self.store.resolve_policy_decision_lookup_with_memory_pattern(
+                need["harness"],
+                need["artifact_id"],
+                artifact_hash=need["artifact_hash"],
+                workspace=need["workspace"],
+                publisher=need["publisher"],
+                runtime_exact_match_context=need["runtime_exact_match_context"],
+                memory_command=need["memory_command"],
+                memory_artifact_type=need["memory_artifact_type"],
+                memory_artifact_name=need["memory_artifact_name"],
+                consume_one_shot=False,
+            )
+        except PolicyLookupComposeUnavailableError:
+            # The probes resolved but nothing can order them. The call is
+            # refused in the error this lane already fails closed on.
+            raise NativeMcpToolPolicyError("policy_lookup_unavailable") from None
         decision = lookup["decision"]
         ignored = lookup["ignored_local_integrity"] is not None
         observed: dict[str, object] = {

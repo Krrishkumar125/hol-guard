@@ -10,6 +10,7 @@ from typing import Any, cast
 from ..config import GuardConfig
 from ..models import GuardAction
 from ..native_consumer_artifact_compose import NativeConsumerComposeError
+from ..native_policy_lookup_compose import PolicyLookupComposeUnavailableError
 from ..runtime.decisions import AuthoritativeGuardDecision, project_native_authoritative_decision
 from ..runtime.signals import RiskSignalV2
 from ..store import GuardStore
@@ -21,6 +22,7 @@ _QUALIFICATION_KEYS = ("fresh_local_approval", "durable_exact_approval")
 
 
 _COMPOSE_UNAVAILABLE_REASON = "consumer_artifact_compose_unavailable"
+_POLICY_LOOKUP_UNAVAILABLE_CODE = "native_policy_lookup_compose_unavailable"
 
 
 def _native_current_action(
@@ -186,18 +188,24 @@ def _native_runtime_decision(
     if isinstance(compose_unavailable, str):
         return unavailable(compose_unavailable)
     store = inputs.store
-    lookup = store.resolve_policy_decision_lookup_with_memory_pattern(
-        inputs.harness,
-        artifact_id,
-        artifact_hash=approval_context_hash,
-        workspace=inputs.workspace,
-        publisher=publisher,
-        now=inputs.now,
-        memory_command=memory_command,
-        memory_artifact_type=memory_artifact_type,
-        memory_artifact_name=memory_artifact_name,
-        consume_one_shot=False,
-    )
+    try:
+        lookup = store.resolve_policy_decision_lookup_with_memory_pattern(
+            inputs.harness,
+            artifact_id,
+            artifact_hash=approval_context_hash,
+            workspace=inputs.workspace,
+            publisher=publisher,
+            now=inputs.now,
+            memory_command=memory_command,
+            memory_artifact_type=memory_artifact_type,
+            memory_artifact_name=memory_artifact_name,
+            consume_one_shot=False,
+        )
+    except PolicyLookupComposeUnavailableError:
+        # Which saved rule the probes agree on is the resident's verdict. With
+        # no resident to order them, the artifact blocks rather than acting on
+        # whichever probe happened to answer.
+        return unavailable(_POLICY_LOOKUP_UNAVAILABLE_CODE)
     saved_decision = lookup["decision"]
     ignored_integrity = lookup["ignored_local_integrity"] is not None
     diagnosed_reason = (

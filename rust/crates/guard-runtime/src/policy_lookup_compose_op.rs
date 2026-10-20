@@ -30,7 +30,8 @@
 
 use guard_contracts::{
     PolicyLookupCandidateV1, PolicyLookupComposeRequestV1, PolicyLookupComposeResultV1,
-    POLICY_LOOKUP_COMPOSE_MAX_BYTES, POLICY_LOOKUP_COMPOSE_RESULT_SCHEMA,
+    POLICY_LOOKUP_COMPOSE_MAX_BYTES, POLICY_LOOKUP_COMPOSE_REQUEST_SCHEMA,
+    POLICY_LOOKUP_COMPOSE_RESULT_SCHEMA,
 };
 use serde_json::Value;
 
@@ -39,15 +40,22 @@ use crate::package_authority_op::request_digest_with_limit;
 
 /// `store_policy._most_restrictive_policy_lookup` refuses an empty list.
 const EMPTY: &str = "native_policy_lookup_compose_empty";
+/// A request naming another contract is refused rather than composed under
+/// this one's rules.
+const SCHEMA_MISMATCH: &str = "native_policy_lookup_compose_schema_mismatch";
 
 pub(crate) fn evaluate_policy_lookup_compose_request(
     request: &PolicyLookupComposeRequestV1,
 ) -> Result<Vec<u8>, String> {
     let request_sha256 = request_digest_with_limit(request, POLICY_LOOKUP_COMPOSE_MAX_BYTES)
         .map_err(|_| "native_policy_lookup_compose_too_large".to_owned())?;
-    let (status, code, payload) = match evaluate(request) {
-        Some(payload) => ("ok", "ok", Some(payload)),
-        None => ("error", EMPTY, None),
+    let (status, code, payload) = if request.schema != POLICY_LOOKUP_COMPOSE_REQUEST_SCHEMA {
+        ("error", SCHEMA_MISMATCH, None)
+    } else {
+        match evaluate(request) {
+            Some(payload) => ("ok", "ok", Some(payload)),
+            None => ("error", EMPTY, None),
+        }
     };
     crate::encode_response(&PolicyLookupComposeResultV1 {
         schema: POLICY_LOOKUP_COMPOSE_RESULT_SCHEMA.to_owned(),

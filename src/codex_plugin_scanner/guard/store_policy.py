@@ -20,10 +20,7 @@ from .managed_controls_policy_bundle import (
     managed_controls_revision_from_state,
 )
 from .native_policy_bundle import PolicyBundleNativeError, PolicyBundleNativeUnavailableError
-from .native_policy_lookup_compose import (
-    PolicyLookupComposeUnavailableError,
-    native_policy_lookup_compose,
-)
+from .native_policy_lookup_compose import native_policy_lookup_compose
 from .policy_bundle_activation import (
     PolicyBundleActivationRejectionError,
     PrecomputedVerdicts,
@@ -170,32 +167,21 @@ def memory_lookup_candidates(
 
 def _most_restrictive_policy_lookup(
     lookups: Sequence[PolicyDecisionLookupResult],
+    *,
+    guard_home: Path,
 ) -> PolicyDecisionLookupResult:
     """Compose non-consuming direct, exact-command, and memory matches.
 
     Which of the probes answers is a verdict about the user's remembered
     rules, so the resident orders them. This function only ships the probes it
-    already resolved; an unreachable resident raises rather than letting a
-    looser saved rule stand in for a stricter one.
+    already resolved, under the home of the store that resolved them; an
+    unreachable resident raises rather than letting a looser saved rule stand
+    in for a stricter one.
     """
 
     if not lookups:
         raise ValueError("at least one policy lookup is required")
-    composed = native_policy_lookup_compose(list(lookups))
-    decision = composed.get("decision")
-    ignored = composed.get("ignored_local_integrity")
-    trust_status = composed.get("trust_status")
-    revision = composed.get("authority_revision")
-    if not isinstance(trust_status, dict) or not isinstance(revision, int) or isinstance(revision, bool):
-        raise PolicyLookupComposeUnavailableError
-    if not (decision is None or isinstance(decision, dict)) or not (ignored is None or isinstance(ignored, dict)):
-        raise PolicyLookupComposeUnavailableError
-    return {
-        "decision": decision,
-        "ignored_local_integrity": ignored,
-        "trust_status": trust_status,
-        "authority_revision": revision,
-    }
+    return native_policy_lookup_compose(list(lookups), guard_home=guard_home)
 
 
 def _approval_authority_revision(connection: sqlite3.Connection) -> int:
@@ -1044,7 +1030,7 @@ class StorePolicyMixin:
             ):
                 return exact_command_lookup
         if memory_artifact_id is None:
-            return _most_restrictive_policy_lookup(candidate_lookups)
+            return _most_restrictive_policy_lookup(candidate_lookups, guard_home=Path(self.guard_home))
         memory_lookup = self.resolve_policy_decision_lookup(
             harness,
             memory_artifact_id,
@@ -1062,7 +1048,7 @@ class StorePolicyMixin:
                 if (memory_lookup["decision"] is not None or memory_lookup.get("ignored_local_integrity") is not None)
                 else direct_lookup
             )
-        return _most_restrictive_policy_lookup(candidate_lookups)
+        return _most_restrictive_policy_lookup(candidate_lookups, guard_home=Path(self.guard_home))
 
     def peek_local_once_approval(
         self,

@@ -207,3 +207,20 @@ fn an_unknown_request_field_is_rejected() {
         .insert("consume_one_shot".to_owned(), json!(true));
     assert!(serde_json::from_value::<PolicyLookupComposeRequestV1>(wire).is_err());
 }
+
+#[test]
+fn a_request_naming_another_contract_is_refused() {
+    let request = PolicyLookupComposeRequestV1 {
+        schema: "guard-policy-lookup-compose-request.v2".to_owned(),
+        request_id: "other-contract".to_owned(),
+        candidates: vec![probe(Some("allow"), 1)],
+    };
+    let encoded = evaluate_policy_lookup_compose_request(&request).expect("encoded");
+    let answer: Value = serde_json::from_slice(&encoded).expect("json");
+    assert_eq!(answer["status"], json!("error"));
+    assert_eq!(
+        answer["code"],
+        json!("native_policy_lookup_compose_schema_mismatch")
+    );
+    assert_eq!(answer.get("payload"), None);
+}
