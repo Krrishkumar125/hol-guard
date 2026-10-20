@@ -31,6 +31,27 @@ fn a_contained_workspace_write_keeps_its_callers_deadline() {
 }
 
 #[test]
+fn a_contained_execute_keeps_the_deadline_its_own_timeout_earns() {
+    // The Python client sends the request's own timeout plus thirty seconds of
+    // transport slack. A contained run permitted to take a minute must not be
+    // abandoned at the nine-second default.
+    assert_eq!(
+        client_timeout(br#"{"operation":"contained_execute","deadline_budget_ms":90000}"#),
+        Duration::from_secs(90)
+    );
+    // The containment contract bounds a request at one hour, so the ceiling
+    // covers that plus the client's slack and nothing beyond it.
+    assert_eq!(
+        client_timeout(br#"{"operation":"contained_execute","deadline_budget_ms":3630000}"#),
+        Duration::from_millis(3_630_000)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"contained_execute","deadline_budget_ms":9999999}"#),
+        Duration::from_millis(3_630_000)
+    );
+}
+
+#[test]
 fn client_deadline_is_bounded() {
     assert_eq!(
         client_timeout(br#"{"deadline_budget_ms":999999}"#),

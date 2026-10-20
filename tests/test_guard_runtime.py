@@ -36,6 +36,7 @@ from codex_plugin_scanner.guard.approvals import apply_approval_resolution, wait
 from codex_plugin_scanner.guard.cli import commands as guard_commands_module
 from codex_plugin_scanner.guard.cli import commands_support_interaction as interaction_module
 from codex_plugin_scanner.guard.cli import render as guard_render_module
+from codex_plugin_scanner.guard.cli.commands_support_runtime_artifact_policy import runtime_policy_artifact_facts
 from codex_plugin_scanner.guard.cli.commands_support_runtime_artifacts import (
     _codex_post_tool_output_artifact,
 )
@@ -10525,7 +10526,7 @@ def test_hook_runtime_artifact_composes_package_and_later_shell_risks(
     assert artifact.artifact_type == "package_request"
     assert artifact.metadata["compound_complete"] is True
     assert artifact.metadata["compound_finding_count"] == 2
-    assert set(guard_commands_module._runtime_artifact_risk_classes(artifact)) >= {
+    assert set(_resident_risk_classes(artifact, native_approval_reuse_runtime)) >= {
         "package_script",
         "destructive_shell",
     }
@@ -10625,7 +10626,9 @@ def test_hook_runtime_artifact_binds_compound_approval_to_effective_cwd(tmp_path
 
 
 @pytest.mark.usefixtures("native_data_flow_runtime")
-def test_hook_runtime_artifact_combines_package_tool_and_data_flow_findings(tmp_path: Path) -> None:
+def test_hook_runtime_artifact_combines_package_tool_and_data_flow_findings(
+    tmp_path: Path, native_approval_reuse_runtime: Path
+) -> None:
     home_dir = tmp_path / "home"
     workspace_dir = tmp_path / "workspace"
     _write_text(workspace_dir / "package.json", '{"name":"demo"}\n')
@@ -10673,7 +10676,7 @@ def test_hook_runtime_artifact_combines_package_tool_and_data_flow_findings(tmp_
     assert artifact.metadata["compound_finding_count"] == 3
     assert artifact.metadata["compound_segment_count"] == 3
     assert [segment["index"] for segment in artifact.metadata["compound_segments"]] == [0, 1, 2]
-    assert set(guard_commands_module._runtime_artifact_risk_classes(artifact)) >= {
+    assert set(_resident_risk_classes(artifact, native_approval_reuse_runtime)) >= {
         "package_script",
         "credential_exfiltration",
         "data_flow_exfiltration",
@@ -15308,6 +15311,7 @@ def test_runtime_hook_approval_context_invalidates_one_changed_dimension(
             data_flow_action=None,
             scanner_action=None,
             current_action="review",
+            risk_classes=("destructive_shell",),
             data_flow_signals=(),
             scanner_evidence=scanner_evidence,
         )
@@ -18115,7 +18119,13 @@ def test_guard_runtime_keeps_pytest_allowlist_disjoint_from_mutating_flags():
     assert constants_core._PYTEST_SAFE_FLAGS_WITH_VALUES.isdisjoint(pytest_mutating_flags)
 
 
-def test_guard_runtime_tool_action_classification_uses_exact_action_classes():
+def _resident_risk_classes(artifact: GuardArtifact, guard_home: Path) -> object:
+    """The risk classes the resident reads off ``artifact``."""
+    config = GuardConfig(guard_home=guard_home, workspace=None)
+    return runtime_policy_artifact_facts(config, artifact, artifact.harness, guard_home=guard_home)["risk_classes"]
+
+
+def test_guard_runtime_tool_action_classification_uses_exact_action_classes(native_approval_reuse_runtime: Path):
     artifact = GuardArtifact(
         artifact_id="codex:test:tool-action:non-destructive",
         name="Bash non-destructive shell command",
@@ -18126,10 +18136,10 @@ def test_guard_runtime_tool_action_classification_uses_exact_action_classes():
         metadata={"action_class": "non-destructive shell command"},
     )
 
-    assert guard_commands_module._runtime_artifact_risk_classes(artifact) == []
+    assert _resident_risk_classes(artifact, native_approval_reuse_runtime) == []
 
 
-def test_guard_runtime_tool_action_classification_emits_network_and_docker_risks():
+def test_guard_runtime_tool_action_classification_emits_network_and_docker_risks(native_approval_reuse_runtime: Path):
     upload_artifact = GuardArtifact(
         artifact_id="codex:test:tool-action:upload",
         name="Bash shell file upload command",
@@ -18158,15 +18168,15 @@ def test_guard_runtime_tool_action_classification_emits_network_and_docker_risks
         metadata={"action_class": "Docker client config access"},
     )
 
-    assert guard_commands_module._runtime_artifact_risk_classes(upload_artifact) == [
+    assert _resident_risk_classes(upload_artifact, native_approval_reuse_runtime) == [
         "credential_exfiltration",
         "network_egress",
     ]
-    assert guard_commands_module._runtime_artifact_risk_classes(docker_artifact) == [
+    assert _resident_risk_classes(docker_artifact, native_approval_reuse_runtime) == [
         "network_egress",
         "destructive_shell",
     ]
-    assert guard_commands_module._runtime_artifact_risk_classes(docker_config_artifact) == ["local_secret_read"]
+    assert _resident_risk_classes(docker_config_artifact, native_approval_reuse_runtime) == ["local_secret_read"]
 
 
 def test_guard_runtime_tool_action_policy_uses_network_egress_when_stricter(tmp_path, native_approval_reuse_runtime):
