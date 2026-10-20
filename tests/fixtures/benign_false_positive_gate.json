@@ -7644,6 +7644,74 @@
       "expect": "allow"
     },
     {
+                  "id": "gauntlet-find-tool-home-report-word",
+                  "fix_area": "find",
+                  "harnesses": [
+                    "codex",
+                    "zcode",
+                    "claude-code",
+                    "omp",
+                    "cursor"
+                  ],
+                  "tool": "shell",
+                  "tool_input": {
+                    "command": "find ${HOME}/.report-lane -maxdepth 4 -name \"*web-client*\""
+                  },
+                  "cwd": "worktree",
+                  "expect": "allow"
+                },
+                {
+              "id": "gauntlet-find-tool-home-dir-word",
+              "fix_area": "find",
+              "harnesses": [
+                "codex",
+                "zcode",
+                "claude-code",
+                "omp",
+                "cursor"
+              ],
+              "tool": "shell",
+              "tool_input": {
+                "command": "find ${HOME}/.web-client -maxdepth 4 -type d -name \"*usage-rollup*\""
+              },
+              "cwd": "worktree",
+              "expect": "allow"
+            },
+            {
+          "id": "gauntlet-find-tool-home-skill-files",
+          "fix_area": "find",
+          "harnesses": [
+            "codex",
+            "zcode",
+            "claude-code",
+            "omp",
+            "cursor"
+          ],
+          "tool": "shell",
+          "tool_input": {
+            "command": "find ${HOME}/.web-client/skills/usage-rollup -type f"
+          },
+          "cwd": "worktree",
+          "expect": "allow"
+        },
+        {
+      "id": "gauntlet-ls-tool-home-skills",
+      "fix_area": "find",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/.web-client/skills"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "find-home-tool-skills-tree",
       "fix_area": "shell",
       "harnesses": [
