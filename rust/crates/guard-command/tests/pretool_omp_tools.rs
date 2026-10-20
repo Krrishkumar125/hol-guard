@@ -734,6 +734,7 @@ fn grep_lists_naming_a_missing_file_say_so_instead_of_asking() {
         "app-fix/src/report.ts;app-fix/src/projector.ts",
         "src/main.rs; app-fix/src/report.ts",
         "missing.py; ~/missing-directory",
+        "missing.py; src/*.rs",
     ] {
         let result = omp(
             &f,
@@ -748,7 +749,6 @@ fn grep_lists_naming_a_missing_file_say_so_instead_of_asking() {
     for path in [
         "missing.py; ~/.ssh/id_rsa",
         "missing.py; ~/secret-dir/.env",
-        "missing.py; src/*.rs",
         "missing.py; ~/.ssh",
         "missing.py; missing/.env",
     ] {
