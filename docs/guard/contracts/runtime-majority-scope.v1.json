@@ -881,6 +881,12 @@
           "src/codex_plugin_scanner/guard/runtime/bound_bash_sink.py"
         ],
         "reason": "Reviewed and retained in runtime scope: the bound-Bash review path reaches these lazily from hook_native_review_approval and cli/commands_dispatch_local. They carry the IPC transport and the projection of a native decision to the caller; the authorization itself, the content binding and the launch barrier stay in guard-runtime, and the sink refuses to act on a saved decision it cannot read, match or verify. Count these complete Python modules rather than exclude code reached through the native owner's reply boundary."
+      },
+      {
+        "path": [
+          "src/codex_plugin_scanner/guard/secret_redaction.py"
+        ],
+        "reason": "Reviewed and retained in runtime scope: catalog_delivery/discovery reaches this lazily when it records a failing catalog preparation or publication refresh in daemon.log. It only strips token, password and bearer shapes from a bounded diagnostic line; it decides nothing about what Guard allows."
       }
     ],
     "tests": {

@@ -65,7 +65,7 @@ assert(viewsSource.includes('scopeLabel(policy.scope, "policy")'), "rules list u
 assert(viewsSource.includes("resolvePolicyRowTitle"), "rules list uses mockup row titles");
 assert(viewsSource.includes("resolvePolicyApprovalRecordLabel"), "rules list links approval record by receipt id");
 assert(viewsSource.includes("GoverningExtensionLink"), "rules link to their governing Extension when known");
-assert(!viewsSource.includes("display.rememberSentence"), "rules list omits verbose remember sentence");
+assert(viewsSource.includes("display.rememberSentence"), "each rule states its plain-language consequence");
 assert(viewsSource.includes("View on cloud"), "cloud rules link to Guard Cloud");
 assert(viewsSource.includes("Remove rule"), "local rules expose remove action");
 assert(viewsSource.includes("!cloudManaged"), "remove action gated to non-cloud rules");

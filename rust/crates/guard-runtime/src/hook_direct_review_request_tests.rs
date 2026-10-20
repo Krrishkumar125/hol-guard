@@ -249,6 +249,30 @@ fn false_and_float_zero_uncertainty_are_hint_candidates() {
     }
 }
 
+#[test]
+fn container_runtime_uncertain_observations_are_hint_candidates() {
+    let payload = json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "docker version --format '{{.Server.Version}}'"},
+    });
+    let payload = payload.as_object().expect("payload");
+    let result = json!({
+        "minimum_action": "review",
+        "command_extensions": {
+            "binding": {"uncertainty_count": 1, "observations_digest": "d"},
+            "observations": [
+                {
+                    "extension_id": "command.container-runtime",
+                    "rule_id": "command.container-runtime.docker-sensitive",
+                    "uncertainty_reasons": ["matcher-failure"],
+                }
+            ],
+        },
+    });
+    let result = result.as_object().expect("result");
+    assert_eq!(allow_hint_candidate(payload, result), Some(true));
+}
+
 #[cfg(windows)]
 #[test]
 fn windows_expanded_home_matches_cpython() {
