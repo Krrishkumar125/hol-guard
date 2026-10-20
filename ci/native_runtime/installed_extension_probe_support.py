@@ -470,30 +470,31 @@ def require_native_http_admission(response: Mapping[str, object]) -> None:
 _RELEASE_DOWNLOAD = "https://github.com/hashgraph-online/hol-guard/releases/download/"
 # The only names native code builds for an installed pack asset.
 _RELEASE_TAG = re.compile(r"extension-data-[0-9a-f]{40}-0\.0-[0-9]{6}")
-_PACK_ASSET = re.compile(r"pack-[0-9a-f]{64}\.zip")
+_DATA_ASSET = re.compile(r"(?:object-[0-9a-f]{64}\.json|pack-[0-9a-f]{64}\.zip)")
 
 
 def serve_release_assets(directory: Path) -> None:
-    """Answer pack release downloads from this build's exported assets.
+    """Answer extension-data release downloads from this build's exported assets.
 
-    An unreleased build has no published pack release yet; native code still
-    builds the release URL and checks each digest. Other fetches stay live.
+    An unreleased build has no published extension-data release yet; native
+    code still builds the release URL and checks each digest. Every other
+    fetch, including the distribution root and its provenance, stays live.
     """
     from codex_plugin_scanner.guard.catalog_delivery import transport
 
     fetch = transport.download
 
     def download(url: str, maximum: int) -> bytes:
-        if not url.startswith(_RELEASE_DOWNLOAD):
-            return fetch(url, maximum)
         tag, _, asset = url.removeprefix(_RELEASE_DOWNLOAD).partition("/")
-        _require(
-            _RELEASE_TAG.fullmatch(tag) is not None and _PACK_ASSET.fullmatch(asset) is not None,
-            "release_asset_url",
-        )
+        if not url.startswith(_RELEASE_DOWNLOAD) or _RELEASE_TAG.fullmatch(tag) is None:
+            return fetch(url, maximum)
+        _require(_DATA_ASSET.fullmatch(asset) is not None, "release_asset_url")
         path = directory / tag / asset
         _require(path.is_file() and not path.is_symlink(), "release_asset_missing")
         _require(path.stat().st_size <= maximum, "release_asset_too_large")
-        return path.read_bytes()
+        with path.open("rb") as stream:
+            data = stream.read(maximum + 1)
+        _require(len(data) <= maximum, "release_asset_too_large")
+        return data
 
     transport.download = download
