@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any
 
 _RECEIPT_PERSISTENCE_TIMEOUT_SECONDS = 60.0
+# A background policy refresh can hold the business-source fence when a case
+# starts. Installed hooks poll through it for this long; the probe does too.
+_POLICY_FENCE_WAIT_SECONDS = 8.0
+_POLICY_FENCE_ERROR = "native_business_source_mutation_in_progress"
 _ACTION_RANK = {
     "allow": 0,
     "warn": 1,
@@ -66,18 +70,25 @@ def run_case(
         "tool_input": {"command": command},
     }
     payload = {"hook_event_name": "PreToolUse", **payload}
-    raw = review_raw_hook_native(
-        payload=payload,
-        harness="claude-code",
-        event="PreToolUse",
-        guard_home=home,
-        home_dir=root,
-        cwd=workspace,
-        source_ref_external_allowed=False,
-        observe_mode=False,
-        deadline=time.monotonic() + 5,
-        policy_snapshot=binding,
-    )
+    fence_until = time.monotonic() + _POLICY_FENCE_WAIT_SECONDS
+    while True:
+        raw = review_raw_hook_native(
+            payload=payload,
+            harness="claude-code",
+            event="PreToolUse",
+            guard_home=home,
+            home_dir=root,
+            cwd=workspace,
+            source_ref_external_allowed=False,
+            observe_mode=False,
+            deadline=time.monotonic() + 5,
+            policy_snapshot=binding,
+        )
+        if raw is not None or native_resident_client_failure_code() != _POLICY_FENCE_ERROR:
+            break
+        if time.monotonic() >= fence_until:
+            break
+        time.sleep(0.1)
     if raw is None:
         print(
             json.dumps(
