@@ -52,19 +52,31 @@ async function applyOneChange(page: Page): Promise<EffectiveControls> {
   // first one after a start is the slowest.
   await expect(dialog).toBeVisible({ timeout: 60_000 });
   await dialog.getByLabel("Approval password").fill(approvalPassword);
-  const effective = page.waitForResponse((response) =>
-    new URL(response.url()).pathname === "/v1/extension-controls/effective" && response.status() === 200);
   await dialog.getByRole("button", { name: "Apply 1 reviewed change" }).click();
+  const toast = page.getByTestId("extension-policy-applied-toast");
   try {
-    const response = await effective;
-    return await response.json() as EffectiveControls;
+    // The toast carries the revision the panel saved. Waiting for a response
+    // to the save instead would race the workspace's own refresh, which
+    // answers 200 with the revision from before the mutation landed.
+    await expect(toast).toContainText(/Applied · revision \d+/, { timeout: 60_000 });
   } catch (error) {
     // A failed save renders in the workspace alert. Report the sentence the
     // operator would have read, so a regression names the failure instead of
-    // leaving a bare wait-for-response timeout.
+    // leaving a bare timeout.
     const alert = await page.getByRole("alert").first().innerText().catch(() => "<no alert rendered>");
     throw new Error(`saving the worktree setting failed: ${alert}`, { cause: error });
   }
+  const revision = Number(/Applied · revision (\d+)/.exec(await toast.innerText())?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+  const effective = await page.evaluate(async () => {
+    const token = sessionStorage.getItem("guard-token") ?? "";
+    const response = await fetch("/v1/extension-controls/effective", { headers: { "X-Guard-Dashboard-Session": token } });
+    if (!response.ok) throw new Error(`effective controls answered ${response.status}`);
+    return await response.json() as EffectiveControls;
+  });
+  // What the operator was told was saved has to be what the daemon now serves.
+  expect(effective.revision).toBe(revision);
+  return effective;
 }
 
 test("installed dashboard saves Allow on an everyday capability of an active tool", async ({ page }, testInfo) => {
@@ -83,7 +95,6 @@ test("installed dashboard saves Allow on an everyday capability of an active too
 
   const effective = await applyOneChange(page);
   expect(effective.revision).toBeGreaterThan(0);
-  await expect(page.getByTestId("extension-policy-applied-toast")).toContainText(`Applied · revision ${effective.revision}`);
   expect(effective.controls).toContainEqual({ target: { kind: "permission", target_id: permissionId }, state: "enabled" });
   expect(effective.projection?.permissions.find((permission) => permission.permission_id === permissionId)?.local_state)
     .toBe("enabled");
