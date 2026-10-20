@@ -4,7 +4,8 @@
 //! lattice composition (config, trusted CLI action, untrusted payload hint,
 //! native floors, package, data-flow, scanner), local-grant eligibility and
 //! settlement, and the risk copy that accompanies the composed action. The
-//! reuse, override, and copy queries live in `hook_artifact_compose_reuse`.
+//! reuse, override, and copy queries live in `hook_artifact_compose_reuse`,
+//! and the prompt-request reason in `hook_artifact_compose_prompt`.
 //! Every query is pure and fails closed: unknown actions normalize to review.
 
 use guard_contracts::{
@@ -15,6 +16,7 @@ use guard_contracts::{
 };
 use serde_json::{json, Map, Value};
 
+use crate::hook_artifact_compose_prompt as prompt;
 use crate::hook_artifact_compose_reuse as reuse;
 use crate::hook_decision_compose::{edge_action, edge_floor, is_hard};
 use crate::hook_policy_config::{artifact_policy_action, data_flow_configured_action};
@@ -84,7 +86,7 @@ pub(crate) fn compose(query: &HookArtifactComposeQueryV1) -> Result<Value, Strin
         HookArtifactComposeQueryV1::DecisionCopy(query) => reuse::decision_copy(query),
         HookArtifactComposeQueryV1::DecisionBuildCopy(query) => reuse::decision_build_copy(query)?,
         HookArtifactComposeQueryV1::PromptRequestReason(query) => {
-            reuse::prompt_request_reason(query)
+            prompt::prompt_request_reason(query)
         }
         HookArtifactComposeQueryV1::PackageReuseSettle(query) => reuse::package_reuse_settle(query),
     })
