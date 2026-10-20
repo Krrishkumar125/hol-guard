@@ -18,7 +18,9 @@ replaced, never run.
 Windows keeps an executable's image locked for a moment after its process
 exits, so each directory is removed at exit with a short backoff once that
 lock is released. A single attempt left directories behind on Windows until
-the disk filled.
+the disk filled. Each directory name carries its owner's process id, and a
+process that writes a new copy removes the copies of owners that ended
+without running their exit handlers.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from pathlib import Path
 _PRIVATE_ROOT_NAME = "native-exec"
 _LOGGER = logging.getLogger(__name__)
 _EXECUTABLE_NAME = "hol-guard-runtime.exe" if os.name == "nt" else "hol-guard-runtime"
+_DIRECTORY_PREFIX = "hol-guard-source-compiler-"
 # Every Guard home this process has opened, most recent first, so a store for
 # one home never takes the fallback away from a store for another.
 _private_roots: list[Path] = []
@@ -128,7 +131,7 @@ def _write(directory: Path, raw: bytes) -> Path:
 def _candidate(raw: bytes, parent: Path | None) -> tuple[tempfile.TemporaryDirectory[str], Path] | None:
     try:
         directory = tempfile.TemporaryDirectory(
-            prefix="hol-guard-source-compiler-", dir=parent, ignore_cleanup_errors=True
+            prefix=f"{_DIRECTORY_PREFIX}{os.getpid()}-", dir=parent, ignore_cleanup_errors=True
         )
     except OSError:
         return None
@@ -162,6 +165,46 @@ def _remove_released(directory: Path) -> None:
             return
 
 
+def _owner_running(pid: int) -> bool:
+    """Fail closed: an owner that cannot be proven gone counts as running."""
+    if os.name == "nt":
+        try:
+            from ..windows_paths import windows_process_is_running
+
+            return windows_process_is_running(pid)
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _remove_abandoned(parent: Path) -> None:
+    """Remove copies whose owner ended without running its exit handlers."""
+    try:
+        entries = list(os.scandir(parent))
+    except OSError:
+        return
+    for entry in entries:
+        owner, separator, _ = entry.name.removeprefix(_DIRECTORY_PREFIX).partition("-")
+        if not entry.name.startswith(_DIRECTORY_PREFIX) or not separator or not owner.isdigit():
+            continue
+        if int(owner) in (0, os.getpid()):
+            continue
+        try:
+            metadata = entry.stat(follow_symlinks=False)
+        except OSError:
+            continue
+        if not stat.S_ISDIR(metadata.st_mode) or (os.name != "nt" and metadata.st_uid != os.geteuid()):
+            continue
+        if not _owner_running(int(owner)):
+            shutil.rmtree(entry.path, ignore_errors=True)
+
+
 def _holds_exactly(path: Path, raw: bytes) -> bool:
     """Whether a private copy is still a regular file holding exactly the verified bytes."""
     try:
@@ -193,6 +236,7 @@ def _materialize(raw: bytes) -> tuple[tempfile.TemporaryDirectory[str], Path]:
                 candidate = _candidate(raw, directory)
     if candidate is None:
         raise ExecutableMaterializationError("no private directory can run the verified source compiler")
+    _remove_abandoned(Path(candidate[0].name).parent)
     return candidate
 
 
