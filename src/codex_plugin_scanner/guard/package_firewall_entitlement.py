@@ -6,7 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .cloud_entitlements import parse_guard_cloud_entitlements
-from .native_hook_artifact_compose import native_hook_compose
+from .native_hook_artifact_compose import (
+    NativeHookComposeError,
+    NativeHookComposeValidationError,
+    native_hook_compose,
+)
 from .package_firewall_defaults import (
     PACKAGE_FIREWALL_PAID_TIERS,
     build_guard_local_entitlement_defaults,
@@ -128,6 +132,38 @@ def resolve_package_firewall_entitlement(
     return answer
 
 
+# What the entitlement says when the resident cannot answer. Nothing is
+# entitled on a machine whose runtime will not say what it has proven, and no
+# caller reads an allow out of the rows it gathered for the question.
+PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON = "guard_runtime_unavailable"
+
+
+def package_firewall_entitlement_or_denied(
+    store: GuardStore,
+    *,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """The resolved entitlement, or the denial an unanswerable runtime means.
+
+    Callers that only need to know whether this home is entitled -- a settings
+    write recording ``cloud_sync_entitled``, a status page describing what is
+    offered -- have work of their own that an unreachable, unprovisioned or
+    too-old resident must not take down. They ask through here and read a
+    denial instead of a crash. The resident stays the only thing that can grant
+    access: this answers no, never yes.
+    """
+
+    try:
+        return resolve_package_firewall_entitlement(store, now=now)
+    except (NativeHookComposeError, NativeHookComposeValidationError):
+        return {
+            "allowed": False,
+            "reason": PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON,
+            "tier": "unknown",
+            "upgrade_cta": None,
+        }
+
+
 def package_firewall_action_states(
     entitlement: dict[str, object],
     *,
@@ -192,6 +228,14 @@ def package_firewall_operation_allowed(
 
 
 def package_firewall_block_details(entitlement: dict[str, object]) -> tuple[int, str, str]:
+    if entitlement.get("reason") == PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON:
+        # Not an unpaid account and not a connect that has to happen: the
+        # runtime could not say, so nothing is offered and the copy says why.
+        return (
+            503,
+            PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON,
+            "The HOL Guard runtime could not report package firewall access on this machine.",
+        )
     if entitlement.get("reason") == "guard_cloud_connect_required":
         return (
             403,
