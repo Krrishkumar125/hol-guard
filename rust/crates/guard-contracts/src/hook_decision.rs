@@ -14,7 +14,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{CodexToolOutputFactsV1, NativeExtensionControlLayerV1};
+use crate::{
+    ArtifactBrowserOutcomeInputsV1, ArtifactBrowserOutcomeV1, ArtifactFinalizeInputsV1,
+    ArtifactFinalizeV1, CodexToolOutputFactsV1, NativeExtensionControlLayerV1,
+};
 
 /// Schema discriminator for the request.
 pub const HOOK_DECISION_REQUEST_SCHEMA: &str = "guard-hook-decision-request.v1";
@@ -73,6 +76,16 @@ pub enum HookDecisionQueryV1 {
     /// queued for approval.
     ArtifactReviewRoute {
         inputs: Box<ArtifactReviewRouteInputsV1>,
+    },
+    /// The artifact hook's final-action settle: the normalized final action,
+    /// the decision record's key, the evidence patch and the receipt fields.
+    ArtifactFinalize {
+        inputs: Box<ArtifactFinalizeInputsV1>,
+    },
+    /// Whether a browser approval outcome settles the artifact hook, and how
+    /// the hook ends once it does.
+    ArtifactBrowserOutcome {
+        inputs: Box<ArtifactBrowserOutcomeInputsV1>,
     },
 }
 
@@ -396,6 +409,8 @@ pub enum HookDecisionPayloadV1 {
     Finalize(Box<HookFinalV1>),
     ArtifactDirective(Box<HookResponseDirectiveV1>),
     ArtifactReviewRoute(Box<ArtifactReviewRouteV1>),
+    ArtifactFinalize(Box<ArtifactFinalizeV1>),
+    ArtifactBrowserOutcome(Box<ArtifactBrowserOutcomeV1>),
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.
         needs_facts: Vec<String>,
