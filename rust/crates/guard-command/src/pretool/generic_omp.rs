@@ -898,6 +898,9 @@ fn grep_scope(
     // files are already in scope.
     let registered = |target: &str| {
         missing(target)
+            && !signals.sensitive_target
+            && !super::super::sensitive_command(target)
+            && !super::super::sensitive_read_path_argument(target)
             && super::super::git_routes::missing_path_in_registered_worktree(target, home, cwd)
     };
     if targets

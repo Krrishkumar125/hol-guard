@@ -70,6 +70,8 @@ fn workspace(name: &str) -> Workspace {
         ],
     );
     std::fs::create_dir_all(home.join("notes")).unwrap();
+    std::fs::create_dir_all(home.join(".aws")).unwrap();
+    std::fs::write(home.join(".aws/config"), "synthetic fixture\n").unwrap();
     Workspace {
         home,
         checkout,
@@ -82,6 +84,18 @@ fn call(workspace: &Workspace, tool: &str, path: &str) -> guard_contracts::PreTo
         "omp",
         "PreToolUse",
         &json!({"tool_name": tool, "tool_input": {"path": path}}),
+        None,
+        None,
+        workspace.home.to_str(),
+        workspace.checkout.to_str(),
+    )
+}
+
+fn search(workspace: &Workspace, path: &str) -> guard_contracts::PreToolResultV1 {
+    evaluate_pre_tool_envelope_with_context(
+        "omp",
+        "PreToolUse",
+        &json!({"tool_name": "grep", "tool_input": {"pattern": "retryLimit", "path": path}}),
         None,
         None,
         workspace.home.to_str(),
@@ -119,6 +133,30 @@ fn a_missing_path_in_a_registered_worktree_is_read_and_listed_quietly() {
         );
         assert_ne!(result.reason_code, "native_missing_path", "{tool}");
     }
+    // A search of that same folder is answered the same way. This arm proves
+    // its target through a different screen from the listing one, so it is
+    // held to the same answer here rather than left to drift.
+    let result = search(&w, "~/review-worktree/docs");
+    assert_eq!(
+        result.minimum_action, "allow",
+        "grep: {}",
+        result.reason_code
+    );
+    assert_ne!(result.reason_code, "native_missing_path", "grep");
+    // A list is read part by part, so a missing part inside the worktree
+    // cannot carry an existing part elsewhere in the list past its own
+    // checks.
+    let carried = format!(
+        "{}/review-worktree/docs/change.md;{}/.aws/config",
+        w.home.display(),
+        w.home.display()
+    );
+    let result = call(&w, "read", &carried);
+    assert_ne!(
+        result.minimum_action, "allow",
+        "read list: {}",
+        result.reason_code
+    );
 }
 
 #[test]
@@ -141,5 +179,19 @@ fn a_missing_path_outside_the_registered_worktree_still_says_it_is_missing() {
             let result = call(&w, tool, path);
             assert_ne!(result.reason_code, "native_missing_path", "{tool} {path}");
         }
+    }
+    // The search arm keeps the same boundary: a name outside the registered
+    // worktree, and a sensitive name inside it, are not searched quietly.
+    for path in [
+        "~/notes/absent.md",
+        "~/review-worktree/.env",
+        "~/.ssh/id_absent",
+    ] {
+        let result = search(&w, path);
+        assert_ne!(
+            result.minimum_action, "allow",
+            "grep {path}: {}",
+            result.reason_code
+        );
     }
 }

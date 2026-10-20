@@ -428,6 +428,13 @@ pub(in crate::pretool) fn missing_path_in_registered_worktree(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
+    // OMP reads a `;` list part by part, and a list counts as missing when any
+    // one part is. Treating the whole list as one name would let a missing
+    // first part carry an existing later one past its own checks, so a list is
+    // left to the screens that read each part.
+    if value.contains(';') {
+        return false;
+    }
     let Some(workspace) = cwd.and_then(|cwd| std::fs::canonicalize(cwd).ok()) else {
         return false;
     };
