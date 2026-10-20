@@ -94,6 +94,20 @@
    "cfg": "not(unix)"
   },
   {
+   "verdict": "windows-unsupported",
+   "note": "The `pwd`-literal chain proof requires the agent's user to own the checkout and its `.git`; there is no POSIX uid to compare on Windows, so ownership is never proven and the chain stays reviewed. Tightening it would mean an ACL read Guard does not make yet.",
+   "file": "rust/crates/guard-command/src/pretool/chain_literals_pwd.rs",
+   "item": "fn owned(_: &Path) -> bool",
+   "cfg": "not(unix)"
+  },
+  {
+   "verdict": "windows-unsupported",
+   "note": "The same proof walks to the repository root only while the device number stays the same, so a mount crossed mid-walk ends it. `st_dev` has no Windows counterpart Guard reads today, so the walk never starts and the chain stays reviewed.",
+   "file": "rust/crates/guard-command/src/pretool/chain_literals_pwd.rs",
+   "item": "fn filesystem(_: &Path) -> Option<u64>",
+   "cfg": "not(unix)"
+  },
+  {
    "file": "rust/crates/guard-command/src/pretool/chain_temporary.rs",
    "item": "fn private_scratch_parent(_argument: &str, _home_dir: Option<&str>) -> bool",
    "verdict": "windows-unsupported",
@@ -224,6 +238,20 @@
    "item": "fn trusted_postgres_socket -- non-Unix block",
    "verdict": "windows-permissive",
    "note": "The socket-directory ownership walk is POSIX-only, so a local Postgres probe is trusted without it. Windows clients reach a local server over TCP loopback, where there is no socket directory to own.",
+   "cfg": "not(unix)"
+  },
+  {
+   "verdict": "windows-equivalent",
+   "note": "This is the Windows arm doing the work and Unix taking the trivial answer. Windows drops a trailing dot or space when it creates a file, so `AGENTS.md.` lands on a protected name a literal screen would miss; such a target keeps its review. On Unix the trailing character is part of the name, so the literal screen already sees a different file.",
+   "file": "rust/crates/guard-command/src/pretool/redirect_targets.rs",
+   "item": "fn spelling_survives_the_filesystem(path: &std::path::Path) -> bool",
+   "cfg": "not(unix)"
+  },
+  {
+   "verdict": "windows-equivalent",
+   "note": "A redirect writes one file the same way a file-edit tool does, so the sibling-repository route is open on Windows with the same ownership requirement as Unix, via `owned_by_current_user`, plus a local-disk requirement that keeps a profile on a network share reviewed. The `cd` route into a sibling checkout stays closed on Windows, because that one needs an execution sink to contain.",
+   "file": "rust/crates/guard-command/src/pretool/redirect_targets.rs",
+   "item": "fn repository_below_home( canonical: &std::path::Path, _home_dir: &str, home: &std::path::Path, ) -> Option<std::path::PathBuf>",
    "cfg": "not(unix)"
   },
   {

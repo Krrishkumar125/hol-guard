@@ -55,8 +55,8 @@ above ship.
 
 ## Current standing
 
-151 arms, all reviewed: 63 `windows-unsupported`, 36 `posix-primitive`, 35
-`windows-equivalent`, 12 `windows-permissive`, 5 `other-platform`.
+155 arms, all reviewed: 65 `windows-unsupported`, 37 `windows-equivalent`, 36
+`posix-primitive`, 12 `windows-permissive`, 5 `other-platform`.
 
 The audit found thirteen permissive arms. One is closed here: `sed_edits.rs::executable`
 reviewed an in-place `sed` of an executable file by its mode bits on Unix and skipped the

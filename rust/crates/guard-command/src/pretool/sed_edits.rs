@@ -92,7 +92,7 @@ fn scratch_edit_safe(
                         context.home_dir,
                         context.cwd,
                     ) && !std::fs::symlink_metadata(target)
-                        .is_ok_and(|metadata| executable(&metadata))
+                        .is_ok_and(|metadata| executable(Path::new(target), &metadata))
                 })
         })
 }
