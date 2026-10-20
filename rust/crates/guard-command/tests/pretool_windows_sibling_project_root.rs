@@ -162,13 +162,16 @@ fn tests_in_a_sibling_checkout_under_the_profile_are_contained_on_windows() {
     // inside home, so containment holds, but its spelled ancestors never
     // equal the profile. The nearest `.git` above it is `outside-project`'s,
     // which the agent owns, so a walk that stopped only at the profile would
-    // hand back a root outside it.
+    // hand back a root outside it. A standard user can make the junction, so
+    // failing to make one is a broken fixture, not a reason to skip the case.
     let escape = outside.join("link");
-    if junction(&escape, &home.join("Documents")) {
-        assert_eq!(
-            pytest(&escape),
-            "review",
-            "a junction must not walk out of the profile"
-        );
-    }
+    assert!(
+        junction(&escape, &home.join("Documents")),
+        "mklink /J failed"
+    );
+    assert_eq!(
+        pytest(&escape),
+        "review",
+        "a junction must not walk out of the profile"
+    );
 }
