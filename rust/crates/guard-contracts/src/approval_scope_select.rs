@@ -21,7 +21,11 @@ pub const APPROVAL_SCOPE_SELECT_REQUEST_SCHEMA: &str = "guard-approval-scope-sel
 /// Schema discriminator for the result.
 pub const APPROVAL_SCOPE_SELECT_RESULT_SCHEMA: &str = "guard-approval-scope-select-result.v1";
 /// Capability advertised by the runtime when this operation is available.
-pub const APPROVAL_SCOPE_SELECT_FEATURE: &str = "approval-scope-select-v2";
+pub const APPROVAL_SCOPE_SELECT_FEATURE: &str = "approval-scope-select-v1";
+/// Capability a request asks for only when it also defers the persistence
+/// leg. A caller that resolves a scope alone keeps asking for the capability
+/// above, so a resident that predates this block still answers it.
+pub const APPROVAL_SCOPE_SELECT_PERSISTENCE_FEATURE: &str = "approval-scope-select-v2";
 /// Largest canonical request serialization the op will accept.
 pub const APPROVAL_SCOPE_SELECT_MAX_BYTES: usize = 4 * 1024 * 1024;
 
@@ -48,8 +52,10 @@ pub struct ApprovalScopeSelectRequestV1 {
     /// Present when the caller also wants the op to decide whether the
     /// decision may be remembered and whether the allow can be executed at
     /// all. Absent for a caller that only resolves the scope, which keeps
-    /// those callers on exactly the answer they had before.
-    #[serde(default)]
+    /// those callers on exactly the answer they had before. Skipped when
+    /// absent, so a selection-only request is byte-identical to the shape a
+    /// resident that predates this block accepts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persistence: Option<ApprovalScopePersistenceV1>,
 }
 

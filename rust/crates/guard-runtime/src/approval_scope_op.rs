@@ -88,15 +88,9 @@ pub(crate) fn contract_value(contract: &ScopeContract) -> Value {
         "execution_approval": {
             "schema": "guard.execution-approval.v1",
             "can_record_decision": !contract.block_scopes.is_empty(),
-            "can_run_once": !contract.allow_scopes.is_empty()
-                && !contract.restrictions.contains(&"retry_cannot_reuse_approval"),
-            "can_persist_exact_version": !contract.allow_scopes.is_empty()
-                && contract.exact_action_persistence_eligible,
-            "delivery_reason": if contract.restrictions.contains(&"retry_cannot_reuse_approval") {
-                Some("execution_binding_unavailable")
-            } else {
-                None
-            },
+            "can_run_once": contract.can_run_once(),
+            "can_persist_exact_version": contract.can_persist_exact_version(),
+            "delivery_reason": contract.delivery_reason(),
         },
     })
 }

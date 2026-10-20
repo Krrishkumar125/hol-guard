@@ -55,6 +55,31 @@ pub(crate) struct ScopeContract {
     pub(crate) exact_context_token: Option<String>,
 }
 
+/// `approval_scope_support.RETRY_CANNOT_REUSE_APPROVAL`.
+pub(crate) const RETRY_CANNOT_REUSE_APPROVAL: &str = "retry_cannot_reuse_approval";
+
+impl ScopeContract {
+    /// `bool(contract.allow_scopes) and RETRY_CANNOT_REUSE_APPROVAL not in
+    /// restrictions` - whether an allow has any way to reach the action once.
+    /// The published `execution_approval` projection and the selection op both
+    /// read it here, so the two can never answer differently.
+    pub(crate) fn can_run_once(&self) -> bool {
+        !self.allow_scopes.is_empty() && !self.restrictions.contains(&RETRY_CANNOT_REUSE_APPROVAL)
+    }
+
+    /// Whether an allow may be remembered for this exact action version.
+    pub(crate) fn can_persist_exact_version(&self) -> bool {
+        !self.allow_scopes.is_empty() && self.exact_action_persistence_eligible
+    }
+
+    /// Why the approval cannot be delivered as an execution, when it cannot.
+    pub(crate) fn delivery_reason(&self) -> Option<&'static str> {
+        self.restrictions
+            .contains(&RETRY_CANNOT_REUSE_APPROVAL)
+            .then_some("execution_binding_unavailable")
+    }
+}
+
 /// One request with its action envelope resolved once.
 pub(crate) struct View<'a> {
     pub(crate) item: &'a ApprovalScopeItemV1,

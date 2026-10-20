@@ -42,8 +42,6 @@ use crate::package_authority_op::request_digest_with_limit;
 /// `models.DECISION_SCOPE_VALUES`.
 const DECISION_SCOPE_VALUES: &[&str] = &["global", "harness", "workspace", "artifact", "publisher"];
 
-/// `approval_scope_support.RETRY_CANNOT_REUSE_APPROVAL`.
-const RETRY_CANNOT_REUSE_APPROVAL: &str = "retry_cannot_reuse_approval";
 
 pub(crate) fn evaluate_approval_scope_select_request(
     request: &ApprovalScopeSelectRequestV1,
@@ -142,17 +140,6 @@ fn evaluate_with_owner(
     )
 }
 
-/// `!contract.allow_scopes and RETRY_CANNOT_REUSE_APPROVAL not in restrictions`
-/// - the `can_run_once` projection `ApprovalScope` publishes.
-fn can_run_once(derived: &ScopeContract) -> bool {
-    !derived.allow_scopes.is_empty() && !derived.restrictions.contains(&RETRY_CANNOT_REUSE_APPROVAL)
-}
-
-/// The `can_persist_exact_version` projection `ApprovalScope` publishes.
-fn can_persist_exact_version(derived: &ScopeContract) -> bool {
-    !derived.allow_scopes.is_empty() && derived.exact_action_persistence_eligible
-}
-
 /// Decide what the client's `persist_policy` resolves to, and whether the
 /// approval can be executed at all, against the scope that was applied.
 ///
@@ -203,10 +190,10 @@ fn resolve_persistence(
     // An allow that cannot be run once and is not being saved as the exact
     // version has no way to reach the action the user approved.
     if resolution_action == "allow"
-        && !can_run_once(derived)
+        && !derived.can_run_once()
         && !(applied_scope == "artifact"
             && persist_policy == Some(true)
-            && can_persist_exact_version(derived))
+            && derived.can_persist_exact_version())
     {
         return refused_at("execution_binding_unavailable", applied_scope, derived);
     }

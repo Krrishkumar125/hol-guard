@@ -23,7 +23,11 @@ from .native_context import _resolve_digest_home, ensure_resident_prerequisite
 from .native_execution import _resident_request
 from .native_store_policy import _payload
 
-APPROVAL_SCOPE_SELECT_FEATURE = "approval-scope-select-v2"
+APPROVAL_SCOPE_SELECT_FEATURE = "approval-scope-select-v1"
+# Asked for only by a request that also defers the persistence leg. A caller
+# that resolves a scope alone keeps asking for the capability above, so a
+# resident that predates the block still answers it.
+APPROVAL_SCOPE_SELECT_PERSISTENCE_FEATURE = "approval-scope-select-v2"
 _REQUEST_SCHEMA = "guard-approval-scope-select-request.v1"
 _RESULT_SCHEMA = "guard-approval-scope-select-result.v1"
 _TIMEOUT_SECONDS = 10.0
@@ -61,15 +65,21 @@ def native_approval_scope_selection(
         "requested_scope": requested_scope,
         "contract_version": contract_version,
         "contract_digest": contract_digest,
-        "persistence": {"persist_policy": persist_policy} if decide_persistence else None,
     }
+    # The key is absent, not null, for a selection-only request: the resident
+    # that predates it refuses an unknown field, and the one that follows it
+    # re-serializes the decoded request to check the digest.
+    if decide_persistence:
+        wire["persistence"] = {"persist_policy": persist_policy}
     try:
         response = _resident_request(
             operation="approval_scope_select",
             request=wire,
             guard_home=home,
             timeout_seconds=_TIMEOUT_SECONDS,
-            required_feature=APPROVAL_SCOPE_SELECT_FEATURE,
+            required_feature=(
+                APPROVAL_SCOPE_SELECT_PERSISTENCE_FEATURE if decide_persistence else APPROVAL_SCOPE_SELECT_FEATURE
+            ),
             response_schema=_RESULT_SCHEMA,
             max_request_bytes=_MAX_REQUEST_BYTES,
             record_success=False,
