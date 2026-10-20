@@ -24,7 +24,9 @@ def test_backup_preparation_preserves_content_rule_without_writes(tmp_path, monk
     change = adapter.prepare_codex_main_backup(context, original=original, migrated_payload=migrated)
     assert _tree(tmp_path) == before
     assert change.before is None
-    assert change.after == (dump_toml(migrated).encode() if migrated is not None else original or b"")
+    assert change.after == (
+        dump_toml(migrated, original=original).encode() if migrated is not None else original or b""
+    )
     assert change.after_mode == 0o600
     assert not context.guard_home.exists()
 
@@ -99,7 +101,7 @@ def test_signed_backup_inverse_preserves_prior_generation(
     transition,
     tmp_path,
     monkeypatch,
-    existing,  # noqa: F811 -- shared pytest fixture
+    existing,
 ):
     runtime, plan, _bindings, _pointer = transition
     context = _context(tmp_path, monkeypatch)

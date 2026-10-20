@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 
 from ..action_lattice import coerce_guard_action
+from ..blocked_request_mode import is_unlinked_connector_setup_reason
 from ..package_firewall_entitlement import resolve_package_firewall_entitlement
 from ._commands_shared import *
 from .commands_parser_helpers import *
@@ -41,10 +42,6 @@ def _ensure_terminal_punctuation(message: str) -> str:
 
 def _native_hook_reason(*values: object | None) -> str:
     return _runtime_policy_module()._native_hook_reason(*values)
-
-
-def _copilot_hook_permission_decision(policy_action: str) -> str:
-    return _hook_payload_module()._copilot_hook_permission_decision(policy_action)
 
 
 def _guard_action_from_cli(value: object) -> GuardAction:
@@ -159,9 +156,15 @@ def _update_guard_cli_settings(*, args: argparse.Namespace, config: GuardConfig,
         )
 
     if settings_command == "protection":
-        from ..protection_posture import coerce_protection_posture
+        from ..harness_posture import protection_settings_payload
 
-        return persist_settings({"protection_posture": coerce_protection_posture(args.protection_posture)})
+        return persist_settings(
+            protection_settings_payload(
+                getattr(args, "protection_posture", None),
+                harness=getattr(args, "harness", None),
+                inherit=bool(getattr(args, "inherit", False)),
+            )
+        )
     if settings_command == "security-level":
         payload: dict[str, object] = {"security_level": args.security_level}
         if args.security_level in _NAMED_SECURITY_LEVELS:
@@ -388,7 +391,10 @@ def _should_use_decision_v2_harness_message(response_payload: dict[str, object],
     )
     if any(message.startswith(prefix) for prefix in generic_prefixes):
         return False
-    return not message.startswith("HOL Guard needs a fresh approval because this action changed.")
+    return not message.startswith((
+        "HOL Guard needs a fresh approval because this action changed.",
+        "HOL Guard needs a fresh approval before this action can run.",
+    ))
 
 def _claude_prompt_additional_context(
     *,
@@ -458,7 +464,7 @@ def _copilot_hook_reason(*values: object | None) -> str:
     reason = _native_hook_reason(*values)
     if reason.startswith("Guard "):
         reason = f"HOL {reason}"
-    if "approve" in reason.lower():
+    if "approve" in reason.lower() or is_unlinked_connector_setup_reason(reason):
         return reason
     return f"{reason} Approve it in HOL Guard, then retry."
 
@@ -516,14 +522,27 @@ def _emit_copilot_hook_response(
 ) -> None:
     # Copilot's command-hook contract only accepts its native transport
     # fields. The exact Guard action is persisted in Guard receipts/events;
-    # this payload intentionally carries only Copilot's binary disposition.
-    payload: dict[str, object] = {"permissionDecision": _copilot_hook_permission_decision(policy_action)}
-    if payload["permissionDecision"] != "allow":
-        payload["permissionDecisionReason"] = reason
+    # this payload intentionally carries only Copilot's binary disposition,
+    # which the resident composes. A render the resident cannot answer falls
+    # back to the fixed disposition for the action class, so an unreachable
+    # resident never turns a blocking action into one Copilot would run.
+    hook_payload = _hook_payload_module()
+    params: dict[str, object] = {"policy_action": policy_action, "reason": reason}
     if approval_reuse is not None:
-        payload["approval_reuse"] = approval_reuse
+        params["approval_reuse"] = approval_reuse
     if scanner_evidence:
-        payload["scanner_evidence"] = list(scanner_evidence)
+        params["scanner_evidence"] = list(scanner_evidence)
+    rendered = hook_payload._render_cli("copilot_hook_response", "copilot", params)
+    payload: dict[str, object] = dict(rendered[1]) if rendered is not None and rendered[1] else {}
+    if not payload:
+        blocked = policy_action in hook_payload._BLOCKING_ACTIONS
+        payload["permissionDecision"] = "deny" if blocked else "allow"
+        if blocked:
+            payload["permissionDecisionReason"] = reason
+        if approval_reuse is not None:
+            payload["approval_reuse"] = approval_reuse
+        if scanner_evidence:
+            payload["scanner_evidence"] = list(scanner_evidence)
     _write_json_line(payload, output_stream=output_stream)
 
 def _emit_copilot_permission_request_response(

@@ -745,26 +745,31 @@ def test_openclaw_complete_plan_recovers_overlay_hook_manifest_and_launchers(tra
 @pytest.mark.parametrize("previous_exists", [False, True])
 def test_grok_plan_restores_config_hooks_state_and_backup_lifetime(transition, previous_exists):
     from codex_plugin_scanner.guard.adapters.base import HarnessContext
+    from codex_plugin_scanner.guard.adapters.cursor_hook_config import isolated_cursor_hook_python
     from codex_plugin_scanner.guard.adapters.grok import GrokHarnessAdapter
 
     runtime, plan, _, _ = transition
     ctx = HarnessContext(home_dir=runtime.home.parent, workspace_dir=None, guard_home=runtime.home)
     adapter = GrokHarnessAdapter()
-    config = ctx.home_dir / ".grok/managed_config.toml"
+    config = ctx.home_dir / ".grok/config.toml"
     config.parent.mkdir(parents=True)
     config.write_text("# user setting\n[ui]\nsimple_mode = true\n")
     config.chmod(0o600)
     if previous_exists:
         adapter.install(ctx)
-    backup = adapter._backup_path(ctx, "managed_config.toml")
+    backup = adapter._backup_path(ctx, "config.toml")
     previous_backup = backup.stat() if backup.exists() else None
     prepared = adapter.prepare_install(replace(ctx, workspace_dir=ctx.home_dir / "candidate-workspace"))
-    assert len(prepared.files) == 9
+    assert len(prepared.files) == (11 if isolated_cursor_hook_python() is not None else 10)
     assert config.read_bytes() == next(change.before for change in prepared.files if change.path == config)
     plan = replace(plan, files=(*plan.files, *prepared.files))
     begin(runtime, plan)
     runtime.publish(plan.operation_id, "AuthorizedForExactTransition")
-    assert b"candidate-workspace" in config.read_bytes()
+    for change in prepared.files:
+        if change.after is None:
+            assert not change.path.exists()
+        else:
+            assert change.path.read_bytes() == change.after
     assert b"simple_mode = true" in config.read_bytes()
     if previous_backup is not None:
         assert backup.stat().st_ino == previous_backup.st_ino
@@ -2092,7 +2097,18 @@ def test_revoked_grant_and_reopened_object_cannot_publish_from_signed_record(tra
     reopened = RuntimeTransition(plan.guard_home, runtime.authority)
     with pytest.raises(ApprovalGateError):
         reopened.publish(plan.operation_id, "AuthorizedForExactTransition")
-    approval_gate._invalidate_active_grants(plan.guard_home)
+    # Rotating the approval password changes the factor generation, which the
+    # resident answers by revoking every grant it has issued for this home.
+    rotation = approval_gate.require_high_risk(
+        plan.guard_home,
+        purpose="settings_write",
+        approval_gate_input=ApprovalGateInput(password=password),
+    )
+    update_settings(
+        plan.guard_home,
+        {"new_password": "rotated-transition-password", "confirm_password": "rotated-transition-password"},
+        approval_gate_grant=rotation,
+    )
     with pytest.raises(ApprovalGateError):
         runtime.publish(plan.operation_id, "AuthorizedForExactTransition")
     assert bindings.read_bytes() == b"previous hooks"

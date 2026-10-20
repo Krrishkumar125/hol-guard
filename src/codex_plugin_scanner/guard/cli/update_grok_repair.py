@@ -72,8 +72,19 @@ def _grok_hooks_are_current(context: HarnessContext) -> bool:
     command = _pretool_command(payload)
     if timeout != GROK_PRETOOL_HOOK_TIMEOUT_SECONDS:
         return False
+    from ..adapters.grok_config import GUARD_HOOK_PROMPT_FILE, build_observe_hook_json
+
+    prompt_path = GrokHarnessAdapter._hooks_dir(context) / GUARD_HOOK_PROMPT_FILE
+    try:
+        prompt_hooks = json.loads(prompt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not _prompt_hook_entries_are_current(prompt_hooks, build_observe_hook_json(command)):
+        return False
     if _isolated_bounded_hook_is_current(command, context=context):
         return True
+    if _isolated_client_argv(command) is not None:
+        return False
     marker = f'"timeout_seconds":{GROK_HOOK_INTERNAL_TIMEOUT_SECONDS}'
     if marker not in command.replace(" ", ""):
         return False
@@ -103,18 +114,43 @@ def _grok_hooks_are_current(context: HarnessContext) -> bool:
     return isinstance(cli_args, list) and "--json" in cli_args
 
 
+def _prompt_hook_entries_are_current(payload: object, expected: dict[str, object]) -> bool:
+    hooks = payload.get("hooks") if isinstance(payload, dict) else None
+    expected_hooks = expected.get("hooks")
+    if not isinstance(hooks, dict) or not isinstance(expected_hooks, dict):
+        return False
+    for event, required_groups in expected_hooks.items():
+        groups = hooks.get(event)
+        if not isinstance(groups, list):
+            return False
+        expected_hook = required_groups[0]["hooks"][0]
+        if not any(
+            isinstance(group, dict)
+            and not group.get("matcher")
+            and isinstance(group.get("hooks"), list)
+            and any(
+                isinstance(hook, dict) and all(hook.get(key) == value for key, value in expected_hook.items())
+                for hook in group["hooks"]
+            )
+            for group in groups
+        ):
+            return False
+    return True
+
+
 def _isolated_bounded_hook_is_current(command: str, *, context: HarnessContext) -> bool:
     from ..adapters.bounded_cli_hook_bridge import _render_bounded_hook_script, bounded_hook_script_path
     from ..adapters.cursor_hook_config import isolated_cursor_hook_python
+    from .grok_hook_validation import is_grok_hook_command
 
     interpreter = isolated_cursor_hook_python()
     expected_script = bounded_hook_script_path(context.guard_home, "grok")
     if interpreter is None or expected_script is None:
         return False
-    argv = _split_hook_command(command, posix=True)
-    if len(argv) != 3 or argv[1] != "-I":
-        argv = _split_hook_command(command, posix=False)
-    if len(argv) != 3 or argv[1] != "-I":
+    if not is_grok_hook_command(command, context=context):
+        return False
+    argv = _isolated_client_argv(command)
+    if argv is None:
         return False
     try:
         if Path(argv[0]).resolve() != Path(interpreter).resolve():
@@ -129,6 +165,17 @@ def _isolated_bounded_hook_is_current(command: str, *, context: HarnessContext) 
         harness="grok",
         timeout_seconds=GROK_HOOK_INTERNAL_TIMEOUT_SECONDS,
     )
+
+
+def _isolated_client_argv(command: str) -> list[str] | None:
+    """The generated stdlib client argv, also inside a native runtime prefix."""
+    from ..adapters.bounded_cli_hook_native import bounded_python_argv
+
+    for posix in (True, False):
+        argv = [str(argument) for argument in bounded_python_argv(_split_hook_command(command, posix=posix))]
+        if len(argv) in {3, 4} and argv[1] == "-I":
+            return argv
+    return None
 
 
 def _hook_config_from_command(command: str) -> dict[str, object] | None:

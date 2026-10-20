@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from collections.abc import Callable
+from pathlib import Path
 from typing import cast
 
 from .managed_controls_policy_fields import (
+    _UNBOUND,
     ManagedControlsPolicyError,
     ParsedManagedControlsPolicy,
     is_mapping,
     parse_managed_controls_policy_fields,
 )
-from .policy_bundle_trusted_keys import PolicyBundleVerificationKey
-from .policy_bundle_v2 import validated_policy_bundle_v2_payload
 from .runtime.command_extensions import CommandSafetyExtensionRegistry
 from .runtime.extension_control_authority import (
     ExtensionControlAuthorityError,
@@ -93,12 +93,25 @@ def _projection_digest(value: dict[str, object]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _observed_projection(parsed, projection: str, *, catalog_digest: str | None) -> str:
+    """Release a native projection only under the enforcement identity it was cut against."""
+
+    if catalog_digest != parsed.cloud_enforcement_digest:
+        raise ManagedControlsPolicyError(
+            "policy_enforcement_digest_mismatch", "Cloud policy enforcement identity changed."
+        )
+    return projection
+
+
 def signed_cloud_extension_projection_json(
     parsed: ParsedManagedControlsPolicy,
     *,
     catalog_digest: str,
 ) -> str:
     """Return the canonical signed-Cloud projection for the observed wire catalog."""
+
+    if parsed.cloud_projection_json is not None:
+        return _observed_projection(parsed, parsed.cloud_projection_json, catalog_digest=catalog_digest)
 
     signed_layers = ()
     if parsed.signed_cloud_layer is not None:
@@ -143,64 +156,59 @@ def signed_cloud_extension_projection_digest(
 ) -> str:
     """Hash the canonical signed-Cloud projection for the observed wire catalog."""
 
+    if parsed.cloud_projection_digest is not None:
+        return _observed_projection(parsed, parsed.cloud_projection_digest, catalog_digest=catalog_digest)
+
     canonical = signed_cloud_extension_projection_json(parsed, catalog_digest=catalog_digest)
     return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
-
-
-def validated_managed_controls_policy_bundle_v2_payload(
-    policy_bundle: dict[str, object],
-    *,
-    registry: CommandSafetyExtensionRegistry,
-    negotiated_capabilities: frozenset[str],
-    trusted_verification_keys: tuple[PolicyBundleVerificationKey, ...] = (),
-    anchored_verification_keys: tuple[PolicyBundleVerificationKey, ...] = (),
-    package_firewall_supported: bool = False,
-    now: datetime | None = None,
-):
-    """Validate the signed envelope first, then parse negotiated Extension semantics."""
-
-    validated, reason = validated_policy_bundle_v2_payload(
-        policy_bundle,
-        trusted_verification_keys=trusted_verification_keys,
-        anchored_verification_keys=anchored_verification_keys,
-        now=now,
-    )
-    if validated is None:
-        return None, None, reason
-    payload = validated.get("payload")
-    if not is_mapping(payload):
-        return None, None, "invalid_policy_document"
-    try:
-        parsed = parse_managed_controls_policy_fields(
-            payload,
-            registry=registry,
-            negotiated_capabilities=negotiated_capabilities,
-            package_firewall_supported=package_firewall_supported,
-        )
-    except ManagedControlsPolicyError as error:
-        return None, None, error.code
-    except ValueError:
-        return None, None, "invalid_extension_semantics"
-    return validated, parsed, None
 
 
 def parsed_managed_controls_from_validated_policy_bundle(
     policy_bundle: dict[str, object],
     *,
-    registry: CommandSafetyExtensionRegistry,
+    registry: CommandSafetyExtensionRegistry | Callable[[], CommandSafetyExtensionRegistry],
     negotiated_capabilities: frozenset[str],
     package_firewall_supported: bool = False,
+    guard_home: Path | None = None,
+    runtime_summary: dict[str, object] | None = None,
+    delivery_catalog_digest: object = _UNBOUND,
 ):
     """Parse Extension semantics from an already authenticated v2 envelope."""
 
     payload = policy_bundle.get("payload")
     if not is_mapping(payload):
         raise ManagedControlsPolicyError("invalid_policy_document", "Signed policy payload must be an object.")
+
+    def cloud_view(resolved_registry):
+        capabilities = runtime_summary.get("managedControlsCapabilities") if runtime_summary is not None else None
+        if runtime_summary is None or not (isinstance(capabilities, list) and "extension-catalog.v2" in capabilities):
+            return None
+        if guard_home is None:
+            raise ManagedControlsPolicyError("policy_local_view_missing", "An explicit local policy view is required.")
+        from .runtime.extension_catalog_completion import local_policy_view
+
+        try:
+            return local_policy_view(
+                guard_home=guard_home,
+                runtime_summary=runtime_summary,
+                registry=resolved_registry,
+                policy_workspace_id=policy_bundle.get("workspaceId"),
+            )
+        except ManagedControlsPolicyError:
+            raise
+        except (ImportError, OSError, RuntimeError, TypeError, ValueError) as error:
+            raise ManagedControlsPolicyError(
+                "policy_local_view_invalid", "The local policy view could not be authenticated."
+            ) from error
+
     return parse_managed_controls_policy_fields(
         payload,
         registry=registry,
         negotiated_capabilities=negotiated_capabilities,
         package_firewall_supported=package_firewall_supported,
+        guard_home=guard_home,
+        cloud_view=cloud_view,
+        delivery_catalog_digest=delivery_catalog_digest,
     )
 
 

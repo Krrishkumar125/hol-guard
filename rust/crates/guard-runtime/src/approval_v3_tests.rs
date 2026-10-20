@@ -79,6 +79,7 @@ fn snapshot(root: &Path, key: &[u8; 32]) -> PolicySnapshotV3 {
         },
         effective_policy,
         command_extensions: None,
+        business_policy: None,
         issued_at_ms: now_ms().unwrap().saturating_sub(1),
         expires_at_ms: now_ms().unwrap() + 60_000,
         integrity: SnapshotIntegrityV3 {
@@ -149,6 +150,7 @@ fn store_and_envelope_with_runtime(
             &serde_json::to_value(guard_policy_snapshot::PolicySnapshotPushV1 {
                 schema: POLICY_SNAPSHOT_PUSH_SCHEMA.into(),
                 snapshot: signed.clone(),
+                direct_lane: None,
             })
             .unwrap(),
         )
@@ -170,6 +172,7 @@ fn store_and_envelope_with_runtime(
             source_ref_external_allowed: false,
             execution_environment: None,
         },
+        recording_only: false,
     };
     (root, store, envelope)
 }

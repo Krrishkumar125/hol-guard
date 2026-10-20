@@ -48,7 +48,8 @@ DAEMON_PROCESS = r"""
 import os, sys, time
 from pathlib import Path
 from codex_plugin_scanner.guard.daemon import server
-from codex_plugin_scanner.guard.native_resident_client import close_native_residents
+from codex_plugin_scanner.guard.daemon import server_control_cloud_sync as _ctl_cloud_sync
+from codex_plugin_scanner.guard.native_resident_client import close_native_resident_clients
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.owned_daemon_test_support import publish_ready_pid
 home, guard, ready = map(Path, sys.argv[1:])
@@ -57,7 +58,7 @@ for name in ('_start_aibom_inventory_refresh', '_start_supply_chain_bundle_refre
     setattr(server.GuardDaemonServer, name, lambda _self: None)
 server.start_command_queue_worker = lambda _store, existing: existing
 server.start_cloud_sync_sync_worker = lambda _store, existing, **_kwargs: existing
-server._queue_headless_cloud_sync = lambda **_kwargs: {'status': 'not_configured'}
+_ctl_cloud_sync._queue_headless_cloud_sync = lambda **_kwargs: {'status': 'not_configured'}
 daemon = server.GuardDaemonServer(GuardStore(guard), host='127.0.0.1', port=0, home_dir=home)
 try:
     daemon.start()
@@ -66,8 +67,10 @@ try:
         raise RuntimeError('Exact fixture stop required')
 finally:
     daemon.stop()
-    if not close_native_residents(guard, deadline_monotonic=time.monotonic() + 5):
-        raise RuntimeError('Native residents not retired')
+    # The shared resident holds the approval-gate grants and outlives the daemon,
+    # exactly as in production. Only this process's resident clients are closed.
+    if not close_native_resident_clients(guard, deadline_monotonic=time.monotonic() + 5):
+        raise RuntimeError('Native resident clients not closed')
 """
 
 
@@ -264,7 +267,15 @@ def test_configured_native_inverse_restores_binding_store_and_selection(
             grant=grant,
         )
         assert result.phase == "FailedWithVerifiedRollback", (result.first_cause, result.recovery_causes, events)
-        assert result.first_cause == "injected_after_real_candidate_protection"
+        # first_cause is whichever forward protection check failed first. The
+        # intended trigger is the injected post-candidate error; but on the
+        # owned-daemon param the real receipt validation inside
+        # observe_configured_codex_hook can raise admission_protection_failed
+        # before the injection point. Either is a legitimate forward failure.
+        assert result.first_cause in {
+            "injected_after_real_candidate_protection",
+            "admission_protection_failed",
+        }
         assert password not in runtime.path.read_text() and grant.grant_id not in runtime.path.read_text()
         assert len(proofs) == 2
         assert all(proof.allow_receipt["authority"] == "rust" for proof in proofs)

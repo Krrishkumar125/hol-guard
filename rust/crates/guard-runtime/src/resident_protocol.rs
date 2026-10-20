@@ -1,25 +1,176 @@
 use guard_command::CommandModelRequestV1;
 use guard_contracts::{
+    ApplyStoredPackagePolicyRequestV1, ApprovalBulkEligibilityRequestV1,
     ApprovalChallengeRequestV3, ApprovalChallengeRequestV4, ApprovalConsumeRequestV3,
-    ApprovalConsumeRequestV4, ApprovalValidateRequestV3, ApprovalValidateRequestV4,
-    ContextDigestRequestV1, GuardHookEnvelopeV2, NativeHookRequestV1, RuntimeCapabilitiesV1,
-    GUARD_HOOK_ENVELOPE_V2_SCHEMA, MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES,
-    NATIVE_APPROVAL_MAX_BYTES, NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
+    ApprovalConsumeRequestV4, ApprovalGateRequestV1, ApprovalProofRequestV1,
+    ApprovalQueueIdentityRequestV1, ApprovalResolutionPlanRequestV1,
+    ApprovalReuseDiagnosticRequestV1, ApprovalReuseRequestV1, ApprovalScopeRequestV1,
+    ApprovalValidateRequestV3, ApprovalValidateRequestV4, ArtifactRiskRequestV1,
+    CiscoPreflightRequestV1, ClaimApprovalReuseDecisionsRequestV1, CodexRequestResumeRequestV1,
+    CodexToolOutputRequestV1, CommandEffectBatchRequestV1, CommandEffectRequestV1,
+    CompoundGitInspectionRequestV1, ConnectorSetupContextRequestV1,
+    ConsumerArtifactComposeRequestV1, ConsumerArtifactProjectRequestV1, ContainedExecuteRequestV1,
+    ContainedNodeExecuteRequestV1, ContainedPackageScriptExecuteRequestV1,
+    ContainedTypescriptExecuteRequestV1, ContainedWorkspaceWriteExecuteRequestV1,
+    ContextDigestRequestV1, ContributedMcpDecisionRequestV1, CursorObserverProofRequestV1,
+    DaemonHandlerRequestV1, DaemonLifecycleDecisionRequestV1, DaemonRouteRequestV1,
+    DataFlowAnalyzeRequestV1, GitExecutionSafetyRequestV1, GithubCliClassifyRequestV1,
+    GuardHookEnvelopeV2, GuardStoreRequestV1, HookAdapterRequestV1, HookArtifactComposeRequestV1,
+    HookAuthorityStateRequestV1, HookDecisionRequestV1, LocalCliGrantRequestV1,
+    LocalCliHookRequestV1, LocalMcpGrantRequestV1, LocalToolEligibilityRequestV1,
+    McpClassificationRequestV1, McpProxyDecisionRequestV1, McpRuntimeEvidenceRequestV1,
+    McpStdioProbeRequestV1, McpStdioSessionCloseRequestV1, McpStdioSessionOpenRequestV1,
+    McpStdioSessionRecvRequestV1, McpStdioSessionSendRequestV1, McpToolCallIdentityRequestV1,
+    McpToolEvidenceRequestV1, McpToolPolicyDecideRequestV1, NativeExactActionRequestV1,
+    NativeHookRequestV1, PackageAdvisoryIdsRequestV1, PackageApprovalHashRequestV1,
+    PackageAuditProjectionRequestV1, PackageAuthorityDecideRequestV1, PackageContextBuildRequestV1,
+    PackageEvaluationComposeRequestV1, PackageIntentParseRequestV1, PackagePolicyResolveRequestV1,
+    PackagePostureRequestV1, PackageProtectFinalizeRequestV1, PackageRequestArtifactRequestV1,
+    PolicyBundleAuthorityRequestV1, PolicyDecisionLookupRequestV1, PolicyIntegrityRowsRequestV1,
+    PromptAnalyzeRequestV1, ProtectRequestRequestV1, RequestContextRequestV1,
+    RunnerAuthorityRequestV1, RuntimeCapabilitiesV1, RuntimeDetectorRunRequestV1,
+    ShimAdminRequestV2, SkillDirectoryIdentityRequestV1, SupplyChainEvalRequestV1,
+    WorkspaceInventoryRequestV1, MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES,
+    NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };
-use guard_hook_core::review_post_tool;
-use guard_policy_snapshot::canonical_json_bytes;
 use serde::Deserialize;
 use serde_json::Value;
-use std::path::Path;
 
-use crate::policy_store::PolicySnapshotStore;
+// Evaluation lives in `resident_ops.rs`; re-exported so `crate::resident_protocol::`
+// call sites and the approval-contract token surface stay stable.
+pub(crate) use crate::resident_ops::evaluate_resident_bytes;
+
+pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
+    let mut features = vec![
+        "post-tool-inline-v1".into(),
+        "post-tool-source-read-v1".into(),
+        "oneshot-v1".into(),
+        "framed-serve-v1".into(),
+        "resident-protocol-v2".into(),
+        "bounded-admission-v2".into(),
+        "overload-signal-v1".into(),
+        "panic-containment-v1".into(),
+        "rule-contract-v2".into(),
+        "pre-tool-command-model-shadow-v1".into(),
+        "resident-command-model-shadow-v1".into(),
+        "rich-command-model-v1".into(),
+        "pre-tool-command-authority-v1".into(),
+        crate::oneshot::PRE_TOOL_PATH_CONTEXT_FEATURE.into(),
+        crate::oneshot::PRE_TOOL_EXECUTION_ENVIRONMENT_FEATURE.into(),
+        "pre-tool-generic-authority-v1".into(),
+        guard_contracts::NATIVE_COMMAND_PROGRAM_CAPABILITY.into(),
+        guard_contracts::NATIVE_COMMAND_CONTROL_FENCE_CAPABILITY.into(),
+        "policy-snapshot-v3".into(),
+        "policy-snapshot-push-v1".into(),
+        "policy-snapshot-resident-generation-v1".into(),
+        "policy-snapshot-direct-lane-v1".into(),
+        crate::hook_direct::HOOK_DIRECT_FEATURE.into(),
+        crate::hook_direct::HOOK_DIRECT_CONTAINED_ROUTE_FEATURE.into(),
+        crate::hook_direct::HOOK_DIRECT_PERMISSION_NOTICE_FEATURE.into(),
+        crate::hook_direct::HOOK_DIRECT_SAVED_DECISION_FEATURE.into(),
+        crate::hook_direct::HOOK_DIRECT_STRUCTURED_OUTPUT_FEATURE.into(),
+        crate::policy_store::policy_store_direct_lane::HOOK_DIRECT_REVIEW_FACTS_FEATURE.into(),
+        crate::hook_direct_evidence::HOOK_DIRECT_EVIDENCE_FEATURE.into(),
+        crate::directory_trust::DIRECTORY_TRUST_FEATURE.into(),
+        crate::directory_trust::HOOK_PATH_RULES_FEATURE.into(),
+        crate::mcp_relay_decide::MCP_RELAY_DECIDE_FEATURE.into(),
+        crate::mcp_relay_servers::MCP_RELAY_SERVER_REPORT_FEATURE.into(),
+        "native-approval-artifact-v3".into(),
+        "native-approval-challenge-v3".into(),
+        "native-approval-validation-v3".into(),
+        "native-approval-consume-v3".into(),
+        "native-approval-webauthn-v4".into(),
+        "native-approval-challenge-v4".into(),
+        "native-approval-validation-v4".into(),
+        "native-approval-consume-v4".into(),
+        "native-approval-replay-memory-v1".into(),
+        "native-workspace-review-authority-v1".into(),
+        "native-workspace-review-enrollment-resident-v1".into(),
+        "native-workspace-review-context-v1".into(),
+        "native-local-business-review-summary-v1".into(),
+        "native-local-business-review-queue-v1".into(),
+        "native-workspace-review-decision-v1".into(),
+        "native-policy-in-memory-v1".into(),
+        "native-policy-snapshot-build-v1".into(),
+        "native-policy-snapshot-inspect-v1".into(),
+        "native-business-policy-retained-floor-v1".into(),
+        "native-business-policy-document-compile-v1".into(),
+        "native-guard-config-load-v1".into(),
+        "native-guard-config-update-v1".into(),
+        "native-policy-effective-v1".into(),
+        "native-business-source-codec-v1".into(),
+        "native-business-source-anchor-codec-v1".into(),
+        "native-business-source-current-fence-v2".into(),
+        "hook-envelope-v2".into(),
+        "hook-harness-response-v1".into(),
+        "git-execution-context-v1".into(),
+        "native-resident-client-v1".into(),
+        "shell-helpers-v1".into(),
+        "native-resident-lifecycle-v1".into(),
+        "secrets-cli-v1".into(),
+    ];
+    features.extend(
+        crate::resident_op_features::RESIDENT_OP_FEATURES
+            .iter()
+            .map(|feature| (*feature).into()),
+    );
+    if cfg!(windows) {
+        features.push("authenticated-loopback-resident-v1".into());
+    }
+    // The MCP stdio session child runs in a process group on unix and in a
+    // kill-on-close JobObject on Windows.
+    if cfg!(any(unix, windows)) {
+        features.push(guard_contracts::MCP_STDIO_SESSION_FEATURE.into());
+    }
+    if cfg!(unix) {
+        features.push("authenticated-unix-resident-v1".into());
+        // Features gated cfg(unix) in resident_ops::evaluate_resident_bytes must
+        // not be advertised elsewhere, or callers route work the binary cannot honor.
+        features.push(guard_contracts::CONTAINED_EXECUTION_FEATURE.into());
+        // The module is #[cfg(unix)]. A runtime cfg! check still type-checks
+        // this path on Windows, where the module is not compiled.
+        #[cfg(unix)]
+        features.push(crate::binding_capture_op::BINDING_CAPTURE_FEATURE.into());
+    }
+    features.push(crate::mcp_relay::RELAY_FEATURE.into());
+    features.push(crate::hook_evidence_writer_op::HOOK_EVIDENCE_WRITER_FEATURE.into());
+    features.push(crate::claude_session_start::SESSION_START_FEATURE.into());
+    features.push(crate::claude_hook_bridge::BRIDGE_FEATURE.into());
+    features.push(crate::codex_hook_bridge::BRIDGE_FEATURE.into());
+    features.push(crate::bounded_hook_bridge::BRIDGE_FEATURE.into());
+    features.push(crate::cursor_hook_bridge::BRIDGE_FEATURE.into());
+    features.push(crate::pi_hook_bridge::BRIDGE_FEATURE.into());
+    features.push(guard_contracts::SKILL_DIRECTORY_IDENTITY_FEATURE.into());
+    let (program_digest, catalog_digest, trust_digest) =
+        guard_command::native_command_program::packaged_program_digests();
+    RuntimeCapabilitiesV1 {
+        protocol_version: NATIVE_PROTOCOL_VERSION,
+        runtime_version: crate::PACKAGE_VERSION.to_owned(),
+        rule_digest: guard_rule_contract::rule_digest(),
+        build_sha: crate::BUILD_SHA.to_owned(),
+        target: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
+        features,
+        program_digest,
+        catalog_digest,
+        trust_digest,
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "operation", content = "request", rename_all = "snake_case")]
 pub(crate) enum ResidentOperationV1 {
+    ArchiveAcquisition(guard_contracts::ArchiveAcquisitionRequestV1),
     CommandModel(CommandModelRequestV1),
-    PreToolUse(CommandModelRequestV1),
+    RichCommandModel(crate::rich_command_model_op::RichCommandModelRequest),
+    PreToolUse(crate::oneshot::PreToolRequestV1),
     PolicySnapshotPush(Value),
+    HookDirect(crate::hook_direct::HookDirectRequestV1),
+    HookDirectEvidenceDrain(crate::hook_direct_evidence::HookDirectEvidenceDrainRequestV1),
+    McpRelayDecide(crate::mcp_relay_decide::McpRelayDecideRequestV1),
+    McpRelayCommit(crate::mcp_relay_pending::McpRelayCommitRequestV1),
+    McpRelayReady(crate::mcp_relay_ready::McpRelayReadyRequestV1),
+    McpRelayClaim(crate::mcp_relay_claims::McpRelayClaimRequestV1),
+    McpRelayServerReport(crate::mcp_relay_servers::McpRelayServerReportRequestV1),
     ApprovalChallenge(ApprovalChallengeRequestV3),
     ApprovalValidate(ApprovalValidateRequestV3),
     ApprovalConsume(ApprovalConsumeRequestV3),
@@ -28,10 +179,131 @@ pub(crate) enum ResidentOperationV1 {
     ApprovalConsumeV4(ApprovalConsumeRequestV4),
     WorkspaceReviewAuthorityEnroll(WorkspaceReviewAuthorityEnrollRequestV1),
     WorkspaceReviewContext(WorkspaceReviewContextRequestV1),
+    WorkspaceReviewLocalSummary(WorkspaceReviewContextRequestV1),
+    WorkspaceReviewLocalQueue(WorkspaceReviewLocalQueueRequestV1),
     WorkspaceReviewDecision(WorkspaceReviewDecisionRequestV1),
     ContextDigest(ContextDigestRequestV1),
+    DirectoryTrust(crate::directory_trust::DirectoryTrustRequestV1),
+    CommandEffectDecide(CommandEffectRequestV1),
+    CommandEffectDecideBatch(CommandEffectBatchRequestV1),
+    ApprovalReuseDecide(ApprovalReuseRequestV1),
+    NativeBashPrepare(guard_contracts::NativeBashPrepareRequestV1),
+    NativeBashExecute(guard_contracts::NativeBashExecuteRequestV1),
+    NativeBashCancel(guard_contracts::NativeBashCancelRequestV1),
+    NativeBashActivity(guard_contracts::NativeBashActivityRequestV1),
+    NativeBashAck(guard_contracts::NativeBashAckRequestV1),
+    NativeBashReviewCheck(guard_contracts::NativeBashReviewCheckRequestV1),
+    ComposioRole(guard_contracts::ComposioRoleRequestV1),
+    GithubCliClassify(GithubCliClassifyRequestV1),
+    GithubWorkflowPrepare(guard_contracts::GithubWorkflowPrepareRequestV1),
+    ProtectRequest(ProtectRequestRequestV1),
+    ClaimApprovalReuseDecisions(ClaimApprovalReuseDecisionsRequestV1),
+    ApprovalReuseDiagnostic(ApprovalReuseDiagnosticRequestV1),
+    ApprovalBulkEligibility(ApprovalBulkEligibilityRequestV1),
+    CodexRequestResume(CodexRequestResumeRequestV1),
+    ApprovalQueueIdentity(ApprovalQueueIdentityRequestV1),
+    ApprovalResolutionPlan(ApprovalResolutionPlanRequestV1),
+    ApprovalScope(ApprovalScopeRequestV1),
+    ApprovalScopeSelect(guard_contracts::ApprovalScopeSelectRequestV1),
+    HookRender(guard_contracts::HookRenderRequestV1),
+    GuardStore(GuardStoreRequestV1),
+    HookEvidenceWriter(crate::hook_evidence_writer_op::HookEvidenceWriterRequestV1),
+    ApprovalGate(ApprovalGateRequestV1),
+    PackageIntentParse(PackageIntentParseRequestV1),
+    PackageRequestArtifact(PackageRequestArtifactRequestV1),
+    SupplyChainEval(SupplyChainEvalRequestV1),
+    ApplyStoredPackagePolicy(ApplyStoredPackagePolicyRequestV1),
+    PackageAuthorityDecide(PackageAuthorityDecideRequestV1),
+    #[allow(dead_code)]
+    ContainedNodeExecute(ContainedNodeExecuteRequestV1),
+    #[allow(dead_code)]
+    ContainedTypescriptExecute(ContainedTypescriptExecuteRequestV1),
+    #[allow(dead_code)]
+    ContainedPackageScriptExecute(ContainedPackageScriptExecuteRequestV1),
+    #[allow(dead_code)]
+    ContainedWorkspaceWriteExecute(ContainedWorkspaceWriteExecuteRequestV1),
+    #[allow(dead_code)]
+    ContainedExecute(ContainedExecuteRequestV1),
+    ShimAdmin(ShimAdminRequestV2),
+    PackageContextBuild(PackageContextBuildRequestV1),
+    McpStdioProbe(McpStdioProbeRequestV1),
+    McpStdioCancel(McpStdioCancelRequest),
+    McpStdioSessionOpen(McpStdioSessionOpenRequestV1),
+    McpStdioSessionSend(McpStdioSessionSendRequestV1),
+    McpStdioSessionRecv(McpStdioSessionRecvRequestV1),
+    McpStdioSessionClose(McpStdioSessionCloseRequestV1),
+    PackageAdvisoryIds(PackageAdvisoryIdsRequestV1),
+    PackageEvaluationCompose(PackageEvaluationComposeRequestV1),
+    PackageApprovalHash(PackageApprovalHashRequestV1),
+    PackagePolicyResolve(PackagePolicyResolveRequestV1),
+    PackageProtectFinalize(PackageProtectFinalizeRequestV1),
+    PackagePosture(PackagePostureRequestV1),
+    PackageAuditProjection(PackageAuditProjectionRequestV1),
+    WorkspaceInventory(WorkspaceInventoryRequestV1),
+    PolicyDecisionLookup(Box<PolicyDecisionLookupRequestV1>),
+    PolicyDocumentDecide(guard_contracts::PolicyDocumentDecisionRequestV1),
+    CommandPolicyDecide(guard_contracts::CommandPolicyDecisionRequestV1),
+    CommandExpressionValidate(guard_contracts::CommandExpressionValidationRequestV1),
+    ReviewedInvocationBindingsValidate(guard_contracts::ReviewedInvocationBindingsRequestV1),
+    GitExecutionSafety(GitExecutionSafetyRequestV1),
+    CompoundGitInspection(CompoundGitInspectionRequestV1),
+    CodexToolOutput(CodexToolOutputRequestV1),
+    PolicyBundleAuthority(PolicyBundleAuthorityRequestV1),
+    McpRuntimeEvidence(McpRuntimeEvidenceRequestV1),
+    RuntimeDetectorRun(RuntimeDetectorRunRequestV1),
+    RunnerAuthority(RunnerAuthorityRequestV1),
+    LocalCliGrantDecide(LocalCliGrantRequestV1),
+    LocalCliHook(LocalCliHookRequestV1),
+    ConnectorSetupContext(ConnectorSetupContextRequestV1),
+    ArtifactRisk(ArtifactRiskRequestV1),
+    LocalToolEligibility(LocalToolEligibilityRequestV1),
+    ShellHelpers(crate::shell_helpers_op::ShellHelpersRequest),
+    ApprovalProofDecide(ApprovalProofRequestV1),
+    CursorObserverProof(CursorObserverProofRequestV1),
+    HookAuthorityState(HookAuthorityStateRequestV1),
+    PolicyIntegrityRows(PolicyIntegrityRowsRequestV1),
+    HookDecide(HookDecisionRequestV1),
+    DaemonRoute(DaemonRouteRequestV1),
+    DaemonHandler(DaemonHandlerRequestV1),
+    HookAdapter(HookAdapterRequestV1),
+    HookArtifactCompose(HookArtifactComposeRequestV1),
+    ConsumerArtifactCompose(ConsumerArtifactComposeRequestV1),
+    ConsumerArtifactProject(ConsumerArtifactProjectRequestV1),
+    McpToolEvidence(McpToolEvidenceRequestV1),
+    LocalMcpGrantDecide(LocalMcpGrantRequestV1),
+    McpProxyDecide(McpProxyDecisionRequestV1),
+    CiscoPreflight(CiscoPreflightRequestV1),
+    DaemonLifecycleDecide(DaemonLifecycleDecisionRequestV1),
+    ContributedMcpDecide(ContributedMcpDecisionRequestV1),
+    RequestContextBuild(RequestContextRequestV1),
+    McpToolPolicyDecide(McpToolPolicyDecideRequestV1),
+    McpToolCallIdentity(McpToolCallIdentityRequestV1),
+    McpClassify(McpClassificationRequestV1),
+    NativeExactAction(NativeExactActionRequestV1),
+    SkillDirectoryIdentity(SkillDirectoryIdentityRequestV1),
+    SkillWorkflowPreflight(guard_contracts::SkillWorkflowPreflightRequestV1),
+    #[cfg(unix)]
+    CodexBindingCapture(crate::binding_capture_op::CodexBindingCaptureRequestV1),
+    #[allow(dead_code)]
+    PromptAnalyze(PromptAnalyzeRequestV1),
+    CatalogRead(guard_command::catalog_read_model::CatalogReadRequestV1),
+    CatalogReadV2(guard_command::catalog_read_model::discovery::CatalogReadRequestV2),
+    CatalogPrepareV1(guard_command::catalog_prepare::Request),
+    CatalogReadPreparedV1(guard_command::catalog_prepare::ReadRequest),
+    CloudCatalog(Value),
+    DiscoveryPlacementProject(crate::discovery_placement_op::DiscoveryPlacementProjectRequest),
+    DataFlowAnalyze(DataFlowAnalyzeRequestV1),
+    ToolActionRequestIdentity(guard_contracts::ToolActionRequestIdentityRequestV1),
+    RuntimeArtifactIdentity(guard_contracts::RuntimeArtifactIdentityRequestV1),
+    VerifiedReadDecision(guard_contracts::VerifiedReadDecisionRequestV1),
     Health(Value),
     Shutdown(Value),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct McpStdioCancelRequest {
+    pub(crate) request_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +321,10 @@ pub(crate) struct WorkspaceReviewContextRequestV1 {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct WorkspaceReviewLocalQueueRequestV1 {}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct WorkspaceReviewAuthorityEnrollRequestV1 {
     pub(crate) record_path: String,
 }
@@ -57,245 +333,8 @@ pub(crate) struct WorkspaceReviewAuthorityEnrollRequestV1 {
 #[serde(untagged)]
 pub(crate) enum ResidentRequestV1 {
     Operation(Box<ResidentOperationV1>),
-    Edge(GuardHookEnvelopeV2),
+    Edge(Box<GuardHookEnvelopeV2>),
     Hook(NativeHookRequestV1),
-}
-
-pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
-    let mut features = vec![
-        "post-tool-inline-v1".into(),
-        "post-tool-source-read-v1".into(),
-        "oneshot-v1".into(),
-        "framed-serve-v1".into(),
-        "resident-protocol-v2".into(),
-        "bounded-admission-v2".into(),
-        "overload-signal-v1".into(),
-        "panic-containment-v1".into(),
-        "rule-contract-v2".into(),
-        "pre-tool-command-model-shadow-v1".into(),
-        "resident-command-model-shadow-v1".into(),
-        "pre-tool-command-authority-v1".into(),
-        "pre-tool-generic-authority-v1".into(),
-        guard_contracts::NATIVE_COMMAND_PROGRAM_CAPABILITY.into(),
-        guard_contracts::NATIVE_COMMAND_CONTROL_FENCE_CAPABILITY.into(),
-        "policy-snapshot-v3".into(),
-        "policy-snapshot-push-v1".into(),
-        "policy-snapshot-resident-generation-v1".into(),
-        "native-approval-artifact-v3".into(),
-        "native-approval-challenge-v3".into(),
-        "native-approval-validation-v3".into(),
-        "native-approval-consume-v3".into(),
-        "native-approval-webauthn-v4".into(),
-        "native-approval-challenge-v4".into(),
-        "native-approval-validation-v4".into(),
-        "native-approval-consume-v4".into(),
-        "native-approval-replay-memory-v1".into(),
-        "native-workspace-review-authority-v1".into(),
-        "native-workspace-review-enrollment-resident-v1".into(),
-        "native-workspace-review-context-v1".into(),
-        "native-workspace-review-decision-v1".into(),
-        "native-policy-in-memory-v1".into(),
-        "hook-envelope-v2".into(),
-        "git-execution-context-v1".into(),
-        "native-resident-client-v1".into(),
-        "native-resident-lifecycle-v1".into(),
-        guard_contracts::ARCHIVE_INSPECTION_FEATURE.into(),
-        guard_contracts::CONTEXT_DIGEST_FEATURE.into(),
-    ];
-    if cfg!(windows) {
-        features.push("authenticated-loopback-resident-v1".into());
-    }
-    if cfg!(unix) {
-        features.push("authenticated-unix-resident-v1".into());
-    }
-    RuntimeCapabilitiesV1 {
-        protocol_version: NATIVE_PROTOCOL_VERSION,
-        runtime_version: crate::PACKAGE_VERSION.to_owned(),
-        rule_digest: guard_rule_contract::rule_digest(),
-        build_sha: crate::BUILD_SHA.to_owned(),
-        target: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
-        features,
-    }
-}
-
-pub(crate) fn evaluate_resident_bytes(
-    bytes: &[u8],
-    policy_store: Option<&PolicySnapshotStore>,
-) -> Result<Vec<u8>, String> {
-    let value = strict_json_value(bytes)?;
-    if matches!(
-        value.get("operation").and_then(Value::as_str),
-        Some(
-            "workspace_review_authority_enroll"
-                | "workspace_review_context"
-                | "workspace_review_decision"
-        )
-    ) {
-        let canonical = canonical_json_bytes(&value)
-            .map_err(|_| "native_workspace_review_decision_invalid".to_owned())?;
-        if canonical != bytes {
-            return Err("native_workspace_review_decision_noncanonical".to_owned());
-        }
-    }
-    if bytes.len() > NATIVE_APPROVAL_MAX_BYTES
-        && matches!(
-            value.get("operation").and_then(Value::as_str),
-            Some(
-                "approval_challenge"
-                    | "approval_validate"
-                    | "approval_consume"
-                    | "approval_challenge_v4"
-                    | "approval_validate_v4"
-                    | "approval_consume_v4",
-            )
-        )
-    {
-        return Err("native_approval_request_bounds_exceeded".to_owned());
-    }
-    if value.get("operation").and_then(Value::as_str) == Some("policy_snapshot_push") {
-        let object = value
-            .as_object()
-            .ok_or_else(|| "native_policy_snapshot_push_invalid".to_owned())?;
-        if object
-            .keys()
-            .any(|key| !matches!(key.as_str(), "operation" | "request" | "deadline_budget_ms"))
-        {
-            return Err("native_policy_snapshot_push_invalid".to_owned());
-        }
-    }
-    if value.get("operation").is_none()
-        && value.get("schema").and_then(Value::as_str) != Some(GUARD_HOOK_ENVELOPE_V2_SCHEMA)
-    {
-        crate::oneshot::validate_request_policy_snapshot(&value)?;
-    }
-    let request: ResidentRequestV1 = serde_json::from_value(value)
-        .map_err(|_| "native_resident_request_invalid_json".to_owned())?;
-    match request {
-        ResidentRequestV1::Edge(request) => {
-            let policy_store =
-                policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-            crate::edge::evaluate_envelope_with_store(request, policy_store)
-        }
-        ResidentRequestV1::Operation(request) => match *request {
-            ResidentOperationV1::CommandModel(request) => {
-                crate::oneshot::evaluate_command_model_request(&request)
-            }
-            ResidentOperationV1::PreToolUse(request) => {
-                crate::oneshot::evaluate_pre_tool_request(&request)
-            }
-            ResidentOperationV1::PolicySnapshotPush(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                policy_store.push(&request)
-            }
-            ResidentOperationV1::ApprovalChallenge(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                crate::approval::create_challenge(request, policy_store)
-            }
-            ResidentOperationV1::ApprovalValidate(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                crate::approval::validate_approval(request, policy_store)
-            }
-            ResidentOperationV1::ApprovalConsume(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                crate::approval::consume_approval(request, policy_store)
-            }
-            ResidentOperationV1::ApprovalChallengeV4(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                crate::approval::approval_v4::create_challenge(request, policy_store)
-            }
-            ResidentOperationV1::ApprovalValidateV4(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                crate::approval::approval_v4::validate_approval(request, policy_store)
-            }
-            ResidentOperationV1::ApprovalConsumeV4(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                crate::approval::approval_v4::consume_approval(request, policy_store)
-            }
-            ResidentOperationV1::WorkspaceReviewAuthorityEnroll(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                if request.record_path.is_empty()
-                    || request.record_path.len() > 4096
-                    || !Path::new(&request.record_path).is_absolute()
-                {
-                    return Err("native_workspace_review_authority_invalid".to_owned());
-                }
-                crate::policy_store::workspace_review_authority::install_record(
-                    policy_store.state_base(),
-                    Path::new(&request.record_path),
-                )?;
-                encode_response(&serde_json::json!({"status": "enrolled"}))
-            }
-            ResidentOperationV1::WorkspaceReviewContext(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                let context =
-                    crate::policy_store::resident_workspace_review_context::build_context(
-                        policy_store,
-                        &request.request_id,
-                    )?;
-                encode_response(&context)
-            }
-            ResidentOperationV1::WorkspaceReviewDecision(request) => {
-                let policy_store =
-                    policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
-                let verified =
-                    crate::policy_store::workspace_review_decision::verify_and_claim_request(
-                        policy_store,
-                        &request.request_id,
-                        &request.decision,
-                    )?;
-                encode_response(&serde_json::json!({
-                    "status": if verified.replayed { "replayed" } else { "verified" },
-                    "replayed": verified.replayed,
-                    "request_id": request.request_id,
-                    "decision": verified.decision,
-                    "claim_id": verified.claim_id,
-                    "authority_record_digest": verified.authority_record_digest,
-                    "workspace_binding": verified.workspace_binding,
-                    "device_binding": verified.device_binding,
-                    "installation_binding": verified.installation_binding,
-                    "scope_binding": verified.scope_binding,
-                    "request_binding": verified.request_binding,
-                    "action_binding": verified.action_binding,
-                    "intent_binding": verified.intent_binding,
-                    "revision_binding": verified.revision_binding,
-                    "policy_binding": verified.policy_binding,
-                    "retry_scope_binding": verified.retry_scope_binding,
-                    "request_snapshot_digest": verified.request_snapshot_digest,
-                    "envelope_digest": verified.envelope_digest,
-                }))
-            }
-            ResidentOperationV1::ContextDigest(request) => {
-                crate::context_digest::evaluate_context_digest_request(&request)
-            }
-            ResidentOperationV1::Health(_request) => encode_response(&serde_json::json!({
-                "status": "ready",
-                "protocol_version": crate::RESIDENT_PROTOCOL_VERSION,
-            })),
-            ResidentOperationV1::Shutdown(_request) => {
-                crate::managed_resident::request_shutdown();
-                encode_response(&serde_json::json!({"status": "stopping"}))
-            }
-        },
-        ResidentRequestV1::Hook(request) => {
-            // Managed residents always carry a v3 policy store. The legacy
-            // request has no generation-bound snapshot and must never reach a
-            // semantic evaluator in that path.
-            if policy_store.is_some() {
-                Err("native_policy_snapshot_required".to_owned())
-            } else {
-                encode_response(&review_post_tool(&request))
-            }
-        }
-    }
 }
 
 pub(crate) fn strict_json_value(bytes: &[u8]) -> Result<Value, String> {
@@ -328,123 +367,13 @@ pub(crate) fn safe_error_response(code: &str, retryable: bool) -> Vec<u8> {
         }))
         .unwrap_or_else(|_| error_response("native_response_encode_failed", false));
     }
-    error_response("native_request_invalid_json", retryable)
+    serde_json::to_vec(&serde_json::json!({
+        "error": "native_request_invalid_json",
+        "retryable": retryable,
+    }))
+    .unwrap_or_else(|_| error_response("native_request_invalid_json", retryable))
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{evaluate_resident_bytes, safe_error_response};
-    use serde_json::Value;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn policy_store() -> (crate::policy_store::PolicySnapshotStore, PathBuf) {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "hol-guard-resident-enrollment-test-{}-{suffix}",
-            std::process::id()
-        ));
-        #[cfg(windows)]
-        let root = crate::resident_state::ensure_private_directory(&root, true).unwrap();
-        #[cfg(not(windows))]
-        fs::create_dir(&root).unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
-        }
-        let key_path = root.join("policy-verifier.key");
-        #[cfg(windows)]
-        {
-            use std::io::Write;
-            let mut file = crate::resident_state::private_file(&key_path, false, &root).unwrap();
-            file.write_all(&[23u8; 32]).unwrap();
-        }
-        #[cfg(not(windows))]
-        fs::write(&key_path, [23u8; 32]).unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap();
-        }
-        let store = crate::policy_store::PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
-        (store, root)
-    }
-
-    #[test]
-    fn approval_error_transport_is_finite() {
-        let known: Value =
-            serde_json::from_slice(&safe_error_response("native_approval_replay", false))
-                .expect("known approval error is JSON");
-        assert_eq!(known["error"], "native_approval_replay");
-
-        let unknown: Value = serde_json::from_slice(&safe_error_response(
-            "native_approval_future_unregistered_code",
-            false,
-        ))
-        .expect("redacted approval error is JSON");
-        assert_eq!(unknown["error"], "native_request_invalid_json");
-
-        let lifecycle: Value = serde_json::from_slice(&safe_error_response(
-            "native_resident_start_in_progress",
-            true,
-        ))
-        .expect("known lifecycle error is JSON");
-        assert_eq!(lifecycle["error"], "native_resident_start_in_progress");
-
-        let unknown_lifecycle: Value = serde_json::from_slice(&safe_error_response(
-            "native_resident_future_unregistered_code",
-            false,
-        ))
-        .expect("redacted lifecycle error is JSON");
-        assert_eq!(unknown_lifecycle["error"], "native_request_invalid_json");
-
-        let unknown_policy: Value = serde_json::from_slice(&safe_error_response(
-            "native_policy_snapshot_future_unregistered_code",
-            false,
-        ))
-        .expect("redacted policy error is JSON");
-        assert_eq!(unknown_policy["error"], "native_request_invalid_json");
-    }
-
-    #[test]
-    fn approval_requests_have_a_smaller_raw_payload_bound() {
-        let padding = "x".repeat(super::NATIVE_APPROVAL_MAX_BYTES);
-        let request =
-            format!(r#"{{"operation":"approval_challenge","request":{{"padding":"{padding}"}}}}"#);
-        assert_eq!(
-            evaluate_resident_bytes(request.as_bytes(), None).unwrap_err(),
-            "native_approval_request_bounds_exceeded"
-        );
-    }
-
-    #[test]
-    fn resident_workspace_enrollment_requires_canonical_absolute_candidate() {
-        let (store, root) = policy_store();
-        let relative = br#"{"operation":"workspace_review_authority_enroll","request":{"record_path":"relative.json"}}"#;
-        assert_eq!(
-            evaluate_resident_bytes(relative, Some(&store)).unwrap_err(),
-            "native_workspace_review_authority_invalid"
-        );
-        let noncanonical = br#"{"request":{"record_path":"relative.json"},"operation":"workspace_review_authority_enroll"}"#;
-        assert_eq!(
-            evaluate_resident_bytes(noncanonical, Some(&store)).unwrap_err(),
-            "native_workspace_review_decision_noncanonical"
-        );
-        let absent = serde_json::json!({
-            "operation": "workspace_review_authority_enroll",
-            "request": {"record_path": root.join("absent.json").to_string_lossy()},
-        });
-        let canonical = guard_policy_snapshot::canonical_json_bytes(&absent).unwrap();
-        assert_eq!(
-            evaluate_resident_bytes(&canonical, Some(&store)).unwrap_err(),
-            "native_workspace_review_authority_missing"
-        );
-        drop(store);
-        fs::remove_dir_all(root).unwrap();
-    }
-}
+#[path = "resident_protocol_tests.rs"]
+mod tests;

@@ -1,4 +1,3 @@
-use super::containment::{is_retryable_live_request_error, is_stale_process_identity_error};
 use super::*;
 use std::fs;
 #[cfg(unix)]
@@ -19,6 +18,53 @@ fn client_deadline_is_bounded() {
         Duration::from_secs(9)
     );
     assert_eq!(client_timeout(br#"{}"#), Duration::from_millis(750));
+    assert_eq!(
+        client_timeout(br#"{"operation":"skill_directory_identity","deadline_budget_ms":60000}"#),
+        Duration::from_secs(60)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"skill_directory_identity","deadline_budget_ms":999999}"#),
+        Duration::from_secs(60)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"prompt_analyze","deadline_budget_ms":60000}"#),
+        Duration::from_secs(9)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"daemon_lifecycle_decide","deadline_budget_ms":30000}"#),
+        Duration::from_secs(30)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"daemon_lifecycle_decide","deadline_budget_ms":999999}"#),
+        Duration::from_secs(30)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"daemon_lifecycle_decide","deadline_budget_ms":9000}"#),
+        Duration::from_secs(9)
+    );
+    for operation in [
+        "contained_node_execute",
+        "contained_typescript_execute",
+        "contained_package_script_execute",
+        "shim_admin",
+    ] {
+        let payload = format!(r#"{{"operation":"{operation}","deadline_budget_ms":130000}}"#);
+        assert_eq!(client_timeout(payload.as_bytes()), Duration::from_secs(130));
+        let payload = format!(r#"{{"operation":"{operation}","deadline_budget_ms":9999999}}"#);
+        assert_eq!(client_timeout(payload.as_bytes()), Duration::from_secs(670));
+    }
+    assert_eq!(
+        client_timeout(br#"{"operation":"codex_request_resume","deadline_budget_ms":10000}"#),
+        Duration::from_secs(10)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"codex_request_resume","deadline_budget_ms":65000}"#),
+        Duration::from_secs(65)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"codex_request_resume","deadline_budget_ms":999999}"#),
+        Duration::from_secs(75)
+    );
     assert_eq!(
         client_timeout(br#"{"deadline_budget_ms":250}"#),
         Duration::from_millis(250)
@@ -201,9 +247,6 @@ fn client_stream_frames_are_bounded_and_big_endian() {
 
 #[test]
 fn client_leases_keep_shared_resident_alive_until_last_client_closes() {
-    use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     let root = std::env::temp_dir().join(format!(
         "hol-guard-managed-client-lease-{}-{}",
         std::process::id(),
@@ -251,10 +294,10 @@ fn retire_clients_for_update_terminates_exact_process() {
         let root = PathBuf::from(root);
         let _lease = lease::acquire(&root).expect("child lease should be acquired");
         fs::write(root.join("child-ready"), []).expect("child readiness marker should be written");
-        std::thread::sleep(Duration::from_secs(60));
+        // Outlive the parent's retirement budget; a normal fixture exit is not proof of retirement.
+        std::thread::sleep(Duration::from_secs(120));
         return;
     }
-
     let root = std::env::temp_dir().join(format!(
         "hol-guard-managed-lease-retire-{}-{}",
         std::process::id(),
@@ -272,11 +315,11 @@ fn retire_clients_for_update_terminates_exact_process() {
         .arg("--nocapture")
         .env("HOL_GUARD_LEASE_RETIRE_CHILD", &root)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()
         .unwrap();
-    for _ in 0..1000 {
-        if root.join("child-ready").is_file() {
+    for _ in 0..6_000 {
+        if root.join("child-ready").is_file() || child.try_wait().unwrap().is_some() {
             break;
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -288,8 +331,12 @@ fn retire_clients_for_update_terminates_exact_process() {
         panic!("child did not acquire a lease");
     }
     let digest = runtime_digest().unwrap();
+    // This correctness test authenticates the entire test executable. LLVM
+    // coverage makes that unoptimized binary much larger than the shipped
+    // runtime, so fingerprinting must not consume the fixture's stop budget.
+    // Production stop deadlines remain unchanged in stop_managed.
     let retirement =
-        lease::retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(10));
+        lease::retire_clients_for_update(&root, &digest, Instant::now() + Duration::from_secs(60));
     if let Err(error) = retirement {
         let _ = child.kill();
         let _ = child.wait();
@@ -311,9 +358,6 @@ fn retire_clients_for_update_terminates_exact_process() {
 
 #[test]
 fn stale_lease_cleanup_requires_a_dead_process_identity() {
-    use std::fs;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
     let root = std::env::temp_dir().join(format!(
         "hol-guard-managed-stale-lease-{}-{}",
         std::process::id(),
@@ -417,7 +461,8 @@ fn owner_liveness_expires_after_launcher_and_all_clients_disappear() {
     ));
     fs::create_dir(&root).unwrap();
     let lease = lease::acquire(&root).unwrap();
-    let alive = managed_owner_liveness(&root, 1, "never-matches".to_owned());
+    let digest = runtime_digest().unwrap();
+    let alive = managed_owner_liveness(&root, 1, "never-matches".to_owned(), &digest);
     std::thread::sleep(Duration::from_millis(150));
     assert!(alive.load(Ordering::Acquire));
     drop(lease);
@@ -431,70 +476,8 @@ fn owner_liveness_expires_after_launcher_and_all_clients_disappear() {
     fs::remove_dir_all(root).unwrap();
 }
 
-#[test]
-fn stale_process_identity_errors_are_platform_scoped() {
-    let stale_unavailable =
-        is_stale_process_identity_error("native_resident_process_identity_unavailable");
-    let stale_mismatch =
-        is_stale_process_identity_error("native_resident_process_identity_mismatch");
-    assert!(stale_unavailable);
-    assert!(stale_mismatch);
-    assert!(!is_stale_process_identity_error(
-        "native_resident_state_mac_invalid"
-    ));
-    assert!(!is_stale_process_identity_error(
-        "native_client_auth_rejected"
-    ));
-}
-
-#[test]
-fn stale_transport_retry_allowlist_preserves_auth_and_integrity_failures() {
-    let retryable_codes = [
-        "native_client_connect_failed",
-        "native_client_auth_timeout_failed",
-        "native_resident_process_identity_unavailable",
-        "native_resident_process_identity_mismatch",
-    ];
-    for code in retryable_codes {
-        assert!(is_retryable_live_request_error(
-            &crate::resident_client::ResidentClientError {
-                code: code.to_owned(),
-                retryable_teardown: false,
-            }
-        ));
-    }
-
-    let terminal_codes = [
-        "native_client_frame_read_failed",
-        "native_client_frame_write_failed",
-        "native_client_auth_rejected",
-        "native_client_peer_identity_mismatch",
-        "native_client_response_binding_failed",
-        "native_client_response_digest_mismatch",
-    ];
-    for retryable_teardown in [false, true] {
-        for code in terminal_codes {
-            assert!(!is_retryable_live_request_error(
-                &crate::resident_client::ResidentClientError {
-                    code: code.to_owned(),
-                    retryable_teardown,
-                }
-            ));
-        }
-    }
-    assert!(is_retryable_live_request_error(
-        &crate::resident_client::ResidentClientError {
-            code: "native_client_auth_nonce_failed".to_owned(),
-            retryable_teardown: true,
-        }
-    ));
-    assert!(!is_retryable_live_request_error(
-        &crate::resident_client::ResidentClientError {
-            code: "native_client_auth_nonce_failed".to_owned(),
-            retryable_teardown: false,
-        }
-    ));
-}
-
 #[path = "managed_resident_owner_lock_tests.rs"]
 mod owner_lock_tests; // includes managed_owner_lock_rejects_second_process contention proof
+
+#[path = "managed_resident_retry_tests.rs"]
+mod retry_tests;

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 import time
@@ -10,11 +11,16 @@ from typing import TYPE_CHECKING
 
 from ..adapters.harness_mcp_discovery import (
     DiscoveredHarnessMcpServer,
+    DiscoveredRemoteMcpServer,
     apply_source_labels,
+    configured_harness_detections,
+    configured_mcp_server_names,
     discover_harness_mcp_servers,
+    discover_remote_mcp_servers,
     discovered_server_for_observation,
     extra_env_for_mcp_launch,
     persist_discovered_harness_mcp_servers,
+    remote_scan_harnesses,
 )
 from ..approval_gate import (
     ApprovalGateError,
@@ -24,6 +30,11 @@ from ..approval_gate import (
 )
 from ..local_cli_errors import LocalCliCatalogLimitError
 from ..local_cli_trust import utc_now
+from ..native_skill_workflow_preflight import (
+    NativeSkillWorkflowPreflightError,
+    native_skill_preflight,
+)
+from ..runtime.connector_setup_items import listed_public_items
 from ..runtime.custom_extension_continuity import (
     record_local_custom_extension_mutation,
 )
@@ -61,26 +72,41 @@ from ..runtime.local_skill_index import (
     public_skill_page,
 )
 from ..runtime.mcp_protection import build_mcp_server_identity
+from ..runtime.observed_local_clis import backfill_observed_local_clis
 from ..runtime.observed_mcp_tools import discover_observed_mcp_tools
 from ..runtime.package_json_script_memory import (
-    _package_item_available,
     operator_working_directory,
     public_local_cli_item,
     recognize_operator_package_scripts,
     refresh_package_script_catalogs,
 )
 from ..runtime.package_json_scripts import looks_like_package_script_paste
-from ..runtime.skill_workflow_preflight import preflight_skill_dependencies
+from ..store_local_cli_capabilities import LocalCliCapabilityError
 from .local_cli_api_contract import LOCAL_CLI_API_SCHEMA as _LOCAL_CLI_API_SCHEMA
 from .local_cli_api_contract import LocalCliApiError
+from .local_cli_capability_api import (
+    capability_api_error,
+    capability_choices_from_payload,
+    capability_subject_suffix,
+)
+from .local_cli_connector_group import connector_group_request_id, resolve_connector_group
 from .local_cli_continuity_api import decorate_local_cli_continuity
 from .local_cli_mcp_store import bound_mcp_observation, stored_mcp_recognition
+from .local_cli_profiles_api import (
+    annotate_cli_profiles,
+    merge_profile_commands,
+    profile_catalog_seed,
+    profiled_cli_package_launch,
+    seeded_profile_items,
+)
 from .local_cli_registry_setup import registry_setup as reviewed_registry_setup
 from .mcp_discovery_jobs import DiscoveryJobError, DiscoveryStageError, McpDiscoveryJobs
 from .mcp_registry_undo import RegistrySetupUndo
 
 if TYPE_CHECKING:
     from ..store import GuardStore
+
+_LOGGER = logging.getLogger(__name__)
 
 _VALID_STATES = frozenset({"allowed", "blocked", "unset"})
 _DISCOVERY_TTL_SECONDS = 30.0
@@ -95,6 +121,18 @@ def _client_discovery_job_id(payload: dict[str, object]) -> str | None:
     return value
 
 
+_FORGET_ERRORS: dict[str, tuple[int, str]] = {
+    "invalid_cli_id": (400, "This connection id is not valid."),
+    "local_cli_not_found": (404, "Guard no longer lists this connection."),
+    "identity_changed": (409, "This connection changed. Reload and try again."),
+    "local_cli_enrolled": (409, "Remove this custom extension before forgetting it."),
+    "local_cli_shared_server_enrolled": (
+        409,
+        "Another enrolled connection uses the same server, so Guard keeps this one to scope that permission.",
+    ),
+}
+
+
 class LocalCliApiService:
     def __init__(self, *, store: GuardStore) -> None:
         from ..runtime.codex_host_inventory import CodexHostInventoryCache
@@ -102,6 +140,12 @@ class LocalCliApiService:
         self._store = store
         self._codex_host_inventory = CodexHostInventoryCache()
         self._discovery_cache: tuple[float, tuple[DiscoveredHarnessMcpServer, ...]] | None = None
+        # The remote list and the harnesses it fully covers come from one scan.
+        self._remote_discovery_cache: (
+            tuple[float, tuple[DiscoveredRemoteMcpServer, ...], tuple[str, ...] | None] | None
+        ) = None
+        # Server names per harness, read in the same pass as the servers.
+        self._configured_names: dict[str, tuple[str, ...]] = {}
         self._discovery_jobs = McpDiscoveryJobs()
         self._registry_setup_lock = threading.Lock()
         self._registry_setup_undo = RegistrySetupUndo(store)
@@ -298,11 +342,16 @@ class LocalCliApiService:
         revision = items[0].get("authority_revision") if items else self._store.read_local_cli_revision()
         if type(revision) is not int:
             raise LocalCliApiError(503, "workflow_authority_unavailable")
-        result = preflight_skill_dependencies(
-            dependencies if isinstance(dependencies, dict) else {},
-            items,
-            revision=revision,
-        )
+        try:
+            result = native_skill_preflight(
+                dependencies if isinstance(dependencies, dict) else {},
+                items,
+                revision=revision,
+            )
+        except NativeSkillWorkflowPreflightError as error:
+            # The resident owns the plan; without it there is no requirement
+            # list to show, and an empty one would read as nothing to review.
+            raise LocalCliApiError(503, "workflow_authority_unavailable") from error
         result["native_publication"] = local_cli_publication_status(self._store.guard_home, revision)
         return result
 
@@ -321,20 +370,25 @@ class LocalCliApiService:
                     requested_job_id=_client_discovery_job_id(payload),
                 )
             if payload.get("operation") == "configured-connections":
+                force_refresh = payload.get("force_refresh") is True
 
                 def discover(cancel: threading.Event) -> None:
                     if cancel.is_set():
                         return
                     # Existing host adapters read configuration and persisted
                     # observations only. This path never starts a server.
-                    self._observe_harness_mcp_servers(strict=True)
+                    self._observe_harness_mcp_servers(strict=True, fresh=force_refresh)
                     if not cancel.is_set():
                         try:
-                            saturated = discover_observed_mcp_tools(self._store, seen_at=utc_now())
+                            saturated = discover_observed_mcp_tools(
+                                self._store, seen_at=utc_now(), configured_servers=self._configured_server_names()
+                            )
                         except LocalCliCatalogLimitError:
                             raise DiscoveryStageError("catalog_limit_reached") from None
                         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
+                            _LOGGER.warning("observed MCP tool discovery failed", exc_info=True)
                             raise DiscoveryStageError("observed_provider_scan_failed") from None
+                        backfill_observed_local_clis(self._store, seen_at=utc_now(), home_dir=Path.home())
                         if saturated:
                             raise DiscoveryStageError("catalog_limit_reached")
 
@@ -379,11 +433,24 @@ class LocalCliApiService:
     def close_discovery(self) -> bool:
         return self._discovery_jobs.close()
 
-    def list_items(self) -> dict[str, object]:
+    def list_items(self, *, identity_hash: str | None = None) -> dict[str, object]:
         # Listing must stay a read of persisted grants. Live MCP/package
         # discovery writes to the same store and can abort the HTTP response
         # when the daemon is under lock contention.
-        return self._list_payload(self._listed_public_items())
+        items = self._listed_public_items()
+        if identity_hash is not None:
+            # The Protect deep link binds to one identity; a changed binary lists nothing.
+            items = [item for item in items if item.get("identity_hash") == identity_hash]
+        payload = self._list_payload(items)
+        if identity_hash is not None:
+            # Seeded profile rows are other connectors; a filtered list carries none of them.
+            seeded = payload.get("seeded_items")
+            payload["seeded_items"] = (
+                [item for item in seeded if isinstance(item, dict) and item.get("identity_hash") == identity_hash]
+                if isinstance(seeded, list)
+                else []
+            )
+        return payload
 
     def provider_actions(self, payload: dict[str, object]) -> dict[str, object]:
         cli_id = self._required_string(payload, "cli_id")
@@ -476,11 +543,19 @@ class LocalCliApiService:
         # Connector history and configured launch discovery are independent.
         discovery_issue = None
         try:
-            saturated = discover_observed_mcp_tools(self._store, seen_at=utc_now())
+            _ = self._store.prune_inactive_local_cli_observations(throttle=True)
+        except sqlite3.Error:
+            _LOGGER.warning("observed record retention failed", exc_info=True)
+        try:
+            saturated = discover_observed_mcp_tools(
+                self._store, seen_at=utc_now(), configured_servers=self._configured_server_names()
+            )
             if saturated:
                 discovery_issue = "catalog_limit_reached"
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
+            _LOGGER.warning("observed MCP tool discovery failed", exc_info=True)
             discovery_issue = "observed_provider_scan_failed"
+        backfill_observed_local_clis(self._store, seen_at=utc_now(), home_dir=Path.home())
         try:
             labels = self._observe_harness_mcp_servers(strict=True)
         except DiscoveryStageError:
@@ -502,35 +577,19 @@ class LocalCliApiService:
         return result
 
     def _listed_public_items(self) -> list[dict[str, object]]:
-        stored = self._store.list_local_cli_items()
-        configured = {
-            (item.get("server_identity_hash"), item.get("server_command"), item.get("server_args_hash"))
-            for item in stored
-            if item.get("surface") == "mcp" and item.get("identity_hash") != item.get("server_identity_hash")
-        }
-        return [
-            public_local_cli_item(item)
-            for item in stored
-            if _package_item_available(item)
-            and not (
-                item.get("surface") == "mcp"
-                and isinstance(item.get("server_identity_hash"), str)
-                and item.get("cli_id") == f"local-cli.mcp-{str(item.get('server_identity_hash'))[:8]}"
-                and item.get("identity_hash") == item.get("server_identity_hash")
-                and (item.get("server_identity_hash"), item.get("server_command"), item.get("server_args_hash"))
-                in configured
-            )
-        ]
+        return listed_public_items(self._store)
 
     def _list_payload(self, items: list[dict[str, object]]) -> dict[str, object]:
         from ..native_policy_snapshot import local_cli_publication_status
 
         revision = self._store.read_local_cli_revision()
+        items = annotate_cli_profiles(items)
         return {
             "schema_version": _LOCAL_CLI_API_SCHEMA,
             "revision": revision,
             "native_publication": local_cli_publication_status(self._store.guard_home, revision),
             "items": items,
+            "seeded_items": seeded_profile_items(items, authority_revision=revision),
             "host_inventory": self._codex_host_inventory.read(),
             "cloud": decorate_local_cli_continuity(self._store, items),
         }
@@ -598,6 +657,7 @@ class LocalCliApiService:
         if identity is None:
             raise LocalCliApiError(400, code, message)
         commands, help_status, source_path = _discover_from_command(command, identity, operator_cwd, home_dir)
+        commands = merge_profile_commands(identity.name, commands)
         self._store.record_local_cli_observation(
             identity,
             seen_at=utc_now(),
@@ -644,6 +704,8 @@ class LocalCliApiService:
             server_identity_hash=stored_server_hash if isinstance(stored_server_hash, str) else None,
             source_label=stored_source_label if isinstance(stored_source_label, str) else None,
         )
+        if selected_server is None and stored_observation is None and profiled_cli_package_launch(tokens):
+            return None
         # A known connection remains MCP even when its script no longer exists.
         if selected_server is None and not looks_like_mcp_launch(
             tokens, command_text=command, cwd=home_dir, home_dir=home_dir
@@ -676,6 +738,7 @@ class LocalCliApiService:
                 cancel=cancel,
                 connection_identity_hash=selected_server.identity.identity_hash if selected_server else None,
                 report_failure=selected_server is not None,
+                guard_home=self._store.guard_home,
             )
         except McpProbeError as error:
             failure_code = error.code
@@ -807,43 +870,83 @@ class LocalCliApiService:
         finally:
             notify_native_policy_mutation(self._store.guard_home)
 
-    def _observe_harness_mcp_servers(self, *, strict: bool = False) -> dict[str, str]:
+    def _observe_harness_mcp_servers(self, *, strict: bool = False, fresh: bool = False) -> dict[str, str]:
         try:
+            if fresh:
+                # A forced refresh reads the configuration as it is now.
+                self._discovery_cache = self._remote_discovery_cache = None
+                self._configured_names = {}
+            servers = self._discovered_servers(strict=True) if strict else self._discovered_servers()
+            remote, remote_harnesses = self._remote_scan()
             return persist_discovered_harness_mcp_servers(
                 self._store,
-                self._discovered_servers(strict=True) if strict else self._discovered_servers(),
+                servers,
                 seen_at=utc_now(),
+                remote=remote,
+                remote_harnesses=remote_harnesses,
             )
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
             if strict:
                 raise DiscoveryStageError("configured_host_scan_failed") from None
             return {}
 
+    def _configured_server_names(self) -> dict[str, tuple[str, ...]]:
+        _ = self._discovered_servers()
+        return self._configured_names
+
+    def _discovery_workspace(self) -> Path | None:
+        codex_install = self._store.get_managed_install("codex")
+        managed_workspace = codex_install.get("workspace") if codex_install and codex_install.get("active") else None
+        if isinstance(managed_workspace, str) and Path(managed_workspace).is_absolute():
+            return Path(managed_workspace)
+        return None
+
+    def _remote_scan(self) -> tuple[tuple[DiscoveredRemoteMcpServer, ...], tuple[str, ...] | None]:
+        # Remote servers are listed, never launched; a failed read lists none
+        # and covers no harness, so it forgets no declaration.
+        cached = self._remote_discovery_cache
+        if cached is None or time.monotonic() - cached[0] >= _DISCOVERY_TTL_SECONDS:
+            _ = self._discovered_servers()
+            cached = self._remote_discovery_cache
+        return (cached[1], cached[2]) if cached is not None else ((), None)
+
     def _discovered_servers(self, *, strict: bool = False) -> tuple[DiscoveredHarnessMcpServer, ...]:
         now = time.monotonic()
         cached = self._discovery_cache
         if cached is not None and now - cached[0] < _DISCOVERY_TTL_SECONDS:
             return cached[1]
+        home_dir = Path.home()
+        workspace_dir = self._discovery_workspace()
         try:
-            codex_install = self._store.get_managed_install("codex")
-            managed_workspace = (
-                codex_install.get("workspace") if codex_install and codex_install.get("active") else None
-            )
-            workspace_dir = (
-                Path(managed_workspace)
-                if isinstance(managed_workspace, str) and Path(managed_workspace).is_absolute()
-                else None
-            )
+            # One detection pass feeds both the stdio and the remote list.
+            detections = configured_harness_detections(home_dir, self._store.guard_home, workspace_dir)
             servers = discover_harness_mcp_servers(
-                home_dir=Path.home(),
+                home_dir=home_dir,
                 guard_home=self._store.guard_home,
                 workspace_dir=workspace_dir,
+                detections=detections,
             )
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
+            # A failed read leaves no remote snapshot to reconcile against.
+            self._remote_discovery_cache = None
+            self._configured_names = {}
             if strict:
                 raise DiscoveryStageError("configured_host_scan_failed") from None
             return ()
         self._discovery_cache = (now, servers)
+        self._configured_names = configured_mcp_server_names(detections)
+        try:
+            remote = discover_remote_mcp_servers(
+                home_dir=home_dir,
+                guard_home=self._store.guard_home,
+                workspace_dir=workspace_dir,
+                detections=detections,
+            )
+            harnesses = remote_scan_harnesses(detections, remote)
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
+            # A failed read lists none and must not forget any declaration.
+            remote, harnesses = (), None
+        self._remote_discovery_cache = (now, remote, harnesses)
         return servers
 
     def _live_mcp_launch_command(self, payload: dict[str, object]) -> str | None:
@@ -879,14 +982,16 @@ class LocalCliApiService:
         return {
             "schema_version": _LOCAL_CLI_API_SCHEMA,
             "revision": self._store.read_local_cli_revision(),
-            "item": public_local_cli_item(listed or fallback),
+            "item": annotate_cli_profiles([public_local_cli_item(listed or fallback)])[0],
             "help_status": help_status,
             "summary": summary,
         }
 
     def preview(self, payload: dict[str, object]) -> dict[str, object]:
         identity, state = self._mutation_from_payload(payload)
+        connector_group_request_id(payload, state)
         self._provider_updates_from_payload(payload)
+        capabilities = capability_choices_from_payload(self._store, payload, cli_id=identity.cli_id, state=state)
         current = self._store.read_local_cli_revision()
         expected = self._required_int(payload, "previous_revision")
         if expected != current:
@@ -899,12 +1004,15 @@ class LocalCliApiService:
             "cli_id": identity.cli_id,
             "identity_hash": identity.identity_hash,
             "state": state,
+            "capabilities": capabilities,
             "summary": summary,
         }
 
     def apply(self, payload: dict[str, object]) -> dict[str, object]:
         identity, state = self._mutation_from_payload(payload)
+        group_request_id = connector_group_request_id(payload, state)
         provider_updates = self._provider_updates_from_payload(payload)
+        capabilities = capability_choices_from_payload(self._store, payload, cli_id=identity.cli_id, state=state)
         expected = self._required_int(payload, "previous_revision")
         session_nonce = self._required_string(payload, "session_nonce")
         action = f"local-cli-{state}"
@@ -913,6 +1021,7 @@ class LocalCliApiService:
             from ..store_mcp_provider_permissions import provider_choices_digest
 
             subject += ":" + provider_choices_digest(provider_updates)
+        subject += capability_subject_suffix(capabilities)
         try:
             grant = require_local_cli_trust(
                 self._store.guard_home,
@@ -931,6 +1040,7 @@ class LocalCliApiService:
         except ApprovalGateError as exc:
             raise LocalCliApiError(exc.status, exc.code, str(exc)) from exc
         command_states = self._command_states_from_payload(payload)
+        catalog_seed = profile_catalog_seed(identity.cli_id, identity.name) if command_states else ()
         from ..native_policy_snapshot import local_cli_publication_status, notify_native_policy_mutation
 
         # Retire acknowledged authority before writing. The final notification
@@ -945,7 +1055,11 @@ class LocalCliApiService:
                 command_states=command_states,
                 now=utc_now(),
                 provider_updates=provider_updates,
+                catalog_seed=catalog_seed,
+                capabilities=capabilities,
             )
+        except LocalCliCapabilityError as exc:
+            raise capability_api_error(exc) from exc
         except ValueError as exc:
             if str(exc) == "local_cli_revision_conflict":
                 raise LocalCliApiError(409, "revision_conflict") from exc
@@ -954,14 +1068,41 @@ class LocalCliApiService:
             raise LocalCliApiError(400, "invalid_local_cli_mutation", str(exc)) from exc
         finally:
             notify_native_policy_mutation(self._store.guard_home)
-        return {
+        result: dict[str, object] = {
             "schema_version": _LOCAL_CLI_API_SCHEMA,
             "status": "applied",
             "revision": revision,
             "native_publication": local_cli_publication_status(self._store.guard_home, revision),
             "cli_id": identity.cli_id,
             "state": state,
+            "capabilities": self._store.read_local_cli_capabilities(identity.cli_id),
         }
+        if group_request_id is not None:
+            # Only after the proof-bound write saved `allowed`; it checks the gate again.
+            result["connector_group"] = resolve_connector_group(
+                self._store,
+                cli_id=identity.cli_id,
+                identity_hash=identity.identity_hash,
+                request_id=group_request_id,
+                approval_gate_input=input_from_mapping(payload),
+                now=utc_now(),
+            )
+        return result
+
+    def forget(self, payload: dict[str, object]) -> dict[str, object]:
+        """Drop a detected record the user never enrolled; it returns if seen again."""
+
+        from ..store_local_cli_retention import LocalCliForgetError
+
+        cli_id = self._required_string(payload, "cli_id")
+        identity_hash = self._required_string(payload, "identity_hash")
+        try:
+            self._store.forget_local_cli_observation(cli_id, identity_hash=identity_hash)
+        except LocalCliForgetError as exc:
+            code = str(exc)
+            status, message = _FORGET_ERRORS.get(code, (409, "Guard could not forget this connection."))
+            raise LocalCliApiError(status, code, message) from exc
+        return {"schema_version": _LOCAL_CLI_API_SCHEMA, "status": "forgotten", "cli_id": cli_id}
 
     @staticmethod
     def _provider_updates_from_payload(payload: dict[str, object]) -> tuple[tuple[str, str, int], ...]:

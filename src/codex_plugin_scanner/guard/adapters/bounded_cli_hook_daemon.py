@@ -12,10 +12,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..action_lattice import is_guard_action
+from ..blocked_request_mode import is_unlinked_connector_setup_reason
+from ..daemon.auth_token import load_guard_daemon_auth_token as _read_daemon_auth_token
 from ..daemon.hook_availability_policy import hook_event_pauses_when_unavailable, hook_reason_continues_session
 from ..private_file_io import read_private_regular_text
-from .bounded_cli_hook_bridge import _event_name, _json_object
+from .bounded_cli_hook_envelope import _canonical_event_token, _event_name, _json_object
 from .bounded_cli_hook_failure import grok_observe_event
+from .bounded_hook_http import post_hook_json, prepare_grok_prompt
 from .zcode_hooks import zcode_authority_block_reason, zcode_hook_process_exit
 
 _MAX_HOOK_RESPONSE_BYTES = 1_000_000
@@ -44,15 +47,6 @@ class _LoopbackOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
         _assert_loopback_http_url(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-def _read_daemon_auth_token(guard_home: Path) -> str | None:
-    token = read_private_regular_text(
-        guard_home / "daemon-auth-token",
-        max_bytes=4096,
-        require_private_parent=True,
-    )
-    return token or None
 
 
 def _daemon_hook_endpoint(guard_home: Path, harness: str) -> str | None:
@@ -233,11 +227,12 @@ def _daemon_response_to_native(
     event_name: str,
 ) -> tuple[str, str, int]:
     """Transform daemon policy data into harness-native output."""
+    event_name = _canonical_event_token(event_name) or event_name
     canonical = harness.strip().lower().replace("_", "-")
     if canonical == "grok" and not daemon_response:
         from .grok_hooks import is_grok_observe_only_event
 
-        if is_grok_observe_only_event(event_name):
+        if is_grok_observe_only_event(event_name) or event_name == "UserPromptSubmit":
             return "{}", "", 0
 
     if "hookSpecificOutput" in daemon_response or "decision" in daemon_response:
@@ -310,7 +305,8 @@ def _daemon_response_to_native(
                 "approval_requests",
             ):
                 value = daemon_response.get(key)
-                if value is not None:
+                # A default-mode connector setup reason carries no approval link.
+                if value is not None and (key == "reason_code" or not is_unlinked_connector_setup_reason(reason)):
                     payload[key] = value
 
     exit_code = 2 if _should_exit_block(harness, event_name, policy_action) else 0
@@ -395,52 +391,49 @@ def try_daemon_hook(
     token = (_token_loader or _read_daemon_auth_token)(guard_home)
     if token is None or time.monotonic() >= deadline:
         return None
-    timeout = min(float(timeout_seconds) * 0.5, _DAEMON_TIMEOUT_BUDGET_SECONDS)
+    event_name = _event_name(input_text)
+    prompt_event = event_name == "UserPromptSubmit"
+    grok_prompt = prompt_event and harness.strip().lower().replace("_", "-") == "grok"
+    timeout = min(float(timeout_seconds) * 0.5, 10.0 if prompt_event else _DAEMON_TIMEOUT_BUDGET_SECONDS)
     if grok_observe_event(harness, _event_name(input_text)):
         timeout = min(timeout, 1.0)
     transport_deadline = min(deadline, time.monotonic() + timeout)
     timeout = transport_deadline - time.monotonic()
     if timeout <= 0:
         return None
-    request = urllib.request.Request(
-        endpoint,
-        data=input_text.encode("utf-8"),
-        headers={"Content-Type": "application/json", "X-Guard-Token": token},
-        method="POST",
-    )
     try:
         opener = (_opener_builder or _build_loopback_opener)()
         if isinstance(opener, urllib.request.OpenerDirector):
             opener.add_handler(deadline_http_handler(transport_deadline))
-        with opener.open(request, timeout=timeout) as response:
-            final_url = response.geturl()
-            if final_url:
-                _assert_loopback_http_url(final_url)
-            if response.status != 200:
-                return None
-            body = response.read(_MAX_HOOK_RESPONSE_BYTES + 1)
     except (OSError, urllib.error.URLError, TimeoutError, ValueError):
         return None
-    if time.monotonic() >= transport_deadline or len(body) > _MAX_HOOK_RESPONSE_BYTES:
+    if grok_prompt:
+        prepared_input = prepare_grok_prompt(
+            endpoint,
+            token,
+            input_text,
+            opener=opener,
+            deadline=transport_deadline,
+            max_bytes=_MAX_HOOK_RESPONSE_BYTES,
+        )
+        if prepared_input is None:
+            return None
+        input_text = prepared_input
+    parsed = post_hook_json(
+        endpoint,
+        token,
+        input_text.encode("utf-8"),
+        opener=opener,
+        deadline=transport_deadline,
+        max_bytes=_MAX_HOOK_RESPONSE_BYTES,
+    )
+    if parsed is None:
         return None
-    try:
-        text = body.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-    candidate = text.strip()
-    if not candidate:
-        return None
-    try:
-        parsed = json.loads(candidate)
-    except ValueError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    event_name = _event_name(input_text)
     if harness.strip().lower().replace("_", "-") == "hermes":
         from .hermes_runtime_hooks import hermes_bridge_response
 
-        return hermes_bridge_response(parsed, event_name=event_name)
+        # Render within what is left of the hook's own budget, not a fresh timeout.
+        return hermes_bridge_response(parsed, event_name=event_name, guard_home=guard_home, deadline=deadline)
     return _daemon_response_to_native(parsed, harness=harness, event_name=event_name)
 
 

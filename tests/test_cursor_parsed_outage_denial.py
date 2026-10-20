@@ -81,7 +81,10 @@ def test_generated_parsed_cursor_unavailable_denies(
     assert module_globals["main"]() == 2
     response = json.loads(capsys.readouterr().out)
     assert response["permission"] == "deny"
-    assert response["user_message"] == "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal."
+    assert (
+        response["user_message"]
+        == "Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal."
+    )
     assert config_path.read_bytes() == config_bytes
 
 
@@ -134,7 +137,7 @@ def test_generated_parsed_cursor_preserves_trusted_decision(
         "sandbox-required": "deny",
         "block": "deny",
     }[policy]
-    if event == "beforeReadFile" and permission == "ask":
+    if event in {"beforeReadFile", "preToolUse"} and permission == "ask":
         permission = "deny"
     assert module_globals["main"]() == (2 if permission == "deny" else 0)
     assert json.loads(capsys.readouterr().out)["permission"] == permission

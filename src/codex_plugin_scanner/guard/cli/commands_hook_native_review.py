@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from .commands_support import *
 
@@ -52,10 +52,12 @@ if TYPE_CHECKING:
     )
 
 
-from ..action_lattice import is_guard_action, most_restrictive_guard_action
+from ..action_lattice import is_guard_action
 from ..adapters.cursor_hooks import cursor_hook_requires_approval_center_queue
 from ..daemon.client import GuardSurfaceDaemonClient, load_guard_surface_daemon_client
+from ..harness_posture import harness_is_recording_only
 from ..models import GuardAction
+from ..native_hook_artifact_compose import native_hook_compose
 from ..retry_lineage import capture_retry_lineage
 from ._commands_shared import *
 from .commands_hook_native_state import (
@@ -78,19 +80,25 @@ _OBSERVE_EXECUTION_SOURCE_FIELDS = (
 
 
 def _observe_mode_executable_action(state: NativeArtifactHookState) -> GuardAction:
-    """Recompose sources that remain executable after observe-only gates are removed."""
+    """Ask the resident which composed sources still execute in observe mode.
 
-    candidates: list[GuardAction] = ["allow"]
+    Python gathers the sources and sends them; which of them survive observe
+    mode, and which one names the action, is the resident's answer. A call the
+    resident cannot serve raises, and the hook's fail-closed handling turns it
+    into an availability response rather than a recorded guess.
+    """
+
     composition = state.response_payload.get("policy_composition")
-    if isinstance(composition, Mapping):
-        for key in _OBSERVE_EXECUTION_SOURCE_FIELDS:
-            source_action = composition.get(key)
-            if is_guard_action(source_action) and source_action in {"allow", "warn"}:
-                candidates.append(source_action)
-    package_action = getattr(state.package_evaluation, "policy_action", None)
-    if is_guard_action(package_action) and package_action in {"allow", "warn"}:
-        candidates.append(package_action)
-    return most_restrictive_guard_action(*candidates)
+    sources = composition if isinstance(composition, Mapping) else {}
+    answer = native_hook_compose(
+        "observe_executable_action",
+        {
+            **{key: sources.get(key) for key in _OBSERVE_EXECUTION_SOURCE_FIELDS},
+            "package_evaluation_action": getattr(state.package_evaluation, "policy_action", None),
+        },
+        guard_home=state.guard_home,
+    )
+    return cast(GuardAction, answer["executable_action"])
 
 
 def _browser_wait_binding(
@@ -201,33 +209,17 @@ def review_native_artifact_hook(
         policy_action=policy_action,
         guard_payload=response_payload,
     )
-    observe_mode = config.mode == "observe"
-    from ..blocked_request_mode import asks_for_approval, safe_alternative_reason
+    observe_mode = harness_is_recording_only(config, args.harness)
+    from ..blocked_request_mode import asks_for_approval
 
     if (
         not observe_mode
         and not asks_for_approval(config)
-        and (policy_action in {"review", "require-reapproval"} or cursor_native_queue)
+        and (policy_action in {"review", "require-reapproval", "block"} or cursor_native_queue)
     ):
-        set_native_artifact_hook_final_action(state, "block")
-        state.approval_prompted = False
-        guidance = safe_alternative_reason(f"HOL Guard blocked this action. {risk_summary}")
-        _terminalize_runtime_action_copy(state.response_payload)
-        state.response_payload.update(
-            terminal_action="block",
-            approval_requests=[],
-            prompted=False,
-            operation_status="blocked",
-            terminal=True,
-            review_hint=guidance,
-            blocked_request_guidance=guidance,
-        )
-        decision_copy = state.response_payload.get("decision_v2_json")
-        if isinstance(decision_copy, dict):
-            decision_copy["harness_message"] = guidance
-        evaluation = state.response_payload.get("supply_chain_evaluation")
-        if isinstance(evaluation, dict) and isinstance(evaluation.get("user_copy"), dict):
-            evaluation["user_copy"].update(harness_message=guidance, next_step=guidance, dashboard_url=None)
+        from .commands_hook_native_silent_review import apply_unprompted_native_review
+
+        apply_unprompted_native_review(state, args, store, config, policy_action)
         return None
     terminal_action = policy_action in {
         "block",
@@ -249,12 +241,16 @@ def review_native_artifact_hook(
         if observe_mode:
             response_payload["approval_requests"] = []
             observed_policy_action = policy_action
+            # One answer serves both the queued record and the final action:
+            # the sources do not change between them, so asking twice would
+            # only spend a second round trip on the same question.
+            executable_action = _observe_mode_executable_action(state)
             queue_observe_mode_request(
                 action_envelope=action_envelope,
                 artifact=runtime_artifact,
                 artifact_hash=runtime_artifact_hash,
                 changed_fields=changed_capabilities,
-                executable_action=_observe_mode_executable_action(state),
+                executable_action=executable_action,
                 observed_policy_action=observed_policy_action,
                 redaction_level=config.receipt_redaction_level,
                 risk_summary=risk_summary,
@@ -263,7 +259,7 @@ def review_native_artifact_hook(
             )
             set_native_artifact_hook_final_action(
                 state,
-                _observe_mode_executable_action(state),
+                executable_action,
                 observed_policy_action=observed_policy_action,
             )
             action_envelope = state.action_envelope
@@ -378,7 +374,8 @@ def review_native_artifact_hook(
             }
             try:
                 daemon_client: GuardSurfaceDaemonClient | None = load_guard_surface_daemon_client(guard_home)
-            except RuntimeError:
+            except (RuntimeError, OSError):
+                # A daemon start past its lifecycle deadline raises TimeoutError, an OSError.
                 daemon_client = None
             browser_wait_metadata, browser_approval_wait_bound = _browser_wait_binding(
                 args=args,
@@ -439,21 +436,25 @@ def review_native_artifact_hook(
                 )
                 browser_approval_daemon_client = daemon_client
             except RuntimeError:
-                queued = queue_blocked_approvals(
-                    redaction_level=config.receipt_redaction_level,
-                    detection=runtime_detection,
-                    evaluation=evaluation_payload,
-                    store=store,
-                    approval_center_url=approval_center_url,
-                    now=_now(),
-                    continuation_operation={
-                        "created_at": _now(),
-                        "harness": args.harness,
-                        "metadata": hook_metadata,
-                        "status": "waiting_on_approval",
-                        "updated_at": _now(),
-                    },
-                )
+                try:
+                    queued = queue_blocked_approvals(
+                        redaction_level=config.receipt_redaction_level,
+                        detection=runtime_detection,
+                        evaluation=evaluation_payload,
+                        store=store,
+                        approval_center_url=approval_center_url,
+                        now=_now(),
+                        continuation_operation={
+                            "created_at": _now(),
+                            "harness": args.harness,
+                            "metadata": hook_metadata,
+                            "status": "waiting_on_approval",
+                            "updated_at": _now(),
+                        },
+                    )
+                except (RuntimeError, OSError) as queue_error:
+                    # A local queue past a native or store deadline (TimeoutError) keeps the native deny.
+                    queued = approvals_queued_before(queue_error)
                 _bind_hook_blocked_operation_queue(
                     harness=args.harness,
                     approval_center_url=approval_center_url,

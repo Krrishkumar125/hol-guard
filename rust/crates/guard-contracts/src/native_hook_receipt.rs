@@ -27,6 +27,19 @@ pub struct NativeHookDecisionReceiptV1 {
     /// This is integrity evidence only, never an approval or execution grant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_intent_digest: Option<String>,
+    /// The action, source and verdict-relevant policy identity a one-time
+    /// review approval is fenced to.  It deliberately excludes snapshot
+    /// bookkeeping that republishes without changing any verdict.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_anchor_digest: Option<String>,
+    /// Commitment to a private prepared business review, not provider identity
+    /// evidence or an execution grant. Ordinary hook evaluation omits it.
+    #[serde(
+        default,
+        deserialize_with = "present_business_binding",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub business_review_binding: Option<String>,
     pub harness: String,
     pub event_name: String,
     pub payload_kind: GuardHookPayloadKindV2,
@@ -52,6 +65,12 @@ pub struct NativeHookDecisionReceiptV1 {
     pub origin_authentication: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prompt_risk_classes: Vec<super::NativePromptRiskClassV1>,
+}
+
+fn present_business_binding<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<String>, D::Error> {
+    String::deserialize(d).map(Some)
 }
 
 impl NativeHookDecisionReceiptV1 {

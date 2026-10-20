@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import struct
 import threading
 import time
@@ -26,9 +27,7 @@ def _pool(tmp_path: Path) -> _PersistentNativeClientPool:
     )
 
 
-def test_pool_recovers_retired_capacity_only_after_containment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_pool_recovers_retired_capacity_only_after_containment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     clients = []
 
     class Client:
@@ -61,6 +60,54 @@ def test_pool_recovers_retired_capacity_only_after_containment(
     assert len(pool._clients) == 1
 
 
+def test_pool_does_not_reuse_a_client_bound_to_a_failed_resident_startup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    failure = b'{"error":"native_resident_state_dir_create_failed","retryable":false}'
+    clients: list[object] = []
+
+    class Client:
+        def __init__(self, **_kwargs: object) -> None:
+            self.closed = False
+            clients.append(self)
+
+        def request(self, _payload: bytes, *, deadline_monotonic: float) -> bytes | None:
+            # The first stream's lease failed at startup, so it frames that failure forever.
+            return failure if self is clients[0] else b'{"schema":"ok"}'
+
+        def close(self, *, deadline_monotonic: float) -> bool:
+            self.closed = True
+            return True
+
+    monkeypatch.setattr(client_module, "_PersistentNativeClient", Client)
+    pool = _pool(tmp_path)
+    deadline = time.monotonic() + 5
+    assert pool.request(b"first", deadline_monotonic=deadline) == failure
+    stale = clients[0]
+    assert stale.closed
+    assert stale not in pool._idle
+    assert stale not in pool._clients
+    assert pool.request(b"second", deadline_monotonic=deadline) == b'{"schema":"ok"}'
+    assert len(clients) == 2
+
+
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        (b'{"error":"native_resident_state_dir_create_failed","retryable":false}', True),
+        (b'{"error":"native_resident_lease_busy","retryable":true}', True),
+        (b'{"error":"native_request_invalid_json","retryable":false}', False),
+        (b'{"error":"native_resident_x","retryable":false,"extra":1}', False),
+        (b'{"schema":"guard-daemon-route-result.v1","error":"native_resident_x"}', False),
+        (b'{"error":"native_resident_x"', False),
+        (b'{"error":"native_resident_x","retryable":false}garbage', False),
+        (b"", False),
+    ],
+)
+def test_startup_error_frame_detection_is_exact(response: bytes, expected: bool) -> None:
+    assert client_module._is_resident_startup_error(response) is expected
+
+
 def test_client_reader_keeps_response_binding_with_the_captured_generation_queue(
     tmp_path: Path,
 ) -> None:
@@ -72,7 +119,10 @@ def test_client_reader_keeps_response_binding_with_the_captured_generation_queue
     old_queue: Queue[bytes | client_module._StreamFailure] = Queue(maxsize=1)
     active_queue: Queue[bytes | client_module._StreamFailure] = Queue(maxsize=1)
     response = b"old-generation-response"
-    process = SimpleNamespace(stdout=io.BytesIO(struct.pack(">I", len(response)) + response))
+    process = SimpleNamespace(
+        stdout=io.BytesIO(struct.pack(">I", len(response)) + response),
+        wait=lambda timeout=None: 0,
+    )
 
     client._responses = active_queue  # pyright: ignore[reportPrivateUsage]
     client._read_responses(process, old_queue)  # pyright: ignore[reportArgumentType]
@@ -386,3 +436,221 @@ def test_pool_registry_cleanup_is_scoped_and_closes_idle_clients(
     finally:
         client_module.close_native_resident_clients()
     assert closed == [pool_a, pool_b]
+
+
+def test_failed_request_log_releases_the_leased_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    clients: list[object] = []
+
+    class Client:
+        def __init__(self, **_kwargs: object) -> None:
+            self.closed = False
+            clients.append(self)
+
+        def request(self, _payload: bytes, *, deadline_monotonic: float) -> bytes:
+            return b'{"schema":"ok"}'
+
+        def close(self, *, deadline_monotonic: float) -> bool:
+            self.closed = True
+            return True
+
+    monkeypatch.setattr(client_module, "_PersistentNativeClient", Client)
+    monkeypatch.setattr(client_module, "_MAX_PERSISTENT_CLIENTS", 1)
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_bytes(b"x")
+    monkeypatch.setenv("HOL_GUARD_RESIDENT_REQUEST_LOG", os.fspath(blocker / "resident-requests.log"))
+    pool = _pool(tmp_path)
+    with pytest.raises(OSError):
+        pool.request(b"counted", deadline_monotonic=time.monotonic() + 1)
+    leased = clients[0]
+    assert leased.closed is True  # type: ignore[attr-defined]
+    assert leased not in pool._clients  # pyright: ignore[reportPrivateUsage]
+    log_path = tmp_path / "resident-requests.log"
+    monkeypatch.setenv("HOL_GUARD_RESIDENT_REQUEST_LOG", os.fspath(log_path))
+    assert pool.request(b"next", deadline_monotonic=time.monotonic() + 1) == b'{"schema":"ok"}'
+    assert log_path.read_bytes() == b"1\n"
+    assert len(pool._clients) == 1  # pyright: ignore[reportPrivateUsage]
+
+
+def test_missing_runtime_directory_is_not_pinned_by_resolve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_module.close_native_resident_clients()
+    state = tmp_path / "home" / "native-runtime"
+    resolved: list[Path] = []
+    real_resolve = Path.resolve
+
+    def tracking_resolve(self: Path, strict: bool = False) -> Path:
+        resolved.append(self)
+        return real_resolve(self, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", tracking_resolve)
+    try:
+        pool = client_module._client_pool_for(tmp_path / "runtime", state, {})
+        assert pool._state_dir == Path(os.path.abspath(state))  # pyright: ignore[reportPrivateUsage]
+        assert all(path != state for path in resolved)
+    finally:
+        client_module.close_native_resident_clients()
+
+
+def test_existing_runtime_directory_is_pinned_by_resolve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_module.close_native_resident_clients()
+    state = tmp_path / "home" / "native-runtime"
+    state.mkdir(parents=True)
+    resolved: list[Path] = []
+    real_resolve = Path.resolve
+
+    def tracking_resolve(self: Path, strict: bool = False) -> Path:
+        resolved.append(self)
+        return real_resolve(self, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", tracking_resolve)
+    try:
+        pool = client_module._client_pool_for(tmp_path / "runtime", state, {})
+        assert pool._state_dir == real_resolve(state)  # pyright: ignore[reportPrivateUsage]
+        assert any(path == state for path in resolved)
+    finally:
+        client_module.close_native_resident_clients()
+
+
+def test_stream_launch_uses_existing_absolute_spelling_when_pin_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_plugin_scanner.guard import native_resident_stream as stream
+
+    pinned = tmp_path / "pinned" / "native-runtime"
+    created = tmp_path / "created" / "native-runtime"
+    created.mkdir(parents=True)
+    monkeypatch.setattr(stream.os.path, "abspath", lambda _path: str(created))
+    assert stream._existing_state_dir(pinned) == created.resolve()
+
+
+def test_stream_launch_keeps_an_existing_state_dir(tmp_path: Path) -> None:
+    from codex_plugin_scanner.guard.native_resident_stream import _existing_state_dir
+
+    state = tmp_path / "native-runtime"
+    state.mkdir()
+    assert _existing_state_dir(state) == state
+
+
+def test_directory_probe_fails_closed_when_stat_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard.native_resident_stream import _is_directory as stream_is_directory
+
+    def fail_is_dir(self: Path) -> bool:
+        raise OSError("stat failed")
+
+    monkeypatch.setattr(Path, "is_dir", fail_is_dir)
+    assert client_module._is_directory(tmp_path) is False
+    assert stream_is_directory(tmp_path) is False
+
+
+def test_pinned_state_dir_resolves_an_existing_absolute_spelling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "missing" / "native-runtime"
+    created = tmp_path / "created"
+    created.mkdir()
+    monkeypatch.setattr(client_module.os.path, "abspath", lambda _path: str(created))
+    monkeypatch.setattr(
+        client_module,
+        "_is_directory",
+        lambda path: path == created or path == created.resolve(),
+    )
+    assert client_module._pinned_state_dir(state) == created.resolve()
+
+
+def test_pinned_state_dir_keeps_absolute_when_resolve_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "missing" / "native-runtime"
+    created = tmp_path / "created"
+    created.mkdir()
+    monkeypatch.setattr(client_module.os.path, "abspath", lambda _path: str(created))
+    monkeypatch.setattr(client_module, "_is_directory", lambda path: path == created)
+
+    def fail_resolve(self: Path, strict: bool = False) -> Path:
+        raise OSError("resolve failed")
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    assert client_module._pinned_state_dir(state) == created
+
+
+def test_pinned_state_dir_keeps_absolute_when_resolved_spelling_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "missing" / "native-runtime"
+    created = tmp_path / "created"
+    created.mkdir()
+    missing = tmp_path / "gone"
+    monkeypatch.setattr(client_module.os.path, "abspath", lambda _path: str(created))
+    monkeypatch.setattr(client_module, "_is_directory", lambda path: path == created)
+    monkeypatch.setattr(Path, "resolve", lambda self, strict=False: missing)
+    assert client_module._pinned_state_dir(state) == created
+
+
+def test_stream_keeps_absolute_when_resolve_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard import native_resident_stream as stream
+
+    pinned = tmp_path / "pinned" / "native-runtime"
+    created = tmp_path / "created"
+    created.mkdir()
+    monkeypatch.setattr(stream.os.path, "abspath", lambda _path: str(created))
+
+    def fail_resolve(self: Path, strict: bool = False) -> Path:
+        raise OSError("resolve failed")
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    assert stream._existing_state_dir(pinned) == created
+
+
+def test_overlapping_runtime_spelling_replaces_the_stale_pool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_module.close_native_resident_clients()
+    runtime = tmp_path / "runtime"
+    first = tmp_path / "first" / "native-runtime"
+    second = tmp_path / "second" / "native-runtime"
+    monkeypatch.setattr(client_module, "_directory_forms", lambda _path: {"same-runtime"})
+    try:
+        first_pool = client_module._client_pool_for(runtime, first, {})
+        second_pool = client_module._client_pool_for(runtime, second, {})
+        assert second_pool is not first_pool
+        assert first_pool._closed is True  # pyright: ignore[reportPrivateUsage]
+        assert (str(runtime), str(client_module._pinned_state_dir(first))) not in client_module._CLIENT_POOLS
+        assert (str(runtime), str(client_module._pinned_state_dir(second))) in client_module._CLIENT_POOLS
+    finally:
+        client_module.close_native_resident_clients()
+
+
+def test_pool_reports_readiness_only_for_live_idle_clients(tmp_path: Path) -> None:
+    """Readiness is what lets a caller know whether it must budget for a spawn.
+
+    A resident that a test or an operator killed leaves a parked client whose
+    process is gone; counting it as ready makes the next request pay a spawn
+    inside a steady-state budget and time out.
+    """
+
+    pool = _pool(tmp_path)
+    assert pool.has_idle_client() is False
+
+    alive = SimpleNamespace(_process=SimpleNamespace(poll=lambda: None))
+    pool._idle.append(alive)
+    assert pool.has_idle_client() is True
+
+    pool._idle[:] = [SimpleNamespace(_process=SimpleNamespace(poll=lambda: 1))]
+    assert pool.has_idle_client() is False
+
+    pool._idle[:] = [SimpleNamespace(_process=None)]
+    assert pool.has_idle_client() is False
+
+    pool._idle[:] = [alive]
+    pool._closed = True
+    assert pool.has_idle_client() is False

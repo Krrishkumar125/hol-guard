@@ -125,7 +125,7 @@ def _param_value_id(value: ast.expr) -> str | None:
     return None
 
 
-def _parametrize_suffixes(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str] | None | object:
+def _parametrize_suffixes(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str] | object | None:
     """Collect the valid ``[param]`` suffixes for a test function.
 
     Returns ``None`` when the node carries no parametrize mark, a set of
@@ -252,7 +252,8 @@ def validate_retirement_ledger(root: Path, contract: dict[str, object]) -> dict[
         base, separator, params = node.partition("[")
         valid_node = bool(base) and all(part.isidentifier() for part in base.split("::"))
         if separator:
-            valid_node = valid_node and len(params) > 1 and node.endswith("]")
+            # pytest uses [] as the genuine ID for a single empty-string case.
+            valid_node = valid_node and node.endswith("]")
         if (
             not valid_node
             or path.suffix not in {".py", ".rs"}

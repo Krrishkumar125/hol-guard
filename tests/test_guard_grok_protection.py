@@ -19,11 +19,9 @@ from codex_plugin_scanner.guard.cli.install_commands import (
 from codex_plugin_scanner.guard.models import GuardApprovalRequest
 from codex_plugin_scanner.guard.runtime.actions import normalize_harness_payload
 from codex_plugin_scanner.guard.store_approvals import (
-    add_approval_request,
-    approval_index_statements,
-    approval_schema_statement,
     resolve_request_with_queue_result,
 )
+from tests.native_approval_writes import add_approval_request, native_approval_connection
 
 
 def _ctx(tmp_path: Path) -> HarnessContext:
@@ -197,12 +195,7 @@ def test_normalize_harness_payload_supports_grok_secret_read(tmp_path: Path) -> 
 
 
 def _approval_connection() -> sqlite3.Connection:
-    connection = sqlite3.connect(":memory:")
-    connection.row_factory = sqlite3.Row
-    connection.execute(approval_schema_statement())
-    for statement in approval_index_statements():
-        connection.execute(statement)
-    return connection
+    return native_approval_connection()
 
 
 def _grok_approval_request(request_id: str, *, command: str, harness: str = "grok") -> GuardApprovalRequest:
@@ -264,7 +257,7 @@ def test_grok_protection_checks_flag_literal_home_prefix_deny_rules(tmp_path: Pa
     GrokHarnessAdapter().install(ctx)
     (ctx.guard_home / "bin").mkdir(parents=True, exist_ok=True)
     (ctx.guard_home / "bin" / "guard-grok").write_text("#!/bin/sh\n", encoding="utf-8")
-    managed_config = ctx.home_dir / ".grok" / "managed_config.toml"
+    managed_config = ctx.home_dir / ".grok" / "config.toml"
     managed_text = managed_config.read_text(encoding="utf-8")
     legacy_text = managed_text.replace(
         "Read(**/.ssh/**)",

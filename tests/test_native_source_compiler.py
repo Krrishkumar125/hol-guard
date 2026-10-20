@@ -17,6 +17,11 @@ def _isolate_native_compiler_override(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.delenv("HOL_GUARD_NATIVE_SOURCE_COMPILER", raising=False)
     monkeypatch.delenv("HOL_GUARD_NATIVE_TEST_SOURCE_COMPILER", raising=False)
+    # These tests isolate executable identity/transport from bundle traversal.
+    # The real bundle/context checks are exercised in the authoring tests.
+    from codex_plugin_scanner.guard.extension_builder import bundle_baseline
+
+    monkeypatch.setattr(bundle_baseline, "validation_base", lambda *args, **kwargs: {"catalog": [], "programs": []})
 
 
 def _fake_compiler(tmp_path: Path, *, output: dict[str, object] | None = None) -> Path:
@@ -47,7 +52,9 @@ def test_compile_source_uses_explicit_native_compiler_and_canonical_stdin(
 
     assert result["source_digest"] == "a" * 64
     assert calls[0][0][1:] == ["compile"]
-    assert Path(calls[0][0][0]).name == "guard-command-source"
+    # The verified executable snapshot is staged under the runtime name; the
+    # runtime accepts the compiler operations at top level.
+    assert Path(calls[0][0][0]).name == compiler._COMPILER_NAME
     assert calls[0][1] == (b'{"mcp_sources":[],"schema":"guard.command-extension-build.v1","sources":[],"trust":{}}\n')
 
 
@@ -58,13 +65,13 @@ def test_packaged_compiler_manifest_binds_runtime_identity_and_binary(
     raw = executable.read_bytes()
     native = tmp_path / "_native"
     native.mkdir()
-    packaged = native / executable.name
+    packaged = native / compiler._COMPILER_NAME
     packaged.write_bytes(raw)
     packaged.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
     source_sha = "a" * 40
     base_program_digest = "b" * 64
     manifest = {
-        "schema": "hol-guard-native-source-compiler.v1",
+        "schema": "hol-guard-native-source-compiler.v2",
         "protocol_version": 1,
         "package_version": "3.0.1",
         "target": "x86_64-unknown-linux-gnu",
@@ -72,6 +79,7 @@ def test_packaged_compiler_manifest_binds_runtime_identity_and_binary(
         "source_sha": source_sha,
         "implementation_digest": "c" * 64,
         "base_program_digest": base_program_digest,
+        "executable": compiler._COMPILER_NAME,
         "compiler_sha256": hashlib.sha256(raw).hexdigest(),
         "compiler_size": len(raw),
     }
@@ -102,7 +110,7 @@ def test_packaged_compiler_manifest_binds_runtime_identity_and_binary(
 
 def test_compiler_request_is_bounded_before_subprocess(tmp_path: Path) -> None:
     executable = _fake_compiler(tmp_path)
-    request = {"schema": "guard.command-extension-build.v1", "sources": ["x" * compiler._MAX_INPUT_BYTES]}
+    request = {"schema": "guard.command-extension-build.v1", "sources": ["x" * compiler._MAX_REQUEST_BYTES]}
     with pytest.raises(compiler.NativeSourceCompilerError, match="input bound"):
         compiler.compile_source(request, compiler=executable)
 
@@ -122,7 +130,7 @@ def _packaged_compiler(
     packaged.write_bytes(raw)
     packaged.chmod(0o700)
     manifest: dict[str, object] = {
-        "schema": "hol-guard-native-source-compiler.v1",
+        "schema": "hol-guard-native-source-compiler.v2",
         "protocol_version": 1,
         "package_version": "3.0.1",
         "target": "x86_64-unknown-linux-gnu",
@@ -130,6 +138,7 @@ def _packaged_compiler(
         "source_sha": "a" * 40,
         "implementation_digest": "c" * 64,
         "base_program_digest": "b" * 64,
+        "executable": compiler._COMPILER_NAME,
         "compiler_sha256": hashlib.sha256(raw).hexdigest(),
         "compiler_size": len(raw),
     }
@@ -257,7 +266,8 @@ def test_packaged_compact_validation_requires_matching_compilation_proof(
         return 0, json.dumps(compiled if arguments[1] == "compile" else compact).encode(), b""
 
     monkeypatch.setattr(compiler, "_run_bounded", respond)
-    build = {"base": "packaged"}
+    build = {"base": "packaged", "validation_base": {"untrusted": "kit context"}}
+    verified_build = {"base": "packaged", "validation_base": {"catalog": [], "programs": []}}
     request = {"build": build, "cases": []} if operation in {"test", "compare"} else build
     if mismatch is not None:
         with pytest.raises(compiler.NativeSourceCompilerError, match=r"identit|program digest"):
@@ -269,8 +279,11 @@ def test_packaged_compact_validation_requires_matching_compilation_proof(
         )
     assert [call[0] for call in calls] == [operation, "compile"]
     assert calls[0][2] == calls[1][2]
-    assert json.loads(calls[1][1]) == build
-    assert json.loads(calls[0][1]) == request
+    assert json.loads(calls[1][1]) == verified_build
+    assert json.loads(calls[0][1]) == (
+        {**request, "build": verified_build} if operation in {"test", "compare"} else verified_build
+    )
+    assert build["validation_base"] == {"untrusted": "kit context"}
 
 
 def test_subprocess_output_and_timeout_are_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

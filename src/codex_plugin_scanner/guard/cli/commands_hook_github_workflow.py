@@ -9,12 +9,15 @@ from pathlib import Path
 
 from ..config import GuardConfig
 from ..models import GuardArtifact
-from ..native_command_control_authority_io import NativeCommandControlMutationRequiredError
+from ..native_command_control_authority_io import (
+    NativeCommandControlAuthorityUnavailableError,
+    NativeCommandControlMutationRequiredError,
+)
+from ..native_github_workflow import GitHubWorkflowDescriptor, github_workflow_describe_native
 from ..runtime.command_decision_adapter import effect_decision_to_dict
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
-from ..runtime.extension_control_runtime import ExtensionControlRuntimeSnapshot
+from ..runtime.extension_control_runtime import ExtensionControlRuntimeSnapshot, extension_control_policy_version
 from ..runtime.github_workflow_approval_record import GitHubWorkflowApprovalRecord
-from ..runtime.github_workflow_context import GitHubWorkflowDescriptor, build_github_workflow_descriptor
 from ..runtime.github_workflow_runtime import (
     claim_resolved_github_workflow_authorization,
     github_workflow_capability_required,
@@ -46,7 +49,7 @@ def prepare_github_workflow_hook_state(
     approval_request_id: str | None,
 ) -> GitHubWorkflowHookState:
     descriptor = _runtime_github_workflow_descriptor(artifact, workspace=workspace, config=config)
-    record = GitHubWorkflowApprovalRecord.from_descriptor(descriptor) if descriptor is not None else None
+    record = descriptor.record if descriptor is not None else None
     if record is not None:
         metadata = dict(artifact.metadata)
         metadata["github_workflow_approval_record"] = record.to_dict()
@@ -59,7 +62,10 @@ def prepare_github_workflow_hook_state(
             BUILT_IN_COMMAND_EXTENSION_REGISTRY,
             read_only=True,
         )
-    except NativeCommandControlMutationRequiredError:
+    except (NativeCommandControlAuthorityUnavailableError, NativeCommandControlMutationRequiredError):
+        # A lease that is busy or needs a migration leaves this hook without a
+        # reading. It floors the decision rather than raising: the hook still
+        # runs, and the authority it could not read grants nothing.
         metadata = dict(artifact.metadata)
         metadata["command_action_floor"] = "require-reapproval"
         metadata["command_evaluation_status"] = "native_unavailable"
@@ -113,7 +119,7 @@ def _runtime_github_workflow_descriptor(
 ) -> GitHubWorkflowDescriptor | None:
     if artifact.artifact_type != "tool_action_request" or artifact.command is None:
         return None
-    return build_github_workflow_descriptor(
+    return github_workflow_describe_native(
         artifact.command,
         workspace=workspace,
         config_path=artifact.config_path,
@@ -122,6 +128,7 @@ def _runtime_github_workflow_descriptor(
             "analysis": config.sandbox_analysis,
             "required": _runtime_artifact_command_action_floor(artifact) == "sandbox-required",
         },
+        policy_version=extension_control_policy_version("policy.v1"),
     )
 
 

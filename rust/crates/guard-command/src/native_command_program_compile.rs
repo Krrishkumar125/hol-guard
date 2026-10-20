@@ -144,15 +144,21 @@ fn compile_versioned_package_subcommand(
     Ok(node)
 }
 
-fn compile_executable(operation: &str, mut config: Value) -> Result<ExecutableNode, &'static str> {
+pub(super) fn compile_executable(
+    operation: &str,
+    mut config: Value,
+) -> Result<ExecutableNode, &'static str> {
     let object = config
         .as_object_mut()
         .ok_or("native_command_executable_invalid")?;
     let mut paths: Vec<Vec<String>> = if operation == "executable.v1" {
+        // A missing `subcommands` list means the matcher applies to every
+        // invocation of the executable; the rendered unclassified fallback
+        // uses the same empty path for that semantic.
         vec![serde_json::from_value(
             object
                 .remove("subcommands")
-                .ok_or("native_command_subcommands_missing")?,
+                .unwrap_or_else(|| Value::Array(Vec::new())),
         )
         .map_err(|_| "native_command_subcommands_invalid")?]
     } else {

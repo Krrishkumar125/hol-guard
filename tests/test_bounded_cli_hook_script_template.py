@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from codex_plugin_scanner.guard.adapters.bounded_cli_hook_bridge import _render_bounded_hook_script
+from codex_plugin_scanner.guard.hook_execution_environment import LIBRARY_SEARCH_PATH_NAMES
 
 
 def _load_script(tmp_path: Path, *, harness: str, timeout_seconds: float = 8) -> ModuleType:
@@ -109,6 +110,8 @@ def test_generated_client_stamps_outer_environment_before_daemon_forwarding(
     monkeypatch.setenv("PAGER", "")
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "true")
     monkeypatch.setenv("GIT_EXTERNAL_DIFF", "frozen-caller-secret-not-serialized")
+    for name in LIBRARY_SEARCH_PATH_NAMES:
+        monkeypatch.delenv(name, raising=False)
 
     forwarded = module._stamp_hook_input(
         json.dumps(
@@ -129,6 +132,29 @@ def test_generated_client_stamps_outer_environment_before_daemon_forwarding(
     assert "GIT_EXTERNAL_DIFF" in context["environment_names"]
     assert context["environment_digest"]
     assert "frozen-caller-secret-not-serialized" not in forwarded
+    assert context["library_search_paths"] == {}
+
+
+def test_generated_client_stamps_loader_search_path_values_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script(tmp_path, harness="zcode")
+    for name in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/usr/local/cuda/lib64:/usr/lib")
+    monkeypatch.setenv("DYLD_LIBRARY_PATH", "")
+    monkeypatch.setenv("LD_PRELOAD", "/synthetic/preload-not-serialized.so")
+
+    forwarded = module._stamp_hook_input(json.dumps({"hook_event_name": "PreToolUse"}))
+    context = json.loads(forwarded)["guard_execution_environment"]
+    assert context["library_search_paths"] == {"LD_LIBRARY_PATH": "/usr/local/cuda/lib64:/usr/lib"}
+    assert "LD_PRELOAD" in context["environment_names"]
+    assert "preload-not-serialized" not in forwarded
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/usr/lib/\udcff")
+    surrogate = json.loads(module._stamp_hook_input(json.dumps({"hook_event_name": "PreToolUse"})))
+    assert surrogate["guard_execution_environment"]["library_search_paths"] == {}
+    assert "LD_LIBRARY_PATH" in surrogate["guard_execution_environment"]["environment_names"]
 
 
 @pytest.mark.parametrize(
@@ -167,6 +193,8 @@ def test_generated_client_runs_under_macos_system_python(tmp_path: Path, event_n
     assert "Traceback" not in completed.stderr
     if event_name == "PreToolUse":
         assert response["decision"] == "deny"
+    elif event_name == "UserPromptSubmit":
+        assert response["decision"] == "block"
     else:
         assert response == {}
         assert completed.returncode == 0
@@ -204,7 +232,8 @@ def test_generated_grok_observer_has_short_transport_budget(
 
     monkeypatch.setattr(module, "_http_json", unavailable)
     assert module._post_hook(json.dumps({"hook_event_name": event_name})) is None
-    assert budgets == ([5.0] if event_name == "PreToolUse" else [1.0])
+    expected = {"SessionStart": 1.0, "UserPromptSubmit": 10.0, "PreToolUse": 5.0}
+    assert budgets == pytest.approx([expected[event_name]], abs=0.01)
 
 
 def test_generated_client_copies_grok_approval_metadata(tmp_path: Path) -> None:
@@ -304,9 +333,7 @@ def test_generated_client_prompt_unavailability_matches_host_contract(tmp_path: 
     module = _load_script(tmp_path, harness=harness)
     payload, code = module._failure_payload("UserPromptSubmit", "Native prompt review unavailable.")
     assert code == 0
-    if harness == "grok":
-        assert payload == {}
-    elif harness == "copilot":
+    if harness == "copilot":
         assert payload["behavior"] == "deny"
     else:
         assert payload["decision"] == "block"
@@ -428,7 +455,7 @@ def test_generated_zcode_authority_block_stderr_appends_remediation(tmp_path: Pa
     )
 
     assert code == 2
-    assert "hol-guard command controls acknowledge-degraded" in stderr
+    assert "hol-guard command controls recover-authority" in stderr
 
 
 def test_generated_zcode_sandbox_required_denies_with_exit_two(tmp_path: Path) -> None:

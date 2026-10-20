@@ -37,6 +37,7 @@ pub enum BusinessOperationV1 {
     DriveRead,
     DriveEdit,
     DriveShare,
+    DriveExport,
     CalendarRead,
     CalendarInvite,
 }
@@ -50,10 +51,41 @@ impl BusinessOperationV1 {
             | Self::MailLabel
             | Self::MailPermanentDelete
             | Self::MailSettings => BusinessServiceV1::GoogleGmail,
-            Self::DriveRead | Self::DriveEdit | Self::DriveShare => BusinessServiceV1::GoogleDrive,
+            Self::DriveRead | Self::DriveEdit | Self::DriveShare | Self::DriveExport => {
+                BusinessServiceV1::GoogleDrive
+            }
             Self::CalendarRead | Self::CalendarInvite => BusinessServiceV1::GoogleCalendar,
         }
     }
+
+    /// Effect class of the operation. It is derived from the operation only,
+    /// so a producer cannot assert a different class.
+    pub fn action_class(self) -> BusinessActionClassV1 {
+        use BusinessActionClassV1 as Class;
+        match self {
+            Self::MailRead | Self::DriveRead | Self::CalendarRead => Class::Read,
+            Self::MailDraft => Class::Draft,
+            Self::MailSend | Self::CalendarInvite => Class::Send,
+            Self::DriveShare => Class::Share,
+            Self::DriveExport => Class::Export,
+            Self::MailLabel | Self::DriveEdit => Class::Update,
+            Self::MailPermanentDelete => Class::Delete,
+            Self::MailSettings => Class::Admin,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum BusinessActionClassV1 {
+    Read,
+    Draft,
+    Send,
+    Share,
+    Export,
+    Update,
+    Delete,
+    Admin,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -69,10 +101,14 @@ pub enum BusinessFactStateV1 {
 pub struct BusinessProviderV1 {
     pub service: BusinessServiceV1,
     /// Native-private identity commitment, not a browser/model account claim.
+    /// Both binding keys are required even when their value is explicitly null.
+    /// Do not add serde(default): an omitted identity must fail strict decoding.
+    /// The business_provider_required_nullable tests pin this wire distinction.
     #[serde(deserialize_with = "required_nullable")]
-    pub account_binding: Option<String>,
+    pub account_binding: Option<String>, // NOSONAR: rust:S9334; required key, nullable value.
+    /// Explicit nullable tenant commitment. Missing is invalid.
     #[serde(deserialize_with = "required_nullable")]
-    pub tenant_binding: Option<String>,
+    pub tenant_binding: Option<String>, // NOSONAR: rust:S9334; required key, nullable value.
     pub identity_state: BusinessFactStateV1,
     pub tool_identity_digest: String,
     pub tool_schema_digest: String,
@@ -191,7 +227,9 @@ fn required_nullable<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<St
     Option::<String>::deserialize(d)
 }
 
-fn domain(value: &str) -> bool {
+/// Canonical DNS-name syntax shared by recipient facts and policy selectors.
+/// This proves neither provider resolution nor organization membership.
+pub fn is_canonical_business_domain(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 253
         && value.split('.').all(|label| {
@@ -242,6 +280,10 @@ impl BusinessActionV1 {
         {
             return Err(Error::LimitExceeded);
         }
+        let identity_bindings = [
+            &self.provider.account_binding,
+            &self.provider.tenant_binding,
+        ];
         if ![
             &self.provider.tool_identity_digest,
             &self.provider.tool_schema_digest,
@@ -253,12 +295,9 @@ impl BusinessActionV1 {
         ]
         .iter()
         .all(|value| digest(value))
-            || ![
-                &self.provider.account_binding,
-                &self.provider.tenant_binding,
-            ]
-            .iter()
-            .all(|value| value.as_deref().is_none_or(digest))
+            || !identity_bindings
+                .iter()
+                .all(|value| value.as_deref().is_none_or(digest))
             || !self
                 .content
                 .attachment_digests
@@ -268,7 +307,7 @@ impl BusinessActionV1 {
                 .audience
                 .recipients
                 .iter()
-                .all(|r| digest(&r.identity_binding) && domain(&r.domain))
+                .all(|r| digest(&r.identity_binding) && is_canonical_business_domain(&r.domain))
         {
             return Err(Error::Invalid);
         }
@@ -332,6 +371,10 @@ impl BusinessActionV1 {
                 BusinessOperationV1::MailSend | BusinessOperationV1::CalendarInvite
             ) && self.audience.kind != BusinessAudienceKindV1::Unknown
                 && self.audience.kind != BusinessAudienceKindV1::Named)
+            // An export copies content to the caller; sharing is DriveShare.
+            || (self.operation == BusinessOperationV1::DriveExport
+                && self.audience.kind != BusinessAudienceKindV1::Unknown
+                && self.audience.kind != BusinessAudienceKindV1::Private)
         {
             return Err(Error::Inconsistent);
         }

@@ -24,7 +24,7 @@ def _run_generated_reference_fixture(source: str) -> dict[str, object]:
         "function referencedPayload(payload, serializedPayload)",
     )
     helper = helper.replace("const referencePayload: Record<string, unknown>", "const referencePayload")
-    javascript = f'''\
+    javascript = f"""\
 import {{ createCipheriv, createHash, randomBytes }} from "node:crypto";
 import {{ chmodSync, mkdtempSync, rmSync, writeFileSync }} from "node:fs";
 import {{ tmpdir }} from "node:os";
@@ -41,6 +41,7 @@ const metadata = {{
   home: "/outer/home",
   git_pager_disabled: true,
   pager_disabled: false,
+  library_search_paths: {{ LD_LIBRARY_PATH: "/usr/local/cuda/lib64" }},
 }};
 const payload = {{
   hook_event_name: "PostToolUse",
@@ -62,7 +63,7 @@ console.log(JSON.stringify({{
   inputChars: serializedPayload.length,
 }}));
 referenced.cleanup();
-'''
+"""
     with tempfile.NamedTemporaryFile("w", suffix=".mjs", prefix="omp-reference-", delete=False) as fixture:
         fixture.write(javascript)
         fixture_path = Path(fixture.name)
@@ -264,6 +265,7 @@ def test_generated_reference_wrapper_preserves_caller_environment_metadata(tmp_p
         "home": "/outer/home",
         "git_pager_disabled": True,
         "pager_disabled": False,
+        "library_search_paths": {"LD_LIBRARY_PATH": "/usr/local/cuda/lib64"},
     }
     assert result["keys"] == [
         "config_path",
