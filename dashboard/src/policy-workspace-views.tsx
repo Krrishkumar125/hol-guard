@@ -39,9 +39,10 @@ import {
 } from "./policy-workspace-helpers";
 import { resolvePolicyRowSourceLabel } from "./policy-managed-authority";
 import { GoverningExtensionLink } from "./policy-governing-extension-link";
+import { policySelectionKey } from "./policy-rules-overview-model";
 export type { PolicySortKey, PolicySortState };
 const PAGE_SIZE = 10;
-const TABLE_MIN_WIDTH_CLASS = "min-w-[1040px]";
+const TABLE_MIN_WIDTH_CLASS = "min-w-[640px] lg:min-w-[980px]";
 
 function PolicyActionBadge({ action }: { action: string }) {
   if (action === "allow") {
@@ -167,10 +168,13 @@ type PolicyRuleRowProps = {
   onClear?: (policy: GuardPolicyDecision) => void;
   onNavigate?: (pathname: string) => void;
   cloudVariant?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (policy: GuardPolicyDecision) => void;
 };
 
-function PolicyRuleRow({ policy, cloudControlsUrl, onClear, onNavigate, cloudVariant = false }: PolicyRuleRowProps) {
+function PolicyRuleRow({ policy, cloudControlsUrl, onClear, onNavigate, cloudVariant = false, selected = false, onToggleSelect }: PolicyRuleRowProps) {
   const handleClear = useCallback(() => onClear?.(policy), [onClear, policy]);
+  const handleToggleSelect = useCallback(() => onToggleSelect?.(policy), [onToggleSelect, policy]);
   const cloudManaged = cloudVariant || isCloudManagedPolicy(policy.source);
   const display = resolvePolicyDisplay(policy);
   const canClear = onClear !== undefined && !cloudManaged;
@@ -184,16 +188,27 @@ function PolicyRuleRow({ policy, cloudControlsUrl, onClear, onNavigate, cloudVar
   return (
     <EvidenceTableRow>
       <EvidenceTableCell className="w-10">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-          <Icon className="h-4 w-4" aria-hidden="true" />
-        </span>
+        <div className="flex items-center gap-2">
+          {canClear && onToggleSelect ? (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={handleToggleSelect}
+              aria-label={`Select rule ${title} for removal`}
+              className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
+            />
+          ) : null}
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+            <Icon className="h-4 w-4" aria-hidden="true" />
+          </span>
+        </div>
       </EvidenceTableCell>
 
       <EvidenceTableCell className="w-[88px] whitespace-nowrap">
         <PolicyActionBadge action={policy.action} />
       </EvidenceTableCell>
 
-      <EvidenceTableCell className="min-w-[220px] max-w-[320px]">
+      <EvidenceTableCell className="min-w-[170px] max-w-[300px] sm:min-w-[220px]">
         <p className="truncate font-semibold leading-snug text-brand-dark" title={title}>
           {title}
         </p>
@@ -202,21 +217,27 @@ function PolicyRuleRow({ policy, cloudControlsUrl, onClear, onNavigate, cloudVar
             {kindLine}
           </p>
         ) : null}
-        <div className="mt-2 space-y-1 text-xs text-slate-600 lg:hidden">
-          <p>
+        <p className="mt-1 break-words text-xs leading-relaxed text-slate-600">{display.rememberSentence}</p>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600 lg:hidden">
+          <span>
             <span className="font-medium text-slate-700">Source:</span> {resolvePolicyRowSourceLabel(policy)}
-          </p>
-          <p>
+          </span>
+          <span>
             <span className="font-medium text-slate-700">Scope:</span> {scopeTag}
-          </p>
+          </span>
           {folder ? (
-            <p>
+            <span>
               <span className="font-medium text-slate-700">Folder:</span> {folder}
-            </p>
+            </span>
           ) : null}
-          <p>
+          <span>
             <span className="font-medium text-slate-700">App:</span> {harnessDisplayName(policy.harness)}
-          </p>
+          </span>
+          {policy.updated_at ? (
+            <span>
+              <span className="font-medium text-slate-700">Updated:</span> {formatRelativeTime(policy.updated_at)}
+            </span>
+          ) : null}
         </div>
         <GoverningExtensionLink policy={policy} onNavigate={onNavigate} />
       </EvidenceTableCell>
@@ -279,9 +300,14 @@ type PolicyRuleTableProps = {
   onNavigate?: (pathname: string) => void;
   emptyTitle: string;
   emptyBody: string;
+  emptyAction?: React.ReactNode;
   cloudVariant?: boolean;
   sort: PolicySortState;
   onSortChange: (sort: PolicySortState) => void;
+  selectedKeys?: ReadonlySet<string>;
+  onToggleSelect?: (policy: GuardPolicyDecision) => void;
+  onClearSelection?: () => void;
+  onRemoveSelected?: () => void;
 };
 
 export function PolicyRuleTable({
@@ -291,9 +317,14 @@ export function PolicyRuleTable({
   onNavigate,
   emptyTitle,
   emptyBody,
+  emptyAction,
   cloudVariant = false,
   sort,
   onSortChange,
+  selectedKeys,
+  onToggleSelect,
+  onClearSelection,
+  onRemoveSelected,
 }: PolicyRuleTableProps) {
   const [page, setPage] = useState(1);
 
@@ -307,6 +338,7 @@ export function PolicyRuleTable({
   const safePage = Math.min(page, totalPages);
   const pageStart = (safePage - 1) * PAGE_SIZE;
   const visiblePolicies = sortedPolicies.slice(pageStart, pageStart + PAGE_SIZE);
+  const selectedCount = selectedKeys?.size ?? 0;
 
   const handlePrevious = useCallback(() => {
     setPage((current) => Math.max(1, current - 1));
@@ -317,11 +349,31 @@ export function PolicyRuleTable({
   }, [totalPages]);
 
   if (policies.length === 0) {
-    return <EmptyState title={emptyTitle} body={emptyBody} tone="teach" />;
+    return <EmptyState title={emptyTitle} body={emptyBody} tone="teach" action={emptyAction} />;
   }
 
   return (
     <div className="space-y-3">
+      {selectedCount > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-blue/20 bg-brand-blue/[0.04] px-3 py-2" role="status">
+          <p className="text-sm font-medium text-brand-dark">
+            {selectedCount} {selectedCount === 1 ? "rule" : "rules"} selected
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={onClearSelection} className="min-h-9 rounded-lg px-2 text-sm font-medium text-slate-600 hover:text-brand-dark">
+              Clear selection
+            </button>
+            <button
+              type="button"
+              onClick={onRemoveSelected}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-rose-600 px-3 text-sm font-medium text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-600/30"
+            >
+              <HiMiniTrash className="h-4 w-4" aria-hidden="true" />
+              Remove selected
+            </button>
+          </div>
+        </div>
+      ) : null}
       <EvidenceTable label={cloudVariant ? "Cloud policy rules" : "Remembered policy rules"} tableClassName={TABLE_MIN_WIDTH_CLASS}>
         <EvidenceTableHead>
           <EvidenceTableHeader className="w-10" />
@@ -369,12 +421,14 @@ export function PolicyRuleTable({
         <EvidenceTableBody>
           {visiblePolicies.map((policy) => (
             <PolicyRuleRow
-              key={`${policy.harness}-${policy.scope}-${policy.artifact_id ?? policy.publisher ?? "global"}-${policy.updated_at ?? ""}-${policy.source}`}
+              key={policySelectionKey(policy)}
               policy={policy}
               cloudControlsUrl={cloudControlsUrl}
               onClear={onClearPolicy}
               onNavigate={onNavigate}
               cloudVariant={cloudVariant}
+              selected={selectedKeys?.has(policySelectionKey(policy)) ?? false}
+              onToggleSelect={onToggleSelect}
             />
           ))}
         </EvidenceTableBody>
@@ -404,10 +458,15 @@ type GroupedPolicySectionProps = {
   onNavigate?: (pathname: string) => void;
   emptyTitle: string;
   emptyBody: string;
+  emptyAction?: React.ReactNode;
   defaultOpen?: boolean;
   cloudVariant?: boolean;
   sort: PolicySortState;
   onSortChange: (sort: PolicySortState) => void;
+  selectedKeys?: ReadonlySet<string>;
+  onToggleSelect?: (policy: GuardPolicyDecision) => void;
+  onClearSelection?: () => void;
+  onRemoveSelected?: () => void;
 };
 
 export function GroupedPolicySection({
@@ -420,10 +479,15 @@ export function GroupedPolicySection({
   onNavigate,
   emptyTitle,
   emptyBody,
+  emptyAction,
   defaultOpen = true,
   cloudVariant = false,
   sort,
   onSortChange,
+  selectedKeys,
+  onToggleSelect,
+  onClearSelection,
+  onRemoveSelected,
 }: GroupedPolicySectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const handleToggle = useCallback(() => setOpen((current) => !current), []);
@@ -437,7 +501,7 @@ export function GroupedPolicySection({
           {badge ? <Tag tone="slate">{badge}</Tag> : null}
         </div>
         <p className="text-sm text-slate-500">{description}</p>
-        <EmptyState title={emptyTitle} body={emptyBody} tone="teach" />
+        <EmptyState title={emptyTitle} body={emptyBody} tone="teach" action={emptyAction} />
       </section>
     );
   }
@@ -474,9 +538,14 @@ export function GroupedPolicySection({
           onNavigate={onNavigate}
           emptyTitle={emptyTitle}
           emptyBody={emptyBody}
+          emptyAction={emptyAction}
           cloudVariant={cloudVariant}
           sort={sort}
           onSortChange={onSortChange}
+          selectedKeys={selectedKeys}
+          onToggleSelect={onToggleSelect}
+          onClearSelection={onClearSelection}
+          onRemoveSelected={onRemoveSelected}
         />
       ) : null}
     </section>

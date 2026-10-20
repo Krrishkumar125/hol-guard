@@ -9,6 +9,11 @@ type PolicyRememberedLocalRulesProps = {
   onNavigate?: (pathname: string) => void;
   sort: PolicySortState;
   onSortChange: (sort: PolicySortState) => void;
+  emptyAction?: React.ReactNode;
+  selectedKeys?: ReadonlySet<string>;
+  onToggleSelect?: (policy: GuardPolicyDecision) => void;
+  onClearSelection?: () => void;
+  onRemoveSelected?: () => void;
 };
 
 export function PolicyRememberedLocalRules({
@@ -18,21 +23,31 @@ export function PolicyRememberedLocalRules({
   onNavigate,
   sort,
   onSortChange,
+  emptyAction,
+  selectedKeys,
+  onToggleSelect,
+  onClearSelection,
+  onRemoveSelected,
 }: PolicyRememberedLocalRulesProps) {
   return (
     <GroupedPolicySection
       title="Remembered on this device"
       badge="Local rules"
-      description="Decisions you've remembered on this machine."
+      description="Decisions you've remembered on this machine. Remove one and Guard asks again next time."
       policies={policies}
       cloudControlsUrl={cloudControlsUrl}
       onClearPolicy={onClearPolicy}
       onNavigate={onNavigate}
       emptyTitle="No local remembered rules yet"
       emptyBody="Approve or block in Inbox and Guard remembers the decision here in plain language."
+      emptyAction={emptyAction}
       defaultOpen
       sort={sort}
       onSortChange={onSortChange}
+      selectedKeys={selectedKeys}
+      onToggleSelect={onToggleSelect}
+      onClearSelection={onClearSelection}
+      onRemoveSelected={onRemoveSelected}
     />
   );
 }

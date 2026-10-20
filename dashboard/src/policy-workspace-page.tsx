@@ -1,8 +1,9 @@
-import { useCallback, useState, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import type { GuardPolicyDecision, GuardRuntimeSnapshot } from "./guard-types";
 import { WorkspacePageHeader } from "./workspace-page-header";
 import { PolicyExceptionsToolbar, PolicyPageToolbar, PolicyUnderlineTabBar } from "./policy-page-chrome";
 import type { PolicyPageView } from "./policy-workspace";
+import { countPolicyRules } from "./policy-rules-overview-model";
 import { resolveCloudPolicyControlsUrl, resolveCloudExceptionsConnected } from "./policy-workspace-helpers";
 import { lazyWorkspace } from "./lazy-workspace";
 
@@ -22,6 +23,19 @@ export function resolveProtectionRulesPath(search: string): string {
   return `/settings?${params.toString()}`;
 }
 
+const POLICY_VIEW_HASH: Record<PolicyPageView, string> = {
+  rules: "remembered-rules",
+  exceptions: "cloud-exceptions",
+  strict: "how-guard-decides",
+};
+
+export function resolvePolicyViewFromHash(hash: string): PolicyPageView {
+  const value = hash.replace(/^#/, "");
+  if (value === POLICY_VIEW_HASH.exceptions) return "exceptions";
+  if (value === POLICY_VIEW_HASH.strict) return "strict";
+  return "rules";
+}
+
 export function PolicyWorkspacePage(props: {
   snapshot: GuardRuntimeSnapshot;
   policies: GuardPolicyDecision[];
@@ -31,11 +45,23 @@ export function PolicyWorkspacePage(props: {
   onRefreshPolicies: () => void;
   onNavigate?: (pathname: string) => void;
 }) {
-  const [activeView, setActiveView] = useState<PolicyPageView>("rules");
+  const [activeView, setActiveView] = useState<PolicyPageView>(() =>
+    typeof window === "undefined" ? "rules" : resolvePolicyViewFromHash(window.location.hash),
+  );
   const [reloading, setReloading] = useState(false);
   const [exceptionRequestOpen, setExceptionRequestOpen] = useState(false);
   const cloudControlsUrl = resolveCloudPolicyControlsUrl(props.snapshot);
   const cloudConnected = resolveCloudExceptionsConnected(props.snapshot);
+  const ruleCounts = useMemo(
+    () => countPolicyRules(props.policies.filter((p) => p.action === "allow" || p.action === "block")),
+    [props.policies],
+  );
+
+  useEffect(() => {
+    const handleHashChange = () => setActiveView(resolvePolicyViewFromHash(window.location.hash));
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   const handleOpenSettings = useCallback(() => {
     const settingsPath = resolveProtectionRulesPath(window.location.search);
@@ -46,7 +72,13 @@ export function PolicyWorkspacePage(props: {
     props.onOpenSettings(settingsPath);
   }, [props]);
   const handleOpenInbox = useCallback(() => props.onOpenInbox(), [props]);
-  const handleViewChange = useCallback((view: PolicyPageView) => setActiveView(view), []);
+  const handleViewChange = useCallback((view: PolicyPageView) => {
+    setActiveView(view);
+    const hash = `#${POLICY_VIEW_HASH[view]}`;
+    if (window.location.hash !== hash) {
+      window.history.replaceState(null, "", hash);
+    }
+  }, []);
 
   const handleReloadPolicy = useCallback(() => {
     setReloading(true);
@@ -61,8 +93,8 @@ export function PolicyWorkspacePage(props: {
     <div className="space-y-6">
       <WorkspacePageHeader
         eyebrow="Rules & exceptions"
-        title="Remembered decisions and exceptions"
-        description="Review remembered decisions, contextual rules synced from Guard Cloud, exceptions, and decision order. Configure tools and capability posture in Extensions."
+        title="What Guard remembers, allows, and blocks"
+        description="Every decision Guard will repeat without asking — where it came from, what it covers, and how to undo it. Configure tools and capability posture in Extensions."
         actions={
           activeView === "exceptions" ? (
             <PolicyExceptionsToolbar
@@ -79,7 +111,7 @@ export function PolicyWorkspacePage(props: {
           )
         }
       />
-      <PolicyUnderlineTabBar activeView={activeView} onViewChange={handleViewChange} />
+      <PolicyUnderlineTabBar activeView={activeView} onViewChange={handleViewChange} counts={{ rules: ruleCounts.total }} />
       <Suspense fallback={<PolicyFallback />}>
         <PolicyWorkspace
           activeView={activeView}
@@ -88,7 +120,7 @@ export function PolicyWorkspacePage(props: {
           onClearPolicy={props.onClearPolicy}
           onOpenSettings={handleOpenSettings}
           onOpenInbox={handleOpenInbox}
-          onOpenCloudExceptions={() => setActiveView("exceptions")}
+          onOpenCloudExceptions={() => handleViewChange("exceptions")}
           exceptionRequestOpen={exceptionRequestOpen}
           onExceptionRequestOpenChange={setExceptionRequestOpen}
           onReloadPolicy={handleReloadPolicy}

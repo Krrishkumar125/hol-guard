@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-CkMTJ0-Z.js","assets/chunks/harness-version-label-0p6P70WE.js","assets/chunks/connect-guard-cloud-button-COC8NKLs.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-DdhT0dGq.js","assets/chunks/confirm-dialog-DoiBaaXB.js","assets/chunks/extensions-workspace-txhcGZII.js","assets/chunks/app-detail-workspace-D7AhoD71.js","assets/chunks/policy-workspace-page-BTvusmsE.js","assets/chunks/about-workspace-CMujLmFA.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-CkMTJ0-Z.js","assets/chunks/harness-version-label-0p6P70WE.js","assets/chunks/connect-guard-cloud-button-COC8NKLs.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-DdhT0dGq.js","assets/chunks/confirm-dialog-DoiBaaXB.js","assets/chunks/extensions-workspace-txhcGZII.js","assets/chunks/app-detail-workspace-D7AhoD71.js","assets/chunks/policy-workspace-page-DyWIsWMx.js","assets/chunks/about-workspace-b2Sqr-Fw.js"])))=>i.map(i=>d[i]);
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -35243,7 +35243,7 @@ function turnProtectionOnUpdate(snapshot) {
 }
 const McpPolicyRequestPanel = lazyWorkspace(
   "mcp-policy-request-panel",
-  () => __vitePreload(() => import("./chunks/mcp-policy-request-panel-C6vsh2fs.js"), true ? [] : void 0).then((m) => ({ default: m.McpPolicyRequestPanel }))
+  () => __vitePreload(() => import("./chunks/mcp-policy-request-panel-DWGod8Ux.js"), true ? [] : void 0).then((m) => ({ default: m.McpPolicyRequestPanel }))
 );
 function InboxWatchBanner(props) {
   const { snapshot } = props;
@@ -35653,15 +35653,15 @@ const AppDetailWorkspace = lazyWorkspace("app-detail-workspace", () => __vitePre
 const HelpModal = lazyWorkspace("help-modal", () => __vitePreload(() => import("./chunks/help-modal-B0TZsHE3.js"), true ? [] : void 0).then((m) => ({ default: m.HelpModal })));
 const SupplyChainHubWorkspace = lazyWorkspace(
   "supply-chain-hub-workspace",
-  () => __vitePreload(() => import("./chunks/supply-chain-hub-workspace-CTlU0pow.js").then((n) => n.d), true ? [] : void 0).then((m) => ({ default: m.SupplyChainHubWorkspace }))
+  () => __vitePreload(() => import("./chunks/supply-chain-hub-workspace-uc_gdl7f.js").then((n) => n.d), true ? [] : void 0).then((m) => ({ default: m.SupplyChainHubWorkspace }))
 );
 const PolicyWorkspacePage = lazyWorkspace(
   "policy-workspace-page",
-  () => __vitePreload(() => import("./chunks/policy-workspace-page-BTvusmsE.js"), true ? __vite__mapDeps([12,6]) : void 0).then((m) => ({ default: m.PolicyWorkspacePage }))
+  () => __vitePreload(() => import("./chunks/policy-workspace-page-DyWIsWMx.js"), true ? __vite__mapDeps([12,6]) : void 0).then((m) => ({ default: m.PolicyWorkspacePage }))
 );
 const AboutWorkspace = lazyWorkspace(
   "about-workspace",
-  () => __vitePreload(() => import("./chunks/about-workspace-CMujLmFA.js"), true ? __vite__mapDeps([13,2]) : void 0).then((m) => ({ default: m.AboutWorkspace }))
+  () => __vitePreload(() => import("./chunks/about-workspace-b2Sqr-Fw.js"), true ? __vite__mapDeps([13,2]) : void 0).then((m) => ({ default: m.AboutWorkspace }))
 );
 const ProtectionRepairPage = lazyWorkspace(
   "protection-repair-page",
@@ -36757,7 +36757,7 @@ export {
   waitForMcpDiscoveryJob as cy,
   isLocalCliId as cz,
   HiMiniArrowPath as d,
-  fetchSupplyChainBundle as d$,
+  HiMiniDocumentPlus as d$,
   appSetupTarget as d0,
   guardActionPresentation as d1,
   DEFAULT_FILTER_STATE as d2,
@@ -36788,13 +36788,13 @@ export {
   downloadBlob as dR,
   PolicyStatField as dS,
   PaginationControls as dT,
-  HiMiniArrowDownTray as dU,
-  HiMiniQueueList as dV,
-  Surface as dW,
-  fetchMcpPolicyRequest as dX,
-  resolveMcpPolicyRequest as dY,
-  HiMiniDocumentPlus as dZ,
-  HiMiniDocumentMagnifyingGlass as d_,
+  HiMiniComputerDesktop as dU,
+  HiMiniArrowDownTray as dV,
+  HiMiniInbox as dW,
+  HiMiniQueueList as dX,
+  Surface as dY,
+  fetchMcpPolicyRequest as dZ,
+  resolveMcpPolicyRequest as d_,
   EvidenceActionDetail as da,
   policyIdentityKey as db,
   clearLabelForScope as dc,
@@ -36821,15 +36821,16 @@ export {
   runPackageFirewallAction as dy,
   parseInterceptProofSnapshot as dz,
   HiMiniCheck as e,
-  isSupplyChainScannerEvidence as e0,
-  isBlockedGuardAction as e1,
-  HiMiniShieldExclamation as e2,
-  HiMiniComputerDesktop as e3,
-  HiMiniChevronLeft as e4,
-  HiMiniArrowDown as e5,
-  HiMiniArrowUp as e6,
-  runAuditRemediation as e7,
-  HiMiniSignal as e8,
+  HiMiniDocumentMagnifyingGlass as e0,
+  fetchSupplyChainBundle as e1,
+  isSupplyChainScannerEvidence as e2,
+  isBlockedGuardAction as e3,
+  HiMiniShieldExclamation as e4,
+  HiMiniChevronLeft as e5,
+  HiMiniArrowDown as e6,
+  HiMiniArrowUp as e7,
+  runAuditRemediation as e8,
+  HiMiniSignal as e9,
   formatRelativeTime as f,
   HiMiniNoSymbol as g,
   harnessDisplayName as h,
