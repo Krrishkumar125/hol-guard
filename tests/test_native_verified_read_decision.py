@@ -23,8 +23,9 @@ _DECISION = {
 def _install(monkeypatch: pytest.MonkeyPatch, mutate) -> list[tuple[str, object]]:
     recorded: list[tuple[str, object]] = []
 
-    def fake(*, request, response_schema, record_success, **_kwargs) -> dict[str, Any]:
+    def fake(*, request, response_schema, record_success, status, **_kwargs) -> dict[str, Any]:
         assert record_success is False
+        assert status.identity.sha256 == "0" * 64
         result: dict[str, Any] = {
             "schema": response_schema,
             "request_id": request["request_id"],
