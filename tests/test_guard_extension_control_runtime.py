@@ -324,7 +324,17 @@ def test_unavailable_authority_blocks_otherwise_valid_native_destructive_evidenc
     )
 
 
-def test_daemon_starts_fail_closed_with_future_authority_schema(tmp_path: Path) -> None:
+@pytest.mark.parametrize("installed_bundle", [False, True])
+def test_daemon_starts_fail_closed_with_future_authority_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    installed_bundle: bool,
+) -> None:
+    from codex_plugin_scanner.guard.catalog_delivery import preparation_authority
+
+    # An installed wheel ships a pack bundle, so startup also runs the pack
+    # authority migration against the unreadable schema.
+    monkeypatch.setattr(preparation_authority, "load_installed_bundle", lambda: object() if installed_bundle else None)
     store = GuardStore(tmp_path / "guard-home")
     store.read_extension_control_authority(catalog_digest=BUILT_IN_COMMAND_EXTENSION_REGISTRY.catalog_digest)
     with store._connect() as connection:

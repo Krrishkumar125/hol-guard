@@ -84,7 +84,7 @@ from ..package_firewall_action_rate_limit import PackageFirewallActionRateLimite
 from ..runtime.approval_attention import ApprovalAttentionCoordinator
 from ..runtime.cloud_review_sync import CloudReviewSyncWorker, start_cloud_sync_sync_worker, stop_cloud_sync_sync_worker
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY, CommandSafetyExtensionRegistry
-from ..runtime.extension_control_authority import ExtensionControlAuthorityView
+from ..runtime.extension_control_authority import ExtensionControlAuthorityError, ExtensionControlAuthorityView
 from ..runtime.extension_control_runtime import (
     ExtensionControlRuntime,
     ExtensionControlRuntimeSnapshot,
@@ -592,17 +592,17 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
             bind_hook_counter_sink(self.hook_worker, getattr(self, "diagnostics", None))
             from ..catalog_delivery.projection import capture
 
-            self.store.migrate_installed_command_pack_authority()
             try:
+                self.store.migrate_installed_command_pack_authority()
                 _, control_registry, _ = capture(self.store)
                 startup_view = self._startup_extension_control_view(control_registry)
-            except NativePolicySnapshotError:
-                # An activation record this build cannot authenticate, such as
-                # one written under a newer schema, activates nothing. Start on
-                # the core registry with a tampered authority so every hook
-                # fails closed, rather than taking hook protection down with
-                # the daemon. The refresh loop keeps this snapshot until the
-                # record reads again.
+            except (ExtensionControlAuthorityError, NativePolicySnapshotError):
+                # An authority or activation record this build cannot read or
+                # authenticate, such as one written under a newer schema,
+                # activates nothing. Start on the core registry with a tampered
+                # authority so every hook fails closed, rather than taking hook
+                # protection down with the daemon. The refresh loop keeps this
+                # snapshot until the record reads again.
                 control_registry = BUILT_IN_COMMAND_EXTENSION_REGISTRY
                 startup_view = self.store._tampered_view(control_registry.catalog_digest)
             self.extension_control_runtime = ExtensionControlRuntime(startup_view)
