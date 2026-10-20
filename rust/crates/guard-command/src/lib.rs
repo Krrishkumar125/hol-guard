@@ -800,6 +800,7 @@ pub mod contained_execution;
 #[cfg(unix)]
 pub mod contained_runner;
 pub mod credential_patterns;
+pub mod data_flow_request_artifact;
 pub mod data_flow_rules;
 pub mod decisions;
 pub mod detectors;

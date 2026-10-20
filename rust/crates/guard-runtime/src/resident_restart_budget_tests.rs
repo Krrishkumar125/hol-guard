@@ -61,7 +61,6 @@ fn temp_scope(label: &str) -> PathBuf {
     std::fs::create_dir(&scope).unwrap();
     scope
 }
-
 fn read_budget(scope: &Path) -> RestartBudget {
     serde_json::from_slice(&std::fs::read(scope.join("restart-budget.json")).unwrap()).unwrap()
 }

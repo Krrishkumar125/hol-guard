@@ -8,13 +8,11 @@ from typing import Any
 
 from ..native_codex_tool_output import codex_tool_output_native
 from ..native_context import bound_context_digest_home
+from ..native_data_flow import DataFlowArtifactNaming
 from ..native_path_anchor import anchor_to_process_directory
 from ..native_prompt import merge_prompt_artifacts
 from ..native_rich_command_model import NativeCommandModelError
-from ..native_runtime_artifact_identity import (
-    NativeRuntimeArtifactIdentityError,
-    data_flow_artifact_id,
-)
+from ..native_runtime_artifact_identity import NativeRuntimeArtifactIdentityError
 from ..native_sensitive_request import (
     NativeSensitiveRequestError,
     native_compound_artifact,
@@ -38,7 +36,6 @@ from .commands_support_codex_paths import (
 )
 from .commands_support_codex_prompt_attachments import _codex_prompt_attachment_artifact
 from .commands_support_hook_payload import _coalesce_string
-from .commands_support_runtime_policy import _runtime_data_flow_summary
 from .commands_support_runtime_resolution import _canonical_harness_name, _runtime_policy_path
 
 
@@ -201,6 +198,7 @@ def _hook_runtime_artifact_with_native(
     payload: dict[str, object],
     action_envelope: GuardActionEnvelope | None,
     data_flow_signals: tuple[RiskSignalV2, ...] = (),
+    data_flow_artifact: GuardArtifact | None = None,
     home_dir: Path,
     guard_home: Path,
     workspace: Path | None,
@@ -391,16 +389,8 @@ def _hook_runtime_artifact_with_native(
         )
         if unmodeled_artifact is not None:
             runtime_artifacts.append(unmodeled_artifact)
-    if action_envelope is not None and data_flow_signals:
-        runtime_artifacts.append(
-            _runtime_data_flow_artifact(
-                harness=harness,
-                action_envelope=action_envelope,
-                data_flow_signals=data_flow_signals,
-                config_path=config_path,
-                source_scope=source_scope,
-            )
-        )
+    if data_flow_artifact is not None:
+        runtime_artifacts.append(data_flow_artifact)
     return _compound_runtime_artifact(
         artifacts=runtime_artifacts,
         command_text=raw_command_text,
@@ -426,42 +416,30 @@ def _runtime_protected_file_write_paths(
     return protected_paths
 
 
-def _runtime_data_flow_artifact(
+def _runtime_data_flow_naming(
     *,
     harness: str,
-    action_envelope: GuardActionEnvelope,
-    data_flow_signals: tuple[RiskSignalV2, ...],
-    config_path: str,
-    source_scope: str,
-) -> GuardArtifact:
-    command_text = action_envelope.command or action_envelope.tool_name or action_envelope.action_type
-    signal_ids = tuple(signal.signal_id for signal in data_flow_signals)
-    # Same rule as the merged prompt id: the resident owns the approval key.
-    artifact_id = data_flow_artifact_id(
-        harness,
-        source_scope=source_scope,
-        command_text=command_text,
-        signal_ids=signal_ids,
-    )
-    return GuardArtifact(
-        artifact_id=artifact_id,
-        name=f"{action_envelope.tool_name or 'runtime'} data-flow exfiltration",
-        harness=harness,
-        artifact_type="tool_action_request",
-        source_scope=source_scope,
-        config_path=config_path,
-        metadata={
-            "action_class": "credential exfiltration shell command",
-            "command_text": command_text,
-            "guard_default_action": "require-reapproval",
-            "risk_classes": ["data_flow_exfiltration"],
-            "request_summary": _runtime_data_flow_summary(data_flow_signals),
-            "runtime_request_signals": [signal.plain_reason for signal in data_flow_signals],
-            "runtime_request_summary": _runtime_data_flow_summary(data_flow_signals),
-            "runtime_request_reason": (
-                "Guard detected local-secret data flow in the runtime action before the command could send it away."
-            ),
-        },
+    payload: dict[str, object],
+    action_envelope: GuardActionEnvelope | None,
+    home_dir: Path,
+    workspace: Path | None,
+) -> DataFlowArtifactNaming | None:
+    """How the resident should name the artifact for this action's data flow.
+
+    The naming is this side's to supply because only this side knows which
+    policy file a review would cite and whether the scope is the project or the
+    global install. An event that carries no action gets none: there is nothing
+    to review, so the resident is asked for the signals alone.
+    """
+
+    if action_envelope is None:
+        return None
+    canonical_harness = _canonical_harness_name(harness)
+    return DataFlowArtifactNaming(
+        harness=canonical_harness,
+        config_path=str(_runtime_policy_path(canonical_harness, home_dir, workspace, payload=payload)),
+        source_scope=_coalesce_string(payload.get("source_scope"), "project"),
+        tool_name=action_envelope.tool_name,
     )
 
 
@@ -554,6 +532,6 @@ __all__ = [
     "_hook_runtime_artifact",
     "_merged_prompt_runtime_artifact",
     "_optional_string",
-    "_runtime_data_flow_artifact",
+    "_runtime_data_flow_naming",
     "_string_list",
 ]

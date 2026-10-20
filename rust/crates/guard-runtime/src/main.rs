@@ -42,6 +42,7 @@ mod archive_inspect;
 mod archive_inspect_containment;
 mod archive_verdict_seam;
 mod artifact_risk_op;
+mod bash_post_delivery;
 #[cfg(unix)]
 mod binding_capture_capture;
 #[cfg(unix)]
@@ -530,6 +531,11 @@ mod mcp_tool_policy_lookup;
 mod mcp_tool_policy_proxy;
 mod mcp_tool_policy_revalidate;
 mod memory_pattern;
+#[cfg(target_os = "macos")]
+mod native_bash_client;
+mod native_bash_reply_validation;
+mod native_bash_review_descriptor;
+mod native_bash_review_scope;
 mod native_decision_receipt;
 mod native_exact_action_op;
 mod native_hook_receipt;

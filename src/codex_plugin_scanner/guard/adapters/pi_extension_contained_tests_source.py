@@ -2,11 +2,37 @@
 
 from __future__ import annotations
 
-CONTAINED_TEST_HELPERS_SOURCE = r"""
+from .pi_extension_bound_bash_intent_source import BOUND_BASH_INTENT_SOURCE
+from .pi_extension_bound_bash_result_source import BOUND_BASH_RESULT_SOURCE
+
+CONTAINED_TEST_HELPERS_SOURCE = (
+    BOUND_BASH_INTENT_SOURCE
+    + BOUND_BASH_RESULT_SOURCE
+    + r"""
+  const boundBashHarness = "omp";
   const containedTestRequests = new Map<string, string>();
+  const boundBashInvocations = new Map<string, { operationId: string; cwd: string }>();
   const containedTestPresentations = new Map<string, { input: Record<string, unknown>; command: string }>();
 
-  pi.on("tool_result", (event) => {
+  function boundBashObservedExit(
+    event: { details?: unknown; isError?: boolean; content?: unknown },
+  ): number | undefined {
+    const details = event.details && typeof event.details === "object"
+      ? event.details as Record<string, unknown> : {};
+    if (typeof details.exitCode === "number") return details.exitCode;
+    if (event.isError === false) return 0;
+    // Pi's Bash tool throws this terminal diagnostic for a normal nonzero
+    // exit. It is only an observation: native signed completion must agree.
+    if ((boundBashHarness as string) !== "pi" || event.isError !== true ||
+        !Array.isArray(event.content)) return undefined;
+    const last = event.content[event.content.length - 1];
+    if (!last || last.type !== "text" || typeof last.text !== "string" ||
+        last.text.length > 1_048_576) return undefined;
+    const match = /(?:^|\n\n)Command exited with code ([1-9][0-9]{0,2})(?![\s\S])/.exec(last.text);
+    return match ? Number(match[1]) : undefined;
+  }
+
+  pi.on("tool_result", async (event) => {
     const key = toolCallIdKey(event.toolCallId);
     const presentation = key ? containedTestPresentations.get(key) : undefined;
     if (!key || !presentation) return undefined;
@@ -17,7 +43,8 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
     } } };
   });
 
-  pi.on("context", (event) => {
+  pi.on("context", async (event) => {
+    await acknowledgeBoundBashContext(event.messages);
     // Only provider projection changes. The stored execution input remains an
     // audit record of the protected sink; every new call still passes Guard.
     const presentations = new Map(containedTestPresentations);
@@ -61,6 +88,8 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
   }
 
   pi.on("session_shutdown", () => {
+    acknowledgedBoundBashResults.clear();
+    boundBashInvocations.clear();
     containedTestPresentations.clear();
     releaseBackgroundContainedTestRequests();
   });
@@ -85,11 +114,16 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
   function prepareContainedTestInput(
     response: GuardResponse,
     snapshot: ToolCallSnapshot,
+    ctx?: unknown,
   ): Record<string, unknown> | null {
     const profile = Reflect.get(response, "required_execution_profile");
     const input = snapshot.payload.tool_input;
     const key = toolCallIdKey(snapshot.payload.tool_call_id);
+    const boundBash = profile === "native-bash-owner-v1" && response.reason_code === "native_bash_owner_required";
+    const boundBashIntent = boundBash && typeof snapshot.payload.session_id === "string"
+      ? boundBashIntentFor(ctx, snapshot.payload.session_id) : null;
     const profileMatches = (
+      boundBash ||
       (profile === "python-eval-readonly-v1" &&
         response.reason_code === "native_python_eval_readonly_containment_required") ||
       (profile === "node-eval-readonly-v1" &&
@@ -124,6 +158,10 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
         !windowsSink) ||
       (!windowsSink && (GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS || !GUARD_CLI_WRAPPER_COMMAND.startsWith("/"))) ||
       snapshot.payload.tool_name !== "bash" || !key || containedTestRequests.has(key) ||
+      (boundBash && (!boundBashIntent || process.platform !== "darwin" ||
+        !Number.isSafeInteger(process.pid) || process.pid <= 1 ||
+        typeof snapshot.payload.session_id !== "string" ||
+        snapshot.payload.session_id.length === 0)) ||
       !input || typeof input !== "object" || Array.isArray(input) ||
       typeof (input as Record<string, unknown>).command !== "string"
     ) return null;
@@ -141,7 +179,22 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
       const requestPath = join(directory, "request.json");
       writeFileSync(requestPath, serialized, { encoding: "utf8", mode: 0o600, flag: "wx" });
       const digest = createHash("sha256").update(serialized, "utf8").digest("hex");
-      const args = [
+      const operationId = "bash-operation:" + createHash("sha256").update(JSON.stringify({
+        schema: "guard-bash-tool-operation.v1", harness: boundBashHarness,
+        session: snapshot.payload.session_id, intent: boundBashIntent, cwd: snapshot.cwd,
+        toolCwd: (input as Record<string, unknown>).cwd ?? null,
+        command: (input as Record<string, unknown>).command,
+      }), "utf8").digest("hex");
+      const timeoutSeconds = boundBash && typeof (input as Record<string, unknown>).timeout === "number"
+        ? Math.max(1, Math.min(120, Math.ceil((input as Record<string, unknown>).timeout as number))) : 120;
+      const args = boundBash ? [
+        "execute-bound-bash", "--harness", boundBashHarness, "--operation-id", operationId,
+        "--host-owner-pid", String(process.pid),
+        "--tool-call-id", key,
+        "--guard-home", GUARD_HOME, "--workspace", snapshot.cwd,
+        "--request-file", requestPath, "--request-sha256", digest,
+        "--timeout-seconds", String(timeoutSeconds),
+      ] : [
         "execute-contained-test", "--guard-home", GUARD_HOME, "--workspace", snapshot.cwd,
         "--request-file", requestPath, "--request-sha256", digest,
       ];
@@ -150,11 +203,13 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
       const prefix = windowsSink ? GUARD_CONTAINED_SINK_COMMAND : [GUARD_CLI_WRAPPER_COMMAND];
       const command = [...prefix, ...args].map(quote).join(" ");
       containedTestRequests.set(key, directory);
+      if (boundBash) boundBashInvocations.set(key, { operationId, cwd: snapshot.cwd });
       containedTestPresentations.set(key, { input: { ...(input as Record<string, unknown>) }, command });
       while (containedTestPresentations.size > 256) {
         const oldest = containedTestPresentations.keys().next().value;
         if (oldest === undefined) break;
         containedTestPresentations.delete(oldest);
+        boundBashInvocations.delete(oldest);
       }
       return { ...(input as Record<string, unknown>), command };
     } catch {
@@ -165,11 +220,12 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
     }
   }
 """
+)
 
 CONTAINED_TEST_BRANCH_SOURCE = r"""
     const requiredProfile = Reflect.get(response, "required_execution_profile");
     if (requiredProfile !== undefined) {
-      const input = prepareContainedTestInput(response, snapshot);
+      const input = prepareContainedTestInput(response, snapshot, ctx);
       if (!input) {
         const reason = "HOL Guard could not enforce the required protected test runner. Execution was not started.";
         ctx.ui.notify(reason, "warning");
@@ -210,6 +266,7 @@ def with_contained_test_routing(shared_source: str, *, harness: str = "omp") -> 
         helpers = _replace_once(
             _replace_once(CONTAINED_TEST_HELPERS_SOURCE, _SINK_ARGS, _PI_SINK_ARGS), _SHUTDOWN, _PI_SHUTDOWN
         )
+        helpers = _replace_once(helpers, 'const boundBashHarness = "omp";', 'const boundBashHarness = "pi";')
         branch_source = _replace_once(CONTAINED_TEST_BRANCH_SOURCE, "      return { input };\n", _PI_INPUT_RETURN)
     else:
         raise ValueError(f"no contained routing for harness {harness!r}")

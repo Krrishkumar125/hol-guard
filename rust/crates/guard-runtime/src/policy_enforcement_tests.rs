@@ -75,7 +75,7 @@ fn apply_post_tool_policy(
     )
 }
 
-pub(super) fn policy(default_action: &str) -> EffectiveNativePolicyV3 {
+pub(crate) fn policy(default_action: &str) -> EffectiveNativePolicyV3 {
     EffectiveNativePolicyV3 {
         protection_posture: "protected".into(),
         security_level: "balanced".into(),
@@ -97,7 +97,7 @@ pub(super) fn policy(default_action: &str) -> EffectiveNativePolicyV3 {
     }
 }
 
-pub(super) fn snapshot(policy: EffectiveNativePolicyV3) -> PolicySnapshotV3 {
+pub(crate) fn snapshot(policy: EffectiveNativePolicyV3) -> PolicySnapshotV3 {
     PolicySnapshotV3 {
         schema: POLICY_SNAPSHOT_SCHEMA.into(),
         version: 3,

@@ -266,7 +266,10 @@ pub(crate) fn extract_sensitive_file_write_request(
     None
 }
 
-fn artifact(
+/// The artifact wire every request artifact is sent on. The fields a request
+/// artifact never carries are still named, as their empty forms, so a reader
+/// that validates the shape sees one key set whatever built it.
+pub(crate) fn request_artifact_wire(
     artifact_id: String,
     name: String,
     harness: &str,
@@ -332,7 +335,7 @@ pub(crate) fn build_file_read_request_artifact(
         "runtime_request_summary": format!("Requests access to a sensitive local file: {family}."),
         "runtime_request_reason": request.path_match.reason,
     });
-    artifact(
+    request_artifact_wire(
         format!("{harness}:{source_scope}:file-read:{fingerprint}"),
         format!(
             "{} {}",
@@ -379,7 +382,7 @@ pub(crate) fn build_file_write_request_artifact(
         ),
         "runtime_request_reason": request.reason,
     });
-    artifact(
+    request_artifact_wire(
         format!("{harness}:{source_scope}:file-write:{fingerprint}"),
         format!(
             "{} {}",
