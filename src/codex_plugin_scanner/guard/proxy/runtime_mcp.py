@@ -65,6 +65,7 @@ from ..native_mcp_proxy_decision import (
     tool_facts,
 )
 from ..native_mcp_relay_server_report import report_mcp_relay_server
+from ..native_package_authority import NativePackageArtifactUnavailableError
 from ..package_execution_context import build_package_execution_context
 from ..policy.engine import build_decision_v2
 from ..runtime.approval_context import (
@@ -1007,6 +1008,7 @@ class RuntimeMcpGuardProxy:
             NativeMcpProxyDecisionError,
             NativeDecisionAuthorityError,
             NativeDecisionUnavailableError,
+            NativePackageArtifactUnavailableError,
             KeyError,
             TypeError,
         ):
@@ -1378,6 +1380,7 @@ class RuntimeMcpGuardProxy:
             intent=intent,
             config_path=self.config_path,
             source_scope=self.source_scope,
+            guard_home=self.context.guard_home,
         )
 
     def _resolve_package_policy(

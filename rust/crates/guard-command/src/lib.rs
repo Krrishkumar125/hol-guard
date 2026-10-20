@@ -769,6 +769,8 @@ mod local_supply_chain_stale_policy_tests;
 #[cfg(test)]
 mod local_supply_chain_timestamp_tests;
 pub mod package_approval;
+#[cfg(test)]
+mod package_intent_exact_decode_tests;
 pub mod package_policy_override;
 pub mod package_protect_projection;
 mod package_shim_invocation;
@@ -792,6 +794,7 @@ pub mod contained_execution;
 #[cfg(unix)]
 pub mod contained_runner;
 pub mod credential_patterns;
+pub mod data_flow_request_artifact;
 pub mod data_flow_rules;
 pub mod decisions;
 pub mod detectors;

@@ -236,6 +236,13 @@ pub enum ContextDigestKindV1 {
     McpRedactJson {
         material: Value,
     },
+    /// Validate a Bash owner reply without moving its contract into adapters.
+    NativeBashReplyValidation {
+        reply_kind: String,
+        material: Value,
+        #[serde(default)]
+        request: Value,
+    },
     McpLaunchEnvironment {
         inherited: BTreeMap<String, String>,
         configured: BTreeMap<String, String>,
@@ -460,6 +467,8 @@ pub struct ContextDigestResultV1 {
     /// stdio `_redact_json` output for traffic recording.
     #[serde(default)]
     pub mcp_redacted_value: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_bash_reply_valid: Option<bool>,
     /// `build_runtime_executable_identity` / `build_runtime_launch_identity`
     /// output — the full launch-identity object, verbatim Python dict shape.
     /// These kinds always produce it; `Option` keeps it absent on other kinds.

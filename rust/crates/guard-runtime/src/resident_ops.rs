@@ -19,6 +19,14 @@ pub(crate) fn evaluate_resident_bytes(
     bytes: &[u8],
     policy_store: Option<&PolicySnapshotStore>,
 ) -> Result<Vec<u8>, String> {
+    evaluate_resident_bytes_with_cancellation(bytes, policy_store, None)
+}
+
+pub(crate) fn evaluate_resident_bytes_with_cancellation(
+    bytes: &[u8],
+    policy_store: Option<&PolicySnapshotStore>,
+    cancellation: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<Vec<u8>, String> {
     let value = strict_json_value(bytes)?;
     if matches!(
         value.get("operation").and_then(Value::as_str),
@@ -248,6 +256,30 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::ContextDigest(request) => {
                 crate::context_digest::evaluate_context_digest_request(&request)
             }
+            ResidentOperationV1::NativeBashPrepare(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::prepare_bash_request(&request, store)
+            }
+            ResidentOperationV1::NativeBashReviewCheck(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::check_bash_review(&request, store)
+            }
+            ResidentOperationV1::NativeBashExecute(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::execute_bash_request(&request, store, cancellation)
+            }
+            ResidentOperationV1::NativeBashCancel(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::cancel_bash_request(&request, store)
+            }
+            ResidentOperationV1::NativeBashActivity(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::bash_activity_request(&request, store)
+            }
+            ResidentOperationV1::NativeBashAck(request) => {
+                let store = policy_store.ok_or_else(|| "native_policy_snapshot_unavailable".to_owned())?;
+                crate::native_exact_action_op::acknowledge_bash_request(&request, store)
+            }
             ResidentOperationV1::CommandEffectDecide(request) => {
                 crate::command_effect::evaluate_with_store(&request, policy_store)
             }
@@ -298,7 +330,7 @@ pub(crate) fn evaluate_resident_bytes(
                 crate::hook_render_op::evaluate_hook_render_request(&request)
             }
             ResidentOperationV1::ApprovalScope(request) => {
-                crate::approval_scope_op::evaluate_approval_scope_request(&request)
+                crate::approval_scope_op::evaluate_approval_scope_request(&request, policy_store)
             }
             ResidentOperationV1::ApprovalScopeSelect(request) => {
                 crate::approval_scope_select_op::evaluate_approval_scope_select_request(&request)
@@ -312,7 +344,7 @@ pub(crate) fn evaluate_resident_bytes(
                 crate::claim_approval_reuse_op::evaluate_claim_approval_reuse_request(&request)
             }
             ResidentOperationV1::GuardStore(request) => {
-                crate::guard_store_op::evaluate_guard_store_request(&request)
+                crate::guard_store_op::evaluate_guard_store_request_with_owner(&request, policy_store)
             }
             ResidentOperationV1::HookEvidenceWriter(request) => {
                 crate::hook_evidence_writer_op::evaluate_hook_evidence_writer_request(&request)
@@ -322,6 +354,9 @@ pub(crate) fn evaluate_resident_bytes(
             }
             ResidentOperationV1::PackageIntentParse(request) => {
                 crate::package_authority_op::evaluate_package_intent_parse(&request)
+            }
+            ResidentOperationV1::PackageRequestArtifact(request) => {
+                crate::package_authority_op::evaluate_package_request_artifact_request(&request)
             }
             ResidentOperationV1::SupplyChainEval(request) => {
                 crate::package_authority_op::evaluate_supply_chain_eval(&request)
@@ -418,7 +453,10 @@ pub(crate) fn evaluate_resident_bytes(
                 crate::daemon_handler_op::evaluate_daemon_handler_request(&request)
             }
             ResidentOperationV1::NativeExactAction(request) => {
-                crate::native_exact_action_op::evaluate_native_exact_action_request(&request)
+                crate::native_exact_action_op::evaluate_native_exact_action_request(
+                    &request,
+                    policy_store.map(PolicySnapshotStore::guard_home),
+                )
             }
             ResidentOperationV1::DaemonRoute(request) => {
                 crate::daemon_route_op::evaluate_daemon_route_request(&request)
@@ -620,6 +658,12 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::CatalogReadV2(request) => request.guard_home.to_str(),
         ResidentOperationV1::CatalogPrepareV1(request) => request.guard_home.to_str(),
         ResidentOperationV1::CatalogReadPreparedV1(request) => request.guard_home.to_str(),
+        ResidentOperationV1::NativeBashPrepare(request) => Some(&request.capture.guard_home),
+        ResidentOperationV1::NativeBashExecute(request) => Some(&request.capture.guard_home),
+        ResidentOperationV1::NativeBashCancel(request) => Some(&request.guard_home),
+        ResidentOperationV1::NativeBashActivity(request) => Some(&request.guard_home),
+        ResidentOperationV1::NativeBashAck(request) => Some(&request.guard_home),
+        ResidentOperationV1::NativeBashReviewCheck(request) => Some(&request.guard_home),
         ResidentOperationV1::ArchiveAcquisition(request) => Some(&request.guard_home),
         ResidentOperationV1::DirectoryTrust(request) => Some(&request.guard_home),
         ResidentOperationV1::HookDirect(request) => Some(&request.guard_home),
@@ -684,6 +728,9 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
 /// The store an operation opens, for operations that carry an explicit path.
 fn operation_store_path(operation: &ResidentOperationV1) -> Option<&str> {
     match operation {
+        ResidentOperationV1::NativeBashExecute(request) => Some(request.authorization.store_path()),
+        ResidentOperationV1::NativeBashReviewCheck(request) => Some(&request.store_path),
+        ResidentOperationV1::NativeBashAck(request) => Some(&request.store_path),
         ResidentOperationV1::ApprovalReuseDiagnostic(request) => Some(&request.store_path),
         ResidentOperationV1::ClaimApprovalReuseDecisions(request) => Some(&request.store_path),
         ResidentOperationV1::GuardStore(request) => Some(&request.store_path),

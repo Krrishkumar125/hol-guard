@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -137,6 +138,14 @@ def test_finalize_and_post_claim_round_trip() -> None:
 
 
 def _resident_returning(monkeypatch: pytest.MonkeyPatch, reply: Any) -> None:
+    status = SimpleNamespace(
+        available=True,
+        compatible=True,
+        identity=object(),
+        capabilities=SimpleNamespace(features={"resident-protocol-v2", decision.HOOK_DECISION_FEATURE}),
+    )
+    monkeypatch.setattr(shared, "native_runtime_status", lambda: status)
+    monkeypatch.setattr(shared, "record_resident", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(shared, "_resolve_digest_home", lambda _home: Path("/tmp/hook-decision-home"))
     monkeypatch.setattr(shared, "ensure_resident_prerequisite", lambda _home: True)
     monkeypatch.setattr(decision, "_resident_request", lambda *, request, **_kwargs: reply(request))

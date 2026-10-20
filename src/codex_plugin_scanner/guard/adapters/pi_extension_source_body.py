@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .pi_extension_approval_source import APPROVAL_RESUME_HELPERS_SOURCE
+from .pi_extension_bound_bash_source import with_bound_bash_host_observation
 from .pi_extension_native_hook import native_hook_reply_source
 from .pi_extension_prompt_response_source import PROMPT_RESPONSE_HELPER_SOURCE
 from .pi_extension_readiness_cache_source import WORKSPACE_READINESS_CACHE_SOURCE
@@ -40,7 +41,7 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "  const retryLine",
         1,
     )
-    return (
+    source = (
         "type GuardDaemonConnection = { port: number; "
         "authToken: string; stateId: string | null };\n"
         "type GuardDaemonAttempt = {\n"
@@ -490,3 +491,6 @@ def build_extension_source_body(*, harness: str, display_name: str) -> str:
         "  });\n"
         '  pi.on("session_shutdown", () => { invalidateApprovalContinuations(); workspaceReadiness = null; });\n'
     )
+    # The host observation is authored beside its insertion point, so an
+    # adapter variant that replaces this body replaces the stamp with it.
+    return with_bound_bash_host_observation(source, harness=harness)

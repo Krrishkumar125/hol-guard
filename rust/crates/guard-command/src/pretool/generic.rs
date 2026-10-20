@@ -19,6 +19,24 @@ mod extract;
 mod omp;
 #[path = "generic_omp_bash_cwd.rs"]
 mod omp_bash_cwd;
+
+/// Resolve the host's tool-level directory for an execution-owner preview.
+/// This is path observation only; the owner must still judge current policy.
+pub fn omp_bash_execution_directory(
+    payload: &serde_json::Value,
+    home_dir: Option<&str>,
+    session: Option<&str>,
+) -> Result<Option<String>, &'static str> {
+    match omp_bash_cwd::resolve(payload, home_dir, session) {
+        omp_bash_cwd::BashCwd::Session => Ok(session.map(str::to_owned)),
+        omp_bash_cwd::BashCwd::Within(path) | omp_bash_cwd::BashCwd::Outside(path) => {
+            Ok(Some(path))
+        }
+        omp_bash_cwd::BashCwd::Missing | omp_bash_cwd::BashCwd::Unresolved => {
+            Err("bash_working_directory_unavailable")
+        }
+    }
+}
 #[cfg(all(test, unix))]
 #[path = "generic_omp_bash_cwd_tests.rs"]
 mod omp_bash_cwd_tests;

@@ -4,6 +4,12 @@ use std::os::unix::ffi::OsStrExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+pub(crate) enum CaptureMode<'a> {
+    Standard(Option<crate::source_launch::SourceGate<'a>>),
+    #[cfg(target_os = "macos")]
+    Hardened,
+}
+
 pub(super) fn cstring(bytes: impl Into<Vec<u8>>) -> io::Result<CString> {
     CString::new(bytes)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in process argument"))
@@ -49,10 +55,16 @@ impl RequestWindow<'_> {
     }
 
     pub(super) fn require_launch(&self) -> io::Result<()> {
-        if self.stopped() {
+        if self.cancel.load(Ordering::Acquire) {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "process cancelled before launch",
+            ));
+        }
+        if Instant::now() >= self.deadline {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                "process deadline or cancellation before launch",
+                "process deadline before launch",
             ));
         }
         Ok(())
@@ -131,6 +143,8 @@ pub(super) struct ChildSetup<'a> {
     pub(super) env: &'a [*const libc::c_char],
     pub(super) deadline: &'a LaunchDeadline,
     pub(super) inherited: &'a [std::os::fd::OwnedFd],
+    pub(super) outputs: &'a [crate::deferred_output::ChildOutput],
+    pub(super) creation_mask: Option<u32>,
     #[cfg(target_os = "macos")]
     pub(super) keep_descriptors: &'a [i32],
     #[cfg(target_os = "macos")]
@@ -139,6 +153,12 @@ pub(super) struct ChildSetup<'a> {
     pub(super) report: i32,
     #[cfg(target_os = "macos")]
     pub(super) image_path: &'a std::ffi::CString,
+    #[cfg(target_os = "macos")]
+    pub(super) hardened_binding: Option<crate::macos_code_image::Binding>,
+    #[cfg(target_os = "macos")]
+    pub(super) hardened_attributes: Option<&'a libc::posix_spawnattr_t>,
+    #[cfg(all(test, target_os = "macos"))]
+    pub(super) hardened_resume_probe: bool,
 }
 
 #[cfg(target_os = "macos")]
@@ -241,9 +261,22 @@ impl ChildSetup<'_> {
                 }
             }
         }
+        for (index, output) in self.outputs.iter().enumerate() {
+            if unsafe {
+                libc::dup2(
+                    output.directory.as_raw_fd(),
+                    6 + self.inherited.len() as i32 + index as i32,
+                )
+            } < 0
+            {
+                unsafe {
+                    child_failure(4, 11);
+                }
+            }
+        }
         #[cfg(target_os = "linux")]
         {
-            let first = 6 + self.inherited.len() as u32;
+            let first = 6 + self.inherited.len() as u32 + self.outputs.len() as u32;
             let gate = self.launch as u32;
             // Keep the already-open CLOEXEC gate above the reserved targets.
             // Duplicating it into a new low target would raise the existing
@@ -290,6 +323,31 @@ impl ChildSetup<'_> {
                 child_failure(4, 10);
             }
         }
+        #[cfg(target_os = "macos")]
+        if let (Some(binding), Some(attributes)) = (self.hardened_binding, self.hardened_attributes)
+        {
+            let child = unsafe {
+                super::hardened_spawn::spawn(
+                    self.image_path,
+                    self.argv,
+                    self.env,
+                    attributes,
+                    binding,
+                    self.deadline,
+                )
+            };
+            unsafe {
+                super::hardened_spawn::release_and_wait(
+                    child,
+                    self.launch,
+                    4,
+                    self.deadline,
+                    binding,
+                    #[cfg(test)]
+                    self.hardened_resume_probe,
+                );
+            }
+        }
         let initialized = 0i32.to_ne_bytes();
         if unsafe { libc::write(4, initialized.as_ptr().cast(), initialized.len()) }
             != initialized.len() as isize
@@ -300,6 +358,19 @@ impl ChildSetup<'_> {
         }
         unsafe {
             await_launch(self.launch, 4, self.deadline);
+        }
+        if let Some(mask) = self.creation_mask {
+            unsafe {
+                libc::umask(mask as libc::mode_t);
+            }
+        }
+        for (index, output) in self.outputs.iter().enumerate() {
+            if !unsafe { output.open_at_target(6 + self.inherited.len() as i32 + index as i32, 6) }
+            {
+                unsafe {
+                    child_failure(4, 11);
+                }
+            }
         }
         #[cfg(target_os = "linux")]
         unsafe {

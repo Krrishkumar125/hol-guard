@@ -7,6 +7,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::ARCHIVE_INSPECTION_FEATURE,
     guard_contracts::ARCHIVE_ACQUISITION_FEATURE,
     guard_contracts::CONTEXT_DIGEST_FEATURE,
+    guard_contracts::NATIVE_BASH_REPLY_VALIDATION_FEATURE,
     guard_contracts::COMMAND_EFFECT_FEATURE,
     guard_contracts::COMMAND_EFFECT_BATCH_FEATURE,
     guard_contracts::APPROVAL_REUSE_FEATURE,
@@ -91,6 +92,25 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::MCP_TOOL_CALL_IDENTITY_FEATURE,
     guard_contracts::GITHUB_WORKFLOW_PREPARE_FEATURE,
     guard_contracts::NATIVE_EXACT_ACTION_FEATURE,
+    guard_contracts::NATIVE_EXACT_ACTION_V3_FEATURE,
+    guard_contracts::NATIVE_EXACT_ACTION_PREVIOUS_FEATURE,
+    guard_contracts::NATIVE_EXACT_ACTION_LEGACY_FEATURE,
     guard_contracts::NATIVE_BASH_SUBJECT_INSPECTION_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_OWNER_PROTOCOL_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_PACKAGE_EVIDENCE_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_REVIEW_LINEAGE_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_REVIEW_DESCRIPTOR_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_ACTIVITY_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_HOST_LIVENESS_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_INVOCATION_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_RESULT_POLICY_FEATURE,
     guard_contracts::SKILL_WORKFLOW_PREFLIGHT_FEATURE,
 ];

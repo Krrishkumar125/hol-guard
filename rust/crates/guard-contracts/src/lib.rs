@@ -158,6 +158,16 @@ mod native_exact_action;
 pub use native_exact_action::*;
 mod native_bash_subject;
 pub use native_bash_subject::*;
+mod native_script_dependencies;
+pub use native_script_dependencies::*;
+mod native_bash_launch;
+pub use native_bash_launch::*;
+mod native_bash_review;
+pub use native_bash_review::*;
+mod native_bash_activity;
+pub use native_bash_activity::*;
+mod native_bash_ack;
+pub use native_bash_ack::*;
 
 mod workflow_capability;
 pub use workflow_capability::*;
