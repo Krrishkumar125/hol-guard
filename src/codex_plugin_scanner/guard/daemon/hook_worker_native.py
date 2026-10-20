@@ -110,7 +110,7 @@ def _claude_native_prompt_brand(
         event_name="UserPromptSubmit",
         policy_action=policy_action,
         artifact=artifact,
-        native_reason=lambda: native_reason,
+        native_reason=native_reason,
     )
     if additional_context:
         hook_output = response.get("hookSpecificOutput")
