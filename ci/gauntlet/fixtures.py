@@ -516,6 +516,18 @@ def _add_realistic_shapes(main: Path, home: Path, environment: dict[str, str], s
         ("dev-services/compose.yaml", "services:\n  db:\n    image: postgres:16\n"),
         ("dev-services/scripts/start.sh", "#!/bin/sh\necho start\n"),
         ("dev-services/pg-run/.s.PGSQL.5432.lock", "4242\n"),
+        # A tool whose name Guard knows nothing about, holding the two trees
+        # every harness keeps: a skills folder and a lane of dated reports.
+        # Agents look both up by the word they remember.
+        (
+            ".web-client/skills/usage-rollup/SKILL.md",
+            "---\nname: usage-rollup\n---\nInert skill body.\n",
+        ),
+        (".web-client/skills/usage-rollup/scripts/collect.sh", "#!/bin/sh\necho fixture\n"),
+        (
+            ".report-lane/usage-rollup/2026-10/web-client-summary.md",
+            "# Summary\nInert report text.\n",
+        ),
         # A plain directory with no .git, where a leaf probe finds nothing.
         (f"{PLAIN_DIRECTORY}/README.txt", "Plain notes directory.\n"),
         # Ordinary files a toolchain and a repository's own automation keep

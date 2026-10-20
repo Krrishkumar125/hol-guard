@@ -7576,6 +7576,171 @@
       "expect": "allow"
     },
     {
+      "id": "observed-find-01",
+      "fix_area": "shell",
+      "harnesses": [
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.web-client ${HOME}/.report-lane ${WORKTREE} -maxdepth 4 -type d -name \"*usage-rollup*\" 2>/dev/null"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "observed-find-05",
+      "fix_area": "shell",
+      "harnesses": [
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.report-lane -maxdepth 4 -name \"*web-client*\" 2>/dev/null"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "observed-find-06",
+      "fix_area": "shell",
+      "harnesses": [
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.web-client/skills/usage-rollup -type f"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "find-home-tool-word-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.rustup -maxdepth 4 -type d -name \"*toolchain*\" 2>/dev/null"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "find-home-tool-word-glob-deep",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.nvm -name \"*inert-pkg*\" 2>/dev/null"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+                  "id": "gauntlet-find-tool-home-report-word",
+                  "fix_area": "find",
+                  "harnesses": [
+                    "codex",
+                    "zcode",
+                    "claude-code",
+                    "omp",
+                    "cursor"
+                  ],
+                  "tool": "shell",
+                  "tool_input": {
+                    "command": "find ${HOME}/.report-lane -maxdepth 4 -name \"*web-client*\""
+                  },
+                  "cwd": "worktree",
+                  "expect": "allow"
+                },
+                {
+              "id": "gauntlet-find-tool-home-dir-word",
+              "fix_area": "find",
+              "harnesses": [
+                "codex",
+                "zcode",
+                "claude-code",
+                "omp",
+                "cursor"
+              ],
+              "tool": "shell",
+              "tool_input": {
+                "command": "find ${HOME}/.web-client -maxdepth 4 -type d -name \"*usage-rollup*\""
+              },
+              "cwd": "worktree",
+              "expect": "allow"
+            },
+            {
+          "id": "gauntlet-find-tool-home-skill-files",
+          "fix_area": "find",
+          "harnesses": [
+            "codex",
+            "zcode",
+            "claude-code",
+            "omp",
+            "cursor"
+          ],
+          "tool": "shell",
+          "tool_input": {
+            "command": "find ${HOME}/.web-client/skills/usage-rollup -type f"
+          },
+          "cwd": "worktree",
+          "expect": "allow"
+        },
+        {
+      "id": "gauntlet-ls-tool-home-skills",
+      "fix_area": "find",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/.web-client/skills"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "find-home-tool-skills-tree",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.web-client/skills -type d"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "ls-home-tool-skills-tree",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/.web-client/skills/usage-rollup"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "session-ls-home-skill-dir",
       "fix_area": "shell",
       "harnesses": [
@@ -16947,6 +17112,158 @@
       },
       "cwd": "worktree",
       "expect": "not_allow"
+    },
+    {
+      "id": "gauntlet-ls-stage-missing-modules",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${STAGE}/signup-funnel/node_modules 2>/dev/null | wc -l"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gauntlet-ls-stage-missing-hidden-tmp",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${STAGE}/signup-funnel/.tmp 2>/dev/null | head -5"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gauntlet-ls-stage-missing-hidden-leaf",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${STAGE}/.tmp 2>/dev/null | head -5"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gauntlet-ls-stage-source-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${STAGE}/*.ts"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "observed-ls-06",
+      "fix_area": "shell",
+      "harnesses": [
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${PRIVATE_TMP}/org/signup-funnel/node_modules 2>/dev/null | wc -l; ls ${PRIVATE_TMP}/org/signup-funnel/.tmp 2>/dev/null | head -5"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-ls-shared-temporary-root-glob",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${PRIVATE_TMP}* 2>&1 | head -4"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-ls-home-missing-hidden-store",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/.secret-store/token"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow",
+      "contained_ok": true
+    },
+    {
+      "id": "neg-ls-home-missing-key-in-hidden-directory",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/.ssh/missing-key"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow",
+      "contained_ok": true
+    },
+    {
+      "id": "neg-ls-home-dot-glob",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/.*"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow",
+      "contained_ok": true
     },
     {
       "id": "gauntlet-rg-files-service-lane",

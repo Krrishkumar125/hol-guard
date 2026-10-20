@@ -51,6 +51,13 @@ _PROBES_FOR_ABSENCE = frozenset(
         "observed-ls-lockfile-probe-mixed",
         "queue-grep-head-wc-absent-tmp-trace",
         "session-grep-roots-one-missing-tmp-sibling",
+        # A scratch directory under the temporary root, probed for an
+        # optional dependency tree and a stale temp directory. The listing
+        # prints only an error, which is the whole shape.
+        "gauntlet-ls-stage-missing-modules",
+        "gauntlet-ls-stage-missing-hidden-tmp",
+        "gauntlet-ls-stage-missing-hidden-leaf",
+        "observed-ls-06",
         # A sibling checkout that keeps no workflows, probed for them.
         "sibling-ls-missing-github-workflows",
         "sibling-find-missing-github-workflows",
