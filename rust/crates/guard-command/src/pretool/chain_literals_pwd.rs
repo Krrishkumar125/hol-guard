@@ -24,15 +24,16 @@ const OPTION_SETTERS: &str = "print printf";
 
 /// Builtins that set a variable named by an operand: bash's `compgen -V`,
 /// and zsh's module builtins (`getln`, `sysread`, `strftime -s`, `zstat -A`,
-/// `zformat -f`, `zstyle -s`, `pcre_match -v`, `zgetattr` and the rest). The
-/// substitution pass stops at any operand it cannot resolve, but this pass
+/// `zformat -f`, `pcre_match -v`, `zgetattr` and the rest). The ones that
+/// also run text as code are in `STATE_COMMANDS`. The substitution pass
+/// stops at any operand it cannot resolve, but this pass
 /// reads only command words, so a name the shell assembles from expansions
 /// (`p=HO s=ME; syserror -e $p$s`) would reach one unseen. zsh/stat's `stat`
 /// is left out: it shadows the external command only once a chain or the
 /// user's own startup files load that module, and a chain that does is
 /// already opaque through `zmodload`.
 const NAME_SETTERS: &str = "compadd compgen getln pcre_match strftime sysopen syserror sysread \
-    syswrite zcurses zformat zgetattr zlistattr zpty zregexparse zselect zstat zstyle zsystem ztie";
+    syswrite zcurses zformat zgetattr zlistattr zpty zselect zstat zsystem ztie";
 
 /// The command with each working-directory expansion replaced by `cwd`;
 /// `None` when nothing is replaced, the directory is not a plain absolute
