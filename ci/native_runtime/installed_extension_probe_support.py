@@ -464,3 +464,28 @@ def require_native_http_admission(response: Mapping[str, object]) -> None:
         # Only the fixed codes above may enter diagnostics, never request data.
         reason = response["reason_code"]
         raise RuntimeError(f"installed_native_extensions_failed:http_native_admission_failed:{reason}")
+
+
+_RELEASE_DOWNLOAD = "https://github.com/hashgraph-online/hol-guard/releases/download/"
+
+
+def serve_release_assets(directory: Path) -> None:
+    """Answer pack release downloads from this build's exported assets.
+
+    An unreleased build has no published pack release yet. Native code still
+    builds the release URL and the consumer still checks each digest; only the
+    HTTP fetch reads the copy the build exported.
+    """
+    from codex_plugin_scanner.guard.catalog_delivery import transport
+
+    def download(url: str, maximum: int) -> bytes:
+        _require(url.startswith(_RELEASE_DOWNLOAD), "release_asset_url")
+        tag, _, asset = url.removeprefix(_RELEASE_DOWNLOAD).partition("/")
+        _require(bool(tag) and bool(asset) and "/" not in asset, "release_asset_url")
+        path = directory / tag / asset
+        _require(path.is_file() and not path.is_symlink(), "release_asset_missing")
+        data = path.read_bytes()
+        _require(len(data) <= maximum, "release_asset_too_large")
+        return data
+
+    transport.download = download

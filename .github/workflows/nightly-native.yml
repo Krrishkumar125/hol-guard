@@ -826,6 +826,7 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
           PLATFORM_TAG: ${{ matrix.platform_tag }}
           TARGET: ${{ matrix.target }}
+          HOL_GUARD_BUNDLE_ASSET_OUTPUT: ${{ github.workspace }}/installed-bundle-assets
         run: bash scripts/ci/build-native-wheel-macos.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -833,6 +834,7 @@ jobs:
           path: |
             native-dist/*.whl
             pure-dist/*.whl
+            installed-bundle-assets/
           if-no-files-found: error
           compression-level: 0
 
@@ -897,6 +899,7 @@ jobs:
         env:
           SOURCE_SHA: ${{ github.sha }}
           HOL_GUARD_BUILD_SOURCE_COMPILER: rust/target/x86_64-unknown-linux-musl/release/guard-command-source
+          HOL_GUARD_BUNDLE_ASSET_OUTPUT: ${{ github.workspace }}/installed-bundle-assets
         run: |
           VERSION=$(uv run --no-sync python scripts/sync_repo_version.py --check)
           uv build --wheel --out-dir pure-dist
@@ -922,6 +925,7 @@ jobs:
           path: |
             native-dist/*.whl
             pure-dist/*.whl
+            installed-bundle-assets/
             rust/target/x86_64-unknown-linux-musl/release/hol-guard-runtime
             rust/target/x86_64-unknown-linux-musl/release/guard-command-source
           if-no-files-found: error
@@ -963,7 +967,7 @@ jobs:
           source scripts/ci/native-proof-environment.sh
           .venv/bin/python ci/native_runtime/probe_native_default_auto.py --json native-default-auto.json
           .venv/bin/python ci/native_runtime/probe_installed_pi_output.py --json installed-pi-output.json
-          .venv/bin/python -I ci/native_runtime/probe_installed_native_extensions.py --json installed-native-extensions.json
+          .venv/bin/python -I ci/native_runtime/probe_installed_native_extensions.py --release-assets installed-bundle-assets --json installed-native-extensions.json
           .venv/bin/python -I ci/native_runtime/probe_installed_native_prompt.py --expected-source-sha "$(git rev-parse HEAD)" --json installed-native-prompt.json
       - name: Measure installed adapter-to-decision SLOs
         env:
@@ -1111,6 +1115,7 @@ jobs:
         env:
           SOURCE_SHA: ${{ github.sha }}
           HOL_GUARD_BUILD_SOURCE_COMPILER: rust/target/release/guard-command-source.exe
+          HOL_GUARD_BUNDLE_ASSET_OUTPUT: ${{ github.workspace }}/installed-bundle-assets
         run: |
           $version = (uv run --no-sync python scripts/sync_repo_version.py --check).Trim()
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -1145,6 +1150,7 @@ jobs:
           path: |
             native-dist/*.whl
             pure-dist/*.whl
+            installed-bundle-assets/
             rust/target/release/hol-guard-runtime.exe
             rust/target/release/guard-command-source.exe
           if-no-files-found: error
@@ -1228,7 +1234,7 @@ jobs:
           Remove-Item Env:HOL_GUARD_PYTHON_ORACLE -ErrorAction SilentlyContinue
           uv run --no-sync python ci/native_runtime/probe_native_default_auto.py --json native-default-auto.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .venv\Scripts\python.exe -I ci\native_runtime\probe_installed_native_extensions.py --json installed-native-extensions.json
+          .venv\Scripts\python.exe -I ci\native_runtime\probe_installed_native_extensions.py --release-assets installed-bundle-assets --json installed-native-extensions.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .venv\Scripts\python.exe -I ci\native_runtime\probe_installed_native_prompt.py --expected-source-sha (git rev-parse HEAD) --json installed-native-prompt.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -1340,7 +1346,7 @@ jobs:
         if: matrix.proof == 'extensions'
         run: |
           source scripts/ci/native-proof-environment.sh
-          .venv/bin/python -I ci/native_runtime/probe_installed_native_extensions.py --json installed-native-extensions.json
+          .venv/bin/python -I ci/native_runtime/probe_installed_native_extensions.py --release-assets installed-bundle-assets --json installed-native-extensions.json
           .venv/bin/python -I ci/native_runtime/probe_installed_native_prompt.py --expected-source-sha "$(git rev-parse HEAD)" --json installed-native-prompt.json
       - name: Measure installed adapter-to-decision SLOs
         if: matrix.proof == 'performance'
