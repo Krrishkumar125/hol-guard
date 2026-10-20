@@ -214,7 +214,10 @@ def optional_command_catalog(request, monkeypatch, tmp_path):
             )
             assert edge is not None, "authenticated optional command resident unavailable"
             payload = dict(edge["result"])
-            model = native_command_model.review_command_model_native(command, guard_home=guard_home)
+            # The hook default leaves 250 ms; loaded Windows runners need the full second.
+            model = native_command_model.review_command_model_native(
+                command, guard_home=guard_home, timeout_seconds=1.0
+            )
             assert model is not None, "native command model unavailable"
             payload["command_model"] = model
             admitted = _BINDINGS[guard_home]

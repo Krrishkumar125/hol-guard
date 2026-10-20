@@ -247,6 +247,48 @@ pub(super) fn runtime_roots(
     roots
 }
 
+/// The framework versions a contained run has to execute as a subpath rather
+/// than by name.
+///
+/// A framework interpreter is not one binary. Apple's `python3.9` re-execs
+/// `Versions/<x>/Resources/Python.app/Contents/MacOS/Python` to get a GUI
+/// session, so a profile that lists only the executables it was given denies
+/// the second exec and the run dies with `posix_spawn: ... Undefined error: 0`.
+/// Granting the version directory covers the binary and whatever it re-execs
+/// inside its own framework, and nothing else: the directory is part of a
+/// read-only toolchain the caller already runs outside containment, and the
+/// privileged names stay denied alongside it.
+pub(super) fn framework_exec_roots(executables: &[PathBuf]) -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for executable in executables {
+        let Some(root) = framework_version_root(executable) else {
+            continue;
+        };
+        if !roots.contains(&root) {
+            roots.push(root);
+        }
+    }
+    roots
+}
+
+/// `Versions/<x>` inside the nearest enclosing `*.framework`, when the path
+/// sits in one. The version directory rather than the framework, so one
+/// version's grant does not reach the others.
+fn framework_version_root(executable: &Path) -> Option<PathBuf> {
+    let absolute = path_absolute(executable);
+    let mut version = None;
+    for ancestor in absolute.ancestors() {
+        let name = ancestor.file_name()?;
+        if ancestor.parent()?.file_name() == Some(OsStr::new("Versions")) {
+            version = Some(ancestor.to_path_buf());
+        }
+        if name.to_string_lossy().ends_with(".framework") {
+            return version.filter(|root| root.is_dir());
+        }
+    }
+    None
+}
+
 pub(super) fn dedupe_parent_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut sorted: Vec<PathBuf> = paths
         .iter()
