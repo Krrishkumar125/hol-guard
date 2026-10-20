@@ -125,6 +125,12 @@ jobs:
           # instead of silently degrading the authority this spec is proving.
           HOL_GUARD_NATIVE_BINARY: ${{ github.workspace }}/rust/target/release/hol-guard-runtime
           HOL_GUARD_NATIVE: force
+          # The pure wheel built above carries no `_native/` directory, so the
+          # installed reader has no packaged source compiler to verify its bundle
+          # with and every catalog read fails closed. This is the documented
+          # development override, and it is accepted only because no packaged
+          # compiler is present to be bypassed.
+          HOL_GUARD_NATIVE_SOURCE_COMPILER: ${{ github.workspace }}/rust/target/release/guard-command-source
         run: |
           set -euo pipefail
           SESSION_FILE="$RUNNER_TEMP/ecc-dashboard-session"
