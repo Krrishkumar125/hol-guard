@@ -81,7 +81,7 @@ fn call(workspace: &Workspace, tool: &str, path: &str) -> guard_contracts::PreTo
     evaluate_pre_tool_envelope_with_context(
         "omp",
         "PreToolUse",
-        &json!({"tool_name": tool, "tool_input": {"path": path, "file_path": path}}),
+        &json!({"tool_name": tool, "tool_input": {"path": path}}),
         None,
         None,
         workspace.home.to_str(),
