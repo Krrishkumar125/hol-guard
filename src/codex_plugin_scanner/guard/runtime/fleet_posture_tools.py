@@ -69,6 +69,31 @@ def _arch() -> str:
     return "unknown"
 
 
+# Labels Guard seeds or falls back to before anyone names the machine.
+GENERIC_DEVICE_LABELS = frozenset({"", "local machine", "local-device", "this machine", "localhost"})
+
+
+def machine_display_name() -> str | None:
+    """The host name without its domain (``Ada-MacBook-Pro`` from ``Ada-MacBook-Pro.local``)."""
+
+    name = platform.node().strip().split(".", 1)[0].strip()
+    if name.lower() in GENERIC_DEVICE_LABELS:
+        return None
+    return clip(name, 120)
+
+
+def effective_device_label(label: str) -> str:
+    """The label Guard Cloud shows: the user's label, or the host name while it is still generic.
+
+    ``hol-guard device label set`` always wins; a seeded label such as "Local machine"
+    would make every machine in a fleet look the same.
+    """
+
+    if label.strip().lower() not in GENERIC_DEVICE_LABELS:
+        return label
+    return machine_display_name() or label
+
+
 def machine_section(*, include_os_version: bool, hash_key: bytes) -> dict[str, object]:
     os_name = _os_name()
     hostname = platform.node().strip().lower()

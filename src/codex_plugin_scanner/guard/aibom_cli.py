@@ -175,6 +175,10 @@ def sync_aibom_snapshots(
         trust_attestation_context=trust_attestation_context,
         primary_content_sources=primary_content_sources,
     )
+    # Fleet posture reports what this collection found; see runtime/fleet_posture_aibom.py.
+    from .runtime.fleet_posture_aibom import remember_aibom_items
+
+    remember_aibom_items(store, snapshots, now=generated_at)
     snapshots = cloud_syncable_snapshots(snapshots)
     cloud_snapshot_ids = {snapshot.snapshot_id for snapshot in snapshots}
     primary_content_sources = [source for source in primary_content_sources if source.snapshot_id in cloud_snapshot_ids]
