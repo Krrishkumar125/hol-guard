@@ -408,11 +408,30 @@ fn plain_git_directory(git_directory: &Path) -> bool {
         };
         let path = base.join("config");
         absent("config.worktree")
-            && (absent("config")
-                || small_file(&path).is_some_and(|text| {
-                    let text = text.to_ascii_lowercase();
-                    !text.contains("worktree") && !text.contains("include")
-                }))
+            && (absent("config") || small_file(&path).is_some_and(|text| keeps_worktree(&text)))
+    })
+}
+
+/// Whether a Git configuration leaves `git rev-parse --show-toplevel`
+/// printing the directory holding the `.git`. It must not move the worktree
+/// root, and it must not be one of the repositories Git refuses to treat as a
+/// worktree at all: a bare repository, or one whose format this Git does not
+/// read. Those print nothing, and a substitution that stands for nothing is
+/// not the root this pass would otherwise claim.
+fn keeps_worktree(text: &str) -> bool {
+    let text = text.to_ascii_lowercase();
+    if text.contains("worktree") || text.contains("include") || text.contains("extensions") {
+        return false;
+    }
+    text.lines().all(|line| {
+        let Some((key, value)) = line.split_once('=') else {
+            return true;
+        };
+        match key.trim() {
+            "bare" => value.trim() == "false",
+            "repositoryformatversion" => value.trim() == "0",
+            _ => true,
+        }
     })
 }
 
