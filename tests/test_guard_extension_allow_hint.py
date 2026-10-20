@@ -106,6 +106,26 @@ def test_destructive_git_permission_is_still_hinted(tmp_path: Path) -> None:
     assert hint["permission_ids"] == ["command.git.permission.hard-reset"]
 
 
+def test_docker_sensitive_command_recommends_container_runtime_permission(tmp_path: Path) -> None:
+    evaluation, hint = _hint("docker version --format '{{.Server.Version}}'", tmp_path)
+
+    assert evaluation.decision_plane.action == "review"
+    assert hint == {
+        "schema": EXTENSION_ALLOW_HINT_SCHEMA,
+        "permission_ids": ["command.container-runtime.permission.docker-sensitive"],
+        "rule_ids": ["command.container-runtime.docker-sensitive"],
+        "extension_ids": ["command.container-runtime"],
+        "relied_permission_ids": [],
+        "catalog_digest": BUILT_IN_COMMAND_EXTENSION_REGISTRY.catalog_digest,
+    }
+    _fixture, enabled = _evaluate(
+        "docker version --format '{{.Server.Version}}'",
+        tmp_path,
+        controls=(("permission", "command.container-runtime.permission.docker-sensitive", "enabled"),),
+    )
+    assert enabled.decision_plane.action == "allow"
+
+
 def test_no_hint_when_enabling_permissions_would_still_review(tmp_path: Path) -> None:
     evaluation, hint = _hint("rm -rf build", tmp_path)
 
