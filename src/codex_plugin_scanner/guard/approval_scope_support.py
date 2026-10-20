@@ -54,10 +54,19 @@ class IneligibleApprovalScopeError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovalScopePersistence:
+    """What a client's remember choice resolved to, once the scope was settled."""
+
+    persist_policy: bool | None
+    refusal: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ApprovalScopeSelection:
     requested_scope: DecisionScope
     applied_scope: DecisionScope
     warning: str | None = None
+    persistence: ApprovalScopePersistence | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,6 +327,8 @@ def resolve_request_scope_selection(
     requested_scope: str,
     contract_version: str | None,
     contract_digest: str | None,
+    persist_policy: bool | None = None,
+    resolve_persistence: bool = False,
     guard_home: Path | None = None,
 ) -> ApprovalScopeSelection:
     """Ask the resident what a chosen approval scope actually resolves to.
@@ -329,6 +340,11 @@ def resolve_request_scope_selection(
     function only translates that answer into the exceptions its callers
     already handle, so no scope can be honoured here that the request does not
     offer.
+
+    With ``resolve_persistence``, the resident also reports what the client's
+    remember choice resolves to against the same contract, so whether an
+    approval may be saved and whether an allow binds to an execution are
+    decided where the contract is derived rather than recomputed here.
     """
 
     from .native_approval_scope import ApprovalScopeUnavailableError
@@ -340,6 +356,8 @@ def resolve_request_scope_selection(
         requested_scope=requested_scope,
         contract_version=contract_version,
         contract_digest=contract_digest,
+        resolve_persistence=resolve_persistence,
+        persist_policy=persist_policy,
         guard_home=guard_home,
     )
     native_contract = answer.get("contract")
@@ -358,6 +376,7 @@ def resolve_request_scope_selection(
             requested_scope=_decision_scope(requested_scope),
             applied_scope=_decision_scope(applied_scope),
             warning=warning,
+            persistence=_persistence(answer) if resolve_persistence else None,
         )
     if outcome != "refused":
         raise ApprovalScopeUnavailableError
@@ -382,6 +401,23 @@ def resolve_request_scope_selection(
             requested_scope=requested_scope,
         )
     raise ApprovalScopeUnavailableError
+
+
+def _persistence(answer: Mapping[str, object]) -> ApprovalScopePersistence:
+    """Read the resident's persistence answer, or treat it as unavailable."""
+
+    from .native_approval_scope import ApprovalScopeUnavailableError
+
+    persistence = answer.get("persistence")
+    if not isinstance(persistence, Mapping):
+        raise ApprovalScopeUnavailableError
+    persist_policy = persistence.get("persist_policy")
+    refusal = persistence.get("refusal")
+    if not (persist_policy is None or isinstance(persist_policy, bool)) or not (
+        refusal is None or isinstance(refusal, str)
+    ):
+        raise ApprovalScopeUnavailableError
+    return ApprovalScopePersistence(persist_policy=persist_policy, refusal=refusal)
 
 
 def resolve_request_workspace_scope(

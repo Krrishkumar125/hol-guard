@@ -30,6 +30,9 @@ use crate::approval_scope_material::APPROVAL_SCOPE_CONTRACT_VERSION;
 use crate::approval_scope_op::contract_value;
 use crate::package_authority_op::request_digest_with_limit;
 
+/// The restriction that says a retry cannot reuse an approval.
+const RETRY_CANNOT_REUSE_APPROVAL: &str = "retry_cannot_reuse_approval";
+
 /// `models.DECISION_SCOPE_VALUES`.
 const DECISION_SCOPE_VALUES: &[&str] = &["global", "harness", "workspace", "artifact", "publisher"];
 
@@ -102,6 +105,7 @@ fn evaluate_with_owner(
     };
     if eligible.contains(&request.requested_scope.as_str()) {
         return selected(
+            request,
             &request.requested_scope,
             &request.requested_scope,
             None,
@@ -121,6 +125,7 @@ fn evaluate_with_owner(
     // A legacy client never saw the contract, so its wider choice is narrowed
     // to the one scope this request does offer, and the warning says so.
     selected(
+        request,
         &request.requested_scope,
         "artifact",
         Some("legacy_scope_narrowed_to_artifact"),
@@ -129,18 +134,72 @@ fn evaluate_with_owner(
 }
 
 fn selected(
+    request: &ApprovalScopeSelectRequestV1,
     requested_scope: &str,
     applied_scope: &str,
     warning: Option<&str>,
     derived: &ScopeContract,
 ) -> Value {
-    json!({
+    let mut value = json!({
         "outcome": "selected",
         "requested_scope": requested_scope,
         "applied_scope": applied_scope,
         "warning": warning,
         "contract": contract_value(derived),
-    })
+    });
+    if request.resolve_persistence {
+        value["persistence"] = persistence(request, applied_scope, warning, derived);
+    }
+    value
+}
+
+/// What the client's remember choice resolves to, once the scope is settled.
+///
+/// A saved decision outlives the request that earned it, so whether one may be
+/// written is read from the same contract that decided the scope: a narrowed
+/// legacy choice saves nothing, a client that never read a contract is not
+/// held to an exact-action claim it could not have made, and an allow that
+/// binds to no execution is refused rather than recorded as one that does.
+fn persistence(
+    request: &ApprovalScopeSelectRequestV1,
+    applied_scope: &str,
+    warning: Option<&str>,
+    derived: &ScopeContract,
+) -> Value {
+    let allow = request.action == "allow";
+    let mut persist = request.persist_policy;
+    if warning.is_some() {
+        persist = None;
+    } else if applied_scope == "artifact" && persist == Some(true) {
+        if request.contract_version.is_some() {
+            if !derived.exact_action_persistence_eligible {
+                return refused_persistence(
+                    if allow {
+                        "saved_allow_scope_ineligible"
+                    } else {
+                        "saved_block_scope_ineligible"
+                    },
+                    persist,
+                );
+            }
+        } else {
+            persist = None;
+        }
+    }
+    let can_run_once = !derived.allow_scopes.is_empty()
+        && !derived.restrictions.contains(&RETRY_CANNOT_REUSE_APPROVAL);
+    let can_persist_exact_version =
+        !derived.allow_scopes.is_empty() && derived.exact_action_persistence_eligible;
+    let binds_an_exact_version =
+        applied_scope == "artifact" && persist == Some(true) && can_persist_exact_version;
+    if allow && !can_run_once && !binds_an_exact_version {
+        return refused_persistence("execution_binding_unavailable", persist);
+    }
+    json!({"persist_policy": persist, "refusal": Value::Null})
+}
+
+fn refused_persistence(refusal: &str, persist: Option<bool>) -> Value {
+    json!({"persist_policy": persist, "refusal": refusal})
 }
 
 fn refused(reason: &str, derived: Option<&ScopeContract>) -> Value {

@@ -123,3 +123,60 @@ def test_contradictory_or_unknown_capability_projection_is_rejected() -> None:
     del payload["execution_approval"]
     parsed = _contract_from_native(payload)
     assert parsed is not None and not parsed.can_run_once
+
+
+def test_a_once_only_allow_is_either_saved_or_binds_to_nothing(native_context_digest) -> None:
+    """The resident resolves the remember choice against the contract it derived."""
+
+    from codex_plugin_scanner.guard.approval_scope_support import resolve_request_scope_selection
+    from codex_plugin_scanner.guard.runtime.approval_context import build_approval_context_token
+
+    token = build_approval_context_token(
+        identity={"command": "cat notes.txt"},
+        content={},
+        capabilities={},
+        policy={},
+        sandbox={},
+    )
+    request = _request(artifact_hash=token, raw_command_text="cat notes.txt")
+    contract = request_scope_contract(request)
+    assert RESTRICTION in contract.restrictions
+    assert not contract.can_run_once and contract.can_persist_exact_version
+
+    def persistence(persist_policy: bool | None):
+        return resolve_request_scope_selection(
+            request,
+            action="allow",
+            requested_scope="artifact",
+            contract_version=contract.version,
+            contract_digest=contract.digest,
+            persist_policy=persist_policy,
+            resolve_persistence=True,
+        ).persistence
+
+    saved = persistence(True)
+    assert saved is not None and saved.persist_policy is True and saved.refusal is None
+    for persist_policy in (False, None):
+        answer = persistence(persist_policy)
+        assert answer is not None and answer.refusal == "execution_binding_unavailable"
+
+
+def test_a_legacy_client_that_is_narrowed_saves_nothing() -> None:
+    """A narrowed choice records once, so the remember flag is dropped with it."""
+
+    from codex_plugin_scanner.guard.approval_scope_support import resolve_request_scope_selection
+
+    selection = resolve_request_scope_selection(
+        _request(artifact_hash=BOUND_HASH),
+        action="allow",
+        requested_scope="workspace",
+        contract_version=None,
+        contract_digest=None,
+        persist_policy=True,
+        resolve_persistence=True,
+    )
+    assert selection.applied_scope == "artifact"
+    assert selection.warning == "legacy_scope_narrowed_to_artifact"
+    assert selection.persistence is not None
+    assert selection.persistence.persist_policy is None
+    assert selection.persistence.refusal is None
