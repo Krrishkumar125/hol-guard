@@ -2575,7 +2575,7 @@ pub fn resolve_package_firewall_entitlement(store: &dyn SupplyChainStore) -> Map
     let facts = PackageFirewallEntitlementFacts {
         bundle_payload: store.get_sync_payload("supply_chain_bundle_entitlement"),
         oauth_payload: store.get_sync_payload("oauth_local_credentials"),
-        oauth_health: store.get_oauth_local_credential_health(),
+        oauth_health: store.get_oauth_local_credential_health().map(Value::Object),
         connect_state: store.get_effective_guard_connect_state(&now.isoformat()),
         has_cloud_sync_profile: store.get_cloud_sync_profile().is_some(),
     };
