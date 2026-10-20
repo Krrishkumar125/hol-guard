@@ -51,12 +51,26 @@ const WORKER_EXIT_GRACE: Duration = Duration::from_millis(250);
 /// `min(1.0, 0.05 * 2 ** (attempt - 1))` the Python writer waited.
 const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(50);
 const RETRY_BACKOFF_CAP: Duration = Duration::from_secs(1);
+/// Store writes a record gets before it is dropped. The backoff spreads them
+/// over about four seconds, long enough for another writer holding the store
+/// to finish, while a write that can never succeed still leaves the queue and
+/// the journal instead of being replayed forever.
+const MAX_STORE_ATTEMPTS: u32 = 8;
 
 /// The wait before the attempt that follows failure number `attempt`.
 fn retry_backoff(attempt: u32) -> Duration {
     RETRY_BACKOFF_BASE
         .saturating_mul(1 << attempt.saturating_sub(1).min(5))
         .min(RETRY_BACKOFF_CAP)
+}
+
+/// Whether `record` may be written now: it never failed, or its backoff is
+/// over.
+fn is_due(state: &EvidenceState, record: &EvidenceRecord, now: Instant) -> bool {
+    state
+        .retry_at
+        .get(&record.record_id())
+        .is_none_or(|at| *at <= now)
 }
 
 // ---------------------------------------------------------------------------
@@ -940,6 +954,9 @@ struct EvidenceState {
     /// `_retry_attempts` — `record_id` → failed attempts, which set the
     /// backoff before the next one.
     retry_attempts: HashMap<String, u32>,
+    /// `record_id` → when a record whose write failed may be tried again.
+    /// Records that are not due yet stay queued while the rest move on.
+    retry_at: HashMap<String, Instant>,
     /// `_in_flight`.
     in_flight: bool,
     /// `_stopping`.
@@ -1618,6 +1635,7 @@ impl EvidenceWorker {
                     PersistOutcome::Done => {
                         let _ = state.durable.remove(&record.record_id());
                         state.retry_attempts.remove(&record.record_id());
+                        state.retry_at.remove(&record.record_id());
                         if record.is_receipt() {
                             state.receipt_processed += 1;
                         }
@@ -1638,6 +1656,7 @@ impl EvidenceWorker {
                     PersistOutcome::Deduped => {
                         let _ = state.durable.remove(&record.record_id());
                         state.retry_attempts.remove(&record.record_id());
+                        state.retry_at.remove(&record.record_id());
                         if record.is_receipt() {
                             state.receipt_deduped += 1;
                         }
@@ -1658,26 +1677,44 @@ impl EvidenceWorker {
                         // A failed write is most often another writer holding
                         // the store for longer than this one's short lock
                         // budget. The record is already in the journal, so it
-                        // stays there and goes to the back of the queue, where
-                        // one the store keeps refusing cannot hold up the rest.
-                        // A stop that runs out of drain time leaves it for the
-                        // next writer to replay, and nothing here counts it as
-                        // dropped.
+                        // goes to the back of the queue and waits out a
+                        // backoff while the records behind it keep moving. A
+                        // stop that runs out of drain time leaves it for the
+                        // next writer to replay. Only a record that has used
+                        // every attempt is dropped and cleared from the
+                        // journal.
+                        let record_id = record.record_id();
                         let attempt = state
                             .retry_attempts
-                            .get(&record.record_id())
+                            .get(&record_id)
                             .copied()
                             .unwrap_or(0)
                             .saturating_add(1);
-                        state.retry_attempts.insert(record.record_id(), attempt);
                         state.failures += 1;
                         if record.is_receipt() {
                             state.receipt_failures += 1;
                         }
                         state.degraded = true;
-                        state.queued_bytes += record.payload_bytes();
-                        state.records.push_back(record.clone());
-                        state = self.back_off(state, Instant::now() + retry_backoff(attempt));
+                        if attempt >= MAX_STORE_ATTEMPTS {
+                            let _ = state.durable.remove(&record_id);
+                            state.retry_attempts.remove(&record_id);
+                            state.retry_at.remove(&record_id);
+                            state.dropped += 1;
+                            if record.is_receipt() {
+                                state.receipt_dropped += 1;
+                            }
+                            match self.rewrite_journal(&record_id) {
+                                Ok(invalid_records) => state.failures += invalid_records,
+                                Err(_) => state.failures += 1,
+                            }
+                        } else {
+                            state.retry_attempts.insert(record_id.clone(), attempt);
+                            state
+                                .retry_at
+                                .insert(record_id, Instant::now() + retry_backoff(attempt));
+                            state.queued_bytes += record.payload_bytes();
+                            state.records.push_back(record.clone());
+                        }
                     }
                 }
                 state.in_flight = false;
@@ -1685,47 +1722,52 @@ impl EvidenceWorker {
         }
     }
 
-    /// Keep the worker off the store until `resume_at`, so a write that just
-    /// met a lock is not asked again before the writer holding it can finish.
+    /// `_next_batch` (:454-463).
     ///
-    /// The wait releases the shared state, so submissions keep queueing behind
-    /// it, and a stop cuts it short at its drain deadline, the bound it already
-    /// puts on every record it waits for.
-    fn back_off<'state>(
-        &'state self,
-        mut state: MutexGuard<'state, EvidenceState>,
-        resume_at: Instant,
-    ) -> MutexGuard<'state, EvidenceState> {
+    /// Only records that are due go into a batch: one waiting out a retry
+    /// backoff keeps its place in the queue. With nothing due the worker
+    /// sleeps until the first retry is due, a submission arrives or a stop
+    /// asks it to drain, and never past the stop's drain deadline.
+    fn next_batch(&self) -> Vec<EvidenceRecord> {
+        let mut state = self.lock_state();
         loop {
-            let until = match state.drain_deadline {
-                Some(deadline) if state.stopping => resume_at.min(deadline),
-                _ => resume_at,
-            };
-            let remaining = until.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return state;
+            let now = Instant::now();
+            let drain_over =
+                state.stopping && state.drain_deadline.is_none_or(|deadline| now >= deadline);
+            if drain_over
+                || state
+                    .records
+                    .iter()
+                    .any(|record| is_due(&state, record, now))
+            {
+                break;
+            }
+            if state.records.is_empty() {
+                if state.stopping {
+                    break;
+                }
+                state = self
+                    .condition
+                    .1
+                    .wait(state)
+                    .unwrap_or_else(|e| e.into_inner());
+                continue;
+            }
+            let mut wake = state
+                .records
+                .iter()
+                .filter_map(|record| state.retry_at.get(&record.record_id()).copied())
+                .min()
+                .unwrap_or(now);
+            if let Some(deadline) = state.drain_deadline.filter(|_| state.stopping) {
+                wake = wake.min(deadline);
             }
             let (guard, _) = self
                 .condition
                 .1
-                .wait_timeout(state, remaining)
+                .wait_timeout(state, wake.saturating_duration_since(now))
                 .unwrap_or_else(|e| e.into_inner());
             state = guard;
-        }
-    }
-
-    /// `_next_batch` (:454-463).
-    fn next_batch(&self) -> Vec<EvidenceRecord> {
-        let mut state = self.lock_state();
-        loop {
-            if !state.records.is_empty() || state.stopping {
-                break;
-            }
-            state = self
-                .condition
-                .1
-                .wait(state)
-                .unwrap_or_else(|e| e.into_inner());
         }
         if state.records.is_empty() {
             return Vec::new();
@@ -1738,14 +1780,27 @@ impl EvidenceWorker {
                 .unwrap_or_else(|e| e.into_inner());
             state = guard;
         }
+        // Once a stop's drain time is over, every record is handed back so
+        // the worker can leave each one in the journal and exit.
+        let now = Instant::now();
+        let take_all =
+            state.stopping && state.drain_deadline.is_none_or(|deadline| now >= deadline);
         let mut batch = Vec::new();
+        let mut waiting = VecDeque::new();
         while let Some(record) = state.records.pop_front() {
             if batch.len() >= self.max_batch {
                 state.records.push_front(record);
                 break;
             }
+            if !take_all && !is_due(&state, &record, now) {
+                waiting.push_back(record);
+                continue;
+            }
             state.queued_bytes = state.queued_bytes.saturating_sub(record.payload_bytes());
             batch.push(record);
+        }
+        while let Some(record) = waiting.pop_back() {
+            state.records.push_front(record);
         }
         batch
     }

@@ -9,6 +9,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
 
@@ -16,7 +18,7 @@ use crate::hook_evidence_writer::{
     ComposioActionSchema, ComposioWorkflowProposal, CorrelationApi, CorrelationHandle,
     EvidenceJournalApi, EvidenceRecord, EvidenceStoreApi, EvidenceWriterDeps,
     InstallationCorrelationKey, ObservedMcpTool, ReceiptValidationApi, RuntimeHookEvidenceWriter,
-    SqliteTimeoutApi,
+    RuntimeHookEvidenceWriterStats, SqliteTimeoutApi,
 };
 
 /// The correlation digest every fixture starts from, before a prevented
@@ -65,6 +67,9 @@ enum ReceiptBehaviour {
         failed: Arc<Gate>,
         written: Arc<Gate>,
     },
+    /// Refuse every write of the receipt with this decision id, the way a
+    /// store refuses a row it can never take, and accept every other one.
+    Refuse(String),
 }
 
 impl StubStore {
@@ -165,7 +170,7 @@ impl EvidenceStoreApi for StubStore {
 
     fn record_native_decision_receipt(
         &self,
-        _receipt: &Map<String, Value>,
+        receipt: &Map<String, Value>,
     ) -> Result<bool, io::Error> {
         match &self.receipt_behaviour {
             ReceiptBehaviour::Accept => Ok(true),
@@ -189,6 +194,13 @@ impl EvidenceStoreApi for StubStore {
                     return Err(io::Error::other("database is locked"));
                 }
                 written.enter();
+                Ok(true)
+            }
+            ReceiptBehaviour::Refuse(decision_id) => {
+                if receipt.get("decision_id").and_then(Value::as_str) == Some(decision_id.as_str())
+                {
+                    return Err(io::Error::other("constraint failed"));
+                }
                 Ok(true)
             }
         }
@@ -1104,6 +1116,66 @@ fn a_receipt_the_store_keeps_refusing_stays_journaled_for_the_next_writer() {
     assert_eq!(replayed.receipt_processed, 1);
     assert_eq!(replayed.receipt_durable_pending, 0);
     assert!(journal.records().is_empty());
+}
+
+/// Wait until the writer's counters satisfy `done`, for at most ten seconds.
+fn wait_for_stats(
+    writer: &RuntimeHookEvidenceWriter,
+    done: impl Fn(&RuntimeHookEvidenceWriterStats) -> bool,
+) -> RuntimeHookEvidenceWriterStats {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let stats = writer.stats();
+        if done(&stats) || Instant::now() >= deadline {
+            return stats;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+}
+
+/// A receipt waiting out its backoff keeps its place in the queue without
+/// holding the worker: one submitted behind it is written before the waiting
+/// receipt gets another attempt.
+#[test]
+fn a_refused_receipt_does_not_hold_up_the_receipts_behind_it() {
+    let store = StubStore::with_receipts(queue_home(), ReceiptBehaviour::Refuse("stuck".into()));
+    let journal = RecordingJournal::new();
+    let writer = queue_writer(store, Arc::clone(&journal), 64);
+
+    assert!(writer.submit_native_decision_receipt(&receipt("stuck")));
+    // Five refusals put the next attempt 800 ms away.
+    let waiting = wait_for_stats(&writer, |stats| stats.receipt_failures >= 5);
+    assert_eq!(waiting.receipt_failures, 5);
+    assert!(writer.submit_native_decision_receipt(&receipt("decision-2")));
+    let moved_on = wait_for_stats(&writer, |stats| stats.receipt_processed >= 1);
+    assert_eq!(moved_on.receipt_processed, 1);
+    assert_eq!(
+        moved_on.receipt_failures, 5,
+        "written before the next retry"
+    );
+    assert_eq!(moved_on.receipt_durable_pending, 1);
+
+    while !writer.stop(0.0) {}
+}
+
+/// A receipt the store can never take is retried a bounded number of times,
+/// then dropped and cleared from the journal so it neither spins the worker
+/// nor grows the journal for every later writer to replay.
+#[test]
+fn a_receipt_the_store_never_takes_is_dropped_after_its_last_attempt() {
+    let store = StubStore::with_receipts(queue_home(), ReceiptBehaviour::Refuse("stuck".into()));
+    let journal = RecordingJournal::new();
+    let writer = queue_writer(store, Arc::clone(&journal), 64);
+
+    assert!(writer.submit_native_decision_receipt(&receipt("stuck")));
+    let dropped = wait_for_stats(&writer, |stats| stats.receipt_dropped >= 1);
+    assert_eq!(dropped.receipt_dropped, 1);
+    assert_eq!(dropped.receipt_failures, 8);
+    assert_eq!(dropped.receipt_durable_pending, 0);
+    assert!(dropped.degraded);
+    assert!(journal.records().is_empty());
+
+    assert!(writer.stop(DRAIN_BUDGET_SECONDS));
 }
 
 /// A journal whose rewrite always reports invalid lines it dropped.
