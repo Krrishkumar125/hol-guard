@@ -664,7 +664,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
             self.store.migrate_installed_command_pack_authority()
         except Exception as error:
             self._installed_authority_pending = True
-            _LOGGER.warning("Installed command-pack authority could not be migrated: %s", error)
+            _LOGGER.warning("Installed command-pack authority could not be migrated: %s", error, exc_info=True)
             raise _InstalledAuthorityMigrationError from error
         self._installed_authority_pending = False
 

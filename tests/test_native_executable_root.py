@@ -36,7 +36,7 @@ def guard_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / "guard-home"
     home.mkdir(mode=0o700)
     home.chmod(0o700)
-    monkeypatch.setattr(root_module, "_private_root", None)
+    monkeypatch.setattr(root_module, "_private_roots", [])
     root_module.use_guard_home(home)
     return home
 
@@ -104,6 +104,39 @@ def test_guard_store_names_its_home_as_the_private_execution_root(
 ) -> None:
     from codex_plugin_scanner.guard.store import GuardStore
 
-    monkeypatch.setattr(root_module, "_private_root", None)
+    monkeypatch.setattr(root_module, "_private_roots", [])
     store = GuardStore(tmp_path / "guard-home")
-    assert root_module._private_root == store.guard_home / "native-exec"
+    assert root_module._private_roots == [store.guard_home / "native-exec"]
+
+
+@pytest.mark.parametrize(("parent_mode", "usable"), [(0o770, False), (0o1770, True)])
+def test_a_guard_home_another_account_could_rename_away_is_never_used(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, parent_mode: int, usable: bool
+) -> None:
+    _deny_exec_in_system_temp(monkeypatch)
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(parent_mode)
+    home = shared / "guard-home"
+    home.mkdir(mode=0o700)
+    monkeypatch.setattr(root_module, "_private_roots", [])
+    root_module.use_guard_home(home)
+    if usable:
+        with root_module.verified_executable(_SCRIPT) as path:
+            assert path.parent.parent == home / "native-exec"
+        return
+    with pytest.raises(root_module.ExecutableMaterializationError), root_module.verified_executable(_SCRIPT):
+        pytest.fail("verified bytes were placed under a home another account could rename away")
+    assert not (home / "native-exec").exists()
+
+
+def test_a_second_guard_home_does_not_take_the_fallback_from_the_first(
+    guard_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _deny_exec_in_system_temp(monkeypatch)
+    unusable = tmp_path / "second-home"
+    unusable.mkdir(mode=0o700)
+    unusable.chmod(0o770)
+    root_module.use_guard_home(unusable)
+    with root_module.verified_executable(_SCRIPT) as path:
+        assert path.parent.parent == guard_home / "native-exec"

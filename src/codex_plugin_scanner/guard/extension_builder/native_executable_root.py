@@ -4,9 +4,9 @@ The verified compiler bytes are written to a fresh 0700 directory and run from
 there, so the bytes that run are exactly the bytes that were verified. The
 system temporary directory comes first. A host that mounts it noexec, such as
 a container on a default tmpfs, runs them from a private folder in the Guard
-home instead. That folder is used only while it and the Guard home are owned by
-this user and closed to other accounts, so no second account can swap the
-bytes between the write and the exec.
+home instead. That folder is used only while it, the Guard home and every
+directory above the Guard home are closed to other accounts, so no second
+account can swap the bytes between the write and the exec.
 """
 
 from __future__ import annotations
@@ -20,7 +20,9 @@ from pathlib import Path
 
 _PRIVATE_ROOT_NAME = "native-exec"
 _EXECUTABLE_NAME = "hol-guard-runtime.exe" if os.name == "nt" else "hol-guard-runtime"
-_private_root: Path | None = None
+# Every Guard home this process has opened, most recent first, so a store for
+# one home never takes the fallback away from a store for another.
+_private_roots: list[Path] = []
 
 
 class ExecutableMaterializationError(OSError):
@@ -28,23 +30,47 @@ class ExecutableMaterializationError(OSError):
 
 
 def use_guard_home(guard_home: Path) -> None:
-    """Name the Guard home whose private folder backs a noexec temporary directory."""
-    global _private_root
-    _private_root = Path(guard_home) / _PRIVATE_ROOT_NAME
+    """Add a Guard home whose private folder can back a noexec temporary directory."""
+    root = Path(guard_home) / _PRIVATE_ROOT_NAME
+    with suppress(ValueError):
+        _private_roots.remove(root)
+    _private_roots.insert(0, root)
 
 
 def _closed_directory(metadata: os.stat_result, *, open_bits: int) -> bool:
     return stat.S_ISDIR(metadata.st_mode) and metadata.st_uid == os.geteuid() and not metadata.st_mode & open_bits
 
 
-def _private_root_directory() -> Path | None:
-    root = _private_root
-    if root is None or os.name == "nt":
-        return None
+def _replaceable_by_another_account(directory: Path) -> bool:
+    """Whether another account could rename a directory above this one away.
+
+    Both the path as named and the path its links resolve to are checked. A
+    link is only as safe as the directory holding it, which is checked as the
+    next ancestor, so links are judged by owner alone.
+    """
+    resolved = Path(os.path.realpath(directory))
+    for ancestor in (*directory.parents, *resolved.parents):
+        metadata = ancestor.lstat()
+        if metadata.st_uid not in (0, os.geteuid()):
+            return True
+        if stat.S_ISLNK(metadata.st_mode):
+            continue
+        if not stat.S_ISDIR(metadata.st_mode):
+            return True
+        # The sticky bit limits renames to the entry's owner, as on /tmp.
+        if metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH) and not metadata.st_mode & stat.S_ISVTX:
+            return True
+    return False
+
+
+def _private_root_directory(root: Path) -> Path | None:
     try:
-        # Another account that can write the Guard home could rename the
-        # private folder away and put its own in its place.
+        # Another account that can write the Guard home, or any directory
+        # above it, could rename the private folder or the home away and put
+        # its own in its place.
         if not _closed_directory(root.parent.lstat(), open_bits=stat.S_IWGRP | stat.S_IWOTH):
+            return None
+        if _replaceable_by_another_account(root.parent):
             return None
         with suppress(FileExistsError):
             root.mkdir(mode=0o700)
@@ -96,8 +122,12 @@ def _candidate(raw: bytes, parent: Path | None) -> tuple[tempfile.TemporaryDirec
 def verified_executable(raw: bytes) -> Generator[Path]:
     """Materialize exactly the verified bytes in a private execution directory."""
     candidate = _candidate(raw, None)
-    if candidate is None and (root := _private_root_directory()) is not None:
-        candidate = _candidate(raw, root)
+    if os.name != "nt":
+        for root in tuple(_private_roots):
+            if candidate is not None:
+                break
+            if (directory := _private_root_directory(root)) is not None:
+                candidate = _candidate(raw, directory)
     if candidate is None:
         raise ExecutableMaterializationError("no private directory can run the verified source compiler")
     directory, path = candidate
