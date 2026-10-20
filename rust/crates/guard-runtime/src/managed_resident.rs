@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 mod client_stream;
 #[path = "managed_resident_client_timeout.rs"]
 mod client_timeout_policy;
-pub(crate) use client_timeout_policy::client_timeout;
+pub(crate) use client_timeout_policy::{client_timeout, DAEMON_LIFECYCLE_TIMEOUT_CEILING_MS};
 #[path = "managed_resident_containment.rs"]
 mod containment;
 #[path = "managed_resident_handoff.rs"]
