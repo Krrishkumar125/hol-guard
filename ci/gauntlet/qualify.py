@@ -45,6 +45,10 @@ PROVIDER_ENV = (
 )
 
 
+# The most fresh rounds one invocation may spend before it reports what it reached.
+ATTEMPT_LIMIT = 10
+
+
 def progress(message: str) -> None:
     """One terse status line; the JSON result is the only stdout payload."""
     print(f"qualify: {message}", file=sys.stderr, flush=True)
@@ -322,8 +326,12 @@ def main(args: Any) -> int:
         raise ValueError("--sha must be a full 40-character commit")
     if args.candidate_sha is not None and SHA.fullmatch(args.candidate_sha) is None:
         raise ValueError("--candidate-sha must be a full 40-character commit")
-    if not 1 <= args.attempts <= 3:
-        raise ValueError("--attempts must be from 1 to 3")
+    # A clean round needs every case to comply, so the odds of one compound against
+    # the number of cases. Three rounds was a budget set when a truncated attempt was
+    # cheap; it is not enough to clear model noise on a product that has nothing wrong
+    # with it, and running out of rounds reads the same as a real failure.
+    if not 1 <= args.attempts <= ATTEMPT_LIMIT:
+        raise ValueError(f"--attempts must be from 1 to {ATTEMPT_LIMIT}")
     if not 1 <= args.jobs <= 8:
         raise ValueError("--jobs must be from 1 to 8")
     if not 1 <= args.host_slots <= 64:
@@ -520,6 +528,14 @@ def main(args: Any) -> int:
             "max_load": args.max_load,
             "max_load_wait": args.max_load_wait,
             "attempts": attempts,
+            # How many rounds this invocation actually spent, against what it was allowed.
+            # A reader who sees `qualified: false` needs to know whether the run proved
+            # something about the product or merely ran out of budget, and the two look
+            # alike in the outcome counts alone. The count is of rounds that started,
+            # not of records: an interrupted round spent the lane and left no record,
+            # and `attempts` already gives the completed count.
+            "attempts_run": len(driven),
+            "attempts_allowed": args.attempts,
             # Verified counts only; a failed or missing verify publishes null here and the
             # last attempt's runner counts under unverified_* so failing runs still show them.
             "interruptions": verify_result.get("interruptions") if verify_result else None,
