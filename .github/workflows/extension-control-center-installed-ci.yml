@@ -267,6 +267,19 @@ jobs:
             test "$count" -ge 1
           done
 
+      - name: Explain an installed browser failure
+        # The proof upload below runs only on success, so a failed run used to end
+        # with four "element(s) not found" lines and nothing about what the page or
+        # the installed daemon actually did.
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== installed daemon log (tail) ==="
+          tail -n 200 "$RUNNER_TEMP/ecc-installed-server.log" || true
+          echo "=== page context captured by Playwright ==="
+          find .artifacts/extension-control-center-installed -name 'error-context.md' \
+            -print -exec cat {} \; || true
+
       - name: Upload installed browser proof
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
