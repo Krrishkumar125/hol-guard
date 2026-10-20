@@ -55,26 +55,34 @@ fn names_the_environment_binaries_from_the_run_directory() {
     );
 }
 
+/// The planner reads argv through `guard-command`'s own validator, so this
+/// covers the shapes that decide whether the run is pytest at all.
 #[test]
 fn reads_only_a_module_run_of_pytest() {
-    let arguments = |items: &[&str]| {
-        items
-            .iter()
-            .map(|item| (*item).to_owned())
-            .collect::<Vec<_>>()
+    let targets = |items: &[&str]| {
+        guard_command::restricted_pytest::python_args_target_pytest(
+            &items
+                .iter()
+                .map(|item| (*item).to_owned())
+                .collect::<Vec<_>>(),
+        )
     };
-    assert!(arguments_target_pytest(&arguments(&["-m", "pytest", "-q"])));
-    assert!(arguments_target_pytest(&arguments(&[
-        "-X", "utf8", "-mpytest"
-    ])));
-    assert!(!arguments_target_pytest(&arguments(&["-c", "import os"])));
-    assert!(!arguments_target_pytest(&arguments(&[
-        "-m", "pip", "install", "x"
-    ])));
-    assert!(!arguments_target_pytest(&arguments(&[
-        "--", "-m", "pytest"
-    ])));
-    assert!(!arguments_target_pytest(&arguments(&["-q"])));
+    assert!(targets(&["-m", "pytest", "-q"]));
+    assert!(targets(&["-X", "utf8", "-mpytest"]));
+    assert!(targets(&["-W", "ignore", "-m", "pytest"]));
+    assert!(!targets(&["-c", "import os"]));
+    assert!(!targets(&["-m", "pip", "install", "x"]));
+    assert!(!targets(&["--", "-m", "pytest"]));
+    assert!(!targets(&["-q"]));
+    // The script ends the options, so the `-m` after it is the script's own.
+    assert!(!targets(&["evil.py", "-m", "pytest"]));
+    assert!(!targets(&["-", "-m", "pytest"]));
+    // A value-taking short option swallows the rest of its cluster.
+    assert!(!targets(&["-Ic", "import os", "-m", "pytest"]));
+    assert!(!targets(&["-Icimport os", "-m", "pytest"]));
+    assert!(!targets(&["--command=import os", "-m", "pytest"]));
+    // A `-X` value must not be read as the start of the module run.
+    assert!(!targets(&["-X", "-m", "pytest"]));
 }
 
 #[test]
@@ -126,6 +134,62 @@ fn refuses_an_environment_with_no_interpreter_of_its_own() {
         environment_interpreter(&root).expect("an interpreter"),
         Path::new("bin/python.exe")
     );
+}
+
+/// An editable install or a `.pth` line holds the absolute path it was
+/// written with, which the snapshot does not hold a copy of.
+#[test]
+fn refuses_an_environment_that_imports_through_an_absolute_path() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let root = directory.path().to_path_buf();
+    let packages = root.join("Lib/site-packages");
+    std::fs::create_dir_all(&packages).expect("a site-packages");
+    assert!(!imports_outside_itself(&root));
+
+    std::fs::write(packages.join("_virtualenv.pth"), "import _virtualenv\n")
+        .expect("a startup entry");
+    std::fs::write(packages.join("relative.pth"), "../src\n").expect("a relative entry");
+    assert!(!imports_outside_itself(&root));
+
+    std::fs::write(packages.join("project.pth"), r"C:\work\project\src")
+        .expect("an absolute entry");
+    assert!(imports_outside_itself(&root));
+
+    std::fs::remove_file(packages.join("project.pth")).expect("a removed entry");
+    std::fs::write(
+        packages.join("__editable___demo_finder.py"),
+        "MAPPING = {}\n",
+    )
+    .expect("an editable finder");
+    assert!(imports_outside_itself(&root));
+}
+
+/// The command's first word may be a bare name an activated environment put
+/// on `PATH`, with or without the extension the launcher was written under.
+#[test]
+fn resolves_a_launcher_named_without_a_path() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let root = canonical(directory.path()).expect("a canonical directory");
+    let binaries = root.join(".venv/Scripts");
+    std::fs::create_dir_all(&binaries).expect("a binaries directory");
+    std::fs::write(binaries.join("pytest.exe"), b"MZ").expect("a launcher");
+    std::fs::write(binaries.join("pytest"), "#!/bin/sh\n").expect("a shim");
+    let search_path = binaries.to_string_lossy().into_owned();
+
+    assert_eq!(
+        resolved("pytest", &root, &search_path).expect("a resolved launcher"),
+        canonical(&binaries.join("pytest")).expect("a canonical launcher")
+    );
+    assert_eq!(
+        resolved("pytest.exe", &root, &search_path).expect("a resolved launcher"),
+        canonical(&binaries.join("pytest.exe")).expect("a canonical launcher")
+    );
+    assert!(resolved("pytest", &root, "").is_none());
+    assert!(resolved("missing", &root, &search_path).is_none());
+    // A spelling that carries a path is read from the working directory, not
+    // from the search path.
+    assert!(resolved(r".venv\Scripts\pytest.exe", &root, "").is_some());
+    assert!(resolved("pytest.exe", &root, "relative\\directory").is_none());
 }
 
 #[test]

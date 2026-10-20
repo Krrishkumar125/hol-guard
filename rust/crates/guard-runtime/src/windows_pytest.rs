@@ -11,11 +11,19 @@
 //! private HOME and TEMP, and a kill-on-close job.
 //!
 //! The interpreter that runs is the copy inside the snapshot, so the run keeps
-//! the prefix, the `site-packages` and the `.pth` processing of the
-//! environment it was launched from — an editable install resolves exactly as
-//! it does outside containment. Those bytes are the repository's own, but so
-//! is every `conftest.py` pytest imports: the container, not the provenance of
-//! the interpreter, is what bounds this profile. The environment still has to
+//! the prefix and the `site-packages` of the environment it was launched from.
+//! What it does not keep is any path written outside that environment: a
+//! `.pth` line or an `__editable__` finder holds the absolute path it was
+//! installed with, and the snapshot has no copy there. The planner declines
+//! such an environment rather than running a pytest that cannot import the
+//! project, and declines one whose interpreter is hardlinked from a shared
+//! cache, which is how `uv` builds an environment and which the snapshot
+//! leaves out because a second directory entry may be another name for a
+//! withheld file. Both fall back to the review the profile replaces.
+//!
+//! The bytes that do run are the repository's own, but so is every
+//! `conftest.py` pytest imports: the container, not the provenance of the
+//! interpreter, is what bounds this profile. The environment still has to
 //! record an all-users Python install as its base, which keeps a run that
 //! cannot name a real interpreter out of the profile altogether.
 use guard_command::restricted_command::{normalized_command, RestrictedPytestError};
@@ -73,27 +81,6 @@ fn interpreter_named(name: &str) -> bool {
         })
 }
 
-/// `python -m pytest`, with no `-c` and no `--` ahead of the module.
-fn arguments_target_pytest(arguments: &[String]) -> bool {
-    let mut index = 0usize;
-    while index < arguments.len() {
-        let argument = &arguments[index];
-        if argument == "--" || argument == "-c" || argument.starts_with("-c") {
-            return false;
-        }
-        if argument == "-m" {
-            return arguments
-                .get(index + 1)
-                .is_some_and(|module| module.split('.').next() == Some("pytest"));
-        }
-        if let Some(module) = argument.strip_prefix("-m").filter(|rest| !rest.is_empty()) {
-            return module.split('.').next() == Some("pytest");
-        }
-        index += 1;
-    }
-    false
-}
-
 /// Argv reaches the container directly, so a shell operator in it is a sign
 /// the caller did not split the command the way this profile assumes.
 fn screened(arguments: &[String]) -> Result<(), RestrictedPytestError> {
@@ -104,6 +91,36 @@ fn screened(arguments: &[String]) -> Result<(), RestrictedPytestError> {
         return Err(invalid());
     }
     Ok(())
+}
+
+/// The spellings a launcher is found under when the command names it without
+/// a path. `PATHEXT` decides this for a shell; the three that matter here are
+/// what `venv`, `virtualenv` and `uv` write into `Scripts`, and the bare name
+/// is what a POSIX-shaped environment leaves for Git Bash.
+const LAUNCHER_EXTENSIONS: [&str; 3] = [".exe", ".cmd", ".bat"];
+
+/// The file a command's first word names.
+///
+/// A command that carries a path is resolved against the working directory. A
+/// bare name is resolved on the search path the hook recorded, which is how an
+/// activated environment's `pytest -q` or `python -m pytest` names an
+/// interpreter at all. Resolution does not decide whether the profile applies:
+/// the launcher still has to sit in a virtual environment inside the
+/// workspace, which is checked once it is known.
+fn resolved(name: &str, cwd: &Path, search_path: &str) -> Option<PathBuf> {
+    if name.contains('/') || name.contains('\\') {
+        return crate::windows_readonly::canonical(&cwd.join(name)).filter(|path| path.is_file());
+    }
+    let mut names = vec![name.to_owned()];
+    names.extend(
+        LAUNCHER_EXTENSIONS
+            .iter()
+            .map(|extension| format!("{name}{extension}")),
+    );
+    crate::windows_readonly::first_on_path(&names, search_path)
+        .as_deref()
+        .and_then(crate::windows_readonly::canonical)
+        .filter(|path| path.is_file())
 }
 
 /// A workspace-relative path whose components are all ordinary names.
@@ -175,6 +192,57 @@ fn environment_interpreter(environment: &Path) -> Result<PathBuf, RestrictedPyte
     Err(missing())
 }
 
+/// Where an environment keeps the packages a run imports.
+const SITE_PACKAGES: [&str; 2] = ["Lib/site-packages", "lib/site-packages"];
+/// A `site-packages` holds a handful of `.pth` files among its packages;
+/// reading the directory stays bounded whatever it holds.
+const SITE_ENTRIES_MAX: usize = 4096;
+/// A `.pth` file is a short list of paths; a larger one is not one.
+const PTH_MAX_BYTES: u64 = 64 * 1024;
+
+/// Whether the environment imports through an absolute path out of itself.
+///
+/// The snapshot is a copy of the workspace at a path of its own, and the
+/// container grants nothing outside it. A `.pth` line or an editable-install
+/// finder holds the absolute path it was written with, which inside the
+/// container names a directory the run cannot read, so `pip install -e .` and
+/// a src-layout project would fail on import rather than run. An environment
+/// that depends on one keeps its review instead.
+fn imports_outside_itself(environment: &Path) -> bool {
+    for relative in SITE_PACKAGES {
+        let Ok(entries) = std::fs::read_dir(environment.join(relative)) else {
+            continue;
+        };
+        for entry in entries.take(SITE_ENTRIES_MAX).flatten() {
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            if name.starts_with("__editable__") {
+                return true;
+            }
+            if !name.ends_with(".pth") {
+                continue;
+            }
+            if entry.metadata().map(|data| data.len()).unwrap_or(u64::MAX) > PTH_MAX_BYTES {
+                return true;
+            }
+            let Ok(text) = std::fs::read_to_string(entry.path()) else {
+                return true;
+            };
+            // A line that starts with `import` is startup code, not a path.
+            if text
+                .lines()
+                .map(str::trim)
+                .filter(|line| {
+                    !line.is_empty() && !line.starts_with('#') && !line.starts_with("import ")
+                })
+                .any(|line| Path::new(line).is_absolute())
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// The snapshot-relative interpreter and its environment, read back from a
 /// launch plan's own argv.
 pub(crate) fn staged_interpreter(executable: &Path) -> Option<(PathBuf, PathBuf)> {
@@ -225,8 +293,11 @@ fn plan(input: &Value) -> Result<Value, RestrictedPytestError> {
         &path("workspace").ok_or_else(invalid)?,
         &path("cwd").ok_or_else(invalid)?,
     )?;
-    let launcher = crate::windows_readonly::canonical(&cwd.join(&command[0]))
-        .filter(|path| path.is_file())
+    let search_path = input
+        .get("search_path")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let launcher = resolved(&command[0], &cwd, search_path)
         .ok_or_else(|| unavailable("The pytest launcher could not be resolved."))?;
     let named = launcher
         .file_name()
@@ -240,7 +311,9 @@ fn plan(input: &Value) -> Result<Value, RestrictedPytestError> {
             .map(str::to_owned)
             .chain(command[1..].iter().cloned())
             .collect()
-    } else if interpreter_named(&named) && arguments_target_pytest(&command[1..]) {
+    } else if interpreter_named(&named)
+        && guard_command::restricted_pytest::python_args_target_pytest(&command[1..])
+    {
         command[1..].to_vec()
     } else {
         return Err(invalid());
@@ -250,13 +323,35 @@ fn plan(input: &Value) -> Result<Value, RestrictedPytestError> {
             "Contained pytest on Windows runs a virtual environment's own launcher; this command names none.",
         )
     })?;
-    let relative = relative_within(&environment, &workspace).ok_or_else(|| {
-        unavailable(
-            "Contained pytest on Windows runs a virtual environment inside the workspace; this one is outside it.",
-        )
-    })?;
+    let relative = relative_within(&environment, &workspace)
+        // An environment equal to the workspace root leaves nothing for the
+        // runner to read the environment back out of its own launch plan, and
+        // a directory holding a project is not a virtual environment anyway.
+        .filter(|relative| !relative.as_os_str().is_empty())
+        .ok_or_else(|| {
+            unavailable(
+                "Contained pytest on Windows runs a virtual environment inside the workspace; this one is outside it.",
+            )
+        })?;
     base_interpreter(&environment)?;
     let interpreter = environment_interpreter(&environment)?;
+    // A file with a second directory entry may be another name for a withheld
+    // one, so the snapshot leaves it out. An environment whose interpreter is
+    // hardlinked from a shared cache, which is how `uv` creates one, would
+    // therefore be staged without it; declining here keeps the review rather
+    // than failing inside the container.
+    if !guard_runtime_windows_process::is_single_link_file(&environment.join(&interpreter))
+        .unwrap_or(false)
+    {
+        return Err(unavailable(
+            "The virtual environment's interpreter is hardlinked, which a read-only snapshot does not carry; execution was not started.",
+        ));
+    }
+    if imports_outside_itself(&environment) {
+        return Err(unavailable(
+            "The virtual environment imports through an absolute path outside itself, which the snapshot does not hold; execution was not started.",
+        ));
+    }
     let backend = std::env::current_exe()
         .ok()
         .and_then(|path| crate::windows_readonly::canonical(&path))

@@ -17,7 +17,7 @@ use regex::Regex;
 use serde_json::{json, Value};
 use std::ffi::OsString;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
@@ -34,9 +34,15 @@ const OUTPUT_CAP: usize = 1024 * 1024;
 /// A build's installed dependencies; a mid-sized Vite app is well below.
 const MAX_DEPENDENCY_ENTRIES: usize = 200_000;
 const MAX_DEPENDENCY_BYTES: usize = 2 * 1024 * 1024 * 1024;
-/// Never needed by an installed interpreter and often large; `.git` may also
-/// hold remote credentials in its config.
-const WITHHELD_DIRECTORIES: [&str; 4] = [".git", ".venv", "node_modules", "__pycache__"];
+/// Directories that never enter a snapshot, whatever the run keeps: never
+/// needed by an installed interpreter and often large, and `.git` may hold
+/// remote credentials in its config. A run is allowed to name the virtual
+/// environment it needs, so this list is what naming one must never drag in
+/// with it.
+const WITHHELD_DIRECTORIES: [&str; 3] = [".git", "node_modules", "__pycache__"];
+/// Withheld unless it is the environment the run was launched from, which
+/// `keep` names. A `.venv` nested inside that one is still withheld.
+const ENVIRONMENT_DIRECTORIES: [&str; 1] = [".venv"];
 /// Presentation and locale only; nothing here selects code to load.
 const INHERITED_ENVIRONMENT: [&str; 22] = [
     "SystemRoot",
@@ -524,14 +530,27 @@ fn withheld<'a>(patterns: &'a [Regex], keep: Option<&'a Path>) -> impl Fn(&Path)
             .map(|component| component.as_os_str().to_string_lossy())
             .collect::<Vec<_>>()
             .join("/");
+        let named = |component: &Component, names: &[&str]| {
+            names
+                .iter()
+                .any(|name| component.as_os_str().eq_ignore_ascii_case(name))
+        };
+        // `keep` exempts an environment directory from its own name, never
+        // from this list: an environment rooted at `.git` would otherwise
+        // carry the repository's metadata into the snapshot with it.
+        if relative
+            .components()
+            .any(|component| named(&component, &WITHHELD_DIRECTORIES))
+        {
+            return true;
+        }
         let scanned = keep
             .and_then(|keep| relative.strip_prefix(keep).ok())
             .unwrap_or(relative);
-        scanned.components().any(|component| {
-            WITHHELD_DIRECTORIES
-                .iter()
-                .any(|name| component.as_os_str().eq_ignore_ascii_case(name))
-        }) || patterns.iter().any(|pattern| pattern.is_match(&text))
+        scanned
+            .components()
+            .any(|component| named(&component, &ENVIRONMENT_DIRECTORIES))
+            || patterns.iter().any(|pattern| pattern.is_match(&text))
     }
 }
 

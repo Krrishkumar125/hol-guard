@@ -94,6 +94,25 @@ fn a_kept_environment_is_copied_without_what_it_contains() {
     }
 }
 
+/// `keep` exempts an environment from the name it is withheld under. It must
+/// not exempt repository metadata: an environment named `.git` would
+/// otherwise copy `.git/config`, which no credential pattern covers.
+#[test]
+fn a_kept_environment_cannot_exempt_repository_metadata() {
+    let patterns: Vec<Regex> = guard_command::credential_patterns::patterns()
+        .iter()
+        .map(|pattern| Regex::new(pattern).unwrap())
+        .collect();
+    for keep in [r".git", r"src\.git", r".git\hooks"] {
+        let withhold = withheld(&patterns, Some(Path::new(keep)));
+        for path in [r".git\config", r".git\hooks\pre-commit", r"src\.git\config"] {
+            assert!(withhold(Path::new(path)), "{keep} kept {path}");
+        }
+    }
+    let withhold = withheld(&patterns, Some(Path::new("node_modules")));
+    assert!(withhold(Path::new(r"node_modules\pkg\index.js")));
+}
+
 #[test]
 fn script_outside_the_workspace_is_rejected() {
     let (_directory, workspace) = workspace();

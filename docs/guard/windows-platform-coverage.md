@@ -63,6 +63,24 @@ activates through `Scripts\activate`, and the Gauntlet fixture writes a
 POSIX-shaped `.venv` with no interpreter under `Scripts\`. A Windows spelling
 of that case needs its own case id and a Windows arm in the fixture.
 
+### What `pytest-readonly-v2` does not cover on Windows
+
+The profile runs the environment's own interpreter from a staged copy, so it
+needs an environment the snapshot can carry whole. Two shapes it cannot, and
+which fall back to review rather than failing inside the container:
+
+- An environment whose interpreter is hardlinked from a shared cache, which is
+  how `uv` builds one. The snapshot omits any workspace file with a second
+  directory entry, because that entry may be another name for a withheld file
+  such as `.env`; an environment staged without its interpreter is not one.
+- An environment that imports through an absolute path outside itself — a
+  `.pth` line holding the path it was written with, or an `__editable__`
+  finder from an editable install. The snapshot sits at a fresh root, so that
+  path resolves to nothing inside it.
+
+Both are planner refusals with a stated reason, not silent allows, and both
+leave the run on the route it had before the profile existed.
+
 ## What would close the gap
 
 A Windows equivalent of the *workspace* sandbox: an AppContainer or a Job
