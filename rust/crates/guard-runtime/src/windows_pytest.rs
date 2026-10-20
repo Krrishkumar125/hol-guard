@@ -375,7 +375,7 @@ fn plan(input: &Value) -> Result<Value, RestrictedPytestError> {
             .chain(command[1..].iter().cloned())
             .collect()
     } else if interpreter_named(&named)
-        && guard_command::restricted_pytest::python_args_target_pytest(&command[1..])
+        && guard_command::pytest_argv::python_args_target_pytest(&command[1..])
     {
         command[1..].to_vec()
     } else {

@@ -4,6 +4,7 @@
 //! where the behaviour it describes exists. `ci/platform_arms.json` records
 //! that arm and the Unix behaviour it mirrors.
 use super::*;
+use crate::windows_readonly::canonical;
 use serde_json::json;
 
 #[test]
@@ -60,7 +61,7 @@ fn names_the_environment_binaries_from_the_run_directory() {
 #[test]
 fn reads_only_a_module_run_of_pytest() {
     let targets = |items: &[&str]| {
-        guard_command::restricted_pytest::python_args_target_pytest(
+        guard_command::pytest_argv::python_args_target_pytest(
             &items
                 .iter()
                 .map(|item| (*item).to_owned())
