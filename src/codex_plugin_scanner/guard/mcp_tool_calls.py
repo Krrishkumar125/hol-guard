@@ -235,6 +235,7 @@ def _tool_call_configuration(config: GuardConfig) -> dict[str, object]:
             "harness_actions",
             "risk_actions",
             "harness_risk_actions",
+            "harness_postures",
             "security_level",
             "protection_posture",
             "protection_posture_explicit",
