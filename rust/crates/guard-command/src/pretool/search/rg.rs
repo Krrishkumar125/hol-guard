@@ -385,7 +385,8 @@ fn rg_arguments_pass(
             || (paths_only
                 && unproven_roots
                     .iter()
-                    .all(|root| names_only::safe_names_only_search_target(root, context))))
+                    .all(|root| names_only::safe_names_only_search_target(root, context))
+                && names_only_globs_proven(arguments, &unproven_roots, context)))
         && (!stdin_only || pattern_supplied)
         && (stdin_only || config_disabled || context.ripgrep_config_absent)
         && (stdin_only || paths_only || !prove_roots || rg_whitelist::roots_proven(&roots, context))
@@ -396,6 +397,68 @@ fn rg_arguments_pass(
                 context.home_dir,
                 context.cwd,
             ))
+}
+
+/// Whether the inclusion globs of a names-only listing select nothing its
+/// walk skipped.
+///
+/// A `-g` match outranks `rg`'s hidden filter, so `-g .ssh` enters a hidden
+/// directory the names-only walk stepped over. A literal glob can pass the
+/// name screen and so never reach the glob-scope proof on its own; under a
+/// names-only root every inclusion glob is proven by what it selects.
+fn names_only_globs_proven(arguments: &[String], roots: &[&str], context: ReadContext<'_>) -> bool {
+    let globs = inclusion_globs(arguments);
+    globs.is_empty()
+        || super::super::search_scope::rg_glob_scope_proven(
+            roots,
+            &globs,
+            context.home_dir,
+            context.cwd,
+        )
+}
+
+/// Every `-g`, `--glob` or `--iglob` value that selects rather than excludes.
+///
+/// A short cluster ends at its first option that takes a value, which is the
+/// rest of the argument or the next one. Values of other long options are
+/// not skipped, so an argument is at worst read as a glob it is not.
+fn inclusion_globs(arguments: &[String]) -> Vec<&str> {
+    let mut globs = Vec::new();
+    let mut arguments = arguments.iter();
+    while let Some(argument) = arguments.next() {
+        if argument == "--" {
+            break;
+        }
+        let value = if let Some(long) = argument.strip_prefix("--") {
+            match long.split_once('=') {
+                Some(("glob" | "iglob", value)) => Some(value),
+                None if matches!(long, "glob" | "iglob") => arguments.next().map(String::as_str),
+                _ => None,
+            }
+        } else if let Some(cluster) = argument.strip_prefix('-') {
+            match cluster
+                .char_indices()
+                .find(|(_, option)| "efgABCEjmMrtT".contains(*option))
+            {
+                Some((at, option)) => {
+                    let attached = &cluster[at + option.len_utf8()..];
+                    let value = if attached.is_empty() {
+                        arguments.next().map(String::as_str)
+                    } else {
+                        Some(attached)
+                    };
+                    value.filter(|_| option == 'g')
+                }
+                None => None,
+            }
+        } else {
+            None
+        };
+        if let Some(value) = value.filter(|value| !value.starts_with('!')) {
+            globs.push(value);
+        }
+    }
+    globs
 }
 
 #[cfg(test)]

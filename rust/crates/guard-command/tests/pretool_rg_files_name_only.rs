@@ -128,3 +128,24 @@ fn a_listing_that_could_name_or_read_more_keeps_its_review() {
         check(&f, command, false);
     }
 }
+
+/// An inclusion glob and an ignore-file negation each bring back a hidden
+/// entry `rg` would otherwise skip, so neither listing is a walk that steps
+/// over it.
+#[test]
+fn a_listing_that_re_includes_a_hidden_entry_keeps_its_review() {
+    let f = fixture();
+    write(f.home.join("vault/notes.txt"), "plain\n");
+    write(f.home.join("vault/.ssh/id_ed25519"), "key\n");
+    write(f.home.join("ledger/notes.txt"), "plain\n");
+    write(f.home.join("ledger/.aws/credentials"), "[default]\n");
+    write(f.home.join("ledger/.ignore"), "!.aws/\n");
+    check(&f, "rg --files ~/vault", true);
+    for command in [
+        "rg --files -g .ssh ~/vault",
+        "rg --files --glob=.ssh ~/vault",
+        "rg --files ~/ledger",
+    ] {
+        check(&f, command, false);
+    }
+}

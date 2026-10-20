@@ -16,6 +16,12 @@
 //! screens every visible one exactly as a reading walk screens it: a visible
 //! credential name, a key container, a link or a socket still refuses.
 //!
+//! Two things bring a hidden entry back without a flag. A negation in an
+//! ignore file under the root (`!.aws/`) re-includes it, so the root also has
+//! to clear [`super::rg_whitelist::roots_proven`]. An inclusion glob outranks
+//! the hidden filter, so [`super::rg`] proves every inclusion glob of a
+//! names-only listing by what it selects on disk.
+//!
 //! The root itself is named on the command line, where `rg` does descend into
 //! a hidden directory, so it keeps every screen a read operand clears,
 //! including the agent-state trees whose files direct reads deny.
@@ -47,7 +53,9 @@ fn visible_walk_target(value: &str, context: ReadContext<'_>) -> bool {
     let Some(root) = tree::expanded_operand(value, context) else {
         return false;
     };
-    if tree::inside_agent_state(&root, context) {
+    if tree::inside_agent_state(&root, context)
+        || !super::rg_whitelist::roots_proven(&[value], context)
+    {
         return false;
     }
     super::walk_memo::memoized(&root, &[], &[], false, false, true, || {
