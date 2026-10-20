@@ -95,3 +95,40 @@ def test_a_prompts_classes_travel_instead_of_a_python_hard_block(native_approval
     plain = runtime_policy_artifact_facts(config, recorder.build_artifact(spec), recorder.HARNESS)
     # An artifact with no classes sends no key, so an older resident answers for it.
     assert "prompt_request_classes" not in plain
+
+
+def test_a_reason_code_travels_instead_of_the_two_facts_python_read_off_it(
+    native_approval_reuse_runtime: Path,
+) -> None:
+    recorder = _recorder()
+    home = native_approval_reuse_runtime
+    config = recorder.build_config(_vectors()[0]["spec"]["config"], home)
+    spec: dict[str, object] = {
+        "artifact_id": "omp:native-pretool:bash",
+        "artifact_type": "tool_call",
+        "metadata": {
+            "action_class": "pytest repository-code execution",
+            "reason_code": "pytest_restricted_profile_required",
+            "restricted_profile_version": "2",
+        },
+    }
+    facts = runtime_policy_artifact_facts(config, recorder.build_artifact(spec), recorder.HARNESS)
+    # Python stops answering both facts and hands over the metadata they were read off.
+    assert facts["pytest_restricted_sandbox"] is False
+    assert facts["shell_local_script_review"] is False
+    assert facts["reason_code"] == "pytest_restricted_profile_required"
+    assert facts["restricted_profile_version"] == "2"
+
+    spec["metadata"] = {"reason_code": "shell_local_script_execution_review"}
+    shell = runtime_policy_artifact_facts(config, recorder.build_artifact(spec), recorder.HARNESS)
+    assert shell["shell_local_script_review"] is False
+    assert shell["reason_code"] == "shell_local_script_execution_review"
+    # The version only travels beside a reason code, and only as text.
+    assert "restricted_profile_version" not in shell
+
+    spec["metadata"] = {"restricted_profile_version": "2"}
+    plain = runtime_policy_artifact_facts(config, recorder.build_artifact(spec), recorder.HARNESS)
+    # An artifact that names no reason code sends no key, so an older resident
+    # answers for it, where both facts are false for every caller anyway.
+    assert "reason_code" not in plain
+    assert "restricted_profile_version" not in plain

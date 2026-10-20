@@ -181,7 +181,7 @@ pub(crate) fn artifact_policy_action(
         None => norm(&config.default_action, GuardAction::Review),
     };
     let with_config = |action: GuardAction| {
-        let floor = if action == GuardAction::SandboxRequired && art.pytest_restricted_sandbox {
+        let floor = if action == GuardAction::SandboxRequired && art.pytest_restricted_sandbox() {
             None
         } else {
             floor
@@ -235,12 +235,12 @@ pub(crate) fn artifact_policy_action(
     // The shell local-script detector establishes an approval floor, not a
     // terminal execution block; other independent risks still resolve normally.
     if default == Some(GuardAction::RequireReapproval)
-        && art.shell_local_script_review
+        && art.shell_local_script_review()
         && classes.iter().all(|class| class == "execution")
     {
         return with_config(GuardAction::RequireReapproval);
     }
-    if default == Some(GuardAction::SandboxRequired) && art.pytest_restricted_sandbox {
+    if default == Some(GuardAction::SandboxRequired) && art.pytest_restricted_sandbox() {
         return with_config(GuardAction::SandboxRequired);
     }
     match (resolve_all(false), default) {
