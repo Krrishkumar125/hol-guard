@@ -35,18 +35,26 @@ pub(crate) fn sorted_uncertainties(groups: [&[UncertaintyKind]; 2]) -> Vec<Uncer
     items
 }
 
+fn settles_docker_uncertainty(command: &CanonicalCommand) -> bool {
+    command.confidence == "exact"
+        && command
+            .segments
+            .iter()
+            .all(crate::command_compatibility::docker_segment_settles_uncertainty)
+}
+
 pub(crate) fn effective_observation_uncertainties(
     command: &CanonicalCommand,
     observations: &[NativeCommandExtensionObservation],
     explicitly_enabled_rule_ids: &BTreeSet<String>,
 ) -> Vec<UncertaintyKind> {
-    if command.confidence != "exact" {
+    if !settles_docker_uncertainty(command) {
         return extension_uncertainties(observations);
     }
     let filtered: Vec<_> = observations
         .iter()
         .filter(|observation| {
-            !(observation.extension_id == "command.container-runtime"
+            !(observation.rule_id == "command.container-runtime.docker-sensitive"
                 && explicitly_enabled_rule_ids.contains(&observation.rule_id))
         })
         .cloned()
@@ -60,14 +68,15 @@ pub(crate) fn filter_effective_evidence_batch(
     native_benign_rule_ids: &BTreeSet<String>,
     explicitly_enabled_rule_ids: &BTreeSet<String>,
 ) -> ExtensionEvidenceBatch {
+    let settles_docker = settles_docker_uncertainty(command);
     ExtensionEvidenceBatch {
         evidence: evidence_batch
             .evidence
             .iter()
             .filter(|evidence| {
                 let rule_id = &evidence.identity.rule_id;
-                let enabled_container_uncertainty = command.confidence == "exact"
-                    && evidence.identity.extension_id == "command.container-runtime"
+                let enabled_container_uncertainty = settles_docker
+                    && rule_id == "command.container-runtime.docker-sensitive"
                     && explicitly_enabled_rule_ids.contains(rule_id);
                 !native_benign_rule_ids.contains(rule_id)
                     && (!explicitly_enabled_rule_ids.contains(rule_id)
@@ -85,7 +94,7 @@ pub(crate) fn current_critical_floor_factors(
     explicitly_enabled_rule_ids: &BTreeSet<String>,
 ) -> Vec<DecisionFactor> {
     let mut current = critical_floor_factors.to_vec();
-    if command.confidence == "exact"
+    if settles_docker_uncertainty(command)
         && explicitly_enabled_rule_ids.contains("command.container-runtime.docker-sensitive")
     {
         current.retain(|factor| factor.reason_code != "critical.container-state-read");
@@ -105,16 +114,16 @@ pub(crate) fn unavailable_authority_fail_closed(
         return false;
     }
     let authority_unavailable_only = !control_resolution.failures.is_empty()
-        && control_resolution
-            .failures
-            .iter()
-            .all(|failure| failure.code == crate::extension_control::ResolverFailureCode::AuthorityUnavailable);
+        && control_resolution.failures.iter().all(|failure| {
+            failure.code == crate::extension_control::ResolverFailureCode::AuthorityUnavailable
+        });
     let mut apply = !authority_unavailable_only
         || !extension_ids.is_empty()
         || minimum_action == crate::command_evaluation::CommandDecisionFloor::Block
         || !workspace_write_candidates.is_empty();
-    let fail_closed_risk =
-        |risk: &str| crate::command_evaluation::UNAVAILABLE_AUTHORITY_FAIL_CLOSED_RISKS.contains(&risk);
+    let fail_closed_risk = |risk: &str| {
+        crate::command_evaluation::UNAVAILABLE_AUTHORITY_FAIL_CLOSED_RISKS.contains(&risk)
+    };
     if !apply {
         apply = owned_matches.iter().any(|owned| {
             owned

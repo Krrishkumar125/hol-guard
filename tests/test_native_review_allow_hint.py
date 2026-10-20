@@ -208,3 +208,68 @@ def test_queue_hint_reviews_without_an_environment_a_worker_could_not_stamp(monk
         )
 
         assert calls[0]["execution_environment"] is None, stamp
+
+
+def test_live_approval_hint_skips_extra_payload_keys_and_resolves_launch_cwd(monkeypatch, tmp_path: Path) -> None:
+    from codex_plugin_scanner.guard.daemon import native_review_allow_hint as module
+
+    fixture = real_native_review_fixture("git fetch origin main", cwd=tmp_path, home_dir=tmp_path)
+    reviewed = project_native_review_fixture(fixture, cwd=tmp_path, home_dir=tmp_path)
+    calls: list[dict[str, object]] = []
+    hint_calls: list[dict[str, object]] = []
+
+    def review(_command: str, **kwargs: object):
+        calls.append(kwargs)
+        return reviewed
+
+    real_compute = module.compute_extension_allow_hint
+
+    def compute(evaluation, **kwargs: object):
+        hint_calls.append(kwargs)
+        return real_compute(evaluation, **kwargs)
+
+    monkeypatch.setattr(module, "review_command_native", review)
+    monkeypatch.setattr(module, "compute_extension_allow_hint", compute)
+
+    extra_payload_approval = {
+        "status": "pending",
+        "workspace": str(tmp_path),
+        "raw_command_text": "git fetch origin main",
+        "action_envelope_json": {
+            "action_type": "shell_command",
+            "command": "git fetch origin main",
+            "raw_payload_redacted": {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git fetch origin main", "path": ".env"},
+            },
+        },
+    }
+    assert (
+        module.live_approval_extension_allow_hint(
+            extra_payload_approval, guard_home=tmp_path, snapshot=fixture.snapshot
+        )
+        is None
+    )
+    assert calls == []
+
+    sub_cwd = tmp_path / "subdir"
+    sub_cwd.mkdir()
+    clean_approval = {
+        "status": "pending",
+        "workspace": str(tmp_path),
+        "raw_command_text": "git fetch origin main",
+        "action_envelope_json": {
+            "action_type": "shell_command",
+            "command": "git fetch origin main",
+            "raw_payload_redacted": {
+                "cwd": str(sub_cwd),
+                "tool_name": "Bash",
+                "tool_input": {"command": "git fetch origin main"},
+            },
+        },
+    }
+    hint = module.live_approval_extension_allow_hint(clean_approval, guard_home=tmp_path, snapshot=fixture.snapshot)
+    assert hint is not None
+    assert calls[0]["cwd"] == sub_cwd.resolve()
+    assert hint_calls[0]["cwd"] == sub_cwd.resolve()
+    assert hint_calls[0]["deadline"] is not None

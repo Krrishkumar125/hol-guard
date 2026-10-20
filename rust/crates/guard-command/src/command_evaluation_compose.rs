@@ -309,11 +309,8 @@ pub fn evaluate_command(
         minimum_action = stronger_floor(minimum_action, CommandDecisionFloor::Review);
     }
     let observation_uncertainties = extension_uncertainties(&observations);
-    let effective_observation_uncertainties = effective_observation_uncertainties(
-        command,
-        &observations,
-        &explicitly_enabled_rule_ids,
-    );
+    let effective_observation_uncertainties =
+        effective_observation_uncertainties(command, &observations, &explicitly_enabled_rule_ids);
     if !effective_observation_uncertainties.is_empty() {
         // Disabled controls still resolve to block through control_resolution.
         minimum_action = stronger_floor(minimum_action, CommandDecisionFloor::Review);

@@ -389,12 +389,23 @@ assert(
 const gitRoutedStatusItem: GuardApprovalRequest = {
   ...BASE_REQUEST,
   request_id: "req-git-routed-status",
-  action_envelope_json: { ...shellEnvelope, command: "git -C ~/workspace/repo status --short" },
+  action_envelope_json: { ...shellEnvelope, command: "git --no-pager -C ~/workspace/repo status --short" },
 };
 
 assert(
   resolveQueueCategory(gitRoutedStatusItem).label === "Git workspace operation",
   "T-QS-31-git-routed: git -C commands get the Git workspace operation category"
+);
+
+const githubCommandItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-gh-cli",
+  action_envelope_json: { ...shellEnvelope, command: "  sudo gh pr view 123" },
+};
+
+assert(
+  resolveQueueCategory(githubCommandItem).label === "GitHub command",
+  "T-QS-31-gh-cli: gh CLI commands get the GitHub command category even with leading whitespace or sudo"
 );
 
 const dockerConfigSecretReadItem: GuardApprovalRequest = {

@@ -229,11 +229,12 @@ fn expand_brace_globs(pattern: &str) -> Option<Vec<String>> {
         if choices.len() == 1 && !choices[0].contains("..") {
             let trimmed = choices[0].trim_start_matches('{');
             if !trimmed.contains('{') {
-                expanded.push(format!(
-                    "{}{trimmed}{}",
-                    &candidate[..open],
-                    &candidate[close + 1..]
-                ));
+                let nested_braces = choices[0].len() - trimmed.len();
+                let closing = "}".repeat(nested_braces);
+                let suffix = candidate[close + 1..]
+                    .strip_prefix(closing.as_str())
+                    .unwrap_or(&candidate[close + 1..]);
+                expanded.push(format!("{}{trimmed}{suffix}", &candidate[..open],));
                 continue;
             }
         }

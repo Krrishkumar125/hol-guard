@@ -422,11 +422,29 @@ fn an_explicit_container_runtime_allow_settles_docker_sensitive_review() {
         "docker compose ps",
         "docker inspect web",
     ] {
-        assert_ne!(evaluate(&baseline, command).minimum_action, "allow", "{command}");
+        assert_ne!(
+            evaluate(&baseline, command).minimum_action,
+            "allow",
+            "{command}"
+        );
         let result = evaluate(&enabled, command);
         assert_eq!(
             result.minimum_action, "allow",
             "{command}: {}",
+            result.reason_code
+        );
+    }
+
+    for remote_or_sensitive_context in [
+        "docker --context production ps",
+        "docker -H tcp://127.0.0.1:2375 ps",
+        "docker --config /tmp/custom-docker ps",
+        "DOCKER_HOST=tcp://127.0.0.1:2375 docker ps",
+    ] {
+        let result = evaluate(&enabled, remote_or_sensitive_context);
+        assert_eq!(
+            result.minimum_action, "review",
+            "{remote_or_sensitive_context}: {}",
             result.reason_code
         );
     }

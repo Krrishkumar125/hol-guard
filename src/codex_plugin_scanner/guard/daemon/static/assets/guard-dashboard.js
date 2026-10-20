@@ -14187,15 +14187,15 @@ function fileDeleteOrCleanupCommand(command, text2) {
   return /\b(?:rm|unlink|rmdir|shred)\b/.test(normalized) || /\btruncate\s+-s\s+0\b/.test(normalized) || /\bgit\s+(?:clean|reset\s+--hard|checkout\s+--)\b/.test(normalized) || textIncludesAny(text2, ["force-clean", "delete files", "wipe files"]);
 }
 function gitOperationCommand(command) {
-  const normalized = command.toLowerCase();
-  return /\bgit(?:\s+(?:-c\s+\S+|--git-dir(?:=|\s+)\S+|--work-tree(?:=|\s+)\S+|--no-pager|--bare))*\s+(?:add|commit|push|pull|fetch|clone|status|diff|log|show|branch|rev-parse|worktree|remote|config|merge|rebase|reset|checkout|restore|clean|stash|tag|apply|cherry-pick|revert|ls-files|ls-remote|grep)\b/.test(normalized) || /(?:^|[;&|]\s*)git\s+-c\s+/i.test(command);
+  return /\bgit(?:\s+(?:-[cC](?:\s+\S+|\S+)|--git-dir(?:=|\s+)\S+|--work-tree(?:=|\s+)\S+|--no-pager|--bare))*\s+(?:add|commit|push|pull|fetch|clone|status|diff|log|show|branch|rev-parse|worktree|remote|config|merge|rebase|reset|checkout|restore|clean|stash|tag|apply|cherry-pick|revert|ls-files|ls-remote|grep)\b/i.test(
+    command
+  );
 }
 function dockerCommand(command) {
-  return /(?:^|[;&|]\s*)(?:sudo\s+)?(?:docker|docker-compose)(?:\s|$)/i.test(command);
+  return /(?:^|[;&|]\s*)\s*(?:sudo\s+)?(?:docker|docker-compose)(?:\s|$)/i.test(command);
 }
 function githubCommand(command) {
-  const normalized = command.toLowerCase();
-  return /(?:^|[;&|]\s*)gh\s+\S+/.test(normalized);
+  return /(?:^|[;&|]\s*)\s*(?:sudo\s+)?gh\s+\S+/i.test(command);
 }
 function processControlCommand(command) {
   const normalized = command.toLowerCase();

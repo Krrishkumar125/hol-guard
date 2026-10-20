@@ -91,7 +91,7 @@ def _settleable_uncertainties_only(evidence: Mapping[str, object], count: object
         return False
     uncertain = [item for item in observations if isinstance(item, Mapping) and item.get("uncertainty_reasons")]
     return len(uncertain) == count and all(
-        item.get("extension_id") == "command.container-runtime" for item in uncertain
+        item.get("rule_id") == "command.container-runtime.docker-sensitive" for item in uncertain
     )
 
 
@@ -310,7 +310,14 @@ def live_approval_extension_allow_hint(
     if command is None:
         return None
     workspace_text = approval.get("workspace")
-    cwd = Path(workspace_text) if isinstance(workspace_text, str) and workspace_text.strip() else None
+    workspace_path = Path(workspace_text) if isinstance(workspace_text, str) and workspace_text.strip() else None
+    raw_payload = envelope.get("raw_payload_redacted") if isinstance(envelope, Mapping) else None
+    if isinstance(raw_payload, Mapping) and pre_tool_input(raw_payload) is not None:
+        if not _command_only_payload(raw_payload):
+            return None
+        cwd = _launch_cwd(raw_payload, workspace_path)
+    else:
+        cwd = workspace_path
     try:
         reviewed = contextvars.copy_context().run(
             review_command_native,
@@ -333,6 +340,7 @@ def live_approval_extension_allow_hint(
         native_evidence=reviewed.payload,
         cwd=cwd,
         home_dir=Path.home(),
+        deadline=time.monotonic() + _MAX_NATIVE_BUDGET_SECONDS,
         registry=registry,
     )
 

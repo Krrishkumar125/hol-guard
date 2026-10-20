@@ -443,8 +443,8 @@ fn only_container_runtime_uncertainties(evidence: &Object, count: u64) -> bool {
                 let mut matched = 0u64;
                 for obj in items.iter().filter_map(Value::as_object) {
                     if obj.get("uncertainty_reasons").is_some_and(truthy) {
-                        if obj.get("extension_id").and_then(Value::as_str)
-                            != Some("command.container-runtime")
+                        if obj.get("rule_id").and_then(Value::as_str)
+                            != Some("command.container-runtime.docker-sensitive")
                         {
                             return false;
                         }
