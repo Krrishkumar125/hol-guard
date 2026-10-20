@@ -212,7 +212,7 @@ pub(super) fn executable_symlink_chain_is_approved(
         if !path_is_within_lexically(&current, workspace)
             && !path_is_within_any_lexically(&current, &TRUSTED_EXECUTABLE_ROOTS)
             && !approved_user_python_runtime(&current)
-            && !super::developer_shim::is_developer_tool(&current)
+            && !super::developer_shim::is_in_developer_dir_lexically(&current)
             && !venv_root.is_some_and(|root| venv::in_bin(&current, root))
         {
             return false;
