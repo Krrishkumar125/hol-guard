@@ -4,12 +4,20 @@
 //! `Mentions an API key: none`. The credential-assignment rule reads the word
 //! after the colon as the assigned value, so an honest report that a file holds
 //! no secret was returned to the model as a secret match and the output was
-//! withheld. The answer words here are a closed list, so nothing an attacker
-//! could choose as a credential passes: a real secret is not spelled `no`.
+//! withheld.
+//!
+//! Two closed lists do this, because they carry different weight. A word that
+//! reports the field is empty says the field has no value at all, so it is an
+//! answer wherever it appears: a real secret is not spelled `no`. A word that
+//! reports the field's state says the opposite, that something is there, and
+//! is a value a person could have chosen, so it reads as an answer only when
+//! the field is asking about the credential rather than holding it. Either
+//! way the rest of the line is checked: an answer word in front of a value
+//! does not turn that value into prose.
 
-/// Answer and state words a report uses in place of a value. Lower case, and
-/// matched whole, so `nonce` or `yesterday` is still a value.
-const ANSWER_WORDS: &[&str] = &[
+/// Words reporting the field has no value. Lower case, and matched whole, so
+/// `nonce` is still a value.
+const ABSENCE_WORDS: &[&str] = &[
     "absent",
     "empty",
     "false",
@@ -26,21 +34,54 @@ const ANSWER_WORDS: &[&str] = &[
     "nothing",
     "null",
     "omitted",
-    "optional",
-    "present",
     "redacted",
-    "required",
-    "tbd",
-    "todo",
     "unknown",
     "unset",
     "unspecified",
-    "y",
-    "yes",
+];
+
+/// Words reporting the field's state rather than its absence. Each is also a
+/// value someone could have chosen, so these read as an answer only when the
+/// field asks about the credential. Matched whole, so `yesterday` is still a
+/// value.
+const STATE_WORDS: &[&str] = &["optional", "present", "required", "tbd", "todo", "y", "yes"];
+
+/// Words that make a field a question or a report about a credential rather
+/// than a place one is kept, as in `Has password: yes` or `API key set: yes`.
+const REPORT_FIELD_WORDS: &[&str] = &[
+    "any",
+    "configured",
+    "contains",
+    "detected",
+    "enabled",
+    "exists",
+    "found",
+    "has",
+    "have",
+    "includes",
+    "is",
+    "mention",
+    "mentioned",
+    "mentions",
+    "needs",
+    "present",
+    "provided",
+    "references",
+    "requires",
+    "set",
+    "uses",
+    "whether",
 ];
 
 /// Longest answer considered, so a long literal never qualifies by luck.
 const MAX_VALUE_CHARS: usize = 16;
+
+/// Shortest run of letters and digits on the rest of the line that is taken
+/// for a value rather than a word.
+const MIN_VALUE_RUN: usize = 8;
+
+/// How much of the line in front of a match can make its field a question.
+const MAX_FIELD_LEAD_CHARS: usize = 48;
 
 /// Whether a credential-assignment match states an answer about the field
 /// instead of assigning a value to it.
@@ -49,7 +90,7 @@ const MAX_VALUE_CHARS: usize = 16;
 /// data a program reads, and `=` is an assignment an environment or shell file
 /// makes, so both keep their match. `tail` is the text after the match: an
 /// answer the value runs on past is not the whole value.
-pub(crate) fn is_prose_answer(matched: &str, tail: &str) -> bool {
+pub(crate) fn is_prose_answer(matched: &str, tail: &str, preceding: &str) -> bool {
     let Some(index) = matched.find([':', '=']) else {
         return false;
     };
@@ -74,16 +115,64 @@ pub(crate) fn is_prose_answer(matched: &str, tail: &str) -> bool {
     {
         return false;
     }
-    ANSWER_WORDS.contains(&answer.as_str())
+    if ABSENCE_WORDS.contains(&answer.as_str()) {
+        return true;
+    }
+    STATE_WORDS.contains(&answer.as_str()) && reports_about_field(preceding, &matched[..index])
+}
+
+/// Whether the text in front of the colon asks about a credential instead of
+/// holding one. `Has password: yes` and `API key set: yes` report a state;
+/// a bare `password: yes` is a field with a value in it. The rule need not
+/// have captured the whole field, so the line in front of the match counts
+/// too, bounded so an earlier sentence cannot vouch for this one.
+fn reports_about_field(preceding: &str, field: &str) -> bool {
+    if field.trim_end().ends_with('?') {
+        return true;
+    }
+    let line = preceding.rsplit(['\n', '\r']).next().unwrap_or_default();
+    let start = line
+        .char_indices()
+        .rev()
+        .take(MAX_FIELD_LEAD_CHARS)
+        .last()
+        .map_or(line.len(), |(index, _)| index);
+    [&line[start..], field].iter().any(|text| {
+        text.split(|character: char| !character.is_ascii_alphanumeric())
+            .any(|word| REPORT_FIELD_WORDS.contains(&word.to_ascii_lowercase().as_str()))
+    })
 }
 
 /// Whether `tail` begins where the answer ends. The rule's unquoted arm stops
 /// at a space, `"`, `'`, `,` or `}`, so anything else directly after the match
 /// is more of the same value and the answer wording proves nothing about it.
+///
+/// A space is the case worth care. The arm stops there too, so `password: no
+/// q7Lm2Xv9Rt4Kp8Wz` matches `no` alone and the value after it is never looked
+/// at. The answer only holds when nothing on the rest of that line is shaped
+/// like a secret, so `Password: not set` still reads as a report.
 fn ends_value(tail: &str) -> bool {
-    tail.chars()
+    let Some(next) = tail.chars().next() else {
+        return true;
+    };
+    if matches!(next, ',' | '}' | ')' | ']' | ';') {
+        return true;
+    }
+    next.is_whitespace() && !carries_value(tail)
+}
+
+/// Whether the rest of the line holds a token shaped like a credential. Prose
+/// words are short, or long without digits; a chosen secret mixes them.
+fn carries_value(tail: &str) -> bool {
+    tail.split(['\n', '\r'])
         .next()
-        .is_none_or(|next| next.is_whitespace() || matches!(next, ',' | '}' | ')' | ']' | ';'))
+        .unwrap_or_default()
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .any(|run| {
+            run.len() >= MIN_VALUE_RUN
+                && run.bytes().any(|byte| byte.is_ascii_digit())
+                && run.bytes().any(|byte| byte.is_ascii_alphabetic())
+        })
 }
 
 #[cfg(test)]
@@ -101,24 +190,24 @@ mod tests {
 
     #[test]
     fn answer_words_report_a_field_rather_than_assign_it() {
-        assert!(is_prose_answer("Token: No.", ""));
-        assert!(is_prose_answer("token: no", "\n"));
-        assert!(is_prose_answer("Secret: none", ""));
-        assert!(is_prose_answer("password: unset", ""));
-        assert!(is_prose_answer("api_key: N/A", ""));
-        assert!(is_prose_answer("Token:No.", ""));
-        assert!(is_prose_answer("credential: absent", ";"));
+        assert!(is_prose_answer("Token: No.", "", ""));
+        assert!(is_prose_answer("token: no", "\n", ""));
+        assert!(is_prose_answer("Secret: none", "", ""));
+        assert!(is_prose_answer("password: unset", "", ""));
+        assert!(is_prose_answer("api_key: N/A", "", ""));
+        assert!(is_prose_answer("Token:No.", "", ""));
+        assert!(is_prose_answer("credential: absent", ";", ""));
     }
 
     #[test]
     fn real_values_and_other_forms_keep_their_match() {
-        assert!(!is_prose_answer("password: swordfish", ""));
-        assert!(!is_prose_answer("token: nonce", ""));
-        assert!(!is_prose_answer("TOKEN=no", ""));
-        assert!(!is_prose_answer(r#""token": "no""#, ""));
-        assert!(!is_prose_answer("token: no", "pe-q7Lm2Xv9"));
-        assert!(!is_prose_answer("token: no1", ""));
-        assert!(!is_prose_answer("token:", ""));
+        assert!(!is_prose_answer("password: swordfish", "", ""));
+        assert!(!is_prose_answer("token: nonce", "", ""));
+        assert!(!is_prose_answer("TOKEN=no", "", ""));
+        assert!(!is_prose_answer(r#""token": "no""#, "", ""));
+        assert!(!is_prose_answer("token: no", "pe-q7Lm2Xv9", ""));
+        assert!(!is_prose_answer("token: no1", "", ""));
+        assert!(!is_prose_answer("token:", "", ""));
     }
 
     #[test]
@@ -138,5 +227,29 @@ mod tests {
         assert!(credential_assignment(&format!(
             "- Token: No.\npassword: {visible}\n"
         )));
+    }
+
+    #[test]
+    fn a_state_word_reads_as_an_answer_only_where_the_field_asks() {
+        assert!(is_prose_answer("password: yes", "", "Has "));
+        assert!(is_prose_answer("API key: present", "", "- Mentions an "));
+        assert!(is_prose_answer("key set: yes", "", ""));
+        assert!(is_prose_answer("password?: yes", "", ""));
+        // A field holding a credential is not asking about one, so a word a
+        // person could have chosen as the value keeps its match.
+        assert!(!is_prose_answer("password: yes", "", ""));
+        assert!(!is_prose_answer("api_key: required", "", "- "));
+        assert!(credential_assignment("password: yes\n"));
+        assert!(!credential_assignment("Has password: yes\n"));
+    }
+
+    #[test]
+    fn an_answer_word_in_front_of_a_value_does_not_cover_it() {
+        assert!(!is_prose_answer("password: no", " q7Lm2Xv9Rt4Kp8Wz", ""));
+        assert!(credential_assignment("password: no q7Lm2Xv9Rt4Kp8Wz\n"));
+        // Prose after the answer is still prose.
+        assert!(is_prose_answer("Password: not", " set", ""));
+        assert!(is_prose_answer("Token: none", " in this file", ""));
+        assert!(!credential_assignment("Password: not set in config v2\n"));
     }
 }
