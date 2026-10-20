@@ -85,7 +85,7 @@ def inventory(tmp_path_factory):
     native = package / "_native"
     native.mkdir(parents=True)
     raw = BINARY.read_bytes()
-    executable = native / "hol-guard-runtime"
+    executable = native / transport._COMPILER_NAME
     executable.write_bytes(raw)
     executable.chmod(0o700)
     info = json.loads(subprocess.check_output([str(BINARY), "compiler-info"]))
@@ -117,7 +117,7 @@ def inventory(tmp_path_factory):
         schema="hol-guard-native-source-compiler.v2",
         compiler_size=len(raw),
         compiler_sha256=hashlib.sha256(raw).hexdigest(),
-        executable="hol-guard-runtime",
+        executable=transport._COMPILER_NAME,
         implementation_digest=engine,
         base_program_digest=exported["program"]["program_digest"],
     )

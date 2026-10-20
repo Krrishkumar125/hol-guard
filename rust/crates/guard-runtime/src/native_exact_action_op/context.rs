@@ -33,6 +33,8 @@ pub(crate) struct LocalExecution {
 /// The resident engines the proofs build on; tests substitute fixed answers so
 /// vectors do not depend on the machine's executables.
 pub(crate) trait Engines {
+    /// Only the POSIX Python bootstrap proof reads the Guard home.
+    #[cfg_attr(windows, allow(dead_code))]
     fn guard_home(&self) -> Option<&Path> {
         None
     }
@@ -80,6 +82,7 @@ impl Ctx<'_> {
 
 /// The production engines: the resident's own launch-identity and package-intent code.
 pub(crate) struct ResidentEngines<'a> {
+    #[cfg_attr(windows, allow(dead_code))]
     pub(crate) guard_home: Option<&'a Path>,
 }
 
