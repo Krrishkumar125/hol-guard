@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -139,6 +140,23 @@ def _compose_package_reuse_settle(
         return answer, (_decision_from_native_payload(reuse) if isinstance(reuse, dict) else None)
     except (NativeHookComposeError, ApprovalReuseMalformedResultError, KeyError):
         return None, (approval_reuse_authority_unavailable(current_action) if stored_block else None)
+
+
+def _claimed_saved_package_allow(reasons: Sequence[Mapping[str, object]]) -> str | None:
+    """The disposition of a saved package allow the resolver already claimed.
+
+    Reading back the claim the resolver made is not a verdict. An approval
+    taken out of the store has to be revalidated at the execution boundary
+    whether or not the resident can settle the reuse, so an unreachable
+    resident must never turn a consumed approval into a silent allow.
+    """
+
+    for reason in reasons:
+        if reason.get("code") != "saved_package_approval":
+            continue
+        disposition = reason.get("approval_claim_disposition")
+        return str(disposition) if disposition in {"consumed", "retained"} else "retained"
+    return None
 
 
 def _runtime_external_archive_has_digest_binding_sink(
@@ -696,8 +714,27 @@ def evaluate_native_artifact_hook(
         if settle is None:
             # Resident unreachable: nothing in the evaluation's reasons is read
             # as reuse, so no saved approval or block is applied and none is
-            # claimed as a source. A stored block still holds, and the action
-            # never ends weaker than the recomputed one.
+            # claimed as a source. A saved allow the resolver already claimed
+            # is still revalidated at the execution boundary, a stored block
+            # still holds, the authority-unavailable reuse is still recorded,
+            # and the action never ends weaker than the recomputed one.
+            claimed_disposition = (
+                _claimed_saved_package_allow(package_evaluation.reasons) if _claim_saved_approval else None
+            )
+            if claimed_disposition is not None:
+                return revalidate_claimed_allow(
+                    runtime_artifact_hash,
+                    trusted_request_override=False,
+                    package_approval_consumed=claimed_disposition == "consumed",
+                )
+            if approval_reuse is not None:
+                scanner_evidence_payload.append(
+                    {
+                        "source": "approval_reuse",
+                        "input_source": "saved_policy_decision",
+                        **approval_reuse.to_evidence(),
+                    }
+                )
             policy_action = most_restrictive_guard_action(
                 current_policy_action,
                 *([approval_reuse.action] if approval_reuse is not None else []),
