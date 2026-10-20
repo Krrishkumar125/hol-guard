@@ -434,3 +434,22 @@ def test_an_uncomposed_request_answered_with_a_decision_raises(monkeypatch: pyte
     )
     with pytest.raises(decision.NativeHookDecisionError):
         decision.native_post_claim_reuse(_CLAIM)
+
+
+def test_a_composed_request_demands_the_compose_capability(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[str] = []
+
+    def transport(*, request: dict[str, Any], required_feature: str, **_kwargs: object) -> dict[str, Any]:
+        asked.append(required_feature)
+        payload: dict[str, Any] = {"kind": "post_claim_reuse", "current_action": "allow", "validation_reason": None}
+        if "claimed_context_token" in request["query"]["inputs"]:
+            payload["reuse"] = {"action": "allow", "saved_artifact_hash_is_context_token": False}
+        return _good(request, payload=payload)
+
+    # The surrounding patches come from the shared helper; only the transport
+    # differs, because the feature gate is what this test reads off it.
+    _resident_returning(monkeypatch, lambda _request: None)
+    monkeypatch.setattr(decision, "_resident_request", transport)
+    decision.native_post_claim_decision(_claim_with_tokens(_SAVED_TOKEN))
+    decision.native_post_claim_reuse(_CLAIM)
+    assert asked == [decision.HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE, decision.HOOK_DECISION_FEATURE]

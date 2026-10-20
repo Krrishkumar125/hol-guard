@@ -23,6 +23,12 @@ pub const HOOK_DECISION_RESULT_SCHEMA: &str = "guard-hook-decision-result.v1";
 /// Capability advertised by the runtime when this operation is available.
 pub const HOOK_DECISION_FEATURE: &str = "hook-decision-v1";
 
+/// Advertised separately because the composed post-claim request carries the
+/// claimed approval's context token and expects the reuse decision back: a
+/// resident that predates it would reject those fields as unknown after the
+/// claim had already been consumed, so a caller asks for this first.
+pub const HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE: &str = "hook-decision-post-claim-compose-v1";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct HookDecisionRequestV1 {
@@ -39,7 +45,7 @@ pub enum HookDecisionQueryV1 {
         inputs: Box<HookCompositionInputsV1>,
     },
     /// Derive the inputs of the approval-reuse re-evaluation after a claim.
-    PostClaimReuse { inputs: PostClaimInputsV1 },
+    PostClaimReuse { inputs: Box<PostClaimInputsV1> },
     /// Settle the final action, record dispositions and the response directive.
     Finalize {
         inputs: Box<HookCompositionInputsV1>,
@@ -264,11 +270,16 @@ pub struct PostClaimInputsV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_context_token: Option<Value>,
     /// The claimed row was approved locally in this session.
-    #[serde(default)]
-    pub fresh_local_approval: bool,
-    /// The claimed row is a durable approval for this exact artifact.
-    #[serde(default)]
-    pub durable_exact_approval: bool,
+    ///
+    /// Optional because the request digest binds the caller's own wire form:
+    /// a caller that names the flag gets it back, one that leaves it out gets
+    /// nothing back, and either shape re-serialises to what was sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fresh_local_approval: Option<bool>,
+    /// The claimed row is a durable approval for this exact artifact, optional
+    /// for the same reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub durable_exact_approval: Option<bool>,
     pub has_ignored_integrity: bool,
     /// The claimed row no longer matches the authenticated saved row.
     pub claim_row_invalid: bool,

@@ -95,8 +95,8 @@ pub(crate) fn post_claim_reuse(
         Some(&Value::from("allow")),
         Some(true),
         reason,
-        inputs.fresh_local_approval,
-        inputs.durable_exact_approval,
+        inputs.fresh_local_approval.unwrap_or(false),
+        inputs.durable_exact_approval.unwrap_or(false),
     );
     if claimed.as_str().is_some_and(|value| !value.is_empty()) {
         decision.saved_artifact_hash_is_context_token =

@@ -231,3 +231,45 @@ fn a_legacy_stored_hash_is_named_as_one_and_cannot_prove_the_context() {
         false
     );
 }
+
+/// The digest of the request exactly as the caller wrote it on the wire.
+fn sent_digest(query: &Value) -> String {
+    let material = json!({
+        "schema": HOOK_DECISION_REQUEST_SCHEMA,
+        "request_id": "req-hook",
+        "query": query,
+    });
+    let mut bytes = Vec::new();
+    crate::context_digest_json::write_canonical_json_with_limit(&material, &mut bytes, usize::MAX)
+        .unwrap();
+    format!("sha256:{}", guard_policy_snapshot::digest_bytes(&bytes))
+}
+
+/// The transport rejects a reply whose `request_sha256` does not match the
+/// digest the caller computed over its own wire form, so a field the resident
+/// re-serializes into a shape the caller never wrote unbinds every call that
+/// omits it. Both the request that names the local-approval flags and the one
+/// that leaves them out have to come back bound.
+#[test]
+fn the_reply_digest_matches_the_request_the_caller_sent() {
+    let unnamed = json!({"kind": "post_claim_reuse", "inputs": {
+        "current_policy_action": "allow", "reuse_action": "allow", "reuse_saved_action": "allow",
+        "post_claim_refresh_failed": false, "context_changed": false,
+        "has_ignored_integrity": false, "claim_row_invalid": false,
+    }});
+    assert_eq!(
+        resident(&unnamed)["request_sha256"].as_str().unwrap(),
+        sent_digest(&unnamed)
+    );
+    let named = json!({"kind": "post_claim_reuse", "inputs": {
+        "current_policy_action": "allow", "reuse_action": "allow", "reuse_saved_action": "allow",
+        "post_claim_refresh_failed": false, "context_changed": false,
+        "fresh_local_approval": false, "durable_exact_approval": false,
+        "has_ignored_integrity": false, "claim_row_invalid": false,
+    }});
+    assert_eq!(
+        resident(&named)["request_sha256"].as_str().unwrap(),
+        sent_digest(&named)
+    );
+    assert_ne!(sent_digest(&unnamed), sent_digest(&named));
+}
