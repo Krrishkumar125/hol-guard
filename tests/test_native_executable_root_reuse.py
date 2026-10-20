@@ -126,3 +126,47 @@ def test_an_owner_that_cannot_be_proven_gone_counts_as_running(monkeypatch: pyte
 
     monkeypatch.setattr(root_module.os, "kill", denied)
     assert root_module._owner_running(12345)
+
+
+def test_a_replaced_copy_is_removed_once_no_run_uses_it() -> None:
+    with root_module.verified_executable(_SCRIPT) as first:
+        with root_module.verified_executable(_OTHER) as second:
+            # The first copy is still in use by the outer run.
+            assert first.exists() and second.exists()
+        assert first.exists()
+    assert not first.parent.exists()
+    assert second.exists()
+    assert root_module._retired == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX execute bits")
+def test_a_copy_that_lost_its_execute_bit_is_replaced() -> None:
+    with root_module.verified_executable(_SCRIPT) as first:
+        pass
+    first.chmod(0o600)
+    with root_module.verified_executable(_SCRIPT) as second:
+        assert os.access(second, os.X_OK)
+    assert second != first and not first.parent.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the Guard-home fallback is POSIX only")
+def test_a_guard_home_copy_is_not_reused_once_the_home_opens_up(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    home = tmp_path / "guard-home"
+    home.mkdir(mode=0o700)
+    home.chmod(0o700)
+    monkeypatch.setattr(root_module, "_private_roots", [])
+    root_module.use_guard_home(home)
+    real_candidate = root_module._candidate
+    monkeypatch.setattr(
+        root_module, "_candidate", lambda raw, parent: None if parent is None else real_candidate(raw, parent)
+    )
+
+    with root_module.verified_executable(_SCRIPT) as first:
+        assert first.parent.parent == home / "native-exec"
+    home.chmod(0o770)
+    with pytest.raises(root_module.ExecutableMaterializationError), root_module.verified_executable(_SCRIPT):
+        pass
+    # Once the home is private again the copy passes every check, bytes included.
+    home.chmod(0o700)
+    with root_module.verified_executable(_SCRIPT) as second:
+        assert second == first
