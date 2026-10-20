@@ -460,8 +460,8 @@ const EDITED_PROGRAM_EXTENSIONS: [&str; 1] = ["psm1"];
 
 #[cfg(any(not(unix), test))]
 fn executable_extension(path: &Path) -> bool {
-    super::curl_output_targets::windows_spelled_extension(path).is_some_and(|extension| {
-        super::curl_output_targets::WINDOWS_PROGRAM_EXTENSIONS.contains(&extension.as_str())
+    super::curl_reads::output_targets::windows_spelled_extension(path).is_some_and(|extension| {
+        super::curl_reads::output_targets::WINDOWS_PROGRAM_EXTENSIONS.contains(&extension.as_str())
             || EDITED_PROGRAM_EXTENSIONS.contains(&extension.as_str())
     })
 }
