@@ -351,6 +351,8 @@ _PEER_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbor
 
 class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
     request_queue_size = _MAX_CONCURRENT_DAEMON_CONNECTIONS
+    # Set while the installed release's authority still awaits migration.
+    _installed_authority_pending: bool = False
     store: GuardStore
     runtime: GuardSurfaceRuntime
     auth_token: str
@@ -719,7 +721,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 view = self.store.read_extension_control_authority_for_registry(registry, read_only=shared)
                 return self.extension_control_runtime.refresh(view)
 
-        if getattr(self, "_installed_authority_pending", False):
+        if self._installed_authority_pending:
             try:
                 self._migrate_installed_authority()
             except _InstalledAuthorityMigrationError:

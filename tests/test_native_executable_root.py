@@ -23,10 +23,10 @@ def _deny_exec_in_system_temp(monkeypatch: pytest.MonkeyPatch) -> None:
     system_temp = Path(tempfile.gettempdir()).resolve()
     real_access = os.access
 
-    def access(path: object, mode: int, **kwargs: object) -> bool:
-        if mode == os.X_OK and Path(str(path)).resolve().parent.parent == system_temp:
+    def access(path: Path, mode: int) -> bool:
+        if mode == os.X_OK and path.resolve().parent.parent == system_temp:
             return False
-        return real_access(path, mode, **kwargs)  # type: ignore[arg-type]
+        return real_access(path, mode)
 
     monkeypatch.setattr(root_module.os, "access", access)
 
@@ -86,7 +86,7 @@ def test_a_private_folder_another_account_could_swap_is_never_used(
 def test_no_executable_folder_reports_that_the_compiler_cannot_start(
     guard_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(root_module.os, "access", lambda path, mode, **kwargs: mode != os.X_OK)
+    monkeypatch.setattr(root_module.os, "access", lambda path, mode: mode != os.X_OK)
     with (
         pytest.raises(native_source_compiler.NativeSourceCompilerError, match="could not be started"),
         native_source_compiler._verified_executable(_SCRIPT),
