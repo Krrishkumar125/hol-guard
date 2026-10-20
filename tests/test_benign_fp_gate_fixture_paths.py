@@ -170,3 +170,4 @@ def test_file_and_directory_shapes() -> None:
     # A package manager writes executable shims into `node_modules/.bin`, so a
     # case naming one must meet a file there, not a placeholder directory.
     assert is_file_like("node_modules/.bin/vitest") and is_file_like("app/node_modules/.bin/vite")
+    assert not is_file_like("node_modules/.bin") and not is_file_like("app/node_modules/.bin/")

@@ -109,8 +109,10 @@ def is_file_like(relative: str) -> bool:
     name = posixpath.basename(relative)
     if name in _KNOWN_FILES or (name.endswith("rc") and name.startswith(".")):
         return True
-    # A package manager's shim directory holds executables, never folders.
-    if {"bin", ".bin"} & set(relative.split("/")[:-1]):
+    # A package manager's shim directory holds executables, never folders. A
+    # path that names the directory itself, with or without a trailing slash,
+    # is still a directory.
+    if name and {"bin", ".bin"} & set(relative.split("/")[:-1]):
         return True
     # `.deploy.lock.d` is a lock directory; a bare dotfile such as `.audit-trail` is a directory.
     stem = name.lstrip(".")
