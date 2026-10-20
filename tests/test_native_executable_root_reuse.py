@@ -100,3 +100,29 @@ def test_a_failed_replacement_keeps_nothing_half_retired(monkeypatch: pytest.Mon
     assert root_module._retired == []
     root_module.release_copies()
     assert not first.parent.exists()
+
+
+def test_a_new_copy_removes_copies_whose_owner_has_ended(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    abandoned = tmp_path / f"{root_module._DIRECTORY_PREFIX}41-old"
+    running = tmp_path / f"{root_module._DIRECTORY_PREFIX}42-live"
+    unrelated = tmp_path / f"{root_module._DIRECTORY_PREFIX}legacy"
+    for directory in (abandoned, running, unrelated):
+        directory.mkdir(mode=0o700)
+        (directory / "hol-guard-runtime").write_bytes(_SCRIPT)
+    monkeypatch.setattr(root_module, "_owner_running", lambda pid: pid == 42)
+    monkeypatch.setattr(root_module.tempfile, "tempdir", str(tmp_path))
+
+    with root_module.verified_executable(_SCRIPT) as path:
+        assert path.parent.name.startswith(f"{root_module._DIRECTORY_PREFIX}{os.getpid()}-")
+    assert not abandoned.exists()
+    assert running.exists() and unrelated.exists()
+    root_module.release_copies()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows asks the kernel for a process handle")
+def test_an_owner_that_cannot_be_proven_gone_counts_as_running(monkeypatch: pytest.MonkeyPatch) -> None:
+    def denied(pid: int, signal: int) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr(root_module.os, "kill", denied)
+    assert root_module._owner_running(12345)
