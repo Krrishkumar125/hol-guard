@@ -134,7 +134,7 @@ fn route_on(
     let Some(original) = shell_input(payload) else {
         return Ok(None);
     };
-    let projected = projected_input(payload, original, target);
+    let projected = projected_input(original, target);
     let original = projected.as_ref().unwrap_or(original);
     let native = (host.native)(response, original, target.workspace);
     request::write_and_route(temp, payload, original, target, native.as_deref())
@@ -151,19 +151,19 @@ fn route_on(
 /// user's own command with the activation it already resolved removed. Any
 /// other command has no projection and keeps its own bytes.
 fn projected_input(
-    payload: &Map<String, Value>,
     original: &Map<String, Value>,
     target: &SinkTarget<'_>,
 ) -> Option<Map<String, Value>> {
     let command = original.get("command")?.as_str()?;
-    let cwd = first(payload, &["cwd"])
-        .and_then(Value::as_str)
-        .unwrap_or(target.workspace);
+    // The pre-tool pass answered with the settled workspace, not the spelling
+    // the harness sent. Reading the payload's own `cwd` here would resolve the
+    // activation script against `~/project` or a symlinked path the verdict
+    // never used, and the route would carry text Guard did not answer for.
     let projected = guard_command::pretool::generic::venv_activation_target(
         command,
         guard_command::pretool::PathContext {
             home_dir: Some(target.home_dir),
-            cwd: Some(cwd),
+            cwd: Some(target.workspace),
             ..Default::default()
         },
     )?;

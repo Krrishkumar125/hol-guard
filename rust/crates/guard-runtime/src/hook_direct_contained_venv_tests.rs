@@ -91,6 +91,13 @@ fn payload(command: &str, cwd: &str) -> Map<String, Value> {
 
 /// The snapshot and the `updatedInput` the route produced for `command`.
 fn routed(root: &Path, command: &str) -> (Value, Value) {
+    routed_from(root, command, None)
+}
+
+/// The same route, with `payload_cwd` standing in for the spelling the harness
+/// sent. The edge answers with the settled workspace whatever the harness
+/// wrote, so the route has to read the same directory it did.
+fn routed_from(root: &Path, command: &str, payload_cwd: Option<&str>) -> (Value, Value) {
     let workspace = root.join("project");
     let workspace = workspace.to_str().unwrap().to_owned();
     let home = root.to_str().unwrap().to_owned();
@@ -113,7 +120,7 @@ fn routed(root: &Path, command: &str) -> (Value, Value) {
     let temp = root.join("tmp");
     let (response, snapshot) = route_on(
         &denial(),
-        &payload(command, &workspace),
+        &payload(command, payload_cwd.unwrap_or(&workspace)),
         &target,
         host,
         &temp,
@@ -149,6 +156,26 @@ fn an_activation_reaches_the_sink_as_the_program_it_hands_the_verdict_to() {
             .unwrap()
             .contains("guard execute-contained-test --harness omp"),
         "{updated}"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn the_route_reads_the_workspace_the_edge_answered_with() {
+    let root = scratch("spelling");
+    environment(&root.join("project"), &["pytest"]);
+    // Oh My Pi can send `~/project`, and Claude Code a path through a symlink.
+    // The edge settled both to the workspace before it answered, so a route
+    // that resolved the activation script against the harness's own spelling
+    // would hand the sink text no denial was given for.
+    let (snapshot, _) = routed_from(
+        &root,
+        "source .venv/bin/activate && pytest -q",
+        Some("~/project"),
+    );
+    assert_eq!(
+        snapshot["payload"]["tool_input"]["command"],
+        ".venv/bin/pytest -q"
     );
     fs::remove_dir_all(root).unwrap();
 }
