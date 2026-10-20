@@ -3897,6 +3897,11 @@ class GuardDaemonServer:
             except Exception:
                 contained = False
         contained = self._join_service_background_threads() and contained
+        extension_control_api = getattr(self._server, "extension_control_api", None)
+        if extension_control_api is not None:
+            # Best effort: process exit releases the leases anyway.
+            with suppress(Exception):
+                _ = extension_control_api.release_prepared_cache_leases()
         with suppress(Exception):
             clear_guard_daemon_state_if_current(
                 self._server.store.guard_home,

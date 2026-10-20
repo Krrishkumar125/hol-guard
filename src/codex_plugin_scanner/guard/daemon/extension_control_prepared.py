@@ -50,6 +50,34 @@ def expire_leases(service):
             candidates[index].draft._cache_lease.close()
 
 
+def release_all_leases(service, *, timeout=5.0):
+    """Release every prepared candidate's cache lease when the daemon stops.
+
+    Process exit releases them too, but a daemon stopped inside a longer-lived
+    process would otherwise keep the cache pinned, and on Windows an open lease
+    file keeps the Guard home from being removed. The candidates are dropped
+    with their leases, so none can be applied afterwards.
+    """
+    deadline = time.monotonic() + timeout
+    held = []
+    try:
+        for lock in (service._preview_lock, service._apply_lock, service._proof_lock):
+            if not lock.acquire(timeout=max(0.0, deadline - time.monotonic())):
+                return False
+            held.append(lock)
+        candidates = [*service._candidates.values.values()]
+        candidates.extend(item.candidate for item in service._pending_proofs.values())
+        service._candidates.values.clear()
+        service._pending_proofs.clear()
+        for candidate in candidates:
+            if candidate is not None:
+                candidate.draft._cache_lease.close()
+        return True
+    finally:
+        for lock in reversed(held):
+            lock.release()
+
+
 def request_digest(payload):
     return hashlib.sha256(
         json.dumps(
