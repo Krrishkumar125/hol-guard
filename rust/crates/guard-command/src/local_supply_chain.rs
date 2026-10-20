@@ -4360,10 +4360,12 @@ pub fn package_evaluation_requires_external_archive_binding(
     evaluation: &PackageRequestEvaluation,
 ) -> bool {
     let source_hashes = evaluation.external_archive_source_hashes();
-    if source_hashes
-        .iter()
-        .any(|h| h.as_str().is_some_and(|s| s.len() == 64))
-    {
+    if source_hashes.iter().any(|h| {
+        // Python measures the hash in characters. A 64-byte string that is not
+        // 64 characters long is not the hex digest this looks for, and reading
+        // it as one would drop the binding the evaluation demands.
+        h.as_str().is_some_and(|s| s.chars().count() == 64)
+    }) {
         return true;
     }
     if evaluation

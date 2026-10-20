@@ -310,7 +310,7 @@ def evaluate_native_artifact_hook(
             workspace_dir=runtime_workspace,
             external_archive_network_authorized=False,
         )
-        if _package_evaluation_requires_external_archive_binding(package_evaluation):
+        if _package_evaluation_requires_external_archive_binding(package_evaluation, guard_home=guard_home):
             has_binding_sink = _runtime_external_archive_has_digest_binding_sink(
                 artifact=runtime_artifact,
                 context=context,

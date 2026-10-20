@@ -105,7 +105,7 @@ def _bound_external_archive_mcp_request(
     guard_home: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     downloads = _external_archive_downloads(evaluation)
-    requires_binding = _package_evaluation_requires_external_archive_binding(evaluation)
+    requires_binding = _package_evaluation_requires_external_archive_binding(evaluation, guard_home=guard_home)
     if not downloads and not requires_binding:
         return message, params
     try:
