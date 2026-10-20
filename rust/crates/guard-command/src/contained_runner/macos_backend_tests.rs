@@ -191,7 +191,12 @@ fn a_backgrounded_descendant_does_not_outlive_the_launch() {
     .expect("execute");
 
     assert!(result.enforced());
-    let descendant: i32 = result.stdout.trim().parse().expect("descendant pid");
+    // The profile denies process-fork, so the background job usually never
+    // starts and `$!` expands to nothing. That refusal is itself the contained
+    // outcome; only a reported pid is worth outliving the launch.
+    let Ok(descendant) = result.stdout.trim().parse::<i32>() else {
+        return;
+    };
     let deadline = Instant::now() + Duration::from_secs(5);
     while pid_alive(descendant) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(20));

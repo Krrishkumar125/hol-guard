@@ -3,10 +3,9 @@
 //! without following a symlink, and refuses anything else rather than
 //! returning a digest that a later execution could not be held to.
 
-use std::ffi::CString;
 use std::fs;
-use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use std::process::Command;
 
 use sha2::{Digest, Sha256};
 
@@ -20,11 +19,17 @@ fn expected_digest(payload: &[u8]) -> String {
 }
 
 fn make_fifo(path: &Path) {
-    let raw = CString::new(path.as_os_str().as_bytes()).expect("fifo path");
-    // SAFETY: `raw` stays alive for the call and names a path inside the
-    // workspace this test owns.
-    let created = unsafe { libc::mkfifo(raw.as_ptr(), 0o600) };
-    assert_eq!(created, 0, "mkfifo must succeed for {}", path.display());
+    // The crate forbids unsafe code, so the named pipe comes from the system
+    // tool rather than a direct `mkfifo(2)` call.
+    let created = Command::new("mkfifo")
+        .arg(path)
+        .status()
+        .expect("run mkfifo");
+    assert!(
+        created.success(),
+        "mkfifo must succeed for {}",
+        path.display()
+    );
 }
 
 #[test]

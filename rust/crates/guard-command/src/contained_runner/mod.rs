@@ -25,6 +25,8 @@ mod input_snapshot_tests;
 mod macos_backend_tests;
 #[cfg(test)]
 mod process_lifetime_tests;
+#[cfg(test)]
+mod protected_content_tests;
 #[cfg(all(test, target_os = "linux"))]
 mod real_backend_tests;
 #[cfg(test)]
