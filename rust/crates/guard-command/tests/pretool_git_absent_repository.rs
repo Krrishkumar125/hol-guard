@@ -232,8 +232,8 @@ fn git_read_with_inline_configuration_without_a_repository_is_reviewed() {
     let plain = directory(&scratch.root, "home/Code/scratch-notes");
     let route = fixture::shell_word(&plain);
     for command in [
-        format!("git -C {route} -c core.pager=cat log --oneline -3"),
-        format!("git -c core.pager=cat -C {route} status --short"),
+        format!("git -C {route} -c core.pager=./page.sh log --oneline -3"),
+        format!("git -c core.pager=./page.sh -C {route} status --short"),
     ] {
         assert_decision(&workspace, &home, &command, false);
     }

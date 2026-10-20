@@ -204,15 +204,16 @@ pub(super) fn safe_git_arguments(
     // repository needs neither: Git dies in its own setup before it reads a
     // diff, textconv, pager or filter setting, so there is no configured
     // helper for the options to turn off.
-    if !allow_helper_context
-        && matches!(subcommand, "diff" | "log" | "show")
-        && !(active_options
+    let helpers_off = active_options
+        .iter()
+        .any(|argument| argument == "--no-ext-diff")
+        && active_options
             .iter()
-            .any(|argument| argument == "--no-ext-diff")
-            && active_options
-                .iter()
-                .any(|argument| argument == "--no-textconv"))
-        && !super::git_helper_context::arguments_route_to_no_repository(with_route, context)
+            .any(|argument| argument == "--no-textconv");
+    if matches!(subcommand, "diff" | "log" | "show")
+        && !(allow_helper_context
+            || helpers_off
+            || super::git_helper_context::arguments_route_to_no_repository(with_route, context))
     {
         return false;
     }
