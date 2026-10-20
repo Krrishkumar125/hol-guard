@@ -469,6 +469,15 @@
       "prompt": "Use the grep tool once to find where the text ordinary-workflow-fixture appears under {{workspace}}/src, then tell me which files matched."
     },
     {
+      "id": "omp-native-grep-glob-path",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "grep"
+      ],
+      "prompt": "Use the grep tool once to find where the text ordinary-workflow-fixture appears in the TypeScript sources only: pass the path {{workspace}}/src/**/*.ts so the glob limits the search to .ts files. Then tell me which files matched."
+    },
+    {
       "id": "omp-native-github-search-prs",
       "expectation": "allow",
       "oracle": "native-tools",

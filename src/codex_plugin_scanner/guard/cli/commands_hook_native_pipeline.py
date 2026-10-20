@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from ..daemon.hook_request_parsing import runtime_hook_event_name
 from ..daemon.runtime_hook_deadline import RuntimeHookDeadline
+from ..native_hook_artifact_facts import HookArtifactFactsUnavailableError
 from ..native_hook_decision import NativeHookDecisionError
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 from ..runtime.extension_control_runtime import (
@@ -306,27 +307,40 @@ def run_native_hook_pipeline(
         )
         return 0
     if runtime_artifact is not None:
-        return _run_native_artifact_hook_flow(
-            args,
-            action_envelope=action_envelope,
-            config=config,
-            context=context,
-            data_flow_signals=data_flow_signals,
-            payload=payload,
-            runtime_artifact=runtime_artifact,
-            runtime_workspace=runtime_workspace,
-            store=store,
-            managed_install=managed_install,
-            output_stream=output_stream,
-            workspace=runtime_workspace,
-            native_edge_result=edge_result if isinstance(edge_result, Mapping) else None,
-            native_edge_receipt=edge_receipt if isinstance(edge_receipt, Mapping) else None,
-            native_recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
-            _claimed_saved_allow_hash=_claimed_saved_allow_hash,
-            _claimed_trusted_request_override=_claimed_trusted_request_override,
-            _claimed_approval_request_id=_claimed_approval_request_id,
-            _claim_saved_approval=_claim_saved_approval,
-        )
+        try:
+            return _run_native_artifact_hook_flow(
+                args,
+                action_envelope=action_envelope,
+                config=config,
+                context=context,
+                data_flow_signals=data_flow_signals,
+                payload=payload,
+                runtime_artifact=runtime_artifact,
+                runtime_workspace=runtime_workspace,
+                store=store,
+                managed_install=managed_install,
+                output_stream=output_stream,
+                workspace=runtime_workspace,
+                native_edge_result=edge_result if isinstance(edge_result, Mapping) else None,
+                native_edge_receipt=edge_receipt if isinstance(edge_receipt, Mapping) else None,
+                native_recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
+                _claimed_saved_allow_hash=_claimed_saved_allow_hash,
+                _claimed_trusted_request_override=_claimed_trusted_request_override,
+                _claimed_approval_request_id=_claimed_approval_request_id,
+                _claim_saved_approval=_claim_saved_approval,
+            )
+        except HookArtifactFactsUnavailableError:
+            # The resident owns these facts, so an outage is a host outage.
+            return _emit_native_unavailable(
+                args,
+                payload=payload,
+                workspace=runtime_workspace,
+                context=context,
+                event_name=event_name,
+                reason_code=HookArtifactFactsUnavailableError.code,
+                worker=worker,
+                recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
+            )
 
     def run_native_generic_payload(*generic_args, **generic_kwargs) -> int:
         # No resident decision means no verdict: answer with the host outage shape.
