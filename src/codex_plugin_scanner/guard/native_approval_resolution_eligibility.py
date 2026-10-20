@@ -24,6 +24,10 @@ _REQUEST_SCHEMA = "guard-approval-resolution-eligibility-request.v1"
 _RESULT_SCHEMA = "guard-approval-resolution-eligibility-result.v1"
 _TIMEOUT_SECONDS = 10.0
 _MAX_REQUEST_BYTES = 4 * 1024 * 1024
+# Mirrors ``APPROVAL_RESOLUTION_ELIGIBILITY_MAX_ITEMS`` in the contract: the
+# resident refuses a request carrying more rows than this, so a sweep over an
+# unbounded set of pending rows asks in batches rather than being refused.
+_MAX_ITEMS_PER_REQUEST = 1024
 
 
 class ApprovalResolutionEligibilityUnavailableError(RuntimeError):
@@ -42,6 +46,19 @@ def native_approval_resolution_block_reasons(
     home = Path(_resolve_digest_home(guard_home))
     if not ensure_resident_prerequisite(home):
         raise ApprovalResolutionEligibilityUnavailableError
+    answers: list[str | None] = []
+    for start in range(0, len(requests), _MAX_ITEMS_PER_REQUEST):
+        batch = requests[start : start + _MAX_ITEMS_PER_REQUEST]
+        answers.extend(_block_reasons_for_batch(batch, home))
+    return answers
+
+
+def _block_reasons_for_batch(
+    requests: Sequence[Mapping[str, object]],
+    home: Path,
+) -> list[str | None]:
+    """Ask the resident about one batch the contract is willing to accept."""
+
     wire: dict[str, object] = {
         "schema": _REQUEST_SCHEMA,
         "request_id": f"approval-resolution-eligibility-{uuid4().hex}",

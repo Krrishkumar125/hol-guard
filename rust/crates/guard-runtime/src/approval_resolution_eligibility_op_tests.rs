@@ -129,3 +129,17 @@ fn a_request_with_an_unknown_field_is_rejected() {
     .unwrap_err();
     assert!(err.to_string().contains("extra"), "{err}");
 }
+
+#[test]
+fn a_request_naming_another_contract_is_refused() {
+    let mut req = request(vec![item(json!("review"), Value::Null)]);
+    req.schema = "guard-approval-resolution-plan-request.v1".to_owned();
+    let encoded = evaluate_approval_resolution_eligibility_request(&req).unwrap();
+    let decoded: Value = serde_json::from_slice(&encoded).unwrap();
+    assert_eq!(decoded["status"], json!("error"));
+    assert_eq!(
+        decoded["code"],
+        json!("native_approval_resolution_eligibility_schema_mismatch")
+    );
+    assert!(decoded.get("payload").is_none());
+}
