@@ -226,9 +226,8 @@ def test_executors_write_what_the_recorded_python_wrote(
     resident.answer = answer
     failures: list[str] = []
     replayed = 0
-    for vector in vectors:
-        if vector["flavor"] == "posix" and sys.platform == "win32":
-            continue
+    eligible = [v for v in vectors if not (v["flavor"] == "posix" and sys.platform == "win32")]
+    for vector in eligible:
         home = vector["inputs"]["tilde_home"]
         monkeypatch.setattr(os.path, "expanduser", lambda _path, home=home: home if home is not None else "~")
         current[:] = [vector]
@@ -240,7 +239,9 @@ def test_executors_write_what_the_recorded_python_wrote(
         if len(failures) > 5:
             break
     assert failures == []
-    assert replayed > 2500
+    # Windows skips the POSIX path vectors; every other vector still has to replay.
+    assert replayed == len(eligible)
+    assert replayed > (900 if sys.platform == "win32" else 2500)
 
 
 def test_a_well_formed_token_is_stored_as_given(resident: _Resident, recorder: Any) -> None:

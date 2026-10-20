@@ -598,8 +598,11 @@ def evaluate_native_artifact_hook(
             saved_decision_present=True,
         )
         if native_reuse is None:
-            # Resident unreachable: the observed approval is recorded against
-            # the recomputed current action; no saved approval is claimed.
+            # Resident unreachable: the observed approval is evaluated against
+            # the recomputed current action; no saved approval is claimed. The
+            # persist plan below is also the resident's, so an outage that
+            # lasts until then fails closed (NativeHookDecisionError) and
+            # nothing is persisted.
             native_reuse = approval_reuse_authority_unavailable(current_policy_action)
         claude_native_approval_observed, claude_native_approval_saved = (
             _persist_claude_native_permission_for_runtime_artifact(
