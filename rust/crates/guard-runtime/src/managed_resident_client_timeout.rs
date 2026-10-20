@@ -21,7 +21,8 @@ const SKILL_SCAN_TIMEOUT_CEILING_MS: u64 = 60_000;
 /// their budget must not be clamped to the nine-second ceiling that would
 /// abort a legitimate test run mid-flight. The
 /// package-shim admin op shares it: a probe runs each installed shim under its
-/// own per-shim timeout.
+/// own per-shim timeout. So does the contained workspace write, whose caller
+/// allows the write two minutes.
 const CONTAINED_RUNNER_TIMEOUT_CEILING_MS: u64 = 670_000;
 /// The containment self-probe runs a real contained process under a five
 /// second timeout and may spend another five seconds reaping it, so the
@@ -47,6 +48,7 @@ pub(crate) fn client_timeout(payload: &[u8]) -> Duration {
             "contained_node_execute"
             | "contained_typescript_execute"
             | "contained_package_script_execute"
+            | "contained_workspace_write_execute"
             | "shim_admin",
         ) => CONTAINED_RUNNER_TIMEOUT_CEILING_MS,
         Some("containment_health_probe") => CONTAINMENT_HEALTH_PROBE_TIMEOUT_CEILING_MS,
