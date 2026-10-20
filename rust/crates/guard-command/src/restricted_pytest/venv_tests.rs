@@ -1,4 +1,5 @@
 use super::super::authority::runtime_roots;
+use super::super::developer_shim::forwarded_tool;
 use super::*;
 use std::collections::BTreeMap;
 use std::os::unix::fs::{symlink, PermissionsExt};
@@ -128,7 +129,10 @@ fn external_venv_of_a_trusted_interpreter_is_admitted_with_a_venv_only_grant() {
     let (workspace, venv) = layout(&fixture.0, &base, &home);
     let allowed = admit("python3", &workspace, &venv).unwrap();
     assert!(allowed.contains(&venv.join("bin/python3")), "{allowed:?}");
-    assert!(allowed.contains(&base), "{allowed:?}");
+    // On macOS `/usr/bin/python3` is a shim, and the plan runs the tool it
+    // forwards to rather than the shim itself.
+    let image = forwarded_tool(&base).unwrap_or_else(|| base.clone());
+    assert!(allowed.contains(&image), "{allowed:?}");
     let roots = runtime_roots(&allowed, &workspace, None);
     assert!(roots.contains(&venv), "{roots:?}");
     assert!(
