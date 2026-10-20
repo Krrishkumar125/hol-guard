@@ -102,8 +102,16 @@ pub(super) fn policy_floor_with_cause_and_delivery(
     }
     if action_type == PreToolActionTypeV1::Unknown {
         // An unknown PostToolUse operation has no safe automatic allow
-        // proof, even when the configured default is permissive.
-        raise(&mut floor, "review", FloorCause::Unknown)?;
+        // proof, even when the configured default is permissive. A result
+        // that scanned the whole output clean carries that proof for the one
+        // effect PostToolUse governs, so it keeps the floor as a recorded
+        // warning instead of withholding the output.
+        let unknown_floor = if full_output_scan_proof(input.reason_code) {
+            "warn"
+        } else {
+            "review"
+        };
+        raise(&mut floor, unknown_floor, FloorCause::Unknown)?;
     }
     if facts.changed_hash {
         raise(
@@ -170,6 +178,23 @@ fn delivery_floor(action: &str, cause: FloorCause, verified: bool) -> &str {
     } else {
         action
     }
+}
+
+/// A PostToolUse result whose whole output was scanned clean, or was empty.
+///
+/// The only effect PostToolUse governs is whether the output reaches the
+/// model; the tool has already run, and withholding its text undoes nothing.
+/// A complete, untruncated clean scan is therefore the proof that matters for
+/// that effect, and it does not depend on recognizing the tool's name, which
+/// `classify_tool_name` reads from a fixed word list that no harness's tool
+/// inventory is bound to. Truncated and excerpt-only results carry their own
+/// reason codes and still take the review floor, as does every PreToolUse
+/// result, which never carries an output scan code.
+fn full_output_scan_proof(reason_code: &str) -> bool {
+    matches!(
+        reason_code,
+        "output_scan_allow" | "source_full_scan_allow" | "output_empty_allow"
+    )
 }
 
 pub(super) fn action_rank(action: &str) -> Option<u8> {
