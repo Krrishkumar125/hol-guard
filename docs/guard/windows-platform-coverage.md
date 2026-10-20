@@ -69,10 +69,11 @@ The profile runs the environment's own interpreter from a staged copy, so it
 needs an environment the snapshot can carry whole. Two shapes it cannot, and
 which fall back to review rather than failing inside the container:
 
-- An environment whose interpreter is hardlinked from a shared cache, which is
-  how `uv` builds one. The snapshot omits any workspace file with a second
-  directory entry, because that entry may be another name for a withheld file
-  such as `.env`; an environment staged without its interpreter is not one.
+- An environment built from hardlinked files, which is how `uv` installs
+  packages out of its cache. The snapshot omits any workspace file with a
+  second directory entry, because that entry may be another name for a
+  withheld file such as `.env`; an environment staged with holes in it would
+  fail on import rather than run.
 - An environment that imports through an absolute path outside itself — a
   `.pth` line holding the path it was written with, or an `__editable__`
   finder from an editable install. The snapshot sits at a fresh root, so that

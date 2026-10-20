@@ -164,6 +164,37 @@ fn refuses_an_environment_that_imports_through_an_absolute_path() {
     assert!(imports_outside_itself(&root));
 }
 
+/// `uv` installs packages by hardlinking them out of its cache, and the
+/// snapshot leaves out any file with a second directory entry.
+#[test]
+fn refuses_an_environment_built_from_hardlinked_files() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let root = directory.path().join("env");
+    let binaries = root.join("Scripts");
+    let packages = root.join("Lib/site-packages/demo");
+    std::fs::create_dir_all(&binaries).expect("a binaries directory");
+    std::fs::create_dir_all(&packages).expect("a package directory");
+    std::fs::write(binaries.join("python.exe"), b"MZ").expect("an interpreter");
+    std::fs::write(packages.join("__init__.py"), "").expect("a module");
+    let interpreter = Path::new("Scripts/python.exe");
+    assert!(!stages_incompletely(&root, interpreter));
+
+    let cached = directory.path().join("cached.py");
+    std::fs::write(&cached, "").expect("a cached module");
+    std::fs::remove_file(packages.join("__init__.py")).expect("a removed module");
+    std::fs::hard_link(&cached, packages.join("__init__.py")).expect("a hardlinked module");
+    assert!(stages_incompletely(&root, interpreter));
+
+    std::fs::remove_file(packages.join("__init__.py")).expect("a removed module");
+    std::fs::write(packages.join("__init__.py"), "").expect("a module");
+    assert!(!stages_incompletely(&root, interpreter));
+    std::fs::remove_file(binaries.join("python.exe")).expect("a removed interpreter");
+    std::fs::hard_link(&cached, binaries.join("python.exe")).expect("a hardlinked interpreter");
+    assert!(stages_incompletely(&root, interpreter));
+    // An interpreter the environment does not have is not one to stage.
+    assert!(stages_incompletely(&root, Path::new("Scripts/missing.exe")));
+}
+
 /// The command's first word may be a bare name an activated environment put
 /// on `PATH`, with or without the extension the launcher was written under.
 #[test]

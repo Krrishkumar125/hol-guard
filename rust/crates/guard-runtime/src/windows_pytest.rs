@@ -16,10 +16,10 @@
 //! `.pth` line or an `__editable__` finder holds the absolute path it was
 //! installed with, and the snapshot has no copy there. The planner declines
 //! such an environment rather than running a pytest that cannot import the
-//! project, and declines one whose interpreter is hardlinked from a shared
-//! cache, which is how `uv` builds an environment and which the snapshot
-//! leaves out because a second directory entry may be another name for a
-//! withheld file. Both fall back to the review the profile replaces.
+//! project, and declines one built from hardlinked files, which is how `uv`
+//! installs packages and which the snapshot leaves out because a second
+//! directory entry may be another name for a withheld file. Both fall back to
+//! the review the profile replaces.
 //!
 //! The bytes that do run are the repository's own, but so is every
 //! `conftest.py` pytest imports: the container, not the provenance of the
@@ -243,6 +243,69 @@ fn imports_outside_itself(environment: &Path) -> bool {
     false
 }
 
+/// How many of the environment's own files are probed for a second directory
+/// entry. A package manager that hardlinks does it to everything it installs,
+/// so a bounded sample settles the question for the whole environment.
+const LINK_PROBE_MAX: usize = 256;
+/// How deep the probe looks inside `site-packages`: a distribution's modules
+/// sit a directory or two below it.
+const LINK_PROBE_DEPTH: usize = 3;
+
+/// Whether the snapshot would stage the environment without some of its files.
+///
+/// The snapshot omits any workspace file with a second directory entry,
+/// because that entry may be another name for a withheld one such as `.env`.
+/// `uv` installs packages by hardlinking them out of its cache, so such an
+/// environment would be staged with holes and the run would fail on import
+/// inside the container rather than report anything a reader could act on.
+/// Declining here keeps the review the profile would have replaced.
+fn stages_incompletely(environment: &Path, interpreter: &Path) -> bool {
+    // An interpreter that cannot be read at all is not one this run can stage.
+    if !guard_runtime_windows_process::is_single_link_file(&environment.join(interpreter))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    let mut remaining = LINK_PROBE_MAX;
+    SITE_PACKAGES.iter().any(|relative| {
+        probe_links(
+            &environment.join(relative),
+            LINK_PROBE_DEPTH,
+            &mut remaining,
+        )
+    })
+}
+
+/// Whether any file the probe reaches has a second directory entry. A file
+/// whose link count cannot be read is passed over rather than counted against
+/// the environment; the snapshot reports its own failure to copy one.
+fn probe_links(directory: &Path, depth: usize, remaining: &mut usize) -> bool {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        if *remaining == 0 {
+            return false;
+        }
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_dir() {
+            if depth > 0 && probe_links(&entry.path(), depth - 1, remaining) {
+                return true;
+            }
+        } else if kind.is_file() {
+            *remaining -= 1;
+            if guard_runtime_windows_process::is_single_link_file(&entry.path())
+                .is_ok_and(|single| !single)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// The snapshot-relative interpreter and its environment, read back from a
 /// launch plan's own argv.
 pub(crate) fn staged_interpreter(executable: &Path) -> Option<(PathBuf, PathBuf)> {
@@ -335,16 +398,9 @@ fn plan(input: &Value) -> Result<Value, RestrictedPytestError> {
         })?;
     base_interpreter(&environment)?;
     let interpreter = environment_interpreter(&environment)?;
-    // A file with a second directory entry may be another name for a withheld
-    // one, so the snapshot leaves it out. An environment whose interpreter is
-    // hardlinked from a shared cache, which is how `uv` creates one, would
-    // therefore be staged without it; declining here keeps the review rather
-    // than failing inside the container.
-    if !guard_runtime_windows_process::is_single_link_file(&environment.join(&interpreter))
-        .unwrap_or(false)
-    {
+    if stages_incompletely(&environment, &interpreter) {
         return Err(unavailable(
-            "The virtual environment's interpreter is hardlinked, which a read-only snapshot does not carry; execution was not started.",
+            "The virtual environment is built from hardlinked files, which a read-only snapshot does not carry; execution was not started.",
         ));
     }
     if imports_outside_itself(&environment) {
