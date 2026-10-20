@@ -36,10 +36,34 @@ fn run(
     .expect("run")
 }
 
-/// Whether the process is still addressable. A killed-and-reaped descendant of
-/// the runner is gone, not a zombie, because the runner reaps its own group.
+/// Whether the process is still running. The runner waits only for its direct
+/// child, so a killed descendant is reparented and may linger as a zombie until
+/// whatever inherited it reaps it; a signal probe cannot tell that apart from a
+/// live process. On Linux the kernel reports the state directly, so a zombie is
+/// read as terminated there.
 fn still_running(pid: i32) -> bool {
-    kill(Pid::from_raw(pid), None).is_ok()
+    if kill(Pid::from_raw(pid), None).is_err() {
+        return false;
+    }
+    !is_zombie(pid)
+}
+
+#[cfg(target_os = "linux")]
+fn is_zombie(pid: i32) -> bool {
+    let Ok(stat) = fs::read_to_string(format!("/proc/{pid}/stat")) else {
+        return true;
+    };
+    // The command name sits in parentheses and may itself contain spaces, so
+    // the state field is the first token after the last closing parenthesis.
+    let Some((_, after_command)) = stat.rsplit_once(')') else {
+        return false;
+    };
+    after_command.split_whitespace().next() == Some("Z")
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_zombie(_pid: i32) -> bool {
+    false
 }
 
 #[test]
@@ -79,8 +103,11 @@ fn the_environment_the_caller_did_not_grant_is_not_inherited() {
     let mut environment = BTreeMap::new();
     environment.insert("GUARD_GRANTED".to_owned(), "yes".to_owned());
 
+    // `env` prints the environment it was handed. A shell would be the wrong
+    // witness: it supplies a default PATH of its own when none was inherited,
+    // which would hide a PATH the runner failed to clear.
     let outcome = run_process(
-        &shell("printf '%s %s' \"${GUARD_GRANTED:-missing}\" \"${PATH:-cleared}\""),
+        &["/usr/bin/env".to_owned()],
         &workspace.path.to_string_lossy(),
         &environment,
         10.0,
@@ -89,7 +116,7 @@ fn the_environment_the_caller_did_not_grant_is_not_inherited() {
     )
     .expect("run");
 
-    assert_eq!(outcome.stdout, "yes cleared");
+    assert_eq!(outcome.stdout, "GUARD_GRANTED=yes\n");
 }
 
 #[test]

@@ -169,7 +169,10 @@ fn the_network_is_denied_even_for_loopback() {
             &[
                 "/usr/bin/python3",
                 "-c",
-                "import socket; socket.socket().bind(('127.0.0.1', 0))",
+                // The socket is created before the guarded call so that exit
+                // code 42 can only mean the bind itself was refused, not that
+                // the interpreter failed to start or import.
+                "import socket, sys\ns = socket.socket()\ntry:\n    s.bind(('127.0.0.1', 0))\nexcept OSError:\n    sys.exit(42)\nsys.exit(0)",
             ],
         ),
         60.0,
@@ -177,7 +180,7 @@ fn the_network_is_denied_even_for_loopback() {
     .expect("execute");
 
     assert!(result.enforced());
-    assert_ne!(result.exit_code, Some(0));
+    assert_eq!(result.exit_code, Some(42), "{}", result.stderr);
 }
 
 #[test]
