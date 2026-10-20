@@ -434,10 +434,7 @@ pub(crate) fn capture(
             if owner.has_custody() {
                 owner.reap()?;
             }
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "native child initialization or execution failed",
-            ));
+            return Err(launch::child_failed(&error_bytes));
         }
         if error_bytes == [0, 0, 0, 0] && !output_limited && status.is_none() {
             initialized = true;
