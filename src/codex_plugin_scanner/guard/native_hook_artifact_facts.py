@@ -16,8 +16,9 @@ the artifact, and it rides through the op so the facts leave here complete.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from .native_context import _resolve_digest_home, ensure_resident_prerequisite
@@ -28,6 +29,9 @@ HOOK_ARTIFACT_FACTS_FEATURE = "hook-artifact-facts-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-facts-request.v1"
 _RESULT_SCHEMA = "guard-hook-artifact-facts-result.v1"
 _TIMEOUT_SECONDS = 10.0
+# Mirrors ``HOOK_ARTIFACT_FACTS_MAX_ARTIFACTS``: the resident refuses a request
+# carrying more artifacts than this.
+_MAX_ARTIFACTS = 64
 _MAX_REQUEST_BYTES = 4 * 1024 * 1024
 
 
@@ -36,28 +40,49 @@ class HookArtifactFactsUnavailableError(RuntimeError):
 
 
 def native_hook_artifact_facts(
+    artifacts: Sequence[Mapping[str, object]],
     *,
-    artifact_type: str,
-    metadata: Mapping[str, object],
-    configured_override: str | None,
     guard_home: Path | None = None,
-) -> dict[str, object]:
-    """Return the resident's ``PolicyArtifactFactsV1`` for one artifact.
+) -> list[dict[str, object]]:
+    """Return one resident ``PolicyArtifactFactsV1`` per artifact, in order.
+
+    An evaluation reads facts for more than one artifact, so they are asked for
+    together: a hook that asked once per artifact would put the resident on the
+    critical path of every tool call more than once.
 
     Raises ``HookArtifactFactsUnavailableError`` when the resident cannot
     answer, which the hook pipeline's fail-closed handling turns into an
     availability response rather than a verdict.
     """
 
+    if not artifacts:
+        return []
     home = Path(_resolve_digest_home(guard_home))
     if not ensure_resident_prerequisite(home):
         raise HookArtifactFactsUnavailableError
+    answers: list[dict[str, object]] = []
+    for start in range(0, len(artifacts), _MAX_ARTIFACTS):
+        answers.extend(_facts_for_batch(artifacts[start : start + _MAX_ARTIFACTS], home))
+    return answers
+
+
+def _facts_for_batch(
+    artifacts: Sequence[Mapping[str, object]],
+    home: Path,
+) -> list[dict[str, object]]:
+    """Ask the resident about one batch the contract is willing to accept."""
+
     wire: dict[str, object] = {
         "schema": _REQUEST_SCHEMA,
         "request_id": f"hook-artifact-facts-{uuid4().hex}",
-        "artifact_type": artifact_type,
-        "metadata": dict(metadata),
-        "configured_override": configured_override,
+        "artifacts": [
+            {
+                "artifact_type": artifact["artifact_type"],
+                "metadata": dict(cast("Mapping[str, object]", artifact.get("metadata") or {})),
+                "configured_override": artifact.get("configured_override"),
+            }
+            for artifact in artifacts
+        ],
     }
     try:
         response = _resident_request(
@@ -75,4 +100,9 @@ def native_hook_artifact_facts(
     payload = _payload(response, wire, home)
     if not isinstance(payload, dict):
         raise HookArtifactFactsUnavailableError
-    return payload
+    facts = payload.get("facts")
+    if not isinstance(facts, list) or len(facts) != len(artifacts):
+        raise HookArtifactFactsUnavailableError
+    if not all(isinstance(item, dict) for item in facts):
+        raise HookArtifactFactsUnavailableError
+    return cast("list[dict[str, object]]", facts)

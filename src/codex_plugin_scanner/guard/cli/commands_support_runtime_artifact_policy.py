@@ -88,20 +88,41 @@ def runtime_policy_artifact_facts(
     *,
     guard_home: Path | None = None,
 ) -> dict[str, object]:
-    """Return the resident's facts for ``artifact``.
+    """Return the resident's facts for ``artifact``."""
+
+    return runtime_policy_artifact_facts_batch(config, ((artifact, harness),), guard_home=guard_home)[0]
+
+
+def runtime_policy_artifact_facts_batch(
+    config: GuardConfig,
+    artifacts: Sequence[tuple[GuardArtifact, str]],
+    *,
+    guard_home: Path | None = None,
+) -> list[dict[str, object]]:
+    """Return the resident's facts for each ``(artifact, harness)`` pair.
 
     Only the configured override is still read here: it is a settings lookup
     for this artifact, publisher and harness, not a reading of the artifact.
     Everything the verdict turns on comes from the resident, so an unavailable
     one raises instead of letting this side describe the artifact.
+
+    One evaluation's artifacts are asked for together, so reading facts costs
+    the hook a single resident round trip however many artifacts it holds.
     """
 
     return native_hook_artifact_facts(
-        artifact_type=artifact.artifact_type,
-        metadata=artifact.metadata,
-        configured_override=_typed_text(
-            config.resolve_action_override(_canonical_harness_name(harness), artifact.artifact_id, artifact.publisher)
-        ),
+        [
+            {
+                "artifact_type": artifact.artifact_type,
+                "metadata": artifact.metadata,
+                "configured_override": _typed_text(
+                    config.resolve_action_override(
+                        _canonical_harness_name(harness), artifact.artifact_id, artifact.publisher
+                    )
+                ),
+            }
+            for artifact, harness in artifacts
+        ],
         guard_home=guard_home if guard_home is not None else config.guard_home,
     )
 

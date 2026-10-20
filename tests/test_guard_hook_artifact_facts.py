@@ -37,80 +37,92 @@ def _artifact() -> GuardArtifact:
     )
 
 
+def _recorder(captured: list[dict[str, object]], answers: list[dict[str, object]] | None = None):
+    """Stand in for the resident bridge, recording what it was asked."""
+
+    def fake(artifacts, *, guard_home=None):  # type: ignore[no-untyped-def]
+        captured.append({"artifacts": [dict(item) for item in artifacts], "guard_home": guard_home})
+        return answers if answers is not None else [{} for _ in artifacts]
+
+    return fake
+
+
 def test_the_facts_are_the_residents_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
     answer = {"hard_block": True, "risk_classes": ["destructive_shell"]}
 
-    def fake(**kwargs: object) -> dict[str, object]:
-        captured.append(dict(kwargs))
-        return answer
-
-    monkeypatch.setattr(policy, "native_hook_artifact_facts", fake)
+    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured, [answer]))
     config = _Config()
     artifact = _artifact()
     assert policy.runtime_policy_artifact_facts(config, artifact, "claude-code") is answer
     assert captured == [
         {
-            "artifact_type": "tool_action_request",
-            "metadata": artifact.metadata,
-            "configured_override": None,
+            "artifacts": [
+                {
+                    "artifact_type": "tool_action_request",
+                    "metadata": artifact.metadata,
+                    "configured_override": None,
+                }
+            ],
             "guard_home": config.guard_home,
         }
     ]
 
 
-def test_nothing_about_the_artifact_is_decided_here(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_evaluations_artifacts_are_asked_for_together(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
+    runtime = {"hard_block": False}
+    approval_context = {"hard_block": True}
+
     monkeypatch.setattr(
         policy,
         "native_hook_artifact_facts",
-        lambda **kwargs: captured.append(dict(kwargs)) or {},
+        _recorder(captured, [runtime, approval_context]),
     )
+    artifact = _artifact()
+    answers = policy.runtime_policy_artifact_facts_batch(_Config(), ((artifact, "claude-code"), (artifact, "codex")))
+    assert answers == [runtime, approval_context]
+    assert len(captured) == 1
+    assert len(captured[0]["artifacts"]) == 2
+
+
+def test_nothing_about_the_artifact_is_decided_here(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
     artifact = _artifact()
     policy.runtime_policy_artifact_facts(_Config(), artifact, "claude-code")
     # The metadata travels as the artifact carries it: no derived fact rides along.
-    assert set(captured[0]) == {"artifact_type", "metadata", "configured_override", "guard_home"}
-    assert captured[0]["metadata"] == artifact.metadata
+    asked = captured[0]["artifacts"][0]
+    assert set(asked) == {"artifact_type", "metadata", "configured_override"}
+    assert asked["metadata"] == artifact.metadata
 
 
 def test_the_configured_override_is_the_one_local_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        policy,
-        "native_hook_artifact_facts",
-        lambda **kwargs: captured.append(dict(kwargs)) or {},
-    )
+    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
     config = _Config(override="review")
     policy.runtime_policy_artifact_facts(config, _artifact(), "claude-code")
-    assert captured[0]["configured_override"] == "review"
+    assert captured[0]["artifacts"][0]["configured_override"] == "review"
     assert config.overrides == [("claude-code", "shell:rm", "local")]
 
 
 def test_a_non_string_override_arrives_as_the_unknown_action(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        policy,
-        "native_hook_artifact_facts",
-        lambda **kwargs: captured.append(dict(kwargs)) or {},
-    )
+    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
     policy.runtime_policy_artifact_facts(_Config(override=7), _artifact(), "claude-code")
-    assert captured[0]["configured_override"] == ""
+    assert captured[0]["artifacts"][0]["configured_override"] == ""
 
 
 def test_an_explicit_guard_home_wins_over_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        policy,
-        "native_hook_artifact_facts",
-        lambda **kwargs: captured.append(dict(kwargs)) or {},
-    )
+    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
     home = Path("/other-home")
     policy.runtime_policy_artifact_facts(_Config(), _artifact(), "claude-code", guard_home=home)
     assert captured[0]["guard_home"] == home
 
 
 def test_an_unavailable_resident_yields_no_facts(monkeypatch: pytest.MonkeyPatch) -> None:
-    def unavailable(**kwargs: object) -> dict[str, object]:
+    def unavailable(artifacts, *, guard_home=None):  # type: ignore[no-untyped-def]
         raise HookArtifactFactsUnavailableError
 
     monkeypatch.setattr(policy, "native_hook_artifact_facts", unavailable)

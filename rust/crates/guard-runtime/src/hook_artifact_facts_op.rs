@@ -19,8 +19,9 @@
 use guard_command::command_action_risk_classes::risk_classes_for_command_action;
 use guard_contracts::{
     normalize_guard_action_result, GuardAction, HookArtifactFactsRequestV1,
-    HookArtifactFactsResultV1, PolicyArtifactFactsV1, HOOK_ARTIFACT_FACTS_MAX_BYTES,
-    HOOK_ARTIFACT_FACTS_RESULT_SCHEMA,
+    HookArtifactFactsResultV1, HookArtifactV1, PolicyArtifactFactsV1,
+    HOOK_ARTIFACT_FACTS_MAX_ARTIFACTS, HOOK_ARTIFACT_FACTS_MAX_BYTES,
+    HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA, HOOK_ARTIFACT_FACTS_RESULT_SCHEMA,
 };
 use serde_json::{Map, Value};
 
@@ -31,25 +32,48 @@ pub(crate) fn evaluate_hook_artifact_facts_request(
 ) -> Result<Vec<u8>, String> {
     let request_sha256 = request_digest_with_limit(request, HOOK_ARTIFACT_FACTS_MAX_BYTES)
         .map_err(|_| "native_hook_artifact_facts_too_large".to_owned())?;
+    let (status, code, payload) = match refusal(request) {
+        Some(code) => ("error", code, None),
+        None => ("ok", "ok", Some(evaluate_request(request))),
+    };
     crate::encode_response(&HookArtifactFactsResultV1 {
         schema: HOOK_ARTIFACT_FACTS_RESULT_SCHEMA.to_owned(),
         request_id: request.request_id.clone(),
         request_sha256,
-        status: "ok".to_owned(),
-        code: "ok".to_owned(),
-        payload: Some(evaluate(request)),
+        status: status.to_owned(),
+        code: code.to_owned(),
+        payload,
     })
 }
 
-pub(crate) fn evaluate(request: &HookArtifactFactsRequestV1) -> Value {
+/// The conditions the op refuses rather than answers.
+fn refusal(request: &HookArtifactFactsRequestV1) -> Option<&'static str> {
+    // A request naming another contract is not this op's to answer: the field
+    // is the sender's own statement of which request shape it built.
+    if request.schema != HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA {
+        return Some("native_hook_artifact_facts_schema_mismatch");
+    }
+    if request.artifacts.len() > HOOK_ARTIFACT_FACTS_MAX_ARTIFACTS {
+        return Some("native_hook_artifact_facts_too_many_artifacts");
+    }
+    None
+}
+
+/// One facts object per requested artifact, in the request's order.
+pub(crate) fn evaluate_request(request: &HookArtifactFactsRequestV1) -> Value {
+    let facts: Vec<Value> = request.artifacts.iter().map(evaluate).collect();
+    serde_json::json!({ "facts": facts })
+}
+
+pub(crate) fn evaluate(artifact: &HookArtifactV1) -> Value {
     let empty = Map::new();
-    let metadata = request.metadata.as_object().unwrap_or(&empty);
+    let metadata = artifact.metadata.as_object().unwrap_or(&empty);
     let facts = PolicyArtifactFactsV1 {
         hard_block: prompt_requires_hard_block(metadata),
-        configured_override: request.configured_override.clone(),
+        configured_override: artifact.configured_override.clone(),
         command_action_floor: command_action_floor(metadata),
         explicit_permission_allow: explicit_permission_allow(metadata),
-        risk_classes: risk_classes(&request.artifact_type, metadata),
+        risk_classes: risk_classes(&artifact.artifact_type, metadata),
         pytest_restricted_sandbox: pytest_restricted_sandbox(metadata),
         shell_local_script_review: metadata.get("reason_code").and_then(Value::as_str)
             == Some("shell_local_script_execution_review"),
@@ -64,6 +88,15 @@ pub(crate) fn evaluate(request: &HookArtifactFactsRequestV1) -> Value {
         skill_is_known_bad: skill_is_known_bad(metadata),
     };
     serde_json::to_value(facts).unwrap_or(Value::Null)
+}
+
+/// `str.strip()`: Python treats the information separators U+001C-U+001F as
+/// whitespace and Rust's `str::trim` does not, so a padded risk label would
+/// survive here as an unrecognized class the composer cannot act on.
+fn python_strip(text: &str) -> &str {
+    text.trim_matches(|character: char| {
+        character.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&character)
+    })
 }
 
 /// `_typed_text`: a present non-string setting normalizes to the unknown
@@ -100,7 +133,7 @@ fn prompt_request_classes(metadata: &Map<String, Value>) -> Vec<String> {
     values
         .into_iter()
         .filter_map(|item| item.as_str())
-        .filter(|item| !item.trim().is_empty())
+        .filter(|item| !python_strip(item).is_empty())
         .map(str::to_owned)
         .collect()
 }
@@ -192,7 +225,7 @@ fn risk_classes(artifact_type: &str, metadata: &Map<String, Value>) -> Vec<Strin
             composite
                 .iter()
                 .filter_map(|item| item.as_str())
-                .map(str::trim)
+                .map(python_strip)
                 .filter(|item| !item.is_empty())
                 .map(str::to_owned),
         );

@@ -1,19 +1,25 @@
 use super::*;
-use guard_contracts::HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA;
+use guard_contracts::{HookArtifactV1, HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA};
 use serde_json::json;
 
-fn request(artifact_type: &str, metadata: Value) -> HookArtifactFactsRequestV1 {
-    HookArtifactFactsRequestV1 {
-        schema: HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA.to_owned(),
-        request_id: "hook-artifact-facts-test".to_owned(),
+fn artifact(artifact_type: &str, metadata: Value) -> HookArtifactV1 {
+    HookArtifactV1 {
         artifact_type: artifact_type.to_owned(),
         metadata,
         configured_override: None,
     }
 }
 
+fn request(artifact_type: &str, metadata: Value) -> HookArtifactFactsRequestV1 {
+    HookArtifactFactsRequestV1 {
+        schema: HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA.to_owned(),
+        request_id: "hook-artifact-facts-test".to_owned(),
+        artifacts: vec![artifact(artifact_type, metadata)],
+    }
+}
+
 fn facts(artifact_type: &str, metadata: Value) -> Value {
-    evaluate(&request(artifact_type, metadata))
+    evaluate(&artifact(artifact_type, metadata))
 }
 
 #[test]
@@ -42,9 +48,9 @@ fn the_payload_round_trips_as_the_compose_facts() {
 
 #[test]
 fn the_caller_override_rides_through_untouched() {
-    let mut wire = request("tool_action_request", json!({}));
-    wire.configured_override = Some("review".to_owned());
-    assert_eq!(evaluate(&wire)["configured_override"], json!("review"));
+    let mut subject = artifact("tool_action_request", json!({}));
+    subject.configured_override = Some("review".to_owned());
+    assert_eq!(evaluate(&subject)["configured_override"], json!("review"));
 }
 
 #[test]
@@ -362,7 +368,7 @@ fn the_result_binds_its_request_digest() {
         request_digest_with_limit(&wire, HOOK_ARTIFACT_FACTS_MAX_BYTES).expect("digest")
     );
     assert_eq!(
-        decoded.payload.expect("payload")["action_class"],
+        decoded.payload.expect("payload")["facts"][0]["action_class"],
         json!("file read")
     );
 }
@@ -372,9 +378,62 @@ fn an_unknown_request_field_is_rejected() {
     let wire = json!({
         "schema": HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA,
         "request_id": "hook-artifact-facts-test",
-        "artifact_type": "tool_action_request",
-        "metadata": {},
+        "artifacts": [{"artifact_type": "tool_action_request", "metadata": {}}],
         "risk_classes": ["destructive_shell"],
     });
     assert!(serde_json::from_value::<HookArtifactFactsRequestV1>(wire).is_err());
+}
+
+#[test]
+fn every_requested_artifact_is_answered_in_order() {
+    let wire = HookArtifactFactsRequestV1 {
+        schema: HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA.to_owned(),
+        request_id: "hook-artifact-facts-test".to_owned(),
+        artifacts: vec![
+            artifact("tool_action_request", json!({"action_class": "file read"})),
+            artifact("file_read_request", json!({})),
+        ],
+    };
+    let answered = evaluate_request(&wire);
+    let facts = answered["facts"].as_array().expect("facts");
+    assert_eq!(facts.len(), 2);
+    assert_eq!(facts[0]["action_class"], json!("file read"));
+    assert_eq!(facts[1]["risk_classes"], json!(["local_secret_read"]));
+}
+
+#[test]
+fn a_request_naming_another_contract_is_refused() {
+    let mut wire = request("tool_action_request", json!({}));
+    wire.schema = "guard-hook-compose-request.v1".to_owned();
+    let encoded = evaluate_hook_artifact_facts_request(&wire).expect("response");
+    let decoded: HookArtifactFactsResultV1 = serde_json::from_slice(&encoded).expect("result");
+    assert_eq!(decoded.status, "error");
+    assert_eq!(decoded.code, "native_hook_artifact_facts_schema_mismatch");
+    assert!(decoded.payload.is_none());
+}
+
+#[test]
+fn more_artifacts_than_the_contract_admits_are_refused() {
+    let mut wire = request("tool_action_request", json!({}));
+    wire.artifacts =
+        vec![artifact("tool_action_request", json!({})); HOOK_ARTIFACT_FACTS_MAX_ARTIFACTS + 1];
+    let encoded = evaluate_hook_artifact_facts_request(&wire).expect("response");
+    let decoded: HookArtifactFactsResultV1 = serde_json::from_slice(&encoded).expect("result");
+    assert_eq!(decoded.status, "error");
+    assert_eq!(
+        decoded.code,
+        "native_hook_artifact_facts_too_many_artifacts"
+    );
+    assert!(decoded.payload.is_none());
+}
+
+#[test]
+fn a_separator_padded_risk_label_is_still_recognized() {
+    // `str.strip()` removes U+001C-U+001F, so a label padded with them read as
+    // its own class in Python and must not reach composition unrecognized.
+    let value = facts(
+        "tool_action_request",
+        json!({"risk_classes": ["\u{1c}credential_exfiltration\u{1f}", "  \u{1e}  "]}),
+    );
+    assert_eq!(value["risk_classes"], json!(["credential_exfiltration"]));
 }
