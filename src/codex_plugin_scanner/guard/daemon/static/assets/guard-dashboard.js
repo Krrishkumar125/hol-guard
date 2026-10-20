@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-CkMTJ0-Z.js","assets/chunks/harness-version-label-0p6P70WE.js","assets/chunks/connect-guard-cloud-button-COC8NKLs.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-DdhT0dGq.js","assets/chunks/confirm-dialog-DoiBaaXB.js","assets/chunks/extensions-workspace-DAm-sgZk.js","assets/chunks/app-detail-workspace-D7AhoD71.js","assets/chunks/policy-workspace-page-BTvusmsE.js","assets/chunks/about-workspace-CMujLmFA.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-CkMTJ0-Z.js","assets/chunks/harness-version-label-0p6P70WE.js","assets/chunks/connect-guard-cloud-button-COC8NKLs.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-DdhT0dGq.js","assets/chunks/confirm-dialog-DoiBaaXB.js","assets/chunks/extensions-workspace-BkMvvEuf.js","assets/chunks/app-detail-workspace-D7AhoD71.js","assets/chunks/policy-workspace-page-BTvusmsE.js","assets/chunks/about-workspace-CMujLmFA.js"])))=>i.map(i=>d[i]);
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -31436,15 +31436,17 @@ function normalizeExtensionMutationApply(value) {
   };
 }
 class ExtensionControlApiError extends Error {
-  constructor(message, status, code, recoveryAction) {
+  constructor(message, status, code, recoveryAction, cause) {
     super(message);
     this.status = status;
     this.code = code;
     this.recoveryAction = recoveryAction;
+    this.cause = cause;
   }
   status;
   code;
   recoveryAction;
+  cause;
 }
 async function request(path, init) {
   const response = await fetchExtensionControlApi(path, init);
@@ -31460,7 +31462,8 @@ async function request(path, init) {
       typeof error.error === "string" ? error.error : `Request failed (${response.status})`,
       response.status,
       typeof error.error === "string" ? error.error : void 0,
-      typeof error.recovery === "object" && error.recovery !== null && typeof error.recovery.action === "string" ? error.recovery.action : void 0
+      typeof error.recovery === "object" && error.recovery !== null && typeof error.recovery.action === "string" ? error.recovery.action : void 0,
+      typeof error.cause === "string" ? error.cause : void 0
     );
   }
   return payload;
@@ -35634,7 +35637,7 @@ const FleetWorkspace = lazyWorkspace("fleet-workspace", () => __vitePreload(() =
 const SettingsWorkspace = lazyWorkspace("settings-workspace", () => __vitePreload(() => import("./chunks/settings-workspace-DdhT0dGq.js"), true ? __vite__mapDeps([8,7,3,9,6]) : void 0).then((m) => ({ default: m.SettingsWorkspace })));
 const ExtensionsWorkspace = lazyWorkspace(
   "extensions-workspace",
-  () => __vitePreload(() => import("./chunks/extensions-workspace-DAm-sgZk.js"), true ? __vite__mapDeps([10,9]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
+  () => __vitePreload(() => import("./chunks/extensions-workspace-BkMvvEuf.js"), true ? __vite__mapDeps([10,9]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
 );
 const AppDetailWorkspace = lazyWorkspace("app-detail-workspace", () => __vitePreload(() => import("./chunks/app-detail-workspace-D7AhoD71.js"), true ? __vite__mapDeps([11,5]) : void 0).then((m) => ({ default: m.AppDetailWorkspace })));
 const HelpModal = lazyWorkspace("help-modal", () => __vitePreload(() => import("./chunks/help-modal-B0TZsHE3.js"), true ? [] : void 0).then((m) => ({ default: m.HelpModal })));
