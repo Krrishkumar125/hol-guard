@@ -365,8 +365,11 @@ def would_have_stopped(
     discovery a ``sandbox-required`` verdict is listed as ``contain``: enforce would run it in
     Guard's sandbox rather than stop, so it is a finding only if the contained run then fails.
     ``guards`` are omp observer rows or, for other harnesses, the daemon's tap rows. A post-tool
-    row for a call whose pre-tool verdict already stopped is skipped: enforce never runs that call,
-    so its output scan is the same interruption counted twice.
+    row for a call whose pre-tool verdict denied or held it is skipped: enforce never runs that
+    call, so its output scan is the same interruption counted twice. Only a verdict counts as
+    that stop. A rendered warning on an allow, an observer or transport error, and any other row
+    that cannot prove it was quiet all leave the call running, so its output scan is a separate
+    finding and stays listed.
     """
     rows = []
     stopped_calls: set[Any] = set()
@@ -380,18 +383,24 @@ def would_have_stopped(
             failed = row.get("observer_error") or row.get("transport_error")
             kind = "stop" if failed else _receipt_stop(row, harness)
             proven = not failed
+            # An observer or transport error says nothing about the verdict, so
+            # the call still ran.
+            blocked = not failed and kind == "stop"
         else:
             found = observation_interruptions(row, harness)
             if contained and is_contained_deny(row, contained):
                 found = [event for event in found if event["kind"] != "decision"]
             kind = "stop" if found else None
             proven = any(event["kind"] != "unproven" for event in found)
+            # Only a verdict stops the call. A rendered warning on an allow, and
+            # a row that cannot prove it was quiet, both leave it running.
+            blocked = any(event["kind"] == "decision" for event in found)
         if kind is None:
             continue
         receipt = _row_receipt(row) or {}
         response = row.get("response") if isinstance(row.get("response"), dict) else {}
         event, tool, target = _row_target(row)
-        if kind == "stop" and event == "PreToolUse" and call_id is not None:
+        if blocked and event == "PreToolUse" and call_id is not None:
             stopped_calls.add(call_id)
         rows.append(
             {

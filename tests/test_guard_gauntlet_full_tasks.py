@@ -213,6 +213,26 @@ def test_output_scan_after_a_stopped_call_is_not_a_second_stop() -> None:
     ]
 
 
+def test_a_rendered_warning_does_not_hide_the_output_scan() -> None:
+    # Warn renders text and lets the call run, so its output scan is a separate finding.
+    warned = {**BASELINE_WATCH_ROW, "tool_call_id": "call-1"}
+    scanned = {**OUTPUT_SCAN_ROW, "tool_call_id": "call-1", "policy_action": "review"}
+    assert [row["event"] for row in would_have_stopped([warned, scanned])] == [
+        "PreToolUse",
+        "PostToolUse",
+    ]
+
+
+def test_an_observer_error_does_not_hide_the_output_scan() -> None:
+    # A row that never reached a verdict cannot show the call was stopped.
+    failed = {**QUIET_ROW, "tool_call_id": "call-1", "observer_error": "timeout"}
+    scanned = {**OUTPUT_SCAN_ROW, "tool_call_id": "call-1", "policy_action": "review"}
+    assert [row["event"] for row in would_have_stopped([failed, scanned], "discover")] == [
+        "PreToolUse",
+        "PostToolUse",
+    ]
+
+
 def _case(mode: str, filesystem: dict[str, bool], **extra) -> dict:
     return {
         "full_task_mode": mode,
