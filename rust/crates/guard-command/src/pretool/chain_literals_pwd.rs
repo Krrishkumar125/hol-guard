@@ -13,8 +13,10 @@
 //! the nearest `.git` above the real directory. A `.git` Git could read
 //! differently, through a link, an include, a configured worktree or a
 //! layout this pass does not check, keeps the command opaque instead of
-//! guessing. Each producer must also be allowed as its own command, so
-//! lockdown, managed policy and extension controls on it still hold.
+//! guessing. Each producer must also be allowed as its own command (for
+//! `dirname`, which reads no file, a run the workspace sandbox contains also
+//! counts), so lockdown, managed policy and extension controls on it still
+//! hold.
 //!
 //! The arguments of a `cd` expand before it runs, so a `cd` that holds the
 //! last use still sees the directory the uses were written against:
@@ -279,16 +281,17 @@ fn plain_git_directory(git_directory: &Path) -> bool {
         return false;
     }
     [git_directory, common.as_path()].iter().all(|base| {
-        ["config", "config.worktree"].iter().all(|name| {
-            let path = base.join(name);
-            match std::fs::symlink_metadata(&path) {
-                Err(error) => error.kind() == std::io::ErrorKind::NotFound,
-                Ok(_) => small_file(&path).is_some_and(|text| {
+        let absent = |name: &str| {
+            std::fs::symlink_metadata(base.join(name))
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+        };
+        let path = base.join("config");
+        absent("config.worktree")
+            && (absent("config")
+                || small_file(&path).is_some_and(|text| {
                     let text = text.to_ascii_lowercase();
                     !text.contains("worktree") && !text.contains("include")
-                }),
-            }
-        })
+                }))
     })
 }
 

@@ -293,7 +293,7 @@ def test_report_gates_native_parity_and_preserves_every_original_oracle_differen
     assert native_contract["unexpected_count"] == 0
     assert _group_signatures(native_contract["groups"]) == expected_native_groups()
     assert _group_signatures(native_contract["native_rejection_groups"]) == expected_native_rejection_groups()
-    assert native_contract["native_rejection_count"] == 25_002
+    assert native_contract["native_rejection_count"] == 20_835
 
     reconciliation = cast(dict[str, object], report["oracle_reconciliation"])
     assert reconciliation["known_gap_equality"] is False
