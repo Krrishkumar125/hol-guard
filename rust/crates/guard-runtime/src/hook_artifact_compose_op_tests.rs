@@ -571,3 +571,52 @@ fn a_prompts_own_classes_decide_the_hard_block() {
     let ordinary: HookArtifactComposeQueryV1 = serde_json::from_value(ordinary).unwrap();
     assert_eq!(compose(&ordinary).unwrap(), base["expected"]);
 }
+
+#[test]
+fn a_reason_code_decides_exactly_what_the_caller_used_to_decide() {
+    let mut text = String::new();
+    GzDecoder::new(CONFIG_ACTION_VECTORS)
+        .read_to_string(&mut text)
+        .unwrap();
+    let vectors: Vec<Value> = serde_json::from_str(&text).unwrap();
+    let base = vectors
+        .iter()
+        .find(|vector| vector["query"]["artifact"]["reason_code"].is_null())
+        .expect("a recorded query that names no reason code");
+    let mut query = base["query"].clone();
+    query["kind"] = json!("config_action");
+
+    // A caller that still answers for itself and a caller that sends the
+    // metadata the answer is read off must reach the same action.
+    for (shared, decided, reason) in [
+        (
+            json!({"action_class": "pytest repository-code execution"}),
+            json!({"pytest_restricted_sandbox": true}),
+            json!({
+                "reason_code": "pytest_restricted_profile_required",
+                "restricted_profile_version": "2",
+            }),
+        ),
+        (
+            json!({}),
+            json!({"shell_local_script_review": true}),
+            json!({"reason_code": "shell_local_script_execution_review"}),
+        ),
+    ] {
+        let mut shared_query = query.clone();
+        for (key, item) in shared.as_object().unwrap() {
+            shared_query["artifact"][key] = item.clone();
+        }
+        let mut old = shared_query.clone();
+        for (key, item) in decided.as_object().unwrap() {
+            old["artifact"][key] = item.clone();
+        }
+        let mut new = shared_query;
+        for (key, item) in reason.as_object().unwrap() {
+            new["artifact"][key] = item.clone();
+        }
+        let old: HookArtifactComposeQueryV1 = serde_json::from_value(old).unwrap();
+        let new: HookArtifactComposeQueryV1 = serde_json::from_value(new).unwrap();
+        assert_eq!(compose(&old).unwrap(), compose(&new).unwrap(), "{reason}");
+    }
+}

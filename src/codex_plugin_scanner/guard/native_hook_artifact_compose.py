@@ -29,6 +29,10 @@ HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE = "hook-artifact-compose-package-reu
 # own classes. A runtime that predates the field rejects it as unknown, so a
 # request that carries it asks for this feature and nothing else does.
 HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE = "hook-artifact-compose-prompt-facts-v1"
+# The restricted-pytest and shell local-script facts are read by the resident
+# off the artifact's reason code. A runtime that predates the field rejects it
+# as unknown, so a request that names a reason code asks for this feature.
+HOOK_ARTIFACT_COMPOSE_REASON_FACTS_FEATURE = "hook-artifact-compose-reason-facts-v1"
 HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE = "hook-artifact-compose-remembered-rule-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-compose-request.v1"
 _RESULT_SCHEMA = "guard-hook-artifact-compose-result.v1"
@@ -170,28 +174,40 @@ _KIND_FEATURES: dict[str, str] = {
 _ARTIFACT_FIELDS: tuple[str, ...] = ("artifact", "runtime", "approval_context")
 
 
-def _carries_prompt_classes(fields: Mapping[str, object]) -> bool:
-    return any(
-        isinstance(facts := fields.get(name), Mapping) and facts.get("prompt_request_classes") is not None
-        for name in _ARTIFACT_FIELDS
-    )
+# The facts a caller sends in place of an answer it used to decide, each with
+# the capability the resident needs to read it, newest first. A request that
+# carries two of them asks only for the newest, which a runtime advertises
+# only once it already answers the older ones.
+_FACT_FEATURES: tuple[tuple[str, str], ...] = (
+    ("reason_code", HOOK_ARTIFACT_COMPOSE_REASON_FACTS_FEATURE),
+    ("prompt_request_classes", HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE),
+)
+
+
+def _deferred_fact_feature(fields: Mapping[str, object]) -> str | None:
+    for name in _ARTIFACT_FIELDS:
+        facts = fields.get(name)
+        if not isinstance(facts, Mapping):
+            continue
+        for key, feature in _FACT_FEATURES:
+            if facts.get(key) is not None:
+                return feature
+    return None
 
 
 def _required_feature(kind: str, fields: Mapping[str, object]) -> str:
     """The capability this one request needs.
 
     A kind added after the op names its own feature. Otherwise a request that
-    lets the resident decide a prompt's hard block needs the runtime that
-    reads the prompt classes, and an older one is unavailable rather than
-    silently answering without them.
+    hands the resident a fact the caller used to decide needs the runtime that
+    reads that fact, and an older one is unavailable rather than silently
+    answering without it.
     """
 
     feature = _KIND_FEATURES.get(kind)
     if feature is not None:
         return feature
-    if _carries_prompt_classes(fields):
-        return HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE
-    return HOOK_ARTIFACT_COMPOSE_FEATURE
+    return _deferred_fact_feature(fields) or HOOK_ARTIFACT_COMPOSE_FEATURE
 
 
 # The exact answer shape of each query kind. Spec letters: a action,
@@ -346,6 +362,7 @@ __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_REASON_FACTS_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE",
     "NativeHookComposeError",
     "NativeHookComposeValidationError",

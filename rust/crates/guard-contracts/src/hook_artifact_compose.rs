@@ -34,6 +34,12 @@ pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE: &str =
 /// artifact alone.
 pub const HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE: &str =
     "hook-artifact-compose-prompt-facts-v1";
+/// Capability advertised when the resident derives the restricted-pytest and
+/// shell local-script facts from the artifact's reason code. A runtime that
+/// predates the field rejects it as unknown, so the caller requires this
+/// feature for an artifact that names a reason code.
+pub const HOOK_ARTIFACT_COMPOSE_REASON_FACTS_FEATURE: &str =
+    "hook-artifact-compose-reason-facts-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -137,10 +143,23 @@ pub struct PolicyArtifactFactsV1 {
     /// A verified explicit catalog-permission allow.
     pub explicit_permission_allow: bool,
     pub risk_classes: Vec<String>,
-    /// A restricted pytest sandbox profile is already in force.
+    /// A restricted pytest sandbox profile is already in force. A caller that
+    /// sends `reason_code` leaves this `false` and lets the resident decide;
+    /// a caller that still derives it keeps the answer it had.
     pub pytest_restricted_sandbox: bool,
-    /// The shell local-script execution review detector fired.
+    /// The shell local-script execution review detector fired. Decided the
+    /// same way as `pytest_restricted_sandbox`.
     pub shell_local_script_review: bool,
+    /// `reason_code` metadata, for the facts the resident reads off it.
+    /// Absent when the artifact names none, where both facts above are false
+    /// for every caller, so an older runtime still answers for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<String>,
+    /// `restricted_profile_version` metadata, when the artifact names one as
+    /// text. Sent beside a reason code, since only that pair decides the
+    /// restricted pytest fact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restricted_profile_version: Option<String>,
     /// `guard_default_action` metadata; non-strings arrive as `""`.
     pub guard_default_action: Option<String>,
     /// `str(confidence or "")` of the artifact risk confidence. Whether that
@@ -157,6 +176,33 @@ pub struct PolicyArtifactFactsV1 {
 }
 
 impl PolicyArtifactFactsV1 {
+    /// The action class of a repository-code pytest run.
+    const PYTEST_ACTION_CLASS: &'static str = "pytest repository-code execution";
+    /// The reason code a restricted pytest profile is required under.
+    const PYTEST_REASON_CODE: &'static str = "pytest_restricted_profile_required";
+    /// The reason code the shell local-script detector reports.
+    const SHELL_SCRIPT_REASON_CODE: &'static str = "shell_local_script_execution_review";
+
+    /// A restricted pytest sandbox profile is already in force.
+    ///
+    /// A caller that sends the reason code stops deciding this. One that still
+    /// sends the fact keeps the answer it had, so this reads the same value
+    /// from the same metadata either way.
+    #[must_use]
+    pub fn pytest_restricted_sandbox(&self) -> bool {
+        self.pytest_restricted_sandbox
+            || (self.action_class.as_deref() == Some(Self::PYTEST_ACTION_CLASS)
+                && self.reason_code.as_deref() == Some(Self::PYTEST_REASON_CODE)
+                && self.restricted_profile_version.is_some())
+    }
+
+    /// The shell local-script execution review detector fired.
+    #[must_use]
+    pub fn shell_local_script_review(&self) -> bool {
+        self.shell_local_script_review
+            || self.reason_code.as_deref() == Some(Self::SHELL_SCRIPT_REASON_CODE)
+    }
+
     /// The artifact risk confidence is one a protection posture stops on.
     #[must_use]
     pub fn confidence_strong(&self) -> bool {
@@ -433,6 +479,83 @@ mod confidence_tests {
         ] {
             assert!(facts(text).confidence_strong(), "{text:?} read as weaker");
         }
+    }
+
+    fn reason_facts(value: serde_json::Value) -> PolicyArtifactFactsV1 {
+        let mut base = json!({
+            "hard_block": false,
+            "configured_override": null,
+            "command_action_floor": null,
+            "explicit_permission_allow": false,
+            "risk_classes": [],
+            "pytest_restricted_sandbox": false,
+            "shell_local_script_review": false,
+            "guard_default_action": null,
+            "confidence_text": "",
+            "writes_launch_agent": false,
+            "skill_is_known_bad": false,
+        });
+        for (key, item) in value.as_object().expect("an object of overrides") {
+            base[key] = item.clone();
+        }
+        serde_json::from_value(base).expect("artifact facts decode")
+    }
+
+    #[test]
+    fn a_restricted_pytest_sandbox_needs_the_whole_reason() {
+        let whole = json!({
+            "action_class": "pytest repository-code execution",
+            "reason_code": "pytest_restricted_profile_required",
+            "restricted_profile_version": "2",
+        });
+        assert!(reason_facts(whole.clone()).pytest_restricted_sandbox());
+        for missing in ["action_class", "reason_code", "restricted_profile_version"] {
+            let mut partial = whole.clone();
+            partial[missing] = json!(null);
+            assert!(
+                !reason_facts(partial).pytest_restricted_sandbox(),
+                "{missing} was not required"
+            );
+        }
+        let mut wrong = whole.clone();
+        wrong["reason_code"] = json!("shell_local_script_execution_review");
+        assert!(!reason_facts(wrong).pytest_restricted_sandbox());
+    }
+
+    #[test]
+    fn a_shell_local_script_review_is_read_off_the_reason_code() {
+        assert!(
+            reason_facts(json!({"reason_code": "shell_local_script_execution_review"}))
+                .shell_local_script_review()
+        );
+        for code in [
+            json!(null),
+            json!(""),
+            json!("pytest_restricted_profile_required"),
+        ] {
+            assert!(
+                !reason_facts(json!({"reason_code": code})).shell_local_script_review(),
+                "a wrong reason code read as a local-script review"
+            );
+        }
+    }
+
+    #[test]
+    fn a_caller_that_still_decides_keeps_its_own_answer() {
+        let decided = reason_facts(json!({
+            "pytest_restricted_sandbox": true,
+            "shell_local_script_review": true,
+        }));
+        assert!(decided.pytest_restricted_sandbox());
+        assert!(decided.shell_local_script_review());
+    }
+
+    #[test]
+    fn a_reason_code_is_absent_from_the_wire_until_a_caller_sends_one() {
+        let value = serde_json::to_value(reason_facts(json!({}))).expect("encode");
+        let object = value.as_object().expect("an object");
+        assert!(!object.contains_key("reason_code"));
+        assert!(!object.contains_key("restricted_profile_version"));
     }
 
     #[test]

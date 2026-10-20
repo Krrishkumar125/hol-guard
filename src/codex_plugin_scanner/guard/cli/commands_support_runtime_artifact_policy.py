@@ -104,12 +104,10 @@ def runtime_policy_artifact_facts(config: GuardConfig, artifact: GuardArtifact, 
         "command_action_floor": _runtime_artifact_command_action_floor(artifact),
         "explicit_permission_allow": _runtime_artifact_has_explicit_permission_allow(artifact),
         "risk_classes": _runtime_artifact_risk_classes(artifact),
-        "pytest_restricted_sandbox": (
-            metadata.get("action_class") == "pytest repository-code execution"
-            and metadata.get("reason_code") == "pytest_restricted_profile_required"
-            and isinstance(metadata.get("restricted_profile_version"), str)
-        ),
-        "shell_local_script_review": metadata.get("reason_code") == "shell_local_script_execution_review",
+        # The resident reads both of these off the reason code the artifact
+        # names, so the caller sends the code and decides neither.
+        "pytest_restricted_sandbox": False,
+        "shell_local_script_review": False,
         "guard_default_action": _typed_text(default_action),
         "confidence_text": str(confidence or ""),
         "writes_launch_agent": _artifact_writes_launch_agent(artifact),
@@ -118,6 +116,12 @@ def runtime_policy_artifact_facts(config: GuardConfig, artifact: GuardArtifact, 
     }
     if prompt_classes:
         facts["prompt_request_classes"] = prompt_classes
+    reason_code = metadata.get("reason_code")
+    if isinstance(reason_code, str):
+        facts["reason_code"] = reason_code
+        profile_version = metadata.get("restricted_profile_version")
+        if isinstance(profile_version, str):
+            facts["restricted_profile_version"] = profile_version
     return facts
 
 

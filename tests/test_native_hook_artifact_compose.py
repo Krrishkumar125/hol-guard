@@ -309,3 +309,31 @@ def test_only_a_request_carrying_prompt_classes_asks_for_the_prompt_feature(
         compose.HOOK_ARTIFACT_COMPOSE_FEATURE,
         compose.HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE,
     ]
+
+
+def test_a_request_carrying_a_reason_code_asks_for_the_newest_fact_feature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    required = _feature_recorder(monkeypatch, payload={"action": "block", "auto_stop_events": []})
+    reasoned: dict[str, Any] = {
+        "policy_config": {},
+        "artifact": {"hard_block": False, "reason_code": "shell_local_script_execution_review"},
+    }
+    compose.native_hook_compose("config_action", reasoned, guard_home=None)
+
+    # A request that defers two facts asks only for the newest capability, which
+    # a runtime advertises only once it already answers the older one.
+    both: dict[str, Any] = {
+        "policy_config": {},
+        "artifact": {
+            "hard_block": False,
+            "prompt_request_classes": ["guard_bypass_intent"],
+            "reason_code": "shell_local_script_execution_review",
+        },
+    }
+    compose.native_hook_compose("config_action", both, guard_home=None)
+
+    assert required == [
+        compose.HOOK_ARTIFACT_COMPOSE_REASON_FACTS_FEATURE,
+        compose.HOOK_ARTIFACT_COMPOSE_REASON_FACTS_FEATURE,
+    ]

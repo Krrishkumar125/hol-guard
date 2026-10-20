@@ -209,12 +209,10 @@ def record() -> list[dict[str, object]]:
                 "command_action_floor": policy._runtime_artifact_command_action_floor(artifact),
                 "explicit_permission_allow": policy._runtime_artifact_has_explicit_permission_allow(artifact),
                 "risk_classes": runtime_policy._runtime_artifact_risk_classes(artifact),
-                "pytest_restricted_sandbox": (
-                    metadata.get("action_class") == "pytest repository-code execution"
-                    and metadata.get("reason_code") == "pytest_restricted_profile_required"
-                    and isinstance(metadata.get("restricted_profile_version"), str)
-                ),
-                "shell_local_script_review": metadata.get("reason_code") == "shell_local_script_execution_review",
+                # The resident reads both of these off the artifact's reason
+                # code, so the caller sends the code and decides neither.
+                "pytest_restricted_sandbox": False,
+                "shell_local_script_review": False,
                 "guard_default_action": default if default is None or isinstance(default, str) else "",
                 "confidence_text": str(confidence or ""),
                 "writes_launch_agent": runtime_policy._artifact_writes_launch_agent(artifact),
@@ -225,6 +223,12 @@ def record() -> list[dict[str, object]]:
         prompt_classes = sorted(_prompt_request_classes(artifact))
         if prompt_classes:
             query["artifact"]["prompt_request_classes"] = prompt_classes  # type: ignore[index]
+        reason_code = metadata.get("reason_code")
+        if isinstance(reason_code, str):
+            query["artifact"]["reason_code"] = reason_code  # type: ignore[index]
+            profile_version = metadata.get("restricted_profile_version")
+            if isinstance(profile_version, str):
+                query["artifact"]["restricted_profile_version"] = profile_version  # type: ignore[index]
         data_flow = {
             "weak": _old_data_flow_action(config, False),
             "strong": _old_data_flow_action(config, True),
