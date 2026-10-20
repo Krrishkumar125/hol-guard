@@ -64,12 +64,12 @@ fn every_optional_identity_present_matches_python() {
     };
     assert_eq!(
         tool_action_request_fingerprint(&inputs),
-        "081996e9fb5759a199ebf6641d950c18a5ff157b1dc199fc9ab9f25e800ff970"
+        "f25b683fb2e5498012f0f2051766c38fa8edc47e9377230daa6d4fcd4a264842"
     );
     assert_eq!(
         tool_action_request_artifact_id(&inputs),
         "claude:global:tool-action:\
-         081996e9fb5759a199ebf6641d950c18a5ff157b1dc199fc9ab9f25e800ff970"
+         f25b683fb2e5498012f0f2051766c38fa8edc47e9377230daa6d4fcd4a264842"
     );
 }
 
