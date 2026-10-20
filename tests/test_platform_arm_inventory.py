@@ -226,6 +226,49 @@ def test_a_rewritten_declaration_body_is_reported(tmp_path: Path) -> None:
     assert "the block behind `fn executable_file() -> bool` changed" in messages[0]
 
 
+def test_a_bracket_in_prose_does_not_end_the_block_early(tmp_path: Path) -> None:
+    """Unbalanced brackets in comments and literals must not truncate the digest."""
+    stub = (
+        "#[cfg(not(unix))]\n"
+        "fn executable_file() -> bool {\n"
+        "    // 1) open the handle before the mode is read\n"
+        "    let marker = 0;\n"
+        "    let _ = marker;\n"
+        "    false\n"
+        "}\n"
+    )
+    crates = _crate(tmp_path, stub)
+    [arm] = gate.arms(crates)
+    reviewed = [{**arm, "verdict": "windows-unsupported", "note": "fails closed"}]
+    _rewrite(crates, stub.replace("    false", "    true"))
+
+    messages = gate.problems(gate.arms(crates), reviewed)
+
+    assert len(messages) == 1
+    assert "the block behind `fn executable_file() -> bool` changed" in messages[0]
+
+
+def test_a_bracket_in_a_literal_does_not_end_the_block_early(tmp_path: Path) -> None:
+    """A closing bracket inside a char or string literal is data, not the end of the body."""
+    stub = (
+        "#[cfg(not(unix))]\n"
+        "fn executable_file() -> bool {\n"
+        "    let closer = ')';\n"
+        "    let _ = closer;\n"
+        "    false\n"
+        "}\n"
+    )
+    crates = _crate(tmp_path, stub)
+    [arm] = gate.arms(crates)
+    reviewed = [{**arm, "verdict": "windows-unsupported", "note": "fails closed"}]
+    _rewrite(crates, stub.replace("    false", "    true"))
+
+    messages = gate.problems(gate.arms(crates), reviewed)
+
+    assert len(messages) == 1
+    assert "the block behind `fn executable_file() -> bool` changed" in messages[0]
+
+
 def test_a_declaration_without_a_body_ends_at_its_semicolon(tmp_path: Path) -> None:
     """A `mod` or a `use` must not be keyed on whatever follows it."""
     crates = _crate(tmp_path, "#[cfg(not(unix))]\nmod windows_pytest;\nfn unrelated() -> bool {\n    true\n}\n")

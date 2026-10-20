@@ -235,6 +235,56 @@ def signature(lines: list[str], start: int) -> str:
 OPENING, CLOSING = "([{", ")]}"
 
 
+def code_only(line: str, in_block_comment: bool) -> tuple[str, bool]:
+    """`line` with comments and literals removed, and the block-comment state.
+
+    Brackets are counted to find where an arm ends, so only brackets that are
+    code may count. Prose such as `// 1) probe the handle` and literals such as
+    `'('` or `"["` are unbalanced often enough that counting them would end the
+    digest early, leaving whatever follows unreviewed.
+    """
+    kept: list[str] = []
+    index, length = 0, len(line)
+    while index < length:
+        character = line[index]
+        if in_block_comment:
+            if line.startswith("*/", index):
+                in_block_comment = False
+                index += 2
+                continue
+            index += 1
+            continue
+        if line.startswith("//", index):
+            break
+        if line.startswith("/*", index):
+            in_block_comment = True
+            index += 2
+            continue
+        if character == '"':
+            index += 1
+            while index < length:
+                if line[index] == "\\":
+                    index += 2
+                    continue
+                if line[index] == '"':
+                    index += 1
+                    break
+                index += 1
+            continue
+        if character == "'":
+            # A lifetime (`'a`) carries no closing quote, so only a real char
+            # literal is skipped; anything else is left to be read as code.
+            closing = line.find("'", index + 3 if line.startswith("'\\", index) else index + 2)
+            if closing != -1 and closing - index <= 4:
+                index = closing + 1
+                continue
+            index += 1
+            continue
+        kept.append(character)
+        index += 1
+    return "".join(kept), in_block_comment
+
+
 def fingerprint(lines: list[str], start: int) -> str:
     """A short digest of the arm's own source.
 
@@ -252,12 +302,13 @@ def fingerprint(lines: list[str], start: int) -> str:
     on whatever lines happen to follow it.
     """
     collected: list[str] = []
-    depth = 0
+    depth, in_block_comment = 0, False
     for line in lines[start : start + BLOCK_LINES]:
         collected.append(WHITESPACE.sub(" ", line.strip()))
-        depth += sum(line.count(character) for character in OPENING)
-        depth -= sum(line.count(character) for character in CLOSING)
-        if depth <= 0 and any(character in line for character in "};"):
+        code, in_block_comment = code_only(line, in_block_comment)
+        depth += sum(code.count(character) for character in OPENING)
+        depth -= sum(code.count(character) for character in CLOSING)
+        if depth <= 0 and any(character in code for character in "};"):
             break
     body = " ".join(part for part in collected if part and not part.startswith("//"))
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
