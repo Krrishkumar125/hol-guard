@@ -343,6 +343,64 @@ fn observe_mode_reads_the_package_evaluations_own_action() {
     assert_eq!(answer["executable_action"], "warn");
 }
 
+fn prompt_request_reason(
+    harness: Value,
+    classes: &[&str],
+    summary: Value,
+    action: Value,
+) -> String {
+    let query: HookArtifactComposeQueryV1 = serde_json::from_value(json!({
+        "kind": "prompt_request_reason",
+        "harness": harness,
+        "prompt_classes": classes,
+        "prompt_summary": summary,
+        "policy_action": action,
+    }))
+    .unwrap();
+    compose(&query).unwrap()["reason"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn a_codex_secret_read_prompt_names_the_file_its_summary_reported() {
+    let credential = prompt_request_reason(
+        json!("codex"),
+        &["secret_read"],
+        json!("Reads a credential-looking local file"),
+        json!("block"),
+    );
+    assert!(
+        credential.contains("open a credential-looking local file."),
+        "{credential}"
+    );
+    let sensitive = prompt_request_reason(
+        json!("codex"),
+        &["secret_read"],
+        Value::Null,
+        json!("block"),
+    );
+    assert!(
+        sensitive.contains("open a sensitive local file."),
+        "{sensitive}"
+    );
+}
+
+#[test]
+fn another_harness_asking_for_secrets_keeps_the_prompt_copy() {
+    let reason = prompt_request_reason(
+        json!("claude-code"),
+        &["secret_read"],
+        Value::Null,
+        json!("review"),
+    );
+    assert!(
+        reason.starts_with("HOL Guard flagged this prompt because"),
+        "{reason}"
+    );
+}
+
 fn remembered_rule_reason(remembered_rules: &str, integrity_message: Value) -> Value {
     let query: HookArtifactComposeQueryV1 = serde_json::from_value(json!({
         "kind": "remembered_rule_reason",
@@ -507,6 +565,44 @@ fn the_first_reason_carrying_reuse_evidence_ends_the_scan() {
 }
 
 #[test]
+fn a_stopped_prompt_says_what_it_requested() {
+    for action in ["block", "sandbox-required"] {
+        let reason =
+            prompt_request_reason(Value::Null, &["secret_read"], Value::Null, json!(action));
+        assert_eq!(
+            reason,
+            "HOL Guard blocked this prompt because it requests guarded local secret access.",
+            "{action}"
+        );
+    }
+}
+
+#[test]
+fn a_bypass_prompt_is_blocked_on_its_own_terms_whatever_the_action() {
+    for action in [json!("block"), json!("review"), Value::Null] {
+        let reason = prompt_request_reason(
+            Value::Null,
+            &["guard_bypass_intent", "secret_read"],
+            Value::Null,
+            action,
+        );
+        assert_eq!(
+            reason,
+            "HOL Guard blocked this prompt because it asks to bypass or disable Guard."
+        );
+    }
+}
+
+#[test]
+fn a_prompt_with_no_recognised_class_is_flagged_as_higher_risk() {
+    let reason = prompt_request_reason(json!("codex"), &[], Value::Null, json!("review"));
+    assert!(
+        reason.starts_with("HOL Guard flagged this prompt as higher risk."),
+        "{reason}"
+    );
+}
+
+#[test]
 fn a_stored_block_holds_the_request_and_names_the_saved_decision() {
     let answer = package_settle(json!([]), json!("block"), false);
 
@@ -619,4 +715,39 @@ fn a_reason_code_decides_exactly_what_the_caller_used_to_decide() {
         let new: HookArtifactComposeQueryV1 = serde_json::from_value(new).unwrap();
         assert_eq!(compose(&old).unwrap(), compose(&new).unwrap(), "{reason}");
     }
+}
+
+#[test]
+fn a_signal_the_contract_rejects_refuses_the_composition() {
+    // A payload this side cannot decode is not composed over a guessed-at
+    // signal: the request is refused and the caller fails closed.
+    let reply = resident(envelope(
+        HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA,
+        json!({
+            "kind": "signal_composition",
+            "base_action": "allow",
+            "signals": [{"signal_id": "risk:x", "category": "not-a-category"}],
+        }),
+    ))
+    .unwrap();
+    assert_eq!(reply["status"], "error");
+    assert_eq!(
+        reply["code"],
+        "native_hook_artifact_compose_validation_refused"
+    );
+    assert!(reply["payload"]["message"]
+        .as_str()
+        .unwrap()
+        .starts_with("signals[0] is not a risk signal:"));
+}
+
+#[test]
+fn signal_composition_requires_both_fields() {
+    let missing = json!({"kind": "signal_composition", "base_action": "allow"});
+    assert!(resident(envelope(HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA, missing)).is_err());
+
+    let surprise = json!({
+        "kind": "signal_composition", "base_action": "allow", "signals": [], "surprise": true,
+    });
+    assert!(resident(envelope(HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA, surprise)).is_err());
 }

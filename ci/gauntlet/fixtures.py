@@ -498,6 +498,12 @@ def _add_realistic_shapes(main: Path, home: Path, environment: dict[str, str], s
         ("other-project/src/report.ts", SIBLING_REPORT),
         ("other-project/package.json", SIBLING_PACKAGE),
         ("other-project/.keep", ""),
+        # The sibling keeps a .github directory with no workflow file in
+        # it. A probe for its workflows then succeeds and prints nothing,
+        # which is the answer the probe is looking for; without the
+        # directory both commands exit nonzero and the run reads that as
+        # a host failure rather than an empty result.
+        ("other-project/.github/workflows/.keep", ""),
         # Plan and evidence notes agents keep in the harness homes, which they
         # search and print with a discarded stderr like any other file.
         (".codex/plans/acme-plan-findings.md", "# Findings\n- 541 retry window\n- 1367 report window\n"),
@@ -520,7 +526,7 @@ def _add_realistic_shapes(main: Path, home: Path, environment: dict[str, str], s
         ("init", "--quiet"),
         ("config", "user.name", "Gauntlet Fixture"),
         ("config", "user.email", "gauntlet@example.invalid"),
-        ("add", "notes.md", "src", "package.json", ".keep"),
+        ("add", "notes.md", "src", "package.json", ".keep", ".github"),
         ("commit", "--quiet", "-m", "Synthetic sibling baseline"),
         ("worktree", "add", "--quiet", "-b", "fix/report-window", str(home / SIBLING_WORKTREE)),
     ):
