@@ -23,6 +23,9 @@ pub const HOOK_ARTIFACT_COMPOSE_FEATURE: &str = "hook-artifact-compose-v1";
 /// caller requires this feature for that query alone.
 pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE: &str =
     "hook-artifact-compose-package-reuse-v1";
+/// Capability advertised when the `package_firewall_access` query is served.
+pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE: &str =
+    "hook-artifact-compose-package-firewall-access-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -64,6 +67,23 @@ pub enum HookArtifactComposeQueryV1 {
     /// Settle a package request's saved-approval reuse from the reasons the
     /// evaluation carries, folding the saved-block reuse of the same request.
     PackageReuseSettle(Box<PackageReuseSettleQueryV1>),
+    /// What a resolved package-firewall entitlement permits on this machine.
+    PackageFirewallAccess(PackageFirewallAccessQueryV1),
+}
+
+/// The resolved entitlement and the local protection a package-firewall
+/// control request is answered against.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PackageFirewallAccessQueryV1 {
+    /// The entitlement as `resolve_package_firewall_entitlement` returned it.
+    pub entitlement: Value,
+    /// The operation to answer for, `null` to answer only the states, the
+    /// offered actions, and the block copy.
+    pub operation: Option<String>,
+    /// A package manager is already shimmed on this machine, so existing local
+    /// protection stays repairable and removable.
+    pub has_installed_managers: bool,
 }
 
 /// The package-request facts the reuse settlement reads. `reasons` is the

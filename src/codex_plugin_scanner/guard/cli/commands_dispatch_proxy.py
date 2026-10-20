@@ -253,6 +253,7 @@ def _run_guard_package_shims_command(
         payload["actions"] = package_firewall_action_states(
             entitlement,
             has_installed_managers=bool(current_status.get("installed_managers")),
+            guard_home=store.guard_home,
         )
         payload["entitlement"] = entitlement
         payload["generated_at"] = _now()
@@ -263,6 +264,7 @@ def _run_guard_package_shims_command(
             entitlement=entitlement,
             has_installed_managers=bool(current_status.get("installed_managers")),
             operation="remove" if shim_command == "uninstall" else shim_command,
+            guard_home=store.guard_home,
         )
         payload["generated_at"] = _now()
         _emit("package-shims", payload, getattr(args, "json", False))

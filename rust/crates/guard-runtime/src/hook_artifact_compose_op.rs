@@ -15,6 +15,7 @@ use guard_contracts::{
 };
 use serde_json::{json, Map, Value};
 
+use crate::hook_artifact_compose_package_firewall as package_firewall;
 use crate::hook_artifact_compose_reuse as reuse;
 use crate::hook_decision_compose::{edge_action, edge_floor, is_hard};
 use crate::hook_policy_config::{artifact_policy_action, data_flow_configured_action};
@@ -84,6 +85,9 @@ pub(crate) fn compose(query: &HookArtifactComposeQueryV1) -> Result<Value, Strin
         HookArtifactComposeQueryV1::DecisionCopy(query) => reuse::decision_copy(query),
         HookArtifactComposeQueryV1::DecisionBuildCopy(query) => reuse::decision_build_copy(query)?,
         HookArtifactComposeQueryV1::PackageReuseSettle(query) => reuse::package_reuse_settle(query),
+        HookArtifactComposeQueryV1::PackageFirewallAccess(query) => {
+            package_firewall::package_firewall_access(query)?
+        }
     })
 }
 

@@ -57,14 +57,16 @@ def _package_firewall_block_payload(
     entitlement: dict[str, object],
     has_installed_managers: bool,
     operation: str,
+    guard_home: Path | None = None,
 ) -> tuple[int, dict[str, object]]:
-    status, error_code, message = package_firewall_block_details(entitlement)
+    status, error_code, message = package_firewall_block_details(entitlement, guard_home=guard_home)
     return (
         status,
         {
             "available_actions": package_firewall_available_actions(
                 entitlement,
                 has_installed_managers=has_installed_managers,
+                guard_home=guard_home,
             ),
             "cli_fallback": {
                 "connect": "hol-guard connect",

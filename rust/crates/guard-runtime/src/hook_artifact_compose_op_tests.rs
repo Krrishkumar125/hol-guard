@@ -476,3 +476,19 @@ fn a_stored_block_beside_package_reuse_keeps_the_package_source_and_adds_no_seco
     );
     assert_eq!(answer["settled_evidence_appends"], json!([]));
 }
+
+#[test]
+fn a_package_firewall_entitlement_that_is_not_an_object_is_refused() {
+    let query: HookArtifactComposeQueryV1 = serde_json::from_value(json!({
+        "kind": "package_firewall_access",
+        "entitlement": "allowed",
+        "operation": "install",
+        "has_installed_managers": false,
+    }))
+    .unwrap();
+
+    assert_eq!(
+        compose(&query).unwrap_err(),
+        "entitlement must be an object"
+    );
+}

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import cast
 
 from .cloud_entitlements import parse_guard_cloud_entitlements
+from .native_hook_artifact_compose import native_hook_compose
 from .package_firewall_defaults import (
     PACKAGE_FIREWALL_PAID_TIERS,
     build_guard_local_entitlement_defaults,
@@ -317,45 +320,61 @@ def resolve_package_firewall_entitlement(
     return _connect_required_entitlement(store)
 
 
+def _package_firewall_access(
+    entitlement: dict[str, object],
+    *,
+    operation: str | None,
+    has_installed_managers: bool,
+    guard_home: Path | None,
+) -> dict[str, object]:
+    """What the resident says this entitlement permits on this machine.
+
+    The entitlement reports whether Cloud access is proven and, when it is
+    not, why. Which actions that leaves available, which the caller may still
+    offer, what the block says, and whether one named operation may run are
+    all composed by the resident. An unreachable resident raises, so nothing
+    here recomposes an allow from the entitlement dict.
+    """
+
+    return native_hook_compose(
+        "package_firewall_access",
+        {
+            "entitlement": dict(entitlement),
+            "has_installed_managers": has_installed_managers,
+            "operation": operation,
+        },
+        guard_home=guard_home,
+    )
+
+
 def package_firewall_action_states(
     entitlement: dict[str, object],
     *,
     has_installed_managers: bool,
+    guard_home: Path | None = None,
 ) -> dict[str, str]:
-    allowed = bool(entitlement.get("allowed"))
-    reason = str(entitlement.get("reason") or "").strip().lower()
-    if allowed:
-        blocked_state = "available"
-    elif reason == "guard_cloud_connect_required":
-        blocked_state = "connect_required"
-    elif reason == "guard_cloud_reconnect_required":
-        blocked_state = "reconnect_required"
-    else:
-        blocked_state = "paid_required"
-    local_recovery_state = "available" if has_installed_managers else "disabled"
-    return {
-        "install": blocked_state,
-        "repair": "available" if allowed or has_installed_managers else blocked_state,
-        "test": blocked_state,
-        "audit": blocked_state,
-        "sync": blocked_state,
-        "remove": local_recovery_state,
-    }
+    access = _package_firewall_access(
+        entitlement,
+        operation=None,
+        has_installed_managers=has_installed_managers,
+        guard_home=guard_home,
+    )
+    return cast("dict[str, str]", access["action_states"])
 
 
 def package_firewall_available_actions(
     entitlement: dict[str, object],
     *,
     has_installed_managers: bool,
+    guard_home: Path | None = None,
 ) -> list[str]:
-    reason = str(entitlement.get("reason") or "").strip().lower()
-    actions = ["status"]
-    if reason in {"guard_cloud_connect_required", "guard_cloud_reconnect_required"}:
-        actions.append("connect")
-    if has_installed_managers:
-        actions.extend(["repair", "remove"])
-    actions.extend(["education", "cli_fallback"])
-    return actions
+    access = _package_firewall_access(
+        entitlement,
+        operation=None,
+        has_installed_managers=has_installed_managers,
+        guard_home=guard_home,
+    )
+    return cast("list[str]", access["available_actions"])
 
 
 def package_firewall_operation_allowed(
@@ -363,38 +382,27 @@ def package_firewall_operation_allowed(
     operation: str,
     *,
     has_installed_managers: bool,
+    guard_home: Path | None = None,
 ) -> bool:
-    normalized_operation = operation.strip().lower()
-    if normalized_operation in {"status", "connect", "open-shell"}:
-        return True
-    # Existing local protection must remain repairable even when Cloud access
-    # needs reconnecting or the paid entitlement cannot currently be proven.
-    # This does not authorize new installs, tests, audits, or policy sync.
-    if normalized_operation == "repair":
-        return bool(entitlement.get("allowed")) or has_installed_managers
-    if normalized_operation == "remove":
-        return has_installed_managers
-    reason = str(entitlement.get("reason") or "").strip().lower()
-    if reason == "guard_cloud_reconnect_required":
-        return False
-    return bool(entitlement.get("allowed"))
-
-
-def package_firewall_block_details(entitlement: dict[str, object]) -> tuple[int, str, str]:
-    if entitlement.get("reason") == "guard_cloud_connect_required":
-        return (
-            403,
-            "guard_cloud_connect_required",
-            "Connect HOL Guard Cloud on this machine before running package firewall actions.",
-        )
-    if entitlement.get("reason") == "guard_cloud_reconnect_required":
-        return (
-            403,
-            "guard_cloud_reconnect_required",
-            "Reconnect HOL Guard Cloud to refresh package firewall access.",
-        )
-    return (
-        402,
-        "paid_guard_cloud_required",
-        "HOL Guard Cloud paid access is required to run package firewall actions.",
+    access = _package_firewall_access(
+        entitlement,
+        operation=operation,
+        has_installed_managers=has_installed_managers,
+        guard_home=guard_home,
     )
+    return cast("bool", access["operation_allowed"])
+
+
+def package_firewall_block_details(
+    entitlement: dict[str, object],
+    *,
+    guard_home: Path | None = None,
+) -> tuple[int, str, str]:
+    access = _package_firewall_access(
+        entitlement,
+        operation=None,
+        has_installed_managers=False,
+        guard_home=guard_home,
+    )
+    block = cast("dict[str, object]", access["block"])
+    return (int(cast(int, block["status"])), str(block["code"]), str(block["message"]))

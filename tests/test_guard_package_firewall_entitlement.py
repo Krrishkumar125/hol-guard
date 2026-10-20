@@ -7,30 +7,81 @@ from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard import package_firewall_entitlement as entitlement_module
+from codex_plugin_scanner.guard.native_hook_artifact_compose import NativeHookComposeError
 from codex_plugin_scanner.guard.package_firewall_entitlement import (
     build_oauth_package_firewall_entitlement,
     package_firewall_action_states,
+    package_firewall_available_actions,
+    package_firewall_block_details,
     package_firewall_operation_allowed,
     reconcile_connect_state_with_oauth_entitlement,
 )
 from codex_plugin_scanner.guard.store import GuardStore
 
 
-@pytest.mark.parametrize(
-    "allowed,installed,can_repair",
-    [(True, False, True), (True, True, True), (False, False, False), (False, True, True)],
-)
-def test_repair_access_supports_paid_first_activation_and_existing_local_recovery(
-    allowed: bool,
-    installed: bool,
-    can_repair: bool,
+def test_package_firewall_access_is_answered_by_the_resident(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every projection sends the whole entitlement and returns what comes back.
+
+    Which actions a lapsed or unproven entitlement still leaves available is
+    the resident's call now; the shared composition vectors own that table.
+    """
+
+    asked: list[dict[str, object]] = []
+
+    def answer(kind: str, fields: dict[str, object], *, guard_home: Path | None) -> dict[str, object]:
+        asked.append({"kind": kind, "fields": dict(fields), "guard_home": guard_home})
+        return {
+            "action_states": {"repair": "available"},
+            "available_actions": ["status", "repair"],
+            "block": {"code": "paid_guard_cloud_required", "message": "Upgrade.", "status": 402},
+            "operation_allowed": True,
+        }
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", answer)
+    entitlement = {"allowed": False, "reason": "guard_cloud_reconnect_required"}
+    home = Path("/guard-home")
+
+    assert package_firewall_operation_allowed(entitlement, "repair", has_installed_managers=True, guard_home=home)
+    assert package_firewall_action_states(entitlement, has_installed_managers=True, guard_home=home) == {
+        "repair": "available"
+    }
+    assert package_firewall_available_actions(entitlement, has_installed_managers=True, guard_home=home) == [
+        "status",
+        "repair",
+    ]
+    assert package_firewall_block_details(entitlement, guard_home=home) == (
+        402,
+        "paid_guard_cloud_required",
+        "Upgrade.",
+    )
+
+    assert [question["kind"] for question in asked] == ["package_firewall_access"] * 4
+    assert asked[0]["fields"] == {
+        "entitlement": entitlement,
+        "has_installed_managers": True,
+        "operation": "repair",
+    }
+    # Only the operation question names an operation; the rest read the
+    # projections the entitlement alone decides.
+    assert [question["fields"]["operation"] for question in asked] == ["repair", None, None, None]
+    assert {question["guard_home"] for question in asked} == {home}
+
+
+def test_an_unavailable_resident_does_not_decide_package_firewall_access(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    entitlement = {"allowed": allowed, "reason": "paid_entitlement_active" if allowed else "paid_guard_cloud_required"}
-    assert package_firewall_operation_allowed(entitlement, "repair", has_installed_managers=installed) is can_repair
-    states = package_firewall_action_states(entitlement, has_installed_managers=installed)
-    assert (states["repair"] == "available") is can_repair
-    assert package_firewall_operation_allowed(entitlement, "install", has_installed_managers=installed) is allowed
-    assert package_firewall_operation_allowed(entitlement, "remove", has_installed_managers=installed) is installed
+    def unavailable(kind: str, fields: dict[str, object], *, guard_home: Path | None) -> dict[str, object]:
+        raise NativeHookComposeError("native_hook_artifact_compose_unavailable")
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", unavailable)
+
+    with pytest.raises(NativeHookComposeError):
+        package_firewall_operation_allowed(
+            {"allowed": True, "reason": "paid_entitlement_active"},
+            "install",
+            has_installed_managers=True,
+        )
 
 
 def test_build_oauth_package_firewall_entitlement_preserves_team_tier() -> None:

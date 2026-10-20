@@ -25,6 +25,7 @@ HOOK_ARTIFACT_COMPOSE_FEATURE = "hook-artifact-compose-v1"
 # kind, so each kind added after the op requires its own feature and only
 # for its own call.
 HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE = "hook-artifact-compose-package-reuse-v1"
+HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE = "hook-artifact-compose-package-firewall-access-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-compose-request.v1"
 _RESULT_SCHEMA = "guard-hook-artifact-compose-result.v1"
 _RESIDENT_CODE = re.compile(r"^native_hook_artifact_compose_[a-z_]{1,64}$")
@@ -150,10 +151,14 @@ _FIELDS: dict[str, frozenset[str]] = {
             "approval_reuse_source",
         }
     ),
+    "package_firewall_access": frozenset({"entitlement", "operation", "has_installed_managers"}),
 }
 
 # The feature a kind needs beyond the op itself.
-_KIND_FEATURES: dict[str, str] = {"package_reuse_settle": HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE}
+_KIND_FEATURES: dict[str, str] = {
+    "package_firewall_access": HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE,
+    "package_reuse_settle": HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE,
+}
 
 # The exact answer shape of each query kind. Spec letters: a action,
 # A action or null, b bool, s string, S string or null, d dict, D dict or null,
@@ -207,6 +212,12 @@ _ANSWERS: dict[str, dict[str, str]] = {
         "revalidate_required": "b",
         "saved_allow_applied": "b",
         "settled_evidence_appends": "l",
+    },
+    "package_firewall_access": {
+        "action_states": "d",
+        "available_actions": "l",
+        "block": "d",
+        "operation_allowed": "B",
     },
 }
 
@@ -304,6 +315,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
 
 __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE",
     "NativeHookComposeError",
     "NativeHookComposeValidationError",

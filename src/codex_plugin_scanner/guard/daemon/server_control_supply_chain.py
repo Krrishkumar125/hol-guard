@@ -74,6 +74,9 @@ from .server_control_connect_state import (
 class _SupplyChainRoutes:
     """Handler methods for control-plane routes."""
 
+    def _guard_home(self) -> Path:
+        return Path(self.server.store.guard_home)  # type: ignore[attr-defined]
+
     def _handle_supply_chain_package_firewall_status(self) -> None:
         entitlement = self._supply_chain_entitlement()
         status = package_shim_dashboard_status(self._harness_context({}))
@@ -83,6 +86,7 @@ class _SupplyChainRoutes:
                 "actions": package_firewall_action_states(
                     entitlement,
                     has_installed_managers=bool(status.get("installed_managers")),
+                    guard_home=self._guard_home(),
                 ),
                 "audit_workspace_dir": (str(audit_workspace_dir) if audit_workspace_dir is not None else None),
                 "cli_fallback": {
@@ -111,8 +115,9 @@ class _SupplyChainRoutes:
             entitlement,
             "repair",
             has_installed_managers=bool(current_status.get("installed_managers")),
+            guard_home=self._guard_home(),
         ):
-            status, error_code, message = package_firewall_block_details(entitlement)
+            status, error_code, message = package_firewall_block_details(entitlement, guard_home=self._guard_home())
             self._write_json(
                 {
                     "entitlement": entitlement,
@@ -185,13 +190,15 @@ class _SupplyChainRoutes:
             entitlement,
             operation,
             has_installed_managers=bool(current_status.get("installed_managers")),
+            guard_home=self._guard_home(),
         ):
-            status, error_code, message = package_firewall_block_details(entitlement)
+            status, error_code, message = package_firewall_block_details(entitlement, guard_home=self._guard_home())
             self._write_json(
                 {
                     "available_actions": package_firewall_available_actions(
                         entitlement,
                         has_installed_managers=bool(current_status.get("installed_managers")),
+                        guard_home=self._guard_home(),
                     ),
                     "entitlement": entitlement,
                     "error": error_code,
