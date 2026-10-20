@@ -69,6 +69,11 @@ fn a_possible_home_change_before_a_use_keeps_it_opaque() {
         "builtin export HOME=/etc && cat $HOME/x",
         "IFS=/ && ls $HOME",
         "2>/dev/null export HOME=/etc && cat $HOME/passwd",
+        // `printf -v` takes the name it sets as an option operand, so a name
+        // the shell assembles from expansions never spells HOME in the text.
+        "printf -v p HO; printf -v s ME; printf -v $p$s %s /etc; cat $HOME/passwd",
+        "printf -vHOME %s /etc; cat $HOME/passwd",
+        "printf \"-v\" $p$s %s /etc && cat $HOME/passwd",
     ] {
         assert_eq!(project(command, h), None, "{command}");
     }

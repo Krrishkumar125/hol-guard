@@ -14,6 +14,13 @@ const MAX_DIRECTORY_CHARS: usize = 1024;
 /// Builtins that change the shell's directory or its idea of it.
 const DIRECTORY_COMMANDS: &str = "cd chdir dirs popd pushd";
 
+/// Builtins that take the variable they set as an option operand rather than
+/// as a bare word. `names_variable` reads a bare name, so it sees
+/// `printf -v HOME`, but not a name the shell assembles from expansions, as
+/// `printf -v $prefix$suffix %s /other/home` does. Any `-v` on one of these
+/// keeps the chain opaque.
+const OPTION_SETTERS: &str = "printf";
+
 /// The command with each working-directory expansion replaced by `cwd`;
 /// `None` when nothing is replaced, the directory is not a plain absolute
 /// literal, or any step at or before a replaced use could change the directory.
@@ -90,9 +97,25 @@ pub(super) fn project_uses(
             {
                 return None;
             }
+            if listed(OPTION_SETTERS, &word)
+                && stage[leading + 1..]
+                    .iter()
+                    .any(|&(from, to)| sets_a_variable(&projected_chars[from..to]))
+            {
+                return None;
+            }
         }
     }
     Some(projected)
+}
+
+/// Whether an operand of an [`OPTION_SETTERS`] builtin is a `-v` option, in
+/// the separate (`-v NAME`) or the attached (`-vNAME`) form. The shell
+/// removes quotes and escapes before the builtin reads the word, so they are
+/// removed here too.
+fn sets_a_variable(word: &[char]) -> bool {
+    let mut chars = word.iter().filter(|&&c| !matches!(c, '\'' | '"' | '\\'));
+    chars.next() == Some(&'-') && chars.any(|&c| c == 'v')
 }
 
 /// An absolute path whose characters the shell never splits, globs, quotes
