@@ -198,8 +198,7 @@ fn sibling_repository_root(
 ) -> Option<std::path::PathBuf> {
     let home = std::fs::canonicalize(context.home_dir?).ok()?;
     let canonical = crate::pretool::worktree_writes::canonical_write_target(path)?;
-    let root =
-        crate::pretool::contained_wrapper::sibling_project_root(&canonical, context.home_dir?)?;
+    let root = repository_below_home(&canonical, context.home_dir?, &home)?;
     // The repository must sit below the home itself, not merely below a
     // temporary directory the helper also accepts, and must be spelled the
     // way the filesystem resolves it, so no alias redirects the write. The
@@ -217,6 +216,39 @@ fn sibling_repository_root(
         )
         && validated_git_marker(&root))
     .then_some(root)
+}
+
+/// The nearest ancestor of the resolved `canonical` target that holds a `.git`
+/// entry. On Unix this is the repository a `cd` into a sibling checkout is
+/// contained to, which also requires the agent's user to own it.
+#[cfg(unix)]
+fn repository_below_home(
+    canonical: &std::path::Path,
+    home_dir: &str,
+    _home: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    crate::pretool::contained_wrapper::sibling_project_root(canonical, home_dir)
+}
+
+/// Windows has no execution sink to contain a `cd` into a sibling checkout,
+/// so that route stays closed, but a redirect writes one file the same way a
+/// file-edit tool does. Only the resolved home bounds the search, which the
+/// profile's own ACL already restricts to the user; the caller still validates
+/// the marker and screens the target.
+#[cfg(not(unix))]
+fn repository_below_home(
+    canonical: &std::path::Path,
+    _home_dir: &str,
+    home: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    if !canonical.starts_with(home) {
+        return None;
+    }
+    canonical
+        .ancestors()
+        .take_while(|directory| *directory != home)
+        .find(|directory| directory.join(".git").symlink_metadata().is_ok())
+        .map(std::path::Path::to_path_buf)
 }
 
 /// An empty `.git` marker is not a repository. Bound this check to Git's
