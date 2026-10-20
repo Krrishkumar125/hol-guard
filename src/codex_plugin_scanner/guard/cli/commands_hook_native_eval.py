@@ -78,12 +78,13 @@ from .commands_hook_native_floor import (
     runtime_hook_scanner_setup,
     settle_local_grants,
 )
+from .commands_hook_native_policy_tail import local_eligibility_required, settled_policy_composition
 from .commands_hook_native_state import NativeArtifactHookState
 from .commands_parser_helpers import *
 from .commands_support_hook_state import _load_cursor_native_shell_allowance
 from .commands_support_runtime_artifact_policy import (
-    artifact_fact_explicit_permission_allow,
     artifact_fact_risk_classes,
+    artifact_fact_skip_native_floor,
     record_policy_auto_stops,
     runtime_policy_artifact_facts_batch,
     runtime_policy_config_facts,
@@ -395,17 +396,13 @@ def evaluate_native_artifact_hook(
         ((runtime_artifact, args.harness), (approval_context_artifact, policy_harness)),
         guard_home=guard_home,
     )
-    # ``package_request`` artifacts are decided by the package evaluator, not
-    # the generic command floor: the evaluator is the fail-closed semantic
-    # authority for installs, and an unproven-command ``review`` floor would
-    # force every install to pause regardless of its supply-chain verdict.
-    # The same holds for a verified explicit-permission allow: the artifact's
-    # own native-evidence-bound evaluation already adjudicated this exact
-    # command against the published control layer, so a control-blind floor
-    # re-review can only re-raise the cataloged risk the grant accepted.
+    # The resident says whether the generic command floor applies: a package
+    # install is decided by the package evaluator and a verified
+    # explicit-permission allow was already adjudicated, so the floor is only
+    # asked for when the facts do not skip it.
     native_floor = (
         None
-        if runtime_artifact.artifact_type == "package_request" or artifact_fact_explicit_permission_allow(runtime_facts)
+        if artifact_fact_skip_native_floor(runtime_facts)
         else native_pre_tool_floor(
             event_name,
             payload_map,
@@ -427,9 +424,13 @@ def evaluate_native_artifact_hook(
     has_compound_findings = isinstance(compound_finding_count, int) and compound_finding_count > 1
     scanner_risk_signals = [signal.plain_language_summary for signal in scanner_evidence]
     artifact_risk = artifact_risk_profile(runtime_artifact)
+    raw_runtime_command = _runtime_package_raw_command(payload_map, action_envelope)
     stack = native_hook_compose(
         "policy_stack",
         {
+            "event_name": event_name,
+            "artifact_type": runtime_artifact.artifact_type,
+            "has_raw_command": raw_runtime_command is not None,
             "policy_config": runtime_policy_config_facts(config, args.harness),
             "runtime": runtime_facts,
             "approval_context": approval_context_facts,
@@ -513,15 +514,10 @@ def evaluate_native_artifact_hook(
         )
     current_policy_action = policy_action
     local_tool_eligibility: LocalToolApprovalEligibility | None = None
-    raw_runtime_command = _runtime_package_raw_command(payload_map, action_envelope)
     local_grants_allowed = bool(stack["local_grants_allowed"])
-    if (
-        event_name == "PreToolUse"
-        and runtime_artifact.artifact_type in {"tool_action_request", "package_request"}
-        and raw_runtime_command is not None
-    ):
+    if local_eligibility_required(stack, raw_command=raw_runtime_command):
         local_tool_eligibility = local_tool_approval_eligibility(
-            raw_runtime_command,
+            cast("str", raw_runtime_command),
             cwd=runtime_workspace or Path.cwd(),
             home_dir=context.home_dir,
         )
@@ -892,27 +888,27 @@ def evaluate_native_artifact_hook(
         trusted_request_override_applied = bool(claim_answer["trusted_request_override_applied"])
         trusted_request_override_reason = cast("str | None", claim_answer["trusted_request_override_reason"])
         scanner_evidence_payload.append(cast("dict[str, object]", claim_answer["evidence"]))
-    policy_composition = {
-        "current_config_action": current_config_action,
-        "current_action_override": current_action_override,
-        "trusted_cli_override": trusted_cli_action,
-        "untrusted_hook_payload_hint": untrusted_payload_action,
-        "package_action": package_policy_action,
-        "data_flow_action": data_flow_action,
-        "scanner_action": scanner_action,
-        "current_composed_action": current_policy_action,
-        "saved_policy_action": stored_policy_action,
-        "approval_reuse_source": approval_reuse_source,
-        "trusted_request_override": trusted_request_override_applied,
-        "trusted_request_override_reason": trusted_request_override_reason,
-        "authoritative_action": policy_action,
-    }
-    scanner_evidence_payload.append(
-        {
-            "source": "policy_composition",
-            **policy_composition,
-        }
+    user_override = _optional_string(payload_map.get("user_override"))
+    composed = settled_policy_composition(
+        guard_home=guard_home,
+        current_config_action=current_config_action,
+        current_action_override=current_action_override,
+        trusted_cli_action=trusted_cli_action,
+        untrusted_payload_action=untrusted_payload_action,
+        package_policy_action=package_policy_action,
+        data_flow_action=data_flow_action,
+        scanner_action=scanner_action,
+        current_composed_action=current_policy_action,
+        saved_policy_action=stored_policy_action,
+        approval_reuse_source=approval_reuse_source,
+        trusted_request_override=trusted_request_override_applied,
+        trusted_request_override_reason=trusted_request_override_reason,
+        authoritative_action=policy_action,
+        claude_native_approval_observed=claude_native_approval_observed,
+        user_override_present=user_override is not None,
     )
+    policy_composition = composed.policy_composition
+    scanner_evidence_payload.append(composed.evidence)
     if action_envelope is not None:
         action_envelope = action_envelope.with_pre_execution_result(policy_action)
     copy_answer = native_hook_decision_copy(
@@ -964,19 +960,9 @@ def evaluate_native_artifact_hook(
         provenance_summary=f"runtime tool request evaluated from {runtime_artifact.config_path}",
         artifact_name=artifact_name,
         source_scope=runtime_artifact.source_scope,
-        user_override=(
-            "claude-native-approve"
-            if claude_native_approval_observed
-            else _optional_string(payload_map.get("user_override"))
-        ),
+        user_override="claude-native-approve" if claude_native_approval_observed else user_override,
         scanner_evidence=scanner_evidence_payload,
-        approval_source=(
-            "inline"
-            if claude_native_approval_observed or _optional_string(payload_map.get("user_override")) is not None
-            else "approval_center"
-            if policy_action == "require-reapproval"
-            else "policy"
-        ),
+        approval_source=composed.approval_source,
     )
     response_payload: dict[str, object] = {
         # Receipt persistence is intentionally delayed until the browser wait,

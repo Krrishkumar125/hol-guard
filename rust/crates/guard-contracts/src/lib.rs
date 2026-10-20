@@ -88,6 +88,8 @@ mod hook_adapter;
 pub use hook_adapter::*;
 mod hook_artifact_compose;
 pub use hook_artifact_compose::*;
+mod hook_artifact_compose_policy_tail;
+pub use hook_artifact_compose_policy_tail::*;
 mod consumer_artifact_compose;
 pub use consumer_artifact_compose::*;
 mod consumer_artifact_project;

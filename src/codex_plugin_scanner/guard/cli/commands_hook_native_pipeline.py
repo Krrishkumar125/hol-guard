@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from ..daemon.hook_request_parsing import runtime_hook_event_name
 from ..daemon.runtime_hook_deadline import RuntimeHookDeadline
+from ..native_hook_artifact_compose import NativeHookComposeError
 from ..native_hook_artifact_facts import HookArtifactFactsUnavailableError
 from ..native_hook_decision import NativeHookDecisionError
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
@@ -341,8 +342,9 @@ def run_native_hook_pipeline(
                 worker=worker,
                 recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
             )
-        except NativeHookDecisionError as error:
-            # No resident directive means no rendered verdict: the outage shape.
+        except (NativeHookComposeError, NativeHookDecisionError) as error:
+            # No resident directive or composition means no rendered verdict:
+            # the outage shape.
             return _emit_native_unavailable(
                 args,
                 payload=payload,
