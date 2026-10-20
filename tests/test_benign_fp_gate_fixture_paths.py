@@ -56,6 +56,10 @@ _PROBES_FOR_ABSENCE = frozenset(
         "sibling-find-missing-github-workflows",
         "gauntlet-sibling-ls-missing-github-workflows",
         "gauntlet-sibling-find-missing-github-workflows",
+        # A `-C` route to a directory that was never cloned: the whole point
+        # of the case is that Git prints the path it could not enter.
+        "observed-git-18",
+        "gauntlet-git-C-missing-checkout-log",
     }
 )
 

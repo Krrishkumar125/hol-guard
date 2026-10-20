@@ -912,27 +912,35 @@
       "expect": "allow"
     },
     {
-      "id": "git-c-missing-checkout-status",
+      "id": "gauntlet-git-C-missing-checkout-log",
       "fix_area": "git",
       "harnesses": [
-        "zcode"
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "git -C ${HOME}/not-cloned-yet status --short"
+        "command": "git -C ${HOME}/not-cloned-yet log --oneline -3"
       },
       "cwd": "worktree",
       "expect": "allow"
     },
     {
-      "id": "git-c-home-plain-directory-log",
+      "id": "gauntlet-git-C-plain-directory-status",
       "fix_area": "git",
       "harnesses": [
-        "codex"
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "git -C ${HOME}/acme-plain log --oneline -3"
+        "command": "git -C ${HOME}/acme-plain status --short"
       },
       "cwd": "worktree",
       "expect": "allow"
