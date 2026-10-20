@@ -59,7 +59,8 @@ fn action(home: &Path, shell_home: &Path, command: &str) -> String {
         PathContext {
             home_dir: home.to_str(),
             cwd: cwd.to_str(),
-            shell_home_matches: home == shell_home,
+            // As the daemon edge does: the stamped HOME decides whether the
+            // shell's home is the declared one.
             ..PathContext::default()
         },
         Some(&environment),
