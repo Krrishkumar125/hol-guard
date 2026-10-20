@@ -624,7 +624,9 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 registry=control_registry,
                 runtime=self.extension_control_runtime,
             )
-            self.local_cli_api = LocalCliApiService(store=self.store)
+            self.local_cli_api = LocalCliApiService(
+                store=self.store, record_exception=self.diagnostics.record_exception
+            )
             self.approval_attention = ApprovalAttentionCoordinator(
                 store=self.store,
                 runtime=self.runtime,
