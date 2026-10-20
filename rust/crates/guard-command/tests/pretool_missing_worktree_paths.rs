@@ -216,10 +216,20 @@ fn a_sibling_worktree_named_from_the_checkout_is_still_read_quietly() {
             result.reason_code
         );
     }
+    // A search keeps its own answer for this spelling: the screen that proves
+    // a missing search target reads no name holding `..`, so the folder is
+    // searched quietly under the home spelling the first test covers and
+    // stays reviewed under this one. Nothing here widened it.
     let result = search(&w, "../review-worktree/docs");
-    assert_eq!(
+    assert_ne!(
         result.minimum_action, "allow",
         "grep: {}",
+        result.reason_code
+    );
+    let result = search(&w, "~/review-worktree/docs");
+    assert_eq!(
+        result.minimum_action, "allow",
+        "grep home spelling: {}",
         result.reason_code
     );
 }
