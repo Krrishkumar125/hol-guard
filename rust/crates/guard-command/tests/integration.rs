@@ -184,6 +184,7 @@ pub mod pretool_read_output_scratch;
 pub mod pretool_recursive_copies;
 pub mod pretool_recursive_file_search;
 pub mod pretool_request_path_context;
+pub mod pretool_rg_files_name_only;
 pub mod pretool_rg_inclusion_globs;
 pub mod pretool_rg_literal_route_search;
 pub mod pretool_rg_replace_reads;
