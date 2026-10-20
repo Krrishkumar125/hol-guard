@@ -359,11 +359,13 @@ def _git_reads(words: list[str]) -> bool:
     if forms is None:
         return False
     operands = [word for word in after if not word.startswith("-")]
-    form = operands[0] if operands and operands[0] in forms else ""
+    # The form is the word right after the subcommand. A later operand spelled like
+    # one is a path or a name: ``git stash -- list`` stashes a file called ``list``.
+    form = after[0] if after and after[0] in forms else ""
     if form not in forms:
         return False
     if form:
-        after = after[after.index(form) + 1 :]
+        after = after[1:]
     elif operands and not (subcommand == "tag" and {"-l", "--list"} & set(after)):
         # ``git tag NAME`` creates a tag; any other operand is not a listed read form.
         return False
@@ -723,12 +725,18 @@ def rename_names(text: str, table: dict[str, str]) -> str:
 
 
 def option_names(text: str) -> bool:
-    """Whether an option token carries a name that renaming would have replaced."""
+    """Whether an option token carries a name that renaming would have replaced.
+
+    ``rename_names`` leaves every ``-`` token byte for byte, so a name glued into one
+    reaches the public fixture as written, with or without an ``=``: ``rg -eacmeinternal``,
+    ``git blame -L:chargeAcmeCustomer`` and ``--author=acme`` all keep their name. The whole
+    token is read, so any word in it that renaming would have replaced drops the row.
+    """
     return any(
         word not in GENERIC
         for token in text.split()
-        if token.startswith("-") and "=" in token
-        for word in WORD.findall(token.partition("=")[2])
+        if token.startswith("-")
+        for word in WORD.findall(token)
     )
 
 

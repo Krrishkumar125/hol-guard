@@ -43,6 +43,9 @@ def test_writes_hidden_behind_read_verbs_are_not_reads() -> None:
         "uniq in.txt out.txt",
         "rg --pre ./run x",
         "git stash",
+        # ``--`` makes ``list`` a path, so the stash is created, not listed.
+        "git stash -- list",
+        "git worktree --porcelain list",
         "git tag release-1",
         "git diff --output=report.patch",
         "git stash show --ext-diff",
@@ -75,6 +78,10 @@ def test_proven_reads_still_pass() -> None:
 def test_renaming_never_touches_option_tokens_and_ids_are_scrubbed() -> None:
     assert converter.rename_names("grep -rIl uniqueproj src", {}).startswith("grep -rIl ")
     assert converter.option_names("git log --grep=uniqueproj")
+    # A name glued into a short option is left byte for byte too, so the row is dropped.
+    assert converter.option_names("rg -eacmeinternal ${WORKTREE}")
+    assert converter.option_names("git blame -L:chargeAcmeCustomer src/a.ts")
+    assert not converter.option_names("git log --oneline -5 --name-only")
     assert converter.scrub("gh api repos/a/b/actions/jobs/115481239214/logs", []) == (
         "gh api repos/o/r/actions/jobs/123456789012/logs"
     )
