@@ -327,7 +327,7 @@ def main(args: Any) -> int:
         raise ValueError("--max-load must be a positive finite number")
     if not math.isfinite(args.max_load_wait) or args.max_load_wait < 0:
         raise ValueError("--max-load-wait must be a finite number >= 0")
-    for field in ("cache_root", "run_root", "work_parent", "wheel", "sdk_root"):
+    for field in ("cache_root", "run_root", "work_parent", "wheel", "wheel_release_assets", "sdk_root"):
         value = getattr(args, field)
         if value is not None:
             setattr(args, field, Path(value).resolve())
