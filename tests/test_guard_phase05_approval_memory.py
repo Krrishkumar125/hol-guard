@@ -1102,6 +1102,13 @@ def test_resolution_without_any_integrity_backend_names_the_missing_key(
         "resolve_request_scope_selection",
         lambda *_args, **_kwargs: ApprovalScopeSelection("artifact", "artifact"),
     )
+    # The persistence gate is a second RPC against the same home, answered here
+    # for the same reason.
+    monkeypatch.setattr(
+        approvals_module,
+        "resolve_request_persistence_selection",
+        lambda *_args, **_kwargs: None,
+    )
 
     with pytest.raises(ApprovalResolutionPlanUnavailableError, match="integrity_unavailable"):
         apply_approval_resolution(

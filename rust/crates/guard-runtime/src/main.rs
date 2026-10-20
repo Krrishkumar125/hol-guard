@@ -26,6 +26,7 @@ mod approval_gate_op;
 mod approval_gate_settings;
 mod approval_gate_state;
 mod approval_gate_verify;
+mod approval_persist_select_op;
 mod approval_proof_op;
 mod approval_queue_identity_op;
 mod approval_resolution_plan_op;
