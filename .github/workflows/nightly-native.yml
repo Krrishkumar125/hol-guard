@@ -718,6 +718,7 @@ jobs:
             tests/test_guard_extension_trust.py \
             tests/test_contribution_trust_map.py \
             tests/test_guard_mcp_server_contribution.py \
+            -n 2 --dist loadfile --max-worker-restart 0 --durations=15 \
             --junitxml=builder-evidence/tests.xml --tb=short
       - name: Build and install a wheel outside the checkout
         env:
