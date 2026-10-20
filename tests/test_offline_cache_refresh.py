@@ -121,6 +121,34 @@ def test_a_daemon_stop_does_not_wait_forever_on_a_held_preview(tmp_path):
         lease.close()
 
 
+def test_a_preview_that_arrives_after_the_final_release_prepares_nothing(tmp_path):
+    from codex_plugin_scanner.guard.daemon.extension_control_api import ExtensionControlApiError
+    from codex_plugin_scanner.guard.daemon.extension_control_prepared import (
+        PreparedControlCandidates,
+        release_all_leases,
+    )
+
+    service = SimpleNamespace(
+        _preview_lock=threading.Lock(),
+        _apply_lock=threading.Lock(),
+        _proof_lock=threading.Lock(),
+        _candidates=PreparedControlCandidates(),
+        _pending_proofs={},
+    )
+    assert release_all_leases(service) is True
+    prepared = []
+
+    def prepare():
+        prepared.append(cache_io.Lease(tmp_path / "late"))
+        return None
+
+    # A request worker paused before preview dispatch resumes after the daemon stopped.
+    with pytest.raises(ExtensionControlApiError) as error:
+        service._candidates.get_or_prepare("late", prepare)
+    assert error.value.status == 503 and error.value.code == "extension_control_stopped"
+    assert prepared == [] and service._candidates.values == {}
+
+
 @pytest.mark.parametrize("kind", ["hardlink", "fifo"])
 def test_cache_lease_reuses_private_file_io_validation_without_writing_aliases(tmp_path, kind):
     if kind == "fifo" and not hasattr(os, "mkfifo"):

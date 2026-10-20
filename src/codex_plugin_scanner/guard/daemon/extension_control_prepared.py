@@ -68,6 +68,9 @@ def release_all_leases(service, *, timeout=5.0):
         candidates = [*service._candidates.values.values()]
         candidates.extend(item.candidate for item in service._pending_proofs.values())
         service._candidates.values.clear()
+        # A request worker that outlived the executor's bounded join must not
+        # prepare a new leased candidate after this final release.
+        service._candidates.closed = True
         service._pending_proofs.clear()
         for candidate in candidates:
             if candidate is not None:
@@ -206,9 +209,13 @@ def prepare_candidate(store, registry, mutation, effective_layers, *, managed_re
 class PreparedControlCandidates:
     def __init__(self):
         self.values: OrderedDict[str, PreparedControlCandidate] = OrderedDict()
+        # Set once the daemon has released every lease; no candidate is prepared after.
+        self.closed = False
 
     def get_or_prepare(self, key, factory):
         # Caller serializes preview preparation. No lock is held across apply.
+        if self.closed:
+            raise ExtensionControlApiError(503, "extension_control_stopped")
         keys = tuple(self.values)
         for index in expired(tuple(self.values[key] for key in keys)):
             del self.values[keys[index]]
