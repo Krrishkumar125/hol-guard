@@ -122,10 +122,13 @@ fn discover_states(
     if let Some((path, digest_prefix)) = preferred_candidate {
         match load_scope_states(&path, &digest_prefix, &private_root, &mut budget) {
             Ok(found) => states.extend(found),
-            Err(error) if error == "native_resident_state_list_failed" => return Err(error),
+            Err(error) if error == "native_resident_state_list_failed" => {
+                note("discovery_preferred_scope_failed", 1);
+                return Err(error);
+            }
             Err(_) => note("discovery_preferred_scope_failed", 1),
         }
-    } else {
+    } else if preferred_prefix.is_some() {
         note("discovery_preferred_scope_missing", 1);
     }
     // Only a `RuntimeDigest` caller names a preferred scope, so only its
@@ -170,7 +173,8 @@ fn discover_states(
                     }
                 }
                 Err(_) if budget.exhausted => {
-                    return Err("native_resident_state_list_failed".to_owned())
+                    note("discovery_fallback_scope_failed", 1);
+                    return Err("native_resident_state_list_failed".to_owned());
                 }
                 Err(_) => note("discovery_fallback_scope_failed", 1),
             }
@@ -267,14 +271,22 @@ fn load_scope_states(
     paths.sort_by_key(|path| std::cmp::Reverse(generation_number(path).unwrap_or(0)));
     note("discovery_state_files", paths.len());
     let mut states = Vec::new();
+    // Count failures per scope and write one note each after the loop, so a
+    // directory of bad files cannot flood the bounded diagnostic tail.
+    let mut read_failed = 0usize;
+    let mut invalid = 0usize;
+    let mut budget_result = Ok(());
     for (attempted, path) in paths.into_iter().enumerate() {
         if attempted >= MAX_STATE_READ_ATTEMPTS || states.len() == MAX_STATE_FILES {
             break;
         }
         // Count actual reads only; a per-scope limit may stop before this read.
-        budget.consume(true)?;
+        if let Err(error) = budget.consume(true) {
+            budget_result = Err(error);
+            break;
+        }
         let Ok(state) = read_state_file_raw(&path, private_root) else {
-            note("discovery_state_read_failed", 1);
+            read_failed += 1;
             continue;
         };
         let digest = state.runtime_sha256.clone();
@@ -283,11 +295,18 @@ fn load_scope_states(
             || !digest[..16].eq_ignore_ascii_case(digest_prefix)
             || validate_state(&scope, &state, &digest).is_err()
         {
-            note("discovery_state_invalid", 1);
+            invalid += 1;
             continue;
         }
         states.push((scope.clone(), digest, state));
     }
+    if read_failed > 0 {
+        note("discovery_state_read_failed", read_failed);
+    }
+    if invalid > 0 {
+        note("discovery_state_invalid", invalid);
+    }
+    budget_result?;
     Ok(states)
 }
 

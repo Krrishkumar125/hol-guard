@@ -1,5 +1,6 @@
 //! Opt-in, payload-free phase evidence for native response-wait failures.
 
+use std::collections::HashMap;
 use std::fs::{File, Metadata};
 use std::io::{Cursor, Seek, Write};
 use std::path::Path;
@@ -311,11 +312,24 @@ fn emit(phase: Phase, status: Status, elapsed: Duration) {
     ));
 }
 
+static LAST_NOTES: LazyLock<Mutex<HashMap<&'static str, usize>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// Records a finite count next to the phase lines, such as how many resident
 /// states one discovery pass returned. Only fixed names and numbers are
-/// written, never paths or request data.
+/// written, never paths or request data. A spawn wait polls discovery every
+/// few milliseconds, so a note is written only when its value changes;
+/// otherwise repeats would push the phase lines out of the bounded tail.
 pub(crate) fn note(name: &'static str, value: usize) {
-    if enabled() {
+    if !enabled() {
+        return;
+    }
+    let changed = LAST_NOTES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(name, value)
+        != Some(value);
+    if changed {
         emit_line(format_args!(
             "native_resident_note name={name} value={value}"
         ));
