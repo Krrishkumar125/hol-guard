@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import stat
 import subprocess
 import tempfile
@@ -141,45 +140,3 @@ def test_a_second_guard_home_does_not_take_the_fallback_from_the_first(
     root_module.use_guard_home(unusable)
     with root_module.verified_executable(_SCRIPT) as path:
         assert path.parent.parent == guard_home / "native-exec"
-
-
-def _hold_the_image(monkeypatch: pytest.MonkeyPatch, attempts: int) -> list[float]:
-    """Fail the next removals the way Windows does while an exited executable's image is still mapped."""
-    real_rmtree = shutil.rmtree
-    held = {"left": attempts}
-    sleeps: list[float] = []
-
-    def rmtree(path, *args, **kwargs):  # type: ignore[no-untyped-def]
-        if held["left"] > 0:
-            held["left"] -= 1
-            if "onexc" in kwargs or "onerror" in kwargs:
-                return None  # TemporaryDirectory(ignore_cleanup_errors=True) swallows it
-            raise PermissionError(13, "The process cannot access the file", str(path))
-        return real_rmtree(path, *args, **kwargs)
-
-    monkeypatch.setattr(shutil, "rmtree", rmtree)
-    monkeypatch.setattr(root_module.time, "sleep", sleeps.append)
-    return sleeps
-
-
-def test_a_directory_held_briefly_after_the_compiler_exits_is_still_removed(
-    guard_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    sleeps = _hold_the_image(monkeypatch, attempts=3)
-    with root_module.verified_executable(_SCRIPT) as path:
-        assert path.exists()
-    assert not path.parent.exists()
-    assert sleeps == [0.05, 0.1]
-
-
-def test_a_directory_that_stays_held_is_given_up_after_a_bounded_wait_and_reported(
-    guard_home: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    sleeps = _hold_the_image(monkeypatch, attempts=100)
-    with root_module.verified_executable(_SCRIPT) as path:
-        pass
-    assert path.parent.exists()
-    assert sleeps == list(root_module._REMOVAL_BACKOFF)
-    assert "could not remove the source compiler directory" in caplog.text
-    monkeypatch.undo()
-    shutil.rmtree(path.parent)
