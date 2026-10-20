@@ -302,8 +302,7 @@ fn path_gate(
                     || git_config_document(canonical, cwd)
                     || worktree_gitfile(canonical)
                     || scratch::workspace_scratch_read(canonical, home_dir, cwd)
-                    || virtualenv_activation_script(canonical)
-                    || package_bin_entry(canonical)))
+                    || virtualenv_activation_script(canonical)))
             || (read_only && execution_output_log(canonical, home_dir)))
     {
         return false;
@@ -371,38 +370,6 @@ pub(super) fn virtualenv_activation_script(canonical: &std::path::Path) -> bool 
     binaries
         .parent()
         .is_some_and(|root| root.join("pyvenv.cfg").is_file())
-}
-
-/// An entry below a package manager's `node_modules/.bin`.
-///
-/// npm, pnpm, yarn and bun write their executable shims there, and
-/// `ls node_modules/.bin/vitest` is how ordinary work checks whether a runner
-/// is installed. The directory's name is chosen by the package manager, not by
-/// the project, so it is generated tooling rather than a place a checkout keeps
-/// secrets, and the hidden-path screen refusing a directory below it stopped a
-/// routine listing. Only a `.bin` directly below `node_modules` is admitted,
-/// only for a read, and only when it is the path's one hidden component, so a
-/// `.bin` anywhere else and a `.ssh` below this one keep their screen. The path
-/// is already canonical, and every location and credential-name screen still
-/// runs on it.
-fn package_bin_entry(canonical: &std::path::Path) -> bool {
-    let mut parts: Vec<String> = Vec::new();
-    for component in canonical.components() {
-        if let std::path::Component::Normal(name) = component {
-            match name.to_str() {
-                Some(name) => parts.push(name.to_ascii_lowercase()),
-                None => return false,
-            }
-        }
-    }
-    let hidden: Vec<usize> = parts
-        .iter()
-        .enumerate()
-        .filter(|(_, part)| part.starts_with('.'))
-        .map(|(index, _)| index)
-        .collect();
-    matches!(hidden.as_slice(), [index]
-        if parts[*index] == ".bin" && *index > 0 && parts[*index - 1] == "node_modules")
 }
 
 /// A project's own dotfile in a checkout, read as the document it is.
