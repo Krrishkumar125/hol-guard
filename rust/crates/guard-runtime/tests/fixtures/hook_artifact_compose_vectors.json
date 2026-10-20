@@ -4118,5 +4118,401 @@
       "stored_artifact_hash": null,
       "stored_policy_action": null
     }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "allow",
+        "approval_id": null,
+        "artifact_id": "direct"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_direct_only",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "block",
+        "approval_id": null,
+        "artifact_id": "memory"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_later_block_wins",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "block",
+            "approval_id": null,
+            "artifact_id": "memory"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "warn",
+        "approval_id": null,
+        "artifact_id": "direct"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_keeps_the_first_of_equal_severity",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "warn",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "warn",
+            "approval_id": null,
+            "artifact_id": "exact"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "block",
+        "approval_id": null,
+        "artifact_id": "memory"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_never_weakens_the_first",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "block",
+            "approval_id": null,
+            "artifact_id": "memory"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": 3,
+        "approval_id": null,
+        "artifact_id": "memory"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_unreadable_action_is_read_as_a_block",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": 3,
+            "approval_id": null,
+            "artifact_id": "memory"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "allow",
+        "approval_id": null,
+        "artifact_id": "direct"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_skips_the_undecided",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "block",
+        "approval_id": null,
+        "artifact_id": "memory"
+      },
+      "ignored_local_integrity": {
+        "reason": "integrity drifted"
+      },
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_holds_the_first_ignored_integrity",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "exact"
+          },
+          "ignored_local_integrity": {
+            "reason": "integrity drifted"
+          },
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "block",
+            "approval_id": null,
+            "artifact_id": "memory"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": -1,
+      "decision": {
+        "_approval_authority_revision": -1,
+        "action": "allow",
+        "approval_id": null,
+        "artifact_id": "direct"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_disagreed_revisions_carry_none",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 8,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "exact"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": null,
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_undecided_lookups_select_the_first",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
   }
 ]

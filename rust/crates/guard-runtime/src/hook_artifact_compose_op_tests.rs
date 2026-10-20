@@ -476,3 +476,13 @@ fn a_stored_block_beside_package_reuse_keeps_the_package_source_and_adds_no_seco
     );
     assert_eq!(answer["settled_evidence_appends"], json!([]));
 }
+
+#[test]
+fn a_policy_lookup_selection_with_nothing_to_select_is_refused() {
+    let query: HookArtifactComposeQueryV1 =
+        serde_json::from_value(json!({"kind": "policy_lookup_select", "lookups": []})).unwrap();
+    assert_eq!(
+        compose(&query).unwrap_err(),
+        "at least one policy lookup is required"
+    );
+}
