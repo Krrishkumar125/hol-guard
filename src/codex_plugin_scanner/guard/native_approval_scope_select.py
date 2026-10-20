@@ -36,6 +36,8 @@ def native_approval_scope_selection(
     requested_scope: str,
     contract_version: str | None,
     contract_digest: str | None,
+    resolve_persistence: bool = False,
+    persist_policy: bool | None = None,
     guard_home: Path | None = None,
 ) -> dict[str, object]:
     """Resolve one approval selection in the resident; raise when it cannot.
@@ -43,7 +45,9 @@ def native_approval_scope_selection(
     ``item`` carries every name in ``REQUEST_FIELDS`` plus ``workspace_target``,
     exactly as the ``approval_scope`` op takes it. The answer is the resident's
     payload: a selection with the scope it applied, or a refusal naming the
-    condition, each with the contract the resident derived.
+    condition, each with the contract the resident derived. A caller that also
+    asks what its remember choice resolves to gets a ``persistence`` object
+    with the selection.
     """
 
     home = Path(_resolve_digest_home(guard_home))
@@ -58,6 +62,15 @@ def native_approval_scope_selection(
         "contract_version": contract_version,
         "contract_digest": contract_digest,
     }
+    # The request digest binds what was sent, and the resident serialises its
+    # typed request without these two when they carry nothing, so a caller
+    # that asks for neither must send neither: `persist_policy` rides along
+    # only when the client expressed a remember choice, and its absence is
+    # what tells the resident the client expressed none.
+    if resolve_persistence:
+        wire["resolve_persistence"] = True
+    if persist_policy is not None:
+        wire["persist_policy"] = persist_policy
     try:
         response = _resident_request(
             operation="approval_scope_select",

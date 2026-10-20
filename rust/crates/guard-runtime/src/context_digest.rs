@@ -88,7 +88,7 @@ fn component_hash_with(
     Ok(digest_bytes(&material))
 }
 
-fn base64_url_no_pad(data: &[u8]) -> String {
+pub(crate) fn base64_url_no_pad(data: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::with_capacity(data.len() * 4 / 3 + 4);
     for chunk in data.chunks(3) {

@@ -44,6 +44,14 @@ pub struct ApprovalScopeSelectRequestV1 {
     /// `contract_version` is.
     #[serde(default)]
     pub contract_digest: Option<String>,
+    /// Whether the caller is also asking what its remember choice resolves to.
+    /// A caller that leaves this out gets the selection alone, as before.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resolve_persistence: bool,
+    /// The remember choice being resolved: `true` to save the decision, `false`
+    /// for an explicit one-off, absent for a client that expressed neither.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persist_policy: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
