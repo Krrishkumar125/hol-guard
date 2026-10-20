@@ -10,7 +10,7 @@ import re
 import shutil
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Container, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -33,6 +33,7 @@ from .case_helpers import (
     read_case_logs,
     ready_watch_binding,
 )
+from .case_retry import CaseRetries, case_fixture_name
 from .case_worker import SubprocessCaseWorker
 from .catalog import CATALOG, WATCH_COMMAND, WATCH_PROMPT, Scenario, catalog_digest, load_catalog
 from .cleanup import cleanup_case_resources
@@ -46,7 +47,6 @@ from .fixtures import (
     filesystem_checks,
     remove_native_cache,
     remove_scratch_checkout,
-    scenario_fixture_name,
     scratch_checkout,
     stage_directory,
 )
@@ -71,6 +71,44 @@ from .supply_chain import stage_supply_chain
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
+# The outcomes a fresh attempt cannot clear. The first two say Guard itself did
+# the wrong thing: it stopped ordinary work, or it let a protected operation
+# through. `task-incomplete` says the scenario's own required effects are missing
+# after Guard allowed the work, which `qualify.retryable` also refuses to retry;
+# continuing past one spends the rest of the catalog on an attempt that can
+# neither pass nor be run again.
+PRODUCT_FAILURES = frozenset({"false-positive", "false-negative", "task-incomplete"})
+
+
+def disqualifying(result: dict[str, Any]) -> bool:
+    """True when this case ended the attempt's chance of passing, so the rest proves nothing.
+
+    A case the model never exercised, a provider round that died, or a host tool
+    that failed with no Guard deny behind it says nothing about Guard. Ending the
+    attempt on one of those spends the whole remaining catalog to learn that the
+    model was uncooperative, and the cases that never run are the ones scheduled
+    last: the protection cases that carry every false-negative proof.
+    """
+    return result["assessment"]["outcome"] in PRODUCT_FAILURES
+
+
+def case_coverage(
+    selected: Sequence[Scenario], catalog: Sequence[Scenario], executed: Container[str]
+) -> dict[str, Any]:
+    """How much of the catalog this run actually executed.
+
+    A run that stopped early used to report only the outcomes of the cases it
+    reached, so a sweep truncated a third of the way through read as a clean
+    record rather than as a truncated one. The ids that never ran are listed
+    here so that gap cannot pass unread.
+    """
+    missing = [scenario.id for scenario in selected if scenario.id not in executed]
+    return {
+        "catalog_cases": len(catalog),
+        "selected_cases": len(selected),
+        "executed_cases": len(selected) - len(missing),
+        "unexecuted_cases": missing,
+    }
 
 
 def run_case(
@@ -82,13 +120,19 @@ def run_case(
     identity: Any,
     provider: dict[str, Any],
     timeout: float,
+    attempt: int = 1,
 ) -> dict[str, Any]:
-    """Exercise one independent scenario, retaining failures and all evidence."""
+    """Exercise one independent scenario, retaining failures and all evidence.
+
+    ``attempt`` numbers re-runs of the same case. Each one builds its own fixture,
+    because ``create_fixture`` refuses an existing directory and because a retry
+    that inherited the previous run's disk state would not be a fresh exercise.
+    """
     from ci.native_runtime import probe_installed_native_extensions as native_probe
 
     first_contact = scenario.oracle == "native-tools"
     fixture = create_fixture(
-        root / scenario_fixture_name(scenario.id),
+        root / case_fixture_name(scenario.id, attempt),
         realistic=first_contact and scenario.id != WORKTREE_CASE,
         linked_worktree=scenario.id == WORKTREE_CASE,
         scenario_id=scenario.id,
@@ -143,7 +187,7 @@ def run_case(
                 }
             )
             prompt = _scenario_prompt(rendered)
-            authorization = fixture_authorization(fixture, collector.url, rendered) + (
+            authorization = fixture_authorization(fixture, collector.url, rendered, session) + (
                 "" if first_contact else "\n" + fixture_system_context(scenario)
             )
             case["prompt_sha256"] = sha256_bytes(prompt.encode())
@@ -404,6 +448,7 @@ def run_suite(
     candidate_sha: str | None = None,
     jobs: int = 1,
     fail_fast: bool = False,
+    case_retries: int = 0,
     host_slots: int | None = None,
     slot_dir: Path | None = None,
     max_load: float | None = None,
@@ -472,6 +517,7 @@ def run_suite(
         # Informational only: scheduling does not change what any case must prove.
         "jobs": jobs,
         "fail_fast": fail_fast,
+        "case_retries_allowed": case_retries,
         "host_slots": host_slots,
         "max_load": max_load,
         "max_load_wait": max_load_wait,
@@ -483,9 +529,20 @@ def run_suite(
     )
     gate = LoadGate(max_load, max_wait=max_load_wait) if max_load is not None else None
     completed: dict[str, dict[str, Any]] = {}
+    retries = CaseRetries(case_retries, cases=output / "cases", superseded=output / "superseded")
 
     def route_failed() -> bool:
         return record_route_failure(report, route_health)
+
+    def want_retry(scenario_id: str, case: dict[str, Any]) -> bool:
+        """A dead provider route makes every case look retryable; stop instead of re-running.
+
+        ``record_route_failure`` exists so the first case that sees a dead route
+        ends the run cheaply. Without this check that case, and every case in
+        flight beside it, would spend its whole budget against the same dead
+        route before the stop ever landed.
+        """
+        return not route_failed() and retries.should_retry(scenario_id, case)
 
     def record(scenario: Scenario, case: dict[str, Any]) -> None:
         """Publish progress in catalog order, whatever order cases finish in."""
@@ -501,35 +558,44 @@ def run_suite(
         ]
         report["hook_latency"] = summarize_hook_latency([o for row in ordered for o in row["guard_observations"]])
         report["inference_usage"] = inference_usage(
-            output / "cases", [scenario.id for scenario in selected if scenario.id in completed]
+            output / "cases",
+            [scenario.id for scenario in selected if scenario.id in completed],
+            superseded=output / "superseded",
         )
+        report["case_coverage"] = case_coverage(selected, catalog, completed)
+        report["case_retries"] = retries.history
         print(json.dumps({"scenario": scenario.id, **case["assessment"]}), flush=True)
         (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
 
     if jobs == 1:
         for scenario in selected:
-            while gate is not None and not gate():
-                time.sleep(1)
-            with slot_pool.acquire() if slot_pool is not None else contextlib.nullcontext():
-                case = run_case(
-                    scenario,
-                    root=root,
-                    public=output / "cases",
-                    executable=executable,
-                    identity=identity,
-                    provider=provider,
-                    timeout=model_timeout,
-                )
+            while True:
+                while gate is not None and not gate():
+                    time.sleep(1)
+                with slot_pool.acquire() if slot_pool is not None else contextlib.nullcontext():
+                    case = run_case(
+                        scenario,
+                        root=root,
+                        public=output / "cases",
+                        executable=executable,
+                        identity=identity,
+                        provider=provider,
+                        timeout=model_timeout,
+                        attempt=retries.attempt(scenario.id),
+                    )
+                if not want_retry(scenario.id, case):
+                    break
             record(scenario, case)
             if route_failed():
                 break
-            if fail_fast and case["assessment"]["outcome"] != "pass":
+            if fail_fast and disqualifying(case):
                 break
     else:
         workdir = root / "workers"
         workdir.mkdir(mode=0o700)
 
         def spawn(scenario: Scenario, lease: Lease | None = None) -> Any:
+            attempt = retries.attempt(scenario.id)
             return SubprocessCaseWorker(
                 scenario.id,
                 {
@@ -541,9 +607,11 @@ def run_suite(
                     "timeout": model_timeout,
                     "identity_sha256": identity.sha256,
                     "build_sha": capabilities.build_sha,
+                    "attempt": attempt,
                 },
                 workdir,
                 pass_fds=(lease.fd,) if lease is not None and lease.fd is not None else (),
+                label=case_fixture_name(scenario.id, attempt),
             )
 
         (output / "cases").mkdir(parents=True, exist_ok=True)
@@ -559,17 +627,20 @@ def run_suite(
             on_complete=lambda index, result: record(selected[index], result),
             order=order,
             should_stop=(
-                (lambda _index, result: route_failed() or (fail_fast and result["assessment"]["outcome"] != "pass"))
+                (lambda _index, result: route_failed() or (fail_fast and disqualifying(result)))
                 if fail_fast or route_health is not None
                 else None
             ),
+            retry=((lambda index, result: want_retry(selected[index].id, result)) if case_retries else None),
+            cancel_retry=((lambda index, _result: retries.restore(selected[index].id)) if case_retries else None),
             admit=gate,
             slots=slot_pool,
         )
     # A route that died after the last case still explains that case's failure.
     route_failed()
     report["finished_at"] = datetime.now(timezone.utc).isoformat()
-    report.setdefault("inference_usage", inference_usage(output / "cases", ()))
+    report.setdefault("inference_usage", inference_usage(output / "cases", (), superseded=output / "superseded"))
+    report["case_coverage"] = case_coverage(selected, catalog, completed)
     report["stopped_early"] = len(report["cases"]) < len(selected)
     report.update(report_sections(report["cases"]))
     report["pass"] = (

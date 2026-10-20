@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from . import lane_preflight, qualify_setup
+from .case_retry import MAX_CASE_RETRIES
 from .extension_adapters import RELEASE_ASSETS_ENV
 from .fixtures import create_numbered_dir
 from .lane_coverage import lane_coverage
@@ -43,6 +44,10 @@ PROVIDER_ENV = (
     "GUARD_GAUNTLET_API_KEY",
     "GUARD_GAUNTLET_REASONING_EFFORT",
 )
+
+
+# The most fresh rounds one invocation may spend before it reports what it reached.
+ATTEMPT_LIMIT = 10
 
 
 def progress(message: str) -> None:
@@ -68,6 +73,7 @@ def attempt_argv(
     effort: str,
     sdk_root: Path,
     jobs: int,
+    case_retries: int,
     host_slots: int,
     max_load: float,
     max_load_wait: float,
@@ -92,6 +98,8 @@ def attempt_argv(
         str(sdk_root),
         "--jobs",
         str(jobs),
+        "--case-retries",
+        str(case_retries),
         "--host-slots",
         str(host_slots),
         "--max-load",
@@ -180,6 +188,16 @@ def summarize_attempt(
                 if case.get("outcome") != "pass"
             ],
             "inference_usage": summary.get("inference_usage"),
+            # Which cases this round had to re-run, and how many re-runs it was
+            # allowed. A record that shows only the final outcomes reads a pass
+            # that took three tries exactly like one that took a single try.
+            "case_retries": summary.get("case_retries", []),
+            "case_retries_allowed": summary.get("case_retries_allowed"),
+            # How much of the catalog this attempt reached. A truncated attempt
+            # that reports only its pass count reads as a clean record of the
+            # whole profile, which is how 59% of the catalog went unrun through
+            # a release sweep without anyone noticing.
+            "case_coverage": summary.get("case_coverage"),
         }
     )
     return record
@@ -317,10 +335,19 @@ def main(args: Any) -> int:
         raise ValueError("--sha must be a full 40-character commit")
     if args.candidate_sha is not None and SHA.fullmatch(args.candidate_sha) is None:
         raise ValueError("--candidate-sha must be a full 40-character commit")
-    if not 1 <= args.attempts <= 3:
-        raise ValueError("--attempts must be from 1 to 3")
+    # A clean round needs every case to comply, so the odds of one compound against
+    # the number of cases. Three rounds was a budget set when a truncated attempt was
+    # cheap; it is not enough to clear model noise on a product that has nothing wrong
+    # with it, and running out of rounds reads the same as a real failure.
+    if not 1 <= args.attempts <= ATTEMPT_LIMIT:
+        raise ValueError(f"--attempts must be from 1 to {ATTEMPT_LIMIT}")
     if not 1 <= args.jobs <= 8:
         raise ValueError("--jobs must be from 1 to 8")
+    # Checked here as well as in the child run: an out-of-range value otherwise
+    # survives wheel resolution, SDK setup and worktree creation before the first
+    # attempt rejects it, and qualification then reports only a missing summary.
+    if not 0 <= args.case_retries <= MAX_CASE_RETRIES:
+        raise ValueError(f"--case-retries must be an integer from 0 to {MAX_CASE_RETRIES}")
     if not 1 <= args.host_slots <= 64:
         raise ValueError("--host-slots must be from 1 to 64")
     if not math.isfinite(args.max_load) or not args.max_load > 0:
@@ -411,6 +438,7 @@ def main(args: Any) -> int:
                     native_route=native_route,
                     sdk_root=Path(sdk_info["root"]),
                     jobs=args.jobs,
+                    case_retries=args.case_retries,
                     host_slots=args.host_slots,
                     max_load=args.max_load,
                     max_load_wait=args.max_load_wait,
@@ -442,7 +470,13 @@ def main(args: Any) -> int:
                 record = summarize_attempt(k, evidence, rc, time.monotonic() - t0, _read_summary(evidence))
                 record["work_root"] = str(work)
                 attempts.append(record)
-                progress(f"attempt {k} exit={rc} pass={record['pass']}")
+                covered = record.get("case_coverage") or {}
+                reached = (
+                    f" cases={covered['executed_cases']}/{covered['selected_cases']}"
+                    if covered.get("selected_cases")
+                    else ""
+                )
+                progress(f"attempt {k} exit={rc} pass={record['pass']}{reached}")
                 if "error" in record:
                     break
                 if record["pass"]:
@@ -509,6 +543,14 @@ def main(args: Any) -> int:
             "max_load": args.max_load,
             "max_load_wait": args.max_load_wait,
             "attempts": attempts,
+            # How many rounds this invocation actually spent, against what it was allowed.
+            # A reader who sees `qualified: false` needs to know whether the run proved
+            # something about the product or merely ran out of budget, and the two look
+            # alike in the outcome counts alone. The count is of rounds that started,
+            # not of records: an interrupted round spent the lane and left no record,
+            # and `attempts` already gives the completed count.
+            "attempts_run": len(driven),
+            "attempts_allowed": args.attempts,
             # Verified counts only; a failed or missing verify publishes null here and the
             # last attempt's runner counts under unverified_* so failing runs still show them.
             "interruptions": verify_result.get("interruptions") if verify_result else None,

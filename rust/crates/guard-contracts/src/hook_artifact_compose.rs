@@ -43,6 +43,9 @@ pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE: &str =
 /// the caller requires this feature for that query alone.
 pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ENTITLEMENT_FEATURE: &str =
     "hook-artifact-compose-package-firewall-entitlement-v1";
+/// Capability advertised when the `package_firewall_access` query is served.
+pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE: &str =
+    "hook-artifact-compose-package-firewall-access-v1";
 /// Capability advertised when the `signal_composition` query is served. A
 /// runtime that predates the query rejects it as an unknown kind, so the
 /// caller requires this feature for that query alone.
@@ -97,6 +100,8 @@ pub enum HookArtifactComposeQueryV1 {
     PackageReuseSettle(Box<PackageReuseSettleQueryV1>),
     /// Resolve what package-firewall access this home is entitled to.
     PackageFirewallEntitlement(Box<PackageFirewallEntitlementQueryV1>),
+    /// What a resolved package-firewall entitlement permits on this machine.
+    PackageFirewallAccess(PackageFirewallAccessQueryV1),
     /// Calibrate a base policy action against a detector run's risk and
     /// false-positive signals.
     SignalComposition(Box<SignalCompositionQueryV1>),
@@ -122,6 +127,21 @@ pub struct PackageFirewallEntitlementQueryV1 {
     /// The instant to resolve against as an ISO-8601 UTC string, `null` for
     /// the resident's own clock.
     pub now: Option<String>,
+}
+
+/// The resolved entitlement and the local protection a package-firewall
+/// control request is answered against.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PackageFirewallAccessQueryV1 {
+    /// The entitlement as `resolve_package_firewall_entitlement` returned it.
+    pub entitlement: Value,
+    /// The operation to answer for, `null` to answer only the states, the
+    /// offered actions, and the block copy.
+    pub operation: Option<String>,
+    /// A package manager is already shimmed on this machine, so existing local
+    /// protection stays repairable and removable.
+    pub has_installed_managers: bool,
 }
 
 /// The detector run a composition is calibrated from. `signals` are

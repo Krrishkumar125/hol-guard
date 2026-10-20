@@ -16,31 +16,97 @@ from codex_plugin_scanner.guard.native_hook_artifact_compose import (
 from codex_plugin_scanner.guard.package_firewall_entitlement import (
     PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON,
     build_oauth_package_firewall_entitlement,
-    package_firewall_action_states,
-    package_firewall_available_actions,
-    package_firewall_block_details,
+    package_firewall_access,
     package_firewall_entitlement_or_denied,
-    package_firewall_operation_allowed,
     reconcile_connect_state_with_oauth_entitlement,
 )
 from codex_plugin_scanner.guard.store import GuardStore
 
 
-@pytest.mark.parametrize(
-    "allowed,installed,can_repair",
-    [(True, False, True), (True, True, True), (False, False, False), (False, True, True)],
-)
-def test_repair_access_supports_paid_first_activation_and_existing_local_recovery(
-    allowed: bool,
-    installed: bool,
-    can_repair: bool,
+def test_package_firewall_access_is_answered_by_the_resident(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One question carries the whole entitlement and returns every projection.
+
+    Which actions a lapsed or unproven entitlement still leaves available is
+    the resident's call now; the shared composition vectors own that table.
+    A request that needs the action table, the offered actions, the block copy
+    and one operation's verdict asks once, not once per projection.
+    """
+
+    asked: list[dict[str, object]] = []
+
+    def answer(kind: str, fields: dict[str, object], *, guard_home: Path | None) -> dict[str, object]:
+        asked.append({"kind": kind, "fields": dict(fields), "guard_home": guard_home})
+        return {
+            "action_states": {"repair": "available"},
+            "available_actions": ["status", "repair"],
+            "block": {"code": "paid_guard_cloud_required", "message": "Upgrade.", "status": 402},
+            "operation_allowed": True,
+        }
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", answer)
+    entitlement = {"allowed": False, "reason": "guard_cloud_reconnect_required"}
+    home = Path("/guard-home")
+
+    access = package_firewall_access(
+        entitlement,
+        operation="repair",
+        has_installed_managers=True,
+        guard_home=home,
+    )
+
+    assert access.operation_allowed is True
+    assert access.action_states == {"repair": "available"}
+    assert access.available_actions == ["status", "repair"]
+    assert access.block == (402, "paid_guard_cloud_required", "Upgrade.")
+
+    assert [question["kind"] for question in asked] == ["package_firewall_access"]
+    assert asked[0]["fields"] == {
+        "entitlement": entitlement,
+        "has_installed_managers": True,
+        "operation": "repair",
+    }
+    assert asked[0]["guard_home"] == home
+
+
+def test_package_firewall_access_without_an_operation_reads_only_the_projections(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    entitlement = {"allowed": allowed, "reason": "paid_entitlement_active" if allowed else "paid_guard_cloud_required"}
-    assert package_firewall_operation_allowed(entitlement, "repair", has_installed_managers=installed) is can_repair
-    states = package_firewall_action_states(entitlement, has_installed_managers=installed)
-    assert (states["repair"] == "available") is can_repair
-    assert package_firewall_operation_allowed(entitlement, "install", has_installed_managers=installed) is allowed
-    assert package_firewall_operation_allowed(entitlement, "remove", has_installed_managers=installed) is installed
+    """A caller that names no operation still asks once and gets no verdict."""
+
+    asked: list[dict[str, object]] = []
+
+    def answer(kind: str, fields: dict[str, object], *, guard_home: Path | None) -> dict[str, object]:
+        asked.append({"kind": kind, "fields": dict(fields), "guard_home": guard_home})
+        return {
+            "action_states": {"install": "paid_required"},
+            "available_actions": ["status", "education", "cli_fallback"],
+            "block": {"code": "paid_guard_cloud_required", "message": "Upgrade.", "status": 402},
+            "operation_allowed": None,
+        }
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", answer)
+
+    access = package_firewall_access({"allowed": False, "reason": "paid_guard_cloud_required"})
+
+    assert access.operation_allowed is False
+    assert access.action_states == {"install": "paid_required"}
+    assert [question["fields"]["operation"] for question in asked] == [None]
+
+
+def test_an_unavailable_resident_does_not_decide_package_firewall_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unavailable(kind: str, fields: dict[str, object], *, guard_home: Path | None) -> dict[str, object]:
+        raise NativeHookComposeError("native_hook_artifact_compose_unavailable")
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", unavailable)
+
+    with pytest.raises(NativeHookComposeError):
+        package_firewall_access(
+            {"allowed": True, "reason": "paid_entitlement_active"},
+            operation="install",
+            has_installed_managers=True,
+        )
 
 
 def test_build_oauth_package_firewall_entitlement_preserves_team_tier() -> None:
@@ -211,6 +277,35 @@ def test_reconcile_connect_state_ignores_free_oauth_plan(tmp_path: Path) -> None
     assert reconcile_connect_state_with_oauth_entitlement(store, now=now) is None
 
 
+def test_the_cli_block_payload_fails_closed_when_the_resident_cannot_compose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI answers `unavailable` rather than raising out of the command.
+
+    Nothing is offered in that reply: the composition is the authority, so a
+    request it could not answer is refused instead of being rebuilt from the
+    entitlement dict.
+    """
+
+    from codex_plugin_scanner.guard.cli.commands_support_workspace import _package_firewall_block_payload
+
+    def unavailable(kind: str, fields: dict[str, object], *, guard_home: Path | None) -> dict[str, object]:
+        raise NativeHookComposeError("native_hook_artifact_compose_unavailable")
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", unavailable)
+
+    status, payload = _package_firewall_block_payload(
+        entitlement={"allowed": False, "reason": "paid_guard_cloud_required"},
+        has_installed_managers=True,
+        operation="install",
+    )
+
+    assert status == 503
+    assert payload["error"] == "package_firewall_authority_unavailable"
+    assert payload["operation"] == "install"
+    assert payload["available_actions"] == []
+
+
 @pytest.mark.parametrize("error", [NativeHookComposeError("unavailable"), NativeHookComposeValidationError("bad")])
 def test_a_runtime_that_cannot_answer_entitles_nothing(
     tmp_path: Path,
@@ -244,18 +339,3 @@ def test_a_runtime_that_cannot_answer_entitles_nothing(
 
     assert entitlement["allowed"] is False
     assert entitlement["reason"] == PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON
-    assert package_firewall_operation_allowed(entitlement, "install", has_installed_managers=True) is False
-    assert package_firewall_action_states(entitlement, has_installed_managers=False)["install"] != "available"
-    assert "connect" not in package_firewall_available_actions(entitlement, has_installed_managers=False)
-
-
-def test_an_unanswerable_runtime_is_not_reported_as_an_unpaid_account() -> None:
-    """The block says the runtime could not answer rather than naming a plan."""
-
-    status, code, message = package_firewall_block_details(
-        {"allowed": False, "reason": PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON}
-    )
-
-    assert status == 503
-    assert code == PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON
-    assert "paid" not in message.lower()
