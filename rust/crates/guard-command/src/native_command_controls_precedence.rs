@@ -34,7 +34,9 @@ impl CompiledNativeCommandControls {
             .contains(&rule.permission_id)
         {
             Some(rule_floor(rule, extension.required))
-        } else if extension.extension_id == "command.git" {
+        } else if extension.extension_id == "command.git"
+            || rule.rule_id == "command.container-runtime.docker-sensitive"
+        {
             None
         } else {
             Some("review")
@@ -66,7 +68,7 @@ impl CompiledNativeCommandControls {
                         || model
                             .segments
                             .iter()
-                            .all(|segment| settles_git_uncertainty(segment, context)))
+                            .all(|segment| settles_enabled_uncertainty(segment, context)))
                     && self.explicit_permissions_cover_command(model, batch, context)
             })
     }
@@ -82,6 +84,14 @@ fn settles_git_uncertainty(
     compatibility::basename(segment) != "git"
         || (compatibility::git_subcommand_settles_uncertainty(segment)
             && compatibility::git_repository_routes_verified(segment, context))
+}
+
+fn settles_enabled_uncertainty(
+    segment: &crate::CommandSegmentV1,
+    context: crate::pretool::PathContext<'_>,
+) -> bool {
+    settles_git_uncertainty(segment, context)
+        && crate::command_compatibility::docker_segment_settles_uncertainty(segment)
 }
 
 /// Records that the user's explicit Allow took precedence over Rust's review.

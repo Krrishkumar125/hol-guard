@@ -694,6 +694,10 @@ function resolveQueueCategoryId(item: GuardApprovalRequest): QueueCategoryId {
     return "destructive_shell";
   }
 
+  if (secretReadAction(item, command, text) && hasSecretSignal(decisionCategories, text)) {
+    return "secret_file_read";
+  }
+
   const commandCategory = categoryFromCommandExtension(
     envelope?.command_category ?? item.queue_command_category,
   );
@@ -703,6 +707,14 @@ function resolveQueueCategoryId(item: GuardApprovalRequest): QueueCategoryId {
 
   if (gitOperationCommand(command)) {
     return "git_operation";
+  }
+
+  if (dockerCommand(command)) {
+    return "docker_command";
+  }
+
+  if (githubCommand(command)) {
+    return "github_command";
   }
 
   if (fileUploadCommand(command, text)) {
@@ -727,10 +739,6 @@ function resolveQueueCategoryId(item: GuardApprovalRequest): QueueCategoryId {
 
   if (packageInstallCommand(command)) {
     return "package_install";
-  }
-
-  if (secretReadAction(item, command, text) && hasSecretSignal(decisionCategories, text)) {
-    return "secret_file_read";
   }
 
   if (envelope?.action_type === "mcp_tool") {
@@ -1058,8 +1066,17 @@ function fileDeleteOrCleanupCommand(command: string, text: string): boolean {
 }
 
 function gitOperationCommand(command: string): boolean {
-  const normalized = command.toLowerCase();
-  return /\bgit\s+(?:add|commit|push|pull|merge|rebase|reset|checkout|restore|clean|stash|tag)\b/.test(normalized);
+  return /\bgit(?:\s+(?:-[cC](?:\s+\S+|\S+)|--git-dir(?:=|\s+)\S+|--work-tree(?:=|\s+)\S+|--no-pager|--bare))*\s+(?:add|commit|push|pull|fetch|clone|status|diff|log|show|branch|rev-parse|worktree|remote|config|merge|rebase|reset|checkout|restore|clean|stash|tag|apply|cherry-pick|revert|ls-files|ls-remote|grep)\b/i.test(
+    command
+  );
+}
+
+function dockerCommand(command: string): boolean {
+  return /(?:^|[;&|]\s*)\s*(?:sudo\s+)?(?:docker|docker-compose)(?:\s|$)/i.test(command);
+}
+
+function githubCommand(command: string): boolean {
+  return /(?:^|[;&|]\s*)\s*(?:sudo\s+)?gh\s+\S+/i.test(command);
 }
 
 function processControlCommand(command: string): boolean {

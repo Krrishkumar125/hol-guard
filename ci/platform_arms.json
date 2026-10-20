@@ -1454,7 +1454,7 @@
    "file": "rust/crates/guard-runtime/src/restricted_pytest_op.rs",
    "item": "fn evaluate -- non-Unix block",
    "verdict": "windows-equivalent",
-   "note": "Windows answers `contained_argv`, `normalized_command` and the read-only `prepare_inline`, `prepare` and `prepare_node_build` planners, so a project's pytest, an inline command and a Node build are each routed into a Windows sink. Every other operation, and every other non-Unix platform, returns `pytest_restricted_sandbox_unavailable` without starting execution.",
+   "note": "The `linux_*` operations and `process_ceiling` are answered before this block on every platform. Inside it, off Unix only `contained_argv`, `normalized_command` and, on Windows, three planners answer: inline scripts and pytest get a read-only AppContainer plan (`windows_readonly`, `windows_pytest`), and `windows_node_build` stages Node tools into a private copy, running checking tools under `node-tool-readonly-v1` and Vite builds under `node-build-output-v1`, which publishes the declared output directories back after a clean exit. Any other operation here, and every one on a non-Windows platform without the Unix backend, answers `pytest_restricted_sandbox_unavailable` and nothing is started.",
    "cfg": "not(unix)",
    "body": "21a1afbb5f71"
   },

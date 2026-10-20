@@ -104,6 +104,32 @@ fn docker(segment: &CommandSegmentV1, index: usize, output: &mut CompatibilityOb
     );
 }
 
+/// Whether a `docker` segment carries only inert environment prefixes and a
+/// local/default daemon context, so an explicit `docker-sensitive` Allow may
+/// settle uncertainty about it. Remote hosts, non-default contexts, custom
+/// client configs, TLS flags, and sensitive environment variables stay on
+/// review.
+pub(crate) fn docker_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
+    if basename(segment) != "docker" {
+        return true;
+    }
+    if segment
+        .environment_names
+        .iter()
+        .any(|name| !super::environment::inert_environment_name(name))
+    {
+        return false;
+    }
+    let Some(subcommand_index) =
+        crate::sfrs_docker_args::docker_subcommand_index(&segment.arguments)
+    else {
+        return false;
+    };
+    !crate::sfrs_tool_request::docker_global_context_is_sensitive(
+        &segment.arguments[..subcommand_index],
+    )
+}
+
 /// `get`/`describe` with only well-known global and display options and a plain
 /// resource list that names no Secret: this form cannot reveal Secret payloads.
 fn plain_non_secret_read(arguments: &[String]) -> bool {
