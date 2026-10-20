@@ -546,7 +546,9 @@ jobs:
     runs-on: ubuntu-latest
     # Includes checkout/setup plus the instrumented shard. Five minutes can
     # cancel a healthy shard before it produces the coverage artifact Sonar needs.
-    timeout-minutes: 10
+    # Planning lags a newly slower test by one main run; the headroom lets that
+    # shard finish and report, so the next plan sees the real cost.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

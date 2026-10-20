@@ -23,25 +23,31 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         TELEMETRY_BRANCH: ${{ inputs.telemetry-branch }}
+      # The manifest candidate exists only when every coverage shard passed and
+      # reported, so it is trusted without requiring the whole run to be green.
+      # A red main must not pin planning to timings older than the suite.
       run: |
-        run_id=$(
-          gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
-            -f branch="$TELEMETRY_BRANCH" -f event=push -f status=success -f per_page=1 \
-            --jq '.workflow_runs[0].id // empty'
+        candidates=$(
+          gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/artifacts" \
+            -f name=pytest-duration-manifest-candidate -f per_page=100 \
+            --jq '[.artifacts[] | select(.expired == false and .name == "pytest-duration-manifest-candidate"
+              and .workflow_run.head_branch == env.TELEMETRY_BRANCH)]
+              | sort_by(.created_at) | reverse | .[:10][] | "\(.id) \(.workflow_run.id)"'
         )
-        test -n "$run_id"
-        read -r event conclusion branch workflow_path < <(
-          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
-            --jq '[.event, .conclusion, .head_branch, .path] | @tsv'
-        )
-        test "$event" = "push"
-        test "$conclusion" = "success"
-        test "$branch" = "$TELEMETRY_BRANCH"
-        test "$workflow_path" = ".github/workflows/ci.yml"
-        artifact_id=$(
-          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?name=pytest-duration-manifest-candidate&per_page=100" \
-            --jq '.artifacts | map(select(.expired == false and .name == "pytest-duration-manifest-candidate")) | .[0].id // empty'
-        )
+        artifact_id=
+        while read -r candidate run_id; do
+          test -n "$run_id" || continue
+          read -r event branch workflow_path < <(
+            gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
+              --jq '[.event, .head_branch, .path] | @tsv'
+          )
+          if test "$event" = "push" &&
+            test "$branch" = "$TELEMETRY_BRANCH" &&
+            test "$workflow_path" = ".github/workflows/ci.yml"; then
+            artifact_id=$candidate
+            break
+          fi
+        done <<< "$candidates"
         test -n "$artifact_id"
         gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > /tmp/duration-manifest.zip
         unzip -p /tmp/duration-manifest.zip pytest-duration-manifest-candidate.json.gz \
