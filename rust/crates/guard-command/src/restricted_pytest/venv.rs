@@ -149,6 +149,12 @@ pub(super) fn external_root(launch: &Path, executable: &Path, workspace: &Path) 
     if !python_named(executable) || !approved_image(executable) {
         return None;
     }
+    // The contained run execs the launcher, so its chain has to end in the
+    // image itself. One that still ends in a `/usr/bin` shim would run the
+    // shim's developer-directory lookup inside containment, where it fails.
+    if launch.canonicalize().ok().as_deref() != Some(executable) {
+        return None;
+    }
     let root = launcher_root(launch)?;
     if path_is_within(&root, workspace) || path_is_within(workspace, &root) {
         return None;

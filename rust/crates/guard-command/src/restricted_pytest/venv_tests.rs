@@ -126,12 +126,12 @@ fn external_venv_of_a_trusted_interpreter_is_admitted_with_a_venv_only_grant() {
     let Some(base) = trusted_python() else { return };
     let fixture = fixture();
     let home = base.parent().unwrap().to_string_lossy().into_owned();
-    let (workspace, venv) = layout(&fixture.0, &base, &home);
+    // On macOS `/usr/bin/python3` is a shim. A venv made from it links to the
+    // tool the shim forwards to, which is what the contained run execs.
+    let image = forwarded_tool(&base).unwrap_or_else(|| base.clone());
+    let (workspace, venv) = layout(&fixture.0, &image, &home);
     let allowed = admit("python3", &workspace, &venv).unwrap();
     assert!(allowed.contains(&venv.join("bin/python3")), "{allowed:?}");
-    // On macOS `/usr/bin/python3` is a shim, and the plan runs the tool it
-    // forwards to rather than the shim itself.
-    let image = forwarded_tool(&base).unwrap_or_else(|| base.clone());
     assert!(allowed.contains(&image), "{allowed:?}");
     let roots = runtime_roots(&allowed, &workspace, None);
     assert!(roots.contains(&venv), "{roots:?}");
@@ -142,6 +142,13 @@ fn external_venv_of_a_trusted_interpreter_is_admitted_with_a_venv_only_grant() {
     // A launcher that links straight to the base still grants its venv.
     let direct = admit("python", &workspace, &venv).unwrap();
     assert!(runtime_roots(&direct, &workspace, None).contains(&venv));
+    // A launcher that still links to the shim would exec the shim inside
+    // containment, so that venv is not admitted.
+    if image != base {
+        let shimmed = fixture();
+        let (workspace, venv) = layout(&shimmed.0, &base, &home);
+        assert!(admit("python3", &workspace, &venv).is_err());
+    }
 }
 
 #[test]
