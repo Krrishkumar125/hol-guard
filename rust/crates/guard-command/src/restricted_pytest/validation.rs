@@ -246,7 +246,7 @@ pub(super) fn validate_pytest_args(args: &[String]) -> Result<(), RestrictedPyte
 /// cluster, so the `c` in `-Ic` starts a `-c` command exactly as a bare `-c`
 /// does, and `-W` or `-X` takes the next argument when nothing follows it in
 /// the cluster.
-pub(crate) fn python_args_target_pytest(args: &[String]) -> bool {
+pub fn python_args_target_pytest(args: &[String]) -> bool {
     let mut index = 0usize;
     while index < args.len() {
         let item = args[index].as_str();
