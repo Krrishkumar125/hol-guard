@@ -459,9 +459,21 @@ pub(in crate::pretool) fn missing_path_in_registered_worktree(
     } else {
         workspace.join(expanded)
     };
+    // Canonicalizing the nearest existing ancestor drops every step written
+    // after it, so `wt/absent/../../elsewhere` would be judged as `wt` while a
+    // harness that normalizes the name first opens `elsewhere`. Only plain
+    // names are accepted.
+    if candidate.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::ParentDir | std::path::Component::CurDir
+        )
+    }) {
+        return false;
+    }
     // The nearest ancestor that exists is the only part of the name the
-    // filesystem can speak for; canonicalizing there resolves every link and
-    // `..` before the registry is consulted.
+    // filesystem can speak for; canonicalizing there resolves every link
+    // before the registry is consulted.
     let Some(existing) = candidate
         .ancestors()
         .take(64)

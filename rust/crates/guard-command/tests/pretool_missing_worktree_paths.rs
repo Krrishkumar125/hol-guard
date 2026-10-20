@@ -195,3 +195,37 @@ fn a_missing_path_outside_the_registered_worktree_still_says_it_is_missing() {
         );
     }
 }
+
+#[test]
+fn a_missing_step_in_the_worktree_cannot_climb_out_of_it() {
+    let w = workspace("missing-worktree-parent-steps");
+    // Only `review-worktree` exists along this name, so the filesystem cannot
+    // resolve the `..` steps that follow the missing `absent`. A harness that
+    // tidies the name before opening it reads `notes/plan.md`, outside both
+    // the workspace and the worktree, so the call is not let through as a
+    // quiet read of a missing worktree file.
+    std::fs::write(w.home.join("notes/plan.md"), "synthetic fixture\n").unwrap();
+    let climbing = format!(
+        "{}/review-worktree/absent/../../notes/plan.md",
+        w.home.display()
+    );
+    for path in [
+        climbing.as_str(),
+        "~/review-worktree/absent/../../notes/plan.md",
+    ] {
+        for tool in ["read", "glob", "find", "ls"] {
+            let result = call(&w, tool, path);
+            assert_ne!(
+                result.minimum_action, "allow",
+                "{tool} {path}: {}",
+                result.reason_code
+            );
+        }
+        let result = search(&w, path);
+        assert_ne!(
+            result.minimum_action, "allow",
+            "grep {path}: {}",
+            result.reason_code
+        );
+    }
+}
