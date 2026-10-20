@@ -48,11 +48,16 @@ const COMMAND_KEYS: [&str; 4] = ["command", "cmd", "shell_command", "shellComman
 pub(super) fn package_gate(
     request: &McpRelayDecideRequestV1,
 ) -> Result<Option<PackageIntent>, &'static str> {
+    let normalized;
     let workspace = match request.workspace.as_deref() {
-        Some(workspace) if !resolved_path_text(workspace) => {
-            return Err(WORKSPACE_UNNORMALIZED);
-        }
-        workspace => workspace.map(Path::new),
+        Some(workspace) => match resolved_path_text(workspace) {
+            Some(resolved) => {
+                normalized = resolved;
+                Some(Path::new(normalized.as_str()))
+            }
+            None => return Err(WORKSPACE_UNNORMALIZED),
+        },
+        None => None,
     };
     let tool = request.build.tool_name.as_str();
     let arguments = risk_arguments(&request.arguments);
@@ -96,20 +101,30 @@ fn strips_agree(value: &Value) -> bool {
     }
 }
 
-/// Whether `path` is an absolute path `str(Path(path))` prints unchanged and
-/// `resolve()` leaves no `.` or `..` in: no empty component (`//`, a trailing
-/// `/`), no `.`, no `..` and no NUL.
-fn resolved_path_text(path: &str) -> bool {
-    if path == "/" {
-        return true;
+/// The absolute path `str(Path(path))` prints, or `None` for a path the proxy
+/// could hand the parser as another path.
+///
+/// An empty component (`//`, a trailing `/`) and a `.` component name the
+/// directory the component before them already named, so dropping them is
+/// what `Path` itself prints and cannot send the parser to another directory.
+/// A `..` component is read against whatever the component before it resolves
+/// to, which only the filesystem knows, so a path carrying one is still left
+/// to the proxy, as is a relative path or one holding a NUL.
+fn resolved_path_text(path: &str) -> Option<String> {
+    let rest = path.strip_prefix('/')?;
+    if path.contains('\0') {
+        return None;
     }
-    let Some(rest) = path.strip_prefix('/') else {
-        return false;
-    };
-    !path.contains('\0')
-        && rest
-            .split('/')
-            .all(|part| !part.is_empty() && part != "." && part != "..")
+    let mut parts: Vec<&str> = Vec::new();
+    for part in rest.split('/') {
+        if part == ".." {
+            return None;
+        }
+        if !part.is_empty() && part != "." {
+            parts.push(part);
+        }
+    }
+    Some(format!("/{}", parts.join("/")))
 }
 
 #[cfg(test)]

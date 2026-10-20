@@ -130,28 +130,49 @@ fn a_command_the_two_strips_read_differently_defers() {
 }
 
 #[test]
-fn only_a_resolved_workspace_reaches_the_parser() {
+fn a_workspace_naming_one_directory_reaches_the_parser() {
     let call = || request("bash", mapping(json!([["command", "ls"]])));
-    for workspace in ["/", "/work", "/work/a.b", "/work/..a"] {
-        let mut request = call();
-        request.workspace = Some(workspace.to_owned());
-        assert_eq!(gate(&request), Ok(false), "{workspace}");
-    }
     for workspace in [
+        "/",
+        "/work",
+        "/work/a.b",
+        "/work/..a",
         "//work",
         "/work//a",
         "/work/",
         "/work/./a",
         "/work/.",
-        "/work/../a",
-        "/work/..",
-        "work",
-        "",
-        "/wo\0rk",
     ] {
         let mut request = call();
         request.workspace = Some(workspace.to_owned());
+        assert_eq!(gate(&request), Ok(false), "{workspace}");
+    }
+}
+
+#[test]
+fn a_workspace_the_proxy_could_read_as_another_directory_is_left_to_it() {
+    let call = || request("bash", mapping(json!([["command", "ls"]])));
+    for workspace in ["/work/../a", "/work/..", "..", "work", "", "/wo\0rk"] {
+        let mut request = call();
+        request.workspace = Some(workspace.to_owned());
         assert_eq!(gate(&request), Err(WORKSPACE_UNNORMALIZED), "{workspace:?}");
+    }
+}
+
+#[test]
+fn a_workspace_spelled_two_ways_reaches_the_parser_as_one_path() {
+    for (spelled, named) in [
+        ("/work/a", "/work/a"),
+        ("//work//./a/", "/work/a"),
+        ("/work/", "/work"),
+        ("/", "/"),
+        ("/.", "/"),
+    ] {
+        assert_eq!(
+            resolved_path_text(spelled).as_deref(),
+            Some(named),
+            "{spelled}"
+        );
     }
 }
 
