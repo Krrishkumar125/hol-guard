@@ -1192,6 +1192,27 @@
     "rust/crates/guard-runtime/src/codex_hook_bridge_client.rs",
     "rust/crates/guard-runtime/src/codex_hook_bridge_restart.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/npm_source_spec.py",
+   "module": "codex_plugin_scanner.guard.runtime.npm_source_spec",
+   "source_sha256": "288de3261a2d9a6cdb10abb40c3587f3e4a1f49a9293dde75fe5f492d16363de",
+   "forbidden_symbols": [
+    "NpmSourceSpec",
+    "parse_npm_source_spec",
+    "_url_source",
+    "_git_from_host_path",
+    "_strip_archive_suffix",
+    "_looks_like_archive_filename",
+    "_canonical_revision",
+    "_host_with_port",
+    "_non_git_source"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/npm_source_spec.rs",
+    "rust/crates/guard-command/src/package_intent_common.rs",
+    "rust/crates/guard-command/src/supply_chain_package_eval/package_resolution.rs"
+   ]
   }
  ],
  "retired_test_paths": [
@@ -1220,7 +1241,8 @@
   "tests/test_structured_data_sensitivity.py",
   "tests/test_codex_managed_fallback_authentication.py",
   "tests/test_codex_daemon_start_wait.py",
-  "tests/test_codex_daemon_bridge_failure_reason.py"
+  "tests/test_codex_daemon_bridge_failure_reason.py",
+  "tests/test_npm_source_spec.py"
  ],
  "retired_bodies": [
   {
