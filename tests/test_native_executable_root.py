@@ -45,6 +45,7 @@ def test_an_executable_system_temp_is_used_without_touching_the_guard_home(guard
     with root_module.verified_executable(_SCRIPT) as path:
         assert path.parent.parent == Path(tempfile.gettempdir())
         assert path.read_bytes() == _SCRIPT
+    root_module.release_copies()
     assert not path.exists()
     assert not (guard_home / "native-exec").exists()
 
@@ -61,6 +62,7 @@ def test_a_noexec_system_temp_runs_the_verified_bytes_from_the_private_guard_hom
         assert path.read_bytes() == _SCRIPT
         completed = subprocess.run([str(path)], capture_output=True, check=True)
         assert completed.stdout == b"verified\n"
+    root_module.release_copies()
     assert not path.parent.exists()
 
 

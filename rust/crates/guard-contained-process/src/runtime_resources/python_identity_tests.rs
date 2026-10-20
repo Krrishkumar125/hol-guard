@@ -100,8 +100,20 @@ fn identity_preserves_venv_configuration_content_evidence() {
     fs::write(&config, &text).unwrap();
     let before = fixture.capture().unwrap();
     assert_eq!(before.configuration.len(), 1);
-    fs::write(&config, text.replace("false", "true")).unwrap();
-    assert!(before.verify().is_err());
+    let changed = text.replace("false", "true");
+    let before_configuration = before.configuration.clone();
+    if cfg!(windows) {
+        // The held binding excludes writers, so the configuration cannot change
+        // while it is held. Release it before changing the file.
+        let error = fs::write(&config, &changed).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(32));
+        before.verify().unwrap();
+        drop(before);
+        fs::write(&config, &changed).unwrap();
+    } else {
+        fs::write(&config, &changed).unwrap();
+        assert!(before.verify().is_err());
+    }
     let after = fixture.capture().unwrap();
-    assert_ne!(before.configuration, after.configuration);
+    assert_ne!(before_configuration, after.configuration);
 }
