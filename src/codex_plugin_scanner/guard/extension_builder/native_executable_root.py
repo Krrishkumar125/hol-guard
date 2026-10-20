@@ -8,19 +8,28 @@ home instead. That folder is used only while it, the Guard home and every
 directory above the Guard home are closed to other accounts, so no second
 account can swap the bytes between the write and the exec.
 
+The copy is kept for the life of the process. Writing and first running a
+new executable of over 100 MB takes seconds on Windows, where every new image
+is scanned, and one control change asks native several times. Before each
+run the copy is compared byte for byte with the freshly verified bytes; a copy
+that differs, is missing or sits in a directory that is no longer private is
+replaced, never run.
+
 Windows keeps an executable's image locked for a moment after its process
-exits, so the directory is removed again with a short backoff once that lock
-is released. A single attempt left every directory behind on Windows, one
-copy of the runtime per compiler run, until the disk filled.
+exits, so each directory is removed at exit with a short backoff once that
+lock is released. A single attempt left directories behind on Windows until
+the disk filled.
 """
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import shutil
 import stat
 import tempfile
+import threading
 import time
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
@@ -34,6 +43,12 @@ _EXECUTABLE_NAME = "hol-guard-runtime.exe" if os.name == "nt" else "hol-guard-ru
 _private_roots: list[Path] = []
 # Seconds to wait between removal attempts while Windows still holds the image.
 _REMOVAL_BACKOFF = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6)
+_COMPARE_CHUNK = 1024 * 1024
+_copies_lock = threading.Lock()
+# The copy runs reuse, and copies already replaced. A replaced copy may still
+# be running in another thread, so it is removed with the rest at exit.
+_current: tuple[tempfile.TemporaryDirectory[str], Path] | None = None
+_retired: list[tempfile.TemporaryDirectory[str]] = []
 
 
 class ExecutableMaterializationError(OSError):
@@ -147,9 +162,28 @@ def _remove_released(directory: Path) -> None:
             return
 
 
-@contextmanager
-def verified_executable(raw: bytes) -> Generator[Path]:
-    """Materialize exactly the verified bytes in a private execution directory."""
+def _holds_exactly(path: Path, raw: bytes) -> bool:
+    """Whether a private copy is still a regular file holding exactly the verified bytes."""
+    try:
+        if os.name != "nt" and not _closed_directory(path.parent.lstat(), open_bits=0o077):
+            return False
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        with os.fdopen(os.open(path, flags), "rb") as handle:
+            metadata = os.fstat(handle.fileno())
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != len(raw):
+                return False
+            view = memoryview(raw)
+            offset = 0
+            while chunk := handle.read(_COMPARE_CHUNK):
+                if view[offset : offset + len(chunk)] != chunk:
+                    return False
+                offset += len(chunk)
+            return offset == len(raw)
+    except OSError:
+        return False
+
+
+def _materialize(raw: bytes) -> tuple[tempfile.TemporaryDirectory[str], Path]:
     candidate = _candidate(raw, None)
     if os.name != "nt":
         for root in tuple(_private_roots):
@@ -159,9 +193,33 @@ def verified_executable(raw: bytes) -> Generator[Path]:
                 candidate = _candidate(raw, directory)
     if candidate is None:
         raise ExecutableMaterializationError("no private directory can run the verified source compiler")
-    directory, path = candidate
-    try:
-        yield path
-    finally:
+    return candidate
+
+
+def release_copies() -> None:
+    """Remove every private copy this process made. Runs at exit."""
+    global _current
+    with _copies_lock:
+        directories = [*_retired, *([_current[0]] if _current is not None else [])]
+        _retired.clear()
+        _current = None
+    for directory in directories:
         directory.cleanup()
         _remove_released(Path(directory.name))
+
+
+atexit.register(release_copies)
+
+
+@contextmanager
+def verified_executable(raw: bytes) -> Generator[Path]:
+    """Yield a private copy holding exactly the verified bytes."""
+    global _current
+    with _copies_lock:
+        if _current is None or not _holds_exactly(_current[1], raw):
+            replacement = _materialize(raw)
+            if _current is not None:
+                _retired.append(_current[0])
+            _current = replacement
+        path = _current[1]
+    yield path
