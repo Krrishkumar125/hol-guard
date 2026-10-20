@@ -520,8 +520,10 @@ def main(args: Any) -> int:
             # How many rounds this invocation actually spent, against what it was allowed.
             # A reader who sees `qualified: false` needs to know whether the run proved
             # something about the product or merely ran out of budget, and the two look
-            # alike in the outcome counts alone.
-            "attempts_run": len(attempts),
+            # alike in the outcome counts alone. The count is of rounds that started,
+            # not of records: an interrupted round spent the lane and left no record,
+            # and `attempts` already gives the completed count.
+            "attempts_run": len(driven),
             "attempts_allowed": args.attempts,
             # Verified counts only; a failed or missing verify publishes null here and the
             # last attempt's runner counts under unverified_* so failing runs still show them.

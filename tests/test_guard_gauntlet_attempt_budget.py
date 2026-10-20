@@ -80,3 +80,22 @@ def test_prepare_only_spends_nothing_and_still_names_the_budget(
     assert qualify.main(_args(tmp_path, prepare_only=True)) == 0
     record = _record(tmp_path)
     assert record["attempts_run"] == 0 and record["attempts_allowed"] == 2
+
+
+def test_an_interrupted_round_still_counts_against_the_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A round that started spent the lane whether or not it lived to be summarized.
+    # Counting records instead would report `attempts_run: 0` for a driven lane.
+    _fake_setup(monkeypatch, tmp_path, [])
+    started: list[int] = []
+
+    def interrupted(argv: list[str], **kwargs: Any) -> int:
+        kwargs["on_started"]()
+        started.append(1)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(qualify, "run_attempt", interrupted)
+    assert qualify.main(_args(tmp_path, attempts=3)) == 1
+    record = _record(tmp_path)
+    assert started == [1]
+    assert record["attempts"] == []
+    assert record["attempts_run"] == 1 and record["attempts_allowed"] == 3
