@@ -83,11 +83,21 @@ jobs:
       - name: Build the source compiler and the native runtime
         # The approval gate is answered only by the resident native runtime, so the
         # installed dashboard cannot configure or satisfy it without this binary.
+        env:
+          # The wheel assembly below refuses a runtime whose embedded identity does
+          # not match the package it is being sealed into, so the release pipeline's
+          # version and commit have to reach the compiler here.
+          HOL_GUARD_BUILD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          set -euo pipefail
+          uv sync --frozen --extra dev --python 3.12
+          VERSION=$(uv run --no-sync python scripts/sync_repo_version.py --check)
+          export HOL_GUARD_PACKAGE_VERSION="$VERSION"
           cargo build --manifest-path rust/Cargo.toml --locked --release \
             -p guard-command -p hol-guard-runtime --bin guard-command-source --bin hol-guard-runtime
           test -x rust/target/release/guard-command-source
           test -x rust/target/release/hol-guard-runtime
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Build exact wheel and isolated installed interpreter
         shell: bash
@@ -96,8 +106,6 @@ jobs:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          uv sync --frozen --extra dev --python 3.12
-          VERSION=$(uv run --no-sync python scripts/sync_repo_version.py --check)
           runtime=rust/target/release/hol-guard-runtime
           compiler=rust/target/release/guard-command-source
           # An installed release carries its native runtime inside the package.
@@ -133,7 +141,6 @@ jobs:
           PYTHONPATH= "$CANARY_PYTHON" -m pip install --no-compile --index-url https://pypi.org/simple "$WHEEL"
           PYTHONPATH= "$CANARY_PYTHON" -c 'import importlib.metadata as m; assert m.version("hol-guard")'
           PYTHONPATH= "$CANARY_PYTHON" -c 'import pathlib, codex_plugin_scanner as p; native = pathlib.Path(p.__file__).parent / "_native"; assert (native / "source-compiler-manifest.json").is_file(), native'
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "CANARY_PYTHON=$CANARY_PYTHON" >> "$GITHUB_ENV"
           sha256sum "$WHEEL" > extension-control-center-wheel.sha256
 
