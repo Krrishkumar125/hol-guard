@@ -44,6 +44,23 @@ unsafe fn child_failure(error_fd: i32, code: i32) -> ! {
     }
 }
 
+/// The parent's error for a child that reported a launch failure. The code
+/// names the setup step that failed, so a refused launch can be traced. A
+/// hardened launch writes a zero initialization marker before any later
+/// failure, so the last nonzero word is the step that failed.
+pub(super) fn child_failed(report: &[u8]) -> io::Error {
+    let code = report
+        .chunks_exact(4)
+        .map(|bytes| i32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        .filter(|code| *code != 0)
+        .next_back()
+        .unwrap_or(-1);
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        format!("native child initialization or execution failed (step {code})"),
+    )
+}
+
 pub(super) struct RequestWindow<'a> {
     pub(super) deadline: Instant,
     pub(super) cancel: &'a AtomicBool,
@@ -387,5 +404,35 @@ impl ChildSetup<'_> {
         unsafe {
             child_failure(4, 7);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::child_failed;
+
+    fn report(codes: &[i32]) -> Vec<u8> {
+        codes.iter().flat_map(|code| code.to_ne_bytes()).collect()
+    }
+
+    #[test]
+    fn a_failure_before_initialization_names_its_step() {
+        assert!(child_failed(&report(&[9]))
+            .to_string()
+            .ends_with("(step 9)"));
+    }
+
+    #[test]
+    fn a_failure_after_the_initialization_marker_names_its_step() {
+        assert!(child_failed(&report(&[0, 13]))
+            .to_string()
+            .ends_with("(step 13)"));
+    }
+
+    #[test]
+    fn a_report_without_a_complete_code_is_unknown() {
+        assert!(child_failed(&[0, 0, 0, 0, 13])
+            .to_string()
+            .ends_with("(step -1)"));
     }
 }

@@ -20,8 +20,12 @@ def test_fast_codegen_is_requested_only_for_alpha_dispatches() -> None:
     assert stable in condition
     alpha = "inputs.release_channel == 'alpha' && inputs.release_train == 'main' && needs.resolve-alpha-version.result"
     assert alpha in condition
-    assert "canary" not in condition
     assert "github.run_attempt == 1" in condition
+    # PR canaries precompile through the same path but never request fast codegen, so their
+    # wheels are still measured against the PyPI budgets.
+    canary = "github.event_name == 'pull_request' &&"
+    assert canary in condition
+    assert "inputs.release_channel == 'alpha'" not in condition[condition.index(canary) :]
 
 
 def test_prepare_applies_fast_profile_only_to_canonical_alpha_versions() -> None:
@@ -142,3 +146,6 @@ def test_native_prepare_version_pattern_accepts_only_canonical_alpha_suffix() ->
         assert pattern.match(good)
     for bad in ("3.35.0a0", "3.35.0a01", "3.35.0rc1", "3.35.0.dev1", "3.35.0a1-x"):
         assert not pattern.match(bad)
+    # Only PR canary compiles, which never publish a release, may embed a dev version.
+    assert 'PR_CANARY: ${{ github.event_name == \'pull_request\' }}' in prepare
+    assert '! [[ "${PR_CANARY:-}" == "true" && "$RELEASE_VERSION" =~ ^${BASE_VERSION//./\\\\.}\\.dev[0-9]+$ ]]; then' in prepare

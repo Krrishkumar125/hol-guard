@@ -177,3 +177,52 @@ def test_request_key_set_is_exact(monkeypatch: pytest.MonkeyPatch, kind: str, fi
     with pytest.raises(compose.NativeHookComposeError) as error:
         compose.native_hook_compose(kind, fields, guard_home=None)
     assert error.value.code == "native_hook_artifact_compose_request_invalid"
+
+
+def _feature_recorder(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
+    """Record the feature each query requires of the resident."""
+
+    required: list[str | None] = []
+    monkeypatch.setattr(compose, "_resolve_digest_home", lambda _home: Path("/tmp/hook-compose-home"))
+    monkeypatch.setattr(compose, "ensure_resident_prerequisite", lambda _home: True)
+
+    def fake(*, request, required_feature=None, **_kwargs):
+        required.append(required_feature)
+        return _good(request)
+
+    monkeypatch.setattr(compose, "_resident_request", fake)
+    return required
+
+
+def test_a_kind_added_after_the_op_requires_its_own_feature(monkeypatch: pytest.MonkeyPatch) -> None:
+    required = _feature_recorder(monkeypatch)
+    with pytest.raises(compose.NativeHookComposeError):
+        compose.native_hook_compose(
+            "package_reuse_settle",
+            dict.fromkeys(compose._FIELDS["package_reuse_settle"]),
+            guard_home=None,
+        )
+    assert required == [compose.HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE]
+
+
+def test_the_kinds_the_op_shipped_with_require_the_op_feature(monkeypatch: pytest.MonkeyPatch) -> None:
+    required = _feature_recorder(monkeypatch)
+    compose.native_hook_compose("tool_grant_apply", {}, guard_home=None)
+    assert required == [compose.HOOK_ARTIFACT_COMPOSE_FEATURE]
+
+
+def test_a_claimed_saved_allow_is_read_back_when_the_resident_cannot_settle() -> None:
+    """An unreachable resident must not turn a consumed approval into an allow."""
+
+    from codex_plugin_scanner.guard.cli import commands_hook_native_eval as evaluation
+
+    consumed = [{"code": "saved_package_approval", "approval_claim_disposition": "consumed"}]
+    retained = [{"code": "saved_package_approval", "approval_claim_disposition": "retained"}]
+    unknown = [{"code": "saved_package_approval"}]
+    other = [{"code": "saved_package_block"}]
+
+    assert evaluation._claimed_saved_package_allow(consumed) == "consumed"
+    assert evaluation._claimed_saved_package_allow(retained) == "retained"
+    assert evaluation._claimed_saved_package_allow(unknown) == "retained"
+    assert evaluation._claimed_saved_package_allow(other) is None
+    assert evaluation._claimed_saved_package_allow([]) is None

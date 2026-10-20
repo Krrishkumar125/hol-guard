@@ -50,6 +50,7 @@ pub(crate) fn decide(query: &McpProxyQueryV1) -> Value {
         McpProxyQueryV1::SensitiveReadReuse(query) => sensitive::reuse(query),
         McpProxyQueryV1::SensitiveReadHint(query) => sensitive::hint(query),
         McpProxyQueryV1::ExternalArchiveBind(query) => archive::bind(query),
+        McpProxyQueryV1::ExternalArchiveBindingRequired(query) => archive::binding_required(query),
         McpProxyQueryV1::PackageReasonSignals(query) => signals::reason_signals(query),
         McpProxyQueryV1::InlineApprovalReply(query) => inline_approval::reply(query),
         McpProxyQueryV1::CallProjection(query) => match projection::call_projection(query) {

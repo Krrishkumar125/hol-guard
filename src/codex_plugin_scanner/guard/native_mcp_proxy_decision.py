@@ -29,6 +29,7 @@ from .native_runtime_resilience import native_record_resident_failure, native_re
 
 MCP_PROXY_DECISION_FEATURE = "mcp-proxy-decision-v1"
 MCP_PROXY_ARCHIVE_VERIFY_FEATURE = "mcp-proxy-archive-verify-v1"
+MCP_PROXY_ARCHIVE_BINDING_REQUIRED_FEATURE = "mcp-proxy-archive-binding-required-v1"
 # The resident also classifies the answer to an inline approval prompt. An older
 # resident rejects that query as an unknown check, so a caller asks for it by name.
 MCP_PROXY_INLINE_APPROVAL_REPLY_FEATURE = "mcp-proxy-inline-approval-reply-v1"
@@ -213,6 +214,43 @@ def native_external_archive_bind(
             slot = slot[step]
         slot[last] = edit["value"]
     return bound
+
+
+def _evaluation_entries(evaluation: object, name: str) -> list[object]:
+    """One list-valued field of an evaluation, as the resident reads it.
+
+    Anything that is not a list or a tuple carries no entries, exactly as the
+    callers that used to read these fields themselves treated it.
+    """
+
+    value = getattr(evaluation, name, ())
+    return list(value) if isinstance(value, (list, tuple)) else []
+
+
+def native_external_archive_binding_required(evaluation: object, *, guard_home: Path) -> bool:
+    """Whether ``evaluation`` only permits a request bound to its verified archives.
+
+    The evaluator owns what its own reasons mean, so the answer comes from the
+    resident. An unreachable resident answers ``True``: demanding a binding the
+    caller cannot produce blocks the install, which is the closed direction.
+    """
+
+    try:
+        payload = native_mcp_proxy_decide(
+            {
+                "check": "external_archive_binding_required",
+                "evaluation": {
+                    name: _evaluation_entries(evaluation, name)
+                    for name in ("external_archive_source_hashes", "reasons", "packages")
+                },
+            },
+            guard_home=guard_home,
+            required_feature=MCP_PROXY_ARCHIVE_BINDING_REQUIRED_FEATURE,
+        )
+    except (NativeMcpProxyDecisionError, TypeError, ValueError):
+        return True
+    required = payload.get("required")
+    return required if isinstance(required, bool) else True
 
 
 def native_package_reason_signals(reasons: Sequence[object], *, guard_home: Path) -> tuple[dict[str, Any], ...]:

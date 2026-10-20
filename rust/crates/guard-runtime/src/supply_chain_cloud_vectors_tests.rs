@@ -28,6 +28,7 @@ pub(crate) const VECTORS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../tests/fixtures/supply-chain-eval/cloud-cases.v1.json"
 ));
+#[cfg(not(windows))]
 const CACHE_CONTRACT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../tests/fixtures/supply-chain-eval/cache-authority-contract.v2.json"

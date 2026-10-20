@@ -27,6 +27,12 @@ pub const MCP_PROXY_ARCHIVE_VERIFY_FEATURE: &str = "mcp-proxy-archive-verify-v1"
 /// An older resident rejects that query as an unknown check, so a caller
 /// asks for this capability before sending it.
 pub const MCP_PROXY_INLINE_APPROVAL_REPLY_FEATURE: &str = "mcp-proxy-inline-approval-reply-v1";
+
+/// The resident also answers whether an evaluation demands an archive binding
+/// at all. An older resident rejects that query as an unknown check, so a
+/// caller asks for this capability before sending it.
+pub const MCP_PROXY_ARCHIVE_BINDING_REQUIRED_FEATURE: &str =
+    "mcp-proxy-archive-binding-required-v1";
 /// Largest request the op accepts (a `tools/list` page rides inside it).
 pub const MCP_PROXY_DECISION_MAX_BYTES: usize = 5 * 1024 * 1024;
 
@@ -268,6 +274,15 @@ pub struct McpInlineApprovalReplyQueryV1 {
     pub server_name: String,
 }
 
+/// Whether a package evaluation only permits a request bound to the external
+/// archives it verified.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct McpExternalArchiveBindingRequiredQueryV1 {
+    /// The package evaluation, exactly as the evaluator produced it.
+    pub evaluation: Value,
+}
+
 /// Project the reasons of a package evaluation into risk signals.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -306,6 +321,7 @@ pub enum McpProxyQueryV1 {
     SensitiveReadReuse(McpSensitiveReadReuseQueryV1),
     SensitiveReadHint(McpSensitiveReadHintQueryV1),
     ExternalArchiveBind(McpExternalArchiveBindQueryV1),
+    ExternalArchiveBindingRequired(McpExternalArchiveBindingRequiredQueryV1),
     PackageReasonSignals(McpPackageReasonSignalsQueryV1),
     InlineApprovalReply(McpInlineApprovalReplyQueryV1),
     CallProjection(McpCallProjectionQueryV1),

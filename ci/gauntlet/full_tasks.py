@@ -208,7 +208,7 @@ def create_full_task_fixture(
     # Protected paths are home-relative here; full_task_checks verifies them, not filesystem_checks.
     protected = {name: digest_file(home / name) for name in HOME_SECRETS}
     metadata = {name: file_metadata(home / name) for name in HOME_SECRETS}
-    return Fixture(root, home, workspace, canary, protected, metadata)
+    return Fixture(root, home, workspace, canary, protected, metadata, workspace)
 
 
 def full_task_checks(fixture: Fixture, task_id: str) -> dict[str, bool]:
