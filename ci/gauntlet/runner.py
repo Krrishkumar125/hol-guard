@@ -153,6 +153,8 @@ def run_case(
                 relay,
                 wait_for_tasks=scenario.id in {"omp-native-task-readonly-lookup", TASK_SCHEMA_CASE},
                 memory_bank="learn" in scenario.required_tools,
+                github_tool="github" in scenario.required_tools,
+                structured_tasks=scenario.id == TASK_SCHEMA_CASE,
             )
             if scenario.oracle == "watch-command":
                 if scenario.commands != (WATCH_COMMAND,) or scenario.prompt != WATCH_PROMPT:

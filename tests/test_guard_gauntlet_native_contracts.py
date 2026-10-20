@@ -32,6 +32,43 @@ def test_async_wait_lane_retains_background_tasks(tmp_path: Path) -> None:
     assert config["async"] == {"enabled": True}
 
 
+def test_github_lane_enables_the_tool_the_scenario_asks_for(tmp_path: Path) -> None:
+    write_agent_configuration(
+        tmp_path / "agent",
+        SimpleNamespace(base_url="http://127.0.0.1:1234", reasoning_effort=None),
+        github_tool=True,
+    )
+    config = json.loads((tmp_path / "agent" / "config.yml").read_text())
+    # Without the toggle OMP rejects `--tools=github` during argument
+    # validation, before any inference, as unavailable in this session.
+    assert config["github"] == {"enabled": True}
+
+
+def test_other_lanes_leave_the_github_tool_out_of_the_inventory(tmp_path: Path) -> None:
+    write_agent_configuration(
+        tmp_path / "agent", SimpleNamespace(base_url="http://127.0.0.1:1234", reasoning_effort=None)
+    )
+    assert "github" not in json.loads((tmp_path / "agent" / "config.yml").read_text())
+
+
+def test_github_scenarios_declare_the_tool_that_drives_the_toggle() -> None:
+    scenarios = {scenario.id: scenario for scenario in load_catalog()}
+    scenario = scenarios["omp-native-github-search-prs"]
+    assert "github" in scenario.required_tools
+    assert _scenario_tools(scenario) == "github"
+
+
+def test_task_schema_scenario_names_the_argument_the_oracle_reads() -> None:
+    """A prompt that only describes a result schema in prose never exercises it.
+
+    The model answers such a prompt by restating the contract in its subtask
+    text and omitting the argument, so the case reports a missing schema that
+    the harness never asked for in the first place.
+    """
+    scenarios = {scenario.id: scenario for scenario in load_catalog()}
+    assert "outputSchema" in scenarios["omp-native-task-result-schema-token-fields"].prompt
+
+
 def test_eval_bridge_has_the_catalog_read_dependency_available() -> None:
     scenarios = {scenario.id: scenario for scenario in load_catalog()}
     assert _scenario_tools(scenarios["omp-native-eval-reads-skill-doc"]) == "eval,read"
@@ -74,3 +111,27 @@ def test_task_normalization_keeps_every_meaningful_argument_change_visible() -> 
         assert "model-host-arguments-mismatch" in reconcile(task_events({**task, "outputSchema": None}, host))[1]
     events = task_events({**task, "outputSchema": {"type": "object"}}, task)
     assert "model-host-arguments-mismatch" in reconcile(events)[1]
+
+
+def test_structured_tasks_toggle_turns_on_the_task_schema_fields(tmp_path: Path) -> None:
+    """`task.structured` is what makes OMP advertise `outputSchema` at all.
+
+    With the setting off the task schema omits the field and ends in
+    `"+": "delete"`, so a model-supplied `outputSchema` is stripped before the
+    host records the call and the case fails as a host-argument mismatch the
+    model never caused.
+    """
+    write_agent_configuration(
+        tmp_path / "agent",
+        SimpleNamespace(base_url="http://127.0.0.1:1234", reasoning_effort=None),
+        structured_tasks=True,
+    )
+    config = json.loads((tmp_path / "agent" / "config.yml").read_text())
+    assert config["task"] == {"structured": True}
+
+
+def test_other_lanes_keep_the_flat_task_call(tmp_path: Path) -> None:
+    write_agent_configuration(
+        tmp_path / "agent", SimpleNamespace(base_url="http://127.0.0.1:1234", reasoning_effort=None)
+    )
+    assert "task" not in json.loads((tmp_path / "agent" / "config.yml").read_text())
