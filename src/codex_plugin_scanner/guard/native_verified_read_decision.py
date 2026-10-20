@@ -37,7 +37,7 @@ def workspace_read_decision(
 ) -> EffectDecision:
     """Return the resident's decision for a verified workspace read."""
 
-    read = {"kind": "workspace", "operation_id": operation_id}
+    read: dict[str, object] = {"kind": "workspace", "operation_id": operation_id}
     return _request_decision(read, binding_digest, guard_home=guard_home, timeout_seconds=timeout_seconds)
 
 
@@ -49,7 +49,7 @@ def github_public_read_decision(
 ) -> EffectDecision:
     """Return the resident's decision for a verified GitHub public read."""
 
-    read = {"kind": "github_public_read"}
+    read: dict[str, object] = {"kind": "github_public_read"}
     return _request_decision(read, binding_digest, guard_home=guard_home, timeout_seconds=timeout_seconds)
 
 

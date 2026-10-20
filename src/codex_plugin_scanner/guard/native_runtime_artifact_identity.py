@@ -41,7 +41,7 @@ def data_flow_artifact_id(
 ) -> str:
     """Return the resident's artifact id for a data-flow exfiltration request."""
 
-    identity = {
+    identity: dict[str, object] = {
         "kind": "data_flow",
         "source_scope": source_scope,
         "command_text": command_text,
