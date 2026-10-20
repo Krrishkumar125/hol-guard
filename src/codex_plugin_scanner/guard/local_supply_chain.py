@@ -538,6 +538,7 @@ def _build_package_protect_authority(
         sanitized_intent,
         config_path="hol-guard.toml",
         source_scope="project",
+        guard_home=store.guard_home,
     )
     evaluation = evaluate_package_request_artifact(
         artifact=artifact,
