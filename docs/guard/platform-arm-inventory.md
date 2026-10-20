@@ -35,11 +35,15 @@ over-collects rather than missing an arm.
 they leave no second item for the gate to find on its own. Inline `#[cfg(test)] mod tests`
 extents are skipped, so a `cfg!(unix)` inside a test is not recorded as behaviour.
 
-Each arm is keyed on its file and its normalised declaration, and carries a fingerprint of
-the first lines of the block behind it. CI fails when an arm appears with no entry, when an
-entry names an arm that no longer exists, when an arm's cfg predicate changes under an
-existing entry, or when the block behind a reviewed arm changes — a verdict describes what
-the code does, so rewriting the code retires the verdict.
+Each arm is keyed on its file and its normalised declaration, and every arm carries a
+fingerprint of the source behind it — a declaration's body as much as a bare block's, since a
+stub that fails closed can be rewritten into one that returns `true` under the reason that was
+written for the old behaviour. The fingerprint ends where the item does, at the brace that
+closes a body or at the `;` of a `mod` or `use` that has none, so an arm is not keyed on
+whatever follows it. CI fails when an arm appears with no entry, when an entry names an arm
+that no longer exists, when an arm's cfg predicate changes under an existing entry, or when
+the source behind a reviewed arm changes — a verdict describes what the code does, so
+rewriting the code retires the verdict.
 
 A purely static "this `#![cfg(unix)]` test file covers a module with a `#[cfg(not(unix))]`
 arm" lint was tried first and does not work: tests live in sibling `*_tests.rs` files and in

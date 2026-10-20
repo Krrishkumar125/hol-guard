@@ -232,21 +232,32 @@ def signature(lines: list[str], start: int) -> str:
     return f"{enclosing(lines, start)} -- non-Unix block"
 
 
-def fingerprint(lines: list[str], start: int) -> str:
-    """A short digest of a bare block's own source.
+OPENING, CLOSING = "([{", ")]}"
 
-    An arm named after the item it sits in is keyed by its position among that
-    item's blocks, so inserting a block ahead of a reviewed one would otherwise
-    hand the newcomer the existing verdict. The digest is what makes the two
-    tell apart: a block whose source changed is a block to review again.
+
+def fingerprint(lines: list[str], start: int) -> str:
+    """A short digest of the arm's own source.
+
+    Every arm carries one. A bare block is keyed by its position among the
+    blocks of the item it sits in, so without a digest, inserting a block ahead
+    of a reviewed one would hand the newcomer the existing verdict. A
+    declaration is keyed by its own name, which that cannot happen to, but its
+    body can still be rewritten under a verdict written for what it used to do:
+    a `windows-unsupported` stub that fails closed becomes one that returns
+    `true`, with the reason left intact. Source that changed is source to
+    review again either way.
+
+    The digest ends where the item does, at the brace that closes a body or at
+    the `;` of a declaration that has none, so a `mod` or a `use` is not keyed
+    on whatever lines happen to follow it.
     """
     collected: list[str] = []
-    depth, opened = 0, False
+    depth = 0
     for line in lines[start : start + BLOCK_LINES]:
         collected.append(WHITESPACE.sub(" ", line.strip()))
-        depth += line.count("{") - line.count("}")
-        opened = opened or "{" in line
-        if opened and depth <= 0:
+        depth += sum(line.count(character) for character in OPENING)
+        depth -= sum(line.count(character) for character in CLOSING)
+        if depth <= 0 and any(character in line for character in "};"):
             break
     body = " ".join(part for part in collected if part and not part.startswith("//"))
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
@@ -279,15 +290,12 @@ def test_module(lines: list[str]) -> set[int]:
     return inside
 
 
-def record(found: list[dict[str, str]], relative: str, item: str, cfg: str, body: str | None) -> None:
+def record(found: list[dict[str, str]], relative: str, item: str, cfg: str, body: str) -> None:
     """Add an arm, numbering a repeat of an item that already appeared."""
     repeats = sum(1 for seen in found if seen["file"] == relative and seen["item"].startswith(item))
     if repeats:
         item = f"{item} #{repeats + 1}"
-    arm = {"file": relative, "item": item, "cfg": WHITESPACE.sub(" ", cfg).strip()}
-    if body is not None:
-        arm["body"] = body
-    found.append(arm)
+    found.append({"file": relative, "item": item, "cfg": WHITESPACE.sub(" ", cfg).strip(), "body": body})
 
 
 def arms(root: Path) -> list[dict[str, str]]:
@@ -315,8 +323,7 @@ def arms(root: Path) -> list[dict[str, str]]:
                 if cursor >= len(lines):
                     continue
                 item = signature(lines, cursor)
-                body = None if DECLARATION.match(lines[cursor]) else fingerprint(lines, cursor)
-                record(found, relative, item, attribute.group("cfg"), body)
+                record(found, relative, item, attribute.group("cfg"), fingerprint(lines, cursor))
                 continue
             macro = macro_predicate(line)
             if macro is None or SKIPPED.match(line) or not branching(macro):

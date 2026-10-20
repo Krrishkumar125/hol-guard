@@ -20,6 +20,11 @@ def _crate(root: Path, body: str) -> Path:
     return root / "rust" / "crates"
 
 
+def _rewrite(crates: Path, body: str) -> None:
+    """Change the demo crate's source without recreating its directories."""
+    (crates / "guard-demo" / "src" / "lib.rs").write_text(body, encoding="utf-8")
+
+
 def _inventory(root: Path, arms: list[dict[str, str]]) -> Path:
     path = root / "platform_arms.json"
     path.write_text(
@@ -40,13 +45,12 @@ def test_a_declared_arm_is_named_by_its_signature(tmp_path: Path) -> None:
     """A function arm is keyed on its declaration, so a changed return type is re-reviewed."""
     crates = _crate(tmp_path, "#[cfg(not(unix))]\nfn probe(path: &Path) -> bool {\n    true\n}\n")
 
-    assert gate.arms(crates) == [
-        {
-            "file": "rust/crates/guard-demo/src/lib.rs",
-            "item": "fn probe(path: &Path) -> bool",
-            "cfg": "not(unix)",
-        }
-    ]
+    [arm] = gate.arms(crates)
+
+    assert arm["file"] == "rust/crates/guard-demo/src/lib.rs"
+    assert arm["item"] == "fn probe(path: &Path) -> bool"
+    assert arm["cfg"] == "not(unix)"
+    assert len(arm["body"]) == 12
 
 
 def test_a_block_arm_is_named_after_the_item_it_stands_in(tmp_path: Path) -> None:
@@ -208,6 +212,30 @@ def test_a_rewritten_block_loses_its_verdict(tmp_path: Path) -> None:
     assert entry["body"] == arm["body"]
 
 
+def test_a_rewritten_declaration_body_is_reported(tmp_path: Path) -> None:
+    """A stub that fails closed must not keep its reason once it returns true."""
+    stub = "#[cfg(not(unix))]\nfn executable_file() -> bool {\n    false\n}\n"
+    crates = _crate(tmp_path, stub)
+    [arm] = gate.arms(crates)
+    reviewed = [{**arm, "verdict": "windows-unsupported", "note": "fails closed"}]
+    _rewrite(crates, stub.replace("false", "true"))
+
+    messages = gate.problems(gate.arms(crates), reviewed)
+
+    assert len(messages) == 1
+    assert "the block behind `fn executable_file() -> bool` changed" in messages[0]
+
+
+def test_a_declaration_without_a_body_ends_at_its_semicolon(tmp_path: Path) -> None:
+    """A `mod` or a `use` must not be keyed on whatever follows it."""
+    crates = _crate(tmp_path, "#[cfg(not(unix))]\nmod windows_pytest;\nfn unrelated() -> bool {\n    true\n}\n")
+    [first] = gate.arms(crates)
+    _rewrite(crates, "#[cfg(not(unix))]\nmod windows_pytest;\nfn unrelated() -> bool {\n    false\n}\n")
+    [second] = gate.arms(crates)
+
+    assert first["body"] == second["body"]
+
+
 def test_a_reviewed_declaration_keeps_its_verdict_when_a_neighbour_arrives(tmp_path: Path) -> None:
     """Adding an arm above a reviewed one must not renumber it into a fresh review."""
     crates = _crate(
@@ -264,10 +292,10 @@ def test_a_removed_arm_is_reported(tmp_path: Path) -> None:
 def test_a_widened_cfg_is_reported(tmp_path: Path) -> None:
     """`not(unix)` and `all(not(unix), not(windows))` are different platforms, so re-review."""
     crates = _crate(tmp_path, "#[cfg(not(unix))]\nfn probe() -> bool {\n    true\n}\n")
+    [arm] = gate.arms(crates)
     reviewed = [
         {
-            "file": "rust/crates/guard-demo/src/lib.rs",
-            "item": "fn probe() -> bool",
+            **arm,
             "cfg": "all(not(unix), not(windows))",
             "verdict": "other-platform",
             "note": "Windows takes its own arm",
@@ -295,15 +323,8 @@ def test_an_unreviewed_verdict_is_not_a_review(tmp_path: Path) -> None:
 def test_an_unknown_verdict_is_rejected(tmp_path: Path) -> None:
     """The verdict list is the vocabulary a reader of the inventory can rely on."""
     crates = _crate(tmp_path, "#[cfg(not(unix))]\nfn probe() -> bool {\n    true\n}\n")
-    reviewed = [
-        {
-            "file": "rust/crates/guard-demo/src/lib.rs",
-            "item": "fn probe() -> bool",
-            "cfg": "not(unix)",
-            "verdict": "fine",
-            "note": "looks fine",
-        }
-    ]
+    [arm] = gate.arms(crates)
+    reviewed = [{**arm, "verdict": "fine", "note": "looks fine"}]
 
     assert gate.problems(gate.arms(crates), reviewed) == ["rust/crates/guard-demo/src/lib.rs: unknown verdict 'fine'"]
 
