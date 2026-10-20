@@ -123,9 +123,10 @@ pub struct PolicyArtifactFactsV1 {
     pub shell_local_script_review: bool,
     /// `guard_default_action` metadata; non-strings arrive as `""`.
     pub guard_default_action: Option<String>,
-    /// `str(confidence or "")` of the artifact risk confidence.
+    /// `str(confidence or "")` of the artifact risk confidence. Whether that
+    /// confidence is strong enough to stop a posture is read off this text
+    /// here, so no caller decides it.
     pub confidence_text: String,
-    pub confidence_strong: bool,
     /// A caller that already knows the artifact installs a boot or login
     /// item says so here; the resident reads `action_class` for the rest.
     pub writes_launch_agent: bool,
@@ -133,6 +134,14 @@ pub struct PolicyArtifactFactsV1 {
     #[serde(default)]
     pub action_class: Option<String>,
     pub skill_is_known_bad: bool,
+}
+
+impl PolicyArtifactFactsV1 {
+    /// The artifact risk confidence is one a protection posture stops on.
+    #[must_use]
+    pub fn confidence_strong(&self) -> bool {
+        self.confidence_text.trim().eq_ignore_ascii_case("strong")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -322,4 +331,48 @@ pub struct HookArtifactComposeResultV1 {
     pub code: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
+}
+
+#[cfg(test)]
+mod confidence_tests {
+    use super::PolicyArtifactFactsV1;
+    use serde_json::json;
+
+    fn facts(confidence_text: &str) -> PolicyArtifactFactsV1 {
+        serde_json::from_value(json!({
+            "hard_block": false,
+            "configured_override": null,
+            "command_action_floor": null,
+            "explicit_permission_allow": false,
+            "risk_classes": [],
+            "pytest_restricted_sandbox": false,
+            "shell_local_script_review": false,
+            "guard_default_action": null,
+            "confidence_text": confidence_text,
+            "writes_launch_agent": false,
+            "skill_is_known_bad": false,
+        }))
+        .expect("artifact facts decode")
+    }
+
+    #[test]
+    fn a_strong_confidence_is_read_off_the_confidence_text() {
+        assert!(facts("strong").confidence_strong());
+        assert!(facts("  Strong  ").confidence_strong());
+    }
+
+    #[test]
+    fn any_other_confidence_text_is_not_strong() {
+        for text in ["", "weak", "moderate", "strongly"] {
+            assert!(!facts(text).confidence_strong(), "{text:?} read as strong");
+        }
+    }
+
+    #[test]
+    fn the_caller_may_not_send_its_own_strength() {
+        let mut value = serde_json::to_value(facts("strong")).expect("encode");
+        value["confidence_strong"] = json!(false);
+        serde_json::from_value::<PolicyArtifactFactsV1>(value)
+            .expect_err("a caller-sent strength must be rejected");
+    }
 }

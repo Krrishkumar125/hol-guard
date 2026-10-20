@@ -27,7 +27,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -74,7 +73,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -118,7 +116,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -165,7 +162,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -218,7 +214,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -265,7 +260,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -309,7 +303,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -356,7 +349,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -400,7 +392,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -447,7 +438,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "block",
         "explicit_permission_allow": false,
@@ -500,7 +490,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -547,7 +536,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -591,7 +579,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -638,7 +625,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -682,7 +668,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -729,7 +714,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "???",
         "explicit_permission_allow": false,
@@ -773,7 +757,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "allow",
         "explicit_permission_allow": false,
@@ -827,7 +810,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -871,7 +853,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -918,7 +899,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -962,7 +942,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1011,7 +990,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1055,7 +1033,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1104,7 +1081,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1148,7 +1124,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1197,7 +1172,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "review",
         "explicit_permission_allow": false,
@@ -1243,7 +1217,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1298,7 +1271,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1343,7 +1315,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1392,7 +1363,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "block",
         "explicit_permission_allow": false,
@@ -1437,7 +1407,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1491,7 +1460,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1536,7 +1504,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1589,7 +1556,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "review",
         "explicit_permission_allow": false,
@@ -1635,7 +1601,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1682,7 +1647,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1730,7 +1694,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1777,7 +1740,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1824,7 +1786,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1871,7 +1832,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1918,7 +1878,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1965,7 +1924,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -3896,7 +3854,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -3950,7 +3907,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -3999,7 +3955,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -4046,7 +4001,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": true,
         "confidence_text": "strong",
         "configured_override": "warn",
         "explicit_permission_allow": false,
