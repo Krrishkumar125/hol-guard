@@ -181,6 +181,9 @@ use parser_segments::*;
 pub mod developer_inspection_authority;
 pub mod environment_secret_dump;
 pub mod pretool;
+pub mod runtime_artifact_identity;
+#[cfg(test)]
+mod runtime_artifact_identity_tests;
 mod runtime_read_paths;
 pub mod secret_path_probe;
 pub mod sensitive_request;
@@ -872,3 +875,6 @@ pub mod supply_chain_bundle;
 pub mod supply_chain_package_identity;
 pub mod supply_chain_risk;
 pub mod supply_chain_support;
+pub mod verified_read_decision;
+#[cfg(test)]
+mod verified_read_decision_tests;

@@ -645,6 +645,7 @@ mod runner_authority_signature;
 mod runner_sync_policy;
 mod runner_sync_signals;
 mod runner_sync_url;
+mod runtime_artifact_identity_op;
 mod runtime_cli;
 mod runtime_detector_run_op;
 mod secrets_cli;
@@ -684,6 +685,7 @@ mod supply_chain_eval_seams;
 mod supply_chain_eval_transport;
 mod tool_action_identity_op;
 mod totp;
+mod verified_read_decision_op;
 #[cfg(windows)]
 mod windows_node_build;
 #[cfg(windows)]

@@ -11,6 +11,10 @@ from ..native_context import bound_context_digest_home
 from ..native_path_anchor import anchor_to_process_directory
 from ..native_prompt import merge_prompt_artifacts
 from ..native_rich_command_model import NativeCommandModelError
+from ..native_runtime_artifact_identity import (
+    NativeRuntimeArtifactIdentityError,
+    data_flow_artifact_id,
+)
 from ..native_sensitive_request import (
     NativeSensitiveRequestError,
     native_compound_artifact,
@@ -167,7 +171,12 @@ def _hook_runtime_artifact(**kwargs: Any) -> GuardArtifact | None:
     try:
         with bound_context_digest_home(kwargs.get("guard_home")):
             return _hook_runtime_artifact_with_native(**kwargs)
-    except (NativeCommandModelError, NativeSensitiveRequestError, NativeToolActionIdentityError):
+    except (
+        NativeCommandModelError,
+        NativeRuntimeArtifactIdentityError,
+        NativeSensitiveRequestError,
+        NativeToolActionIdentityError,
+    ):
         harness = _canonical_harness_name(kwargs["harness"])
         return GuardArtifact(
             artifact_id=f"{harness}:native-command-unavailable",
@@ -427,18 +436,15 @@ def _runtime_data_flow_artifact(
 ) -> GuardArtifact:
     command_text = action_envelope.command or action_envelope.tool_name or action_envelope.action_type
     signal_ids = tuple(signal.signal_id for signal in data_flow_signals)
-    fingerprint = hashlib.sha256(
-        json.dumps(
-            {
-                "command_text": command_text,
-                "signal_ids": signal_ids,
-                "source_scope": source_scope,
-            },
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()
+    # Same rule as the merged prompt id: the resident owns the approval key.
+    artifact_id = data_flow_artifact_id(
+        harness,
+        source_scope=source_scope,
+        command_text=command_text,
+        signal_ids=signal_ids,
+    )
     return GuardArtifact(
-        artifact_id=f"{harness}:{source_scope}:data-flow:{fingerprint}",
+        artifact_id=artifact_id,
         name=f"{action_envelope.tool_name or 'runtime'} data-flow exfiltration",
         harness=harness,
         artifact_type="tool_action_request",
