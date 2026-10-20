@@ -108,7 +108,7 @@ pub(super) fn rejudge(
     let allowed = |body: &str| {
         evaluate(&super::payload_with_command(payload, &command, body)).minimum_action == "allow"
     };
-    let opened = inert::project(&command, allowed);
+    let opened = inert::project(&command, &allowed);
     // A fresh `mktemp -d` directory expanded later in its `&&` chain is
     // judged as `$TMPDIR`, which holds it; only a sandbox launch counts, and
     // only once `opened` found each substitution allowed on its own.
@@ -125,7 +125,9 @@ pub(super) fn rejudge(
         }
     }
     let unopened = opened.as_deref().unwrap_or(&command);
-    let directory = context.cwd.and_then(|cwd| pwd::project(unopened, cwd));
+    let directory = context
+        .cwd
+        .and_then(|cwd| pwd::project(unopened, cwd, &allowed));
     let base = directory.as_deref().unwrap_or(unopened);
     let Some(substituted) = substitute(base).or(directory).or(opened) else {
         return raw;
