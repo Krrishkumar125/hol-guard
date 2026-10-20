@@ -278,6 +278,6 @@ def native_approval_reuse_miss(
             and (stored_hash is None or isinstance(stored_hash, str))
             and (not ask_reuse or isinstance(reuse, dict))
         ):
-            return reason, stored_hash, reuse if ask_reuse else None
+            return reason, stored_hash, reuse if ask_reuse and isinstance(reuse, dict) else None
         break
     raise ApprovalReuseDiagnosticUnavailableError
