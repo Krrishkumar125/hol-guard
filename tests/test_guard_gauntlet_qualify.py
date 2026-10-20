@@ -212,6 +212,7 @@ def _args(tmp_path: Path, **overrides: Any) -> SimpleNamespace:
         "run_root": tmp_path / "run",
         "work_parent": tmp_path / "w",
         "wheel": None,
+        "wheel_release_assets": None,
         "sdk_root": tmp_path / "sdk",
         "release_profile_wheel": False,
         "keep_work": False,
