@@ -285,7 +285,7 @@ fn invalid_object(directory: bool) -> io::Error {
     )
 }
 
-fn trusted_private_owner(applied: &Sid, current: &Sid) -> bool {
+pub(super) fn trusted_private_owner(applied: &Sid, current: &Sid) -> bool {
     if applied == current {
         return true;
     }

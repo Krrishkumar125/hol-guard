@@ -43,6 +43,8 @@ mod capture;
 mod child_tree;
 #[path = "directory_binding.rs"]
 mod directory_binding;
+#[path = "directory_owner.rs"]
+mod directory_owner;
 #[path = "file_identity.rs"]
 mod file_identity;
 #[path = "windows/job_guard.rs"]
@@ -65,6 +67,7 @@ pub use directory_binding::{
     bind_directory, bind_private_directory, bind_readonly_directory, create_private_directory,
     path_is_within, PrivateDirectoryBinding,
 };
+pub use directory_owner::path_owned_by_current_user;
 pub use file_identity::{is_single_link_file, is_single_link_handle, remove_file_if_same};
 pub use job_guard::{attach_suspended_process, ChildJobGuard, ResourceLimits};
 pub use private_files::{

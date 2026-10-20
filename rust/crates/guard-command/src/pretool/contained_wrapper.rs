@@ -143,7 +143,40 @@ fn relative_inside_peeled(model: &CanonicalCommandV1, segments: &[CommandSegment
             if text(model, cd.span.end, next.span.start).as_deref() == Some("&&"))
 }
 
-#[cfg(not(unix))]
+/// [`sibling_project_root`] on Windows, where the same containment question is
+/// asked of the owner SID rather than the owning uid.
+///
+/// Home is the only base here. The per-user temporary directory is inside the
+/// profile, so it needs no base of its own, and `std::env::temp_dir` reads
+/// `TMP`/`TEMP` from the environment the agent hands us: a base taken from
+/// there would be the caller's to choose. A checkout in a temporary directory
+/// outside the profile keeps its review instead.
+///
+/// The target is reported in the harness's drive spelling while `canonicalize`
+/// answers in the `\\?\` form, so containment is decided on canonical paths
+/// and the root comes back in the spelling the caller passed in.
+#[cfg(windows)]
+pub(super) fn sibling_project_root(
+    target: &std::path::Path,
+    home: &str,
+) -> Option<std::path::PathBuf> {
+    use guard_runtime_windows_process::path_owned_by_current_user;
+    let resolved = std::fs::canonicalize(target).ok()?;
+    let base = std::fs::canonicalize(home).ok()?;
+    if !resolved.starts_with(&base) || resolved == base {
+        return None;
+    }
+    target
+        .ancestors()
+        .take_while(|directory| {
+            std::fs::canonicalize(directory).is_ok_and(|directory| directory != base)
+        })
+        .find(|directory| directory.join(".git").symlink_metadata().is_ok())
+        .filter(|root| path_owned_by_current_user(root))
+        .map(std::path::Path::to_path_buf)
+}
+
+#[cfg(not(any(unix, windows)))]
 pub(super) fn sibling_project_root(
     _target: &std::path::Path,
     _home: &str,
