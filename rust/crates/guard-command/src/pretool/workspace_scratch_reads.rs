@@ -50,7 +50,8 @@ pub(in crate::pretool) fn workspace_scratch_read(
 /// leading dot held `ls .../.tmp` for review while `ls .../node_modules`
 /// beside it continued. The folder must be named for scratch and must be the
 /// path's only hidden part, so a `.ssh` or a `.env` staged in the same
-/// directory keeps its screen, and `canonical` is already resolved, so a link
+/// directory keeps its screen, a part the host does not spell in UTF-8 refuses
+/// the read outright, and `canonical` is already resolved, so a link
 /// out of the temporary directory does not qualify.
 pub(in crate::pretool) fn private_temporary_scratch_read(
     canonical: &Path,
@@ -59,14 +60,19 @@ pub(in crate::pretool) fn private_temporary_scratch_read(
     if !super::private_temporary::inside_private_temporary_directory(canonical, home_dir) {
         return false;
     }
-    let mut hidden = canonical
-        .components()
-        .filter_map(|component| match component {
-            Component::Normal(name) => name.to_str().filter(|name| name.starts_with('.')),
-            _ => None,
-        });
-    hidden
-        .next()
-        .is_some_and(|name| SCRATCH_FOLDERS.contains(&name))
-        && hidden.next().is_none()
+    let mut hidden = Vec::new();
+    for component in canonical.components() {
+        let Component::Normal(name) = component else {
+            continue;
+        };
+        // A name the host does not spell in UTF-8 cannot be read for a leading
+        // dot, so it cannot be shown to be anything but hidden state.
+        let Some(name) = name.to_str() else {
+            return false;
+        };
+        if name.starts_with('.') {
+            hidden.push(name);
+        }
+    }
+    matches!(hidden.as_slice(), [only] if SCRATCH_FOLDERS.contains(only))
 }

@@ -66,6 +66,22 @@ fn staged_scratch_output_in_the_private_temporary_directory_reads() {
     ] {
         assert_ne!(decision(&home, &cwd, &command), "allow", "{command}");
     }
+
+    // A hidden name the host does not spell in UTF-8 cannot be read for its
+    // leading dot, so a link that resolves onto one refuses the read rather
+    // than letting the scratch folder stand as the only hidden part. APFS
+    // rejects such a name outright, so the case only runs where the volume
+    // accepts it.
+    use std::os::unix::ffi::OsStrExt;
+    let opaque = project
+        .join(".tmp")
+        .join(std::ffi::OsStr::from_bytes(b".\xff\xfestate"));
+    if std::fs::create_dir(&opaque).is_ok() {
+        std::fs::write(opaque.join("id_ed25519"), "fixture\n").unwrap();
+        std::os::unix::fs::symlink(&opaque, project.join(".tmp/staged")).unwrap();
+        let command = format!("cat {}", path(".tmp/staged/id_ed25519"));
+        assert_ne!(decision(&home, &cwd, &command), "allow", "{command}");
+    }
 }
 
 struct Cleanup(std::path::PathBuf);
