@@ -278,6 +278,33 @@ fn a_git_directory_git_could_read_differently_keeps_the_root_unknown() {
     assert_eq!(super::repository_root(plain.to_str().unwrap()), None);
 }
 
+#[test]
+fn only_a_configuration_that_keeps_the_worktree_is_plain() {
+    // What `git init` and `git remote add` write.
+    assert!(super::keeps_worktree(
+        "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\
+         \tlogallrefupdates = true\n\tignorecase = true\n\tprecomposeunicode = true\n\
+         [remote \"origin\"]\n\turl = https://example.com/app.git\n\
+         \tfetch = +refs/heads/*:refs/remotes/origin/*\n[branch \"main\"]\n\tremote = origin\n"
+    ));
+    for text in [
+        "[core]\n\tbare = true\n",
+        "[core]\n\tbare\n",
+        "[core]\n\tbare = false # comment\n",
+        "[core]\n\trepositoryformatversion = 1\n",
+        "[core]\n\tsharedRepository = group\n",
+        "[core] bare = true\n",
+        "[core \"x\"]\n\tbare = false\n",
+        "[extensions]\n\tobjectFormat = sha256\n",
+        "[includeIf \"gitdir:/\"]\n\tpath = /tmp/other\n",
+        // Git reads the second line as part of the first value.
+        "[core]\n\tfilemode = true\\\n[remote \"x\"]\n\tbare = true\n",
+        "bare = true\n",
+    ] {
+        assert!(!super::keeps_worktree(text), "{text}");
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn only_a_plain_cd_holding_the_last_use_may_change_the_directory() {

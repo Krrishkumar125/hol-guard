@@ -31,6 +31,17 @@ use super::{assignment, listed, KEYWORDS, MAX_COMMAND_CHARS, PRECOMMANDS, STATE_
 const MAX_DIRECTORY_CHARS: usize = 1024;
 /// A `.git` file or configuration larger than this is not read.
 const MAX_GIT_FILE_BYTES: u64 = 64 * 1024;
+/// Variables that change where Git looks for a repository, what it accepts
+/// or how it reads its configuration.
+const GIT_DISCOVERY_VARIABLES: &[&str] = &[
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_CEILING_DIRECTORIES",
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+];
 
 /// Builtins that change the shell's directory or its idea of it.
 const DIRECTORY_COMMANDS: &str = "cd chdir dirs popd pushd";
@@ -327,15 +338,27 @@ fn parent(path: &str) -> Option<String> {
 
 /// The worktree root `git rev-parse --show-toplevel` prints for `cwd`: the
 /// real directory holding the nearest `.git`, spelled without links, as Git
-/// prints it. `None` when there is none, or
-/// when the first `.git` found is anything Git could resolve to another root.
+/// prints it. `None` when there is none, or when the first `.git` found is
+/// anything Git could resolve to another root or refuse, which would leave
+/// the substitution empty.
 fn repository_root(cwd: &str) -> Option<String> {
+    if GIT_DISCOVERY_VARIABLES
+        .iter()
+        .any(|name| std::env::var_os(name).is_some())
+    {
+        return None;
+    }
     let start = std::fs::canonicalize(cwd).ok()?;
     // Inside a Git directory there is no worktree to print.
     if start.components().any(|part| part.as_os_str() == ".git") {
         return None;
     }
+    let device = filesystem(&start)?;
     for directory in start.ancestors() {
+        // Git stops looking at the edge of the starting filesystem.
+        if filesystem(directory)? != device {
+            return None;
+        }
         let marker = directory.join(".git");
         let metadata = match std::fs::symlink_metadata(&marker) {
             Ok(metadata) => metadata,
@@ -353,7 +376,8 @@ fn repository_root(cwd: &str) -> Option<String> {
             None
         };
         let git_directory = git_directory?;
-        if !plain_git_directory(&git_directory) {
+        // Git refuses a repository another user owns (`safe.directory`).
+        if !owned(directory) || !owned(&git_directory) || !plain_git_directory(&git_directory) {
             return None;
         }
         let root = directory.to_str()?.to_owned();
@@ -377,9 +401,10 @@ fn linked_git_directory(marker: &Path, directory: &Path) -> Option<std::path::Pa
         .then_some(target)
 }
 
-/// A Git directory with its own `HEAD` whose configuration cannot move the
-/// worktree root: no `core.worktree`, no per-worktree configuration and no
-/// include, in it or in the common directory a linked worktree shares.
+/// A Git directory with its own `HEAD` whose configuration cannot move or
+/// blank the worktree root: no per-worktree configuration, and only
+/// [`keeps_worktree`], in it and in the common directory a linked worktree
+/// shares.
 fn plain_git_directory(git_directory: &Path) -> bool {
     if !git_directory.join("HEAD").is_file() {
         return false;
@@ -408,12 +433,88 @@ fn plain_git_directory(git_directory: &Path) -> bool {
         };
         let path = base.join("config");
         absent("config.worktree")
-            && (absent("config")
-                || small_file(&path).is_some_and(|text| {
-                    let text = text.to_ascii_lowercase();
-                    !text.contains("worktree") && !text.contains("include")
-                }))
+            && (absent("config") || small_file(&path).is_some_and(|text| keeps_worktree(&text)))
     })
+}
+
+/// A configuration whose `core` keys are all ones that cannot move the
+/// worktree root or make Git refuse it, with `bare` false and format version
+/// 0, and with no include or extension. Other sections play no part in
+/// finding the root. A line this reader cannot split the way Git does, such
+/// as a continued value or a key after a section header, is refused.
+fn keeps_worktree(text: &str) -> bool {
+    let mut section = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(['#', ';']) {
+            continue;
+        }
+        if line.ends_with('\\') {
+            return false;
+        }
+        if let Some(header) = line.strip_prefix('[') {
+            let Some(header) = header.strip_suffix(']') else {
+                return false;
+            };
+            let name = header
+                .split([' ', '.'])
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            match name.as_str() {
+                "include" | "includeif" | "extensions" => return false,
+                "core" if !header.eq_ignore_ascii_case("core") => return false,
+                _ => {}
+            }
+            section = Some(name);
+            continue;
+        }
+        let (key, value) = line
+            .split_once('=')
+            .map_or((line, "true"), |(key, value)| (key.trim(), value.trim()));
+        match section.as_deref() {
+            None => return false,
+            Some("core") => {
+                let known = match key.to_ascii_lowercase().as_str() {
+                    "repositoryformatversion" => value == "0",
+                    "bare" => value.eq_ignore_ascii_case("false"),
+                    "filemode" | "logallrefupdates" | "ignorecase" | "precomposeunicode"
+                    | "symlinks" => true,
+                    _ => false,
+                };
+                if !known {
+                    return false;
+                }
+            }
+            Some(_) => {}
+        }
+    }
+    true
+}
+
+/// Whether the current user owns `path`, as Git requires before it reads a
+/// repository.
+#[cfg(unix)]
+fn owned(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(path).is_ok_and(|metadata| metadata.uid() == nix::unistd::geteuid().as_raw())
+}
+
+#[cfg(not(unix))]
+fn owned(_: &Path) -> bool {
+    false
+}
+
+/// The filesystem holding `path`.
+#[cfg(unix)]
+fn filesystem(path: &Path) -> Option<u64> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(path).ok().map(|metadata| metadata.dev())
+}
+
+#[cfg(not(unix))]
+fn filesystem(_: &Path) -> Option<u64> {
+    None
 }
 
 /// A regular file's text, when it is small and UTF-8.
