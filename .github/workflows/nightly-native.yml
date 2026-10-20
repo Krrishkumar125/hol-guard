@@ -435,12 +435,18 @@ jobs:
           mkdir -p "$GUARD_VITEST_FIXTURE"
           cp .github/tools/containment-ci/package{,-lock}.json "$GUARD_VITEST_FIXTURE/"
           npm ci --prefix "$GUARD_VITEST_FIXTURE" --ignore-scripts --no-audit --no-fund
+      - name: Exercise the real backend from the native runner itself
+        env:
+          GUARD_VITEST_FIXTURE: ${{ runner.temp }}/guard-vitest-fixture
+          GUARD_LINUX_CONTAINMENT: "1"
+        run: >-
+          cargo test --manifest-path rust/Cargo.toml --locked --release
+          -p guard-command --lib contained_runner::real_backend_tests -- --nocapture
       - name: Exercise real contained execution and failure paths
         env:
           GUARD_VITEST_FIXTURE: ${{ runner.temp }}/guard-vitest-fixture
         run: >-
-          uv run --no-sync pytest ci/containment/test_linux_containment.py
-          tests/test_guard_containment_backend_status.py
+          uv run --no-sync pytest tests/test_guard_containment_backend_status.py
           tests/test_guard_contained_vitest_handoff_fail_closed.py
           --tb=short --junitxml=containment-results.xml
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
