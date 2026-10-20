@@ -160,7 +160,7 @@ pub(super) fn sibling_project_root(
     target: &std::path::Path,
     home: &str,
 ) -> Option<std::path::PathBuf> {
-    use guard_runtime_windows_process::path_owned_by_current_user;
+    use guard_runtime_windows_process::owned_by_current_user;
     let resolved = std::fs::canonicalize(target).ok()?;
     let base = std::fs::canonicalize(home).ok()?;
     if !resolved.starts_with(&base) || resolved == base {
@@ -181,7 +181,7 @@ pub(super) fn sibling_project_root(
                 .is_ok_and(|directory| directory.starts_with(&base) && directory != base)
         })
         .find(|directory| directory.join(".git").symlink_metadata().is_ok())
-        .filter(|root| path_owned_by_current_user(root))
+        .filter(|root| owned_by_current_user(root))
         .map(std::path::Path::to_path_buf)
 }
 

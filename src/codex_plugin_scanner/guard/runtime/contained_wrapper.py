@@ -158,7 +158,7 @@ def _owned_by_this_user(candidate: Path) -> bool:
     POSIX compares the owning uid. Windows has no uid: `st_uid` is always 0
     there and `os.getuid` does not exist, so comparing them rejected every
     Windows checkout. The owner question is the native runtime's
-    (`path_owned_by_current_user`, owner SID against the process SID), it is
+    (`owned_by_current_user`, owner SID against the process SID), it is
     asked before any receipt is issued, and every caller here runs only after
     `_contained_receipt` accepted that receipt. So on Windows this answers the
     part Python can still see - the checkout is strictly inside the profile and

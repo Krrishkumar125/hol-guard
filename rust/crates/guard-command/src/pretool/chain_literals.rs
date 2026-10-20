@@ -83,6 +83,8 @@ struct Binding {
 
 /// The extension controls cannot see through an expansion they do not model.
 const EVALUATION_FAILED: &str = "native_command_extension_evaluation_failed";
+/// A command the workspace sandbox runs because no rule proves it.
+const CONTAINED: &str = "native_workspace_containment_required";
 
 /// Replace a raw review with the verdict for the substituted command, which
 /// runs the same words, or the same words with each value-producing command
@@ -128,8 +130,20 @@ pub(super) fn rejudge(
             return projected;
         }
     }
+    // `dirname` reads no file but no read rule names it, so on its own it
+    // runs in the workspace sandbox. The contained run prints the same path,
+    // so that verdict lets it name the parent too.
+    let produces = |body: &str| {
+        let verdict = evaluate(&super::payload_with_command(payload, &command, body));
+        verdict.minimum_action == "allow"
+            || (body.starts_with("dirname ")
+                && verdict.minimum_action == "sandbox-required"
+                && verdict.reason_code == CONTAINED)
+    };
     let unopened = opened.as_deref().unwrap_or(&command);
-    let directory = context.cwd.and_then(|cwd| pwd::project(unopened, cwd));
+    let directory = context
+        .cwd
+        .and_then(|cwd| pwd::project(unopened, cwd, produces));
     let base = directory.as_deref().unwrap_or(unopened);
     // `$HOME` names the declared home only while the shell's HOME does.
     let homed = context
