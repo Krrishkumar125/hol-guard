@@ -13,7 +13,8 @@ new executable of over 100 MB takes seconds on Windows, where every new image
 is scanned, and one control change asks native several times. Before each
 run the copy is compared byte for byte with the freshly verified bytes; a copy
 that differs, is missing or sits in a directory that is no longer private is
-replaced, never run.
+replaced, never run. A replaced copy is removed as soon as no run is using
+it.
 
 Windows keeps an executable's image locked for a moment after its process
 exits, so each directory is removed at exit with a short backoff once that
@@ -35,6 +36,7 @@ import threading
 import time
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from pathlib import Path
 
 _PRIVATE_ROOT_NAME = "native-exec"
@@ -48,10 +50,21 @@ _private_roots: list[Path] = []
 _REMOVAL_BACKOFF = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6)
 _COMPARE_CHUNK = 1024 * 1024
 _copies_lock = threading.Lock()
-# The copy runs reuse, and copies already replaced. A replaced copy may still
-# be running in another thread, so it is removed with the rest at exit.
-_current: tuple[tempfile.TemporaryDirectory[str], Path] | None = None
-_retired: list[tempfile.TemporaryDirectory[str]] = []
+
+
+@dataclass
+class _Copy:
+    directory: tempfile.TemporaryDirectory[str]
+    path: Path
+    # The Guard-home private folder holding the copy, or None for the system temp.
+    root: Path | None
+    # Runs currently using the copy; a replaced copy is removed once none are.
+    users: int = 0
+
+
+# The copy runs reuse, and replaced copies another thread is still running.
+_current: _Copy | None = None
+_retired: list[_Copy] = []
 
 
 class ExecutableMaterializationError(OSError):
@@ -205,11 +218,16 @@ def _remove_abandoned(parent: Path) -> None:
             shutil.rmtree(entry.path, ignore_errors=True)
 
 
-def _holds_exactly(path: Path, raw: bytes) -> bool:
-    """Whether a private copy is still a regular file holding exactly the verified bytes."""
+def _holds_exactly(copy: _Copy, raw: bytes) -> bool:
+    """Whether a kept copy is still private, executable and exactly the verified bytes."""
+    path = copy.path
     try:
-        if os.name != "nt" and not _closed_directory(path.parent.lstat(), open_bits=0o077):
-            return False
+        if os.name != "nt":
+            # The same checks that admitted the copy's directory when it was written.
+            if copy.root is not None and _private_root_directory(copy.root) is None:
+                return False
+            if not _closed_directory(path.parent.lstat(), open_bits=0o077) or not os.access(path, os.X_OK):
+                return False
         flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
         with os.fdopen(os.open(path, flags), "rb") as handle:
             metadata = os.fstat(handle.fileno())
@@ -226,30 +244,41 @@ def _holds_exactly(path: Path, raw: bytes) -> bool:
         return False
 
 
-def _materialize(raw: bytes) -> tuple[tempfile.TemporaryDirectory[str], Path]:
-    candidate = _candidate(raw, None)
+def _materialize(raw: bytes) -> _Copy:
+    candidate, root = _candidate(raw, None), None
     if os.name != "nt":
-        for root in tuple(_private_roots):
+        for private_root in tuple(_private_roots):
             if candidate is not None:
                 break
-            if (directory := _private_root_directory(root)) is not None:
-                candidate = _candidate(raw, directory)
+            if (directory := _private_root_directory(private_root)) is not None:
+                candidate, root = _candidate(raw, directory), private_root
     if candidate is None:
         raise ExecutableMaterializationError("no private directory can run the verified source compiler")
     _remove_abandoned(Path(candidate[0].name).parent)
-    return candidate
+    return _Copy(*candidate, root=root)
+
+
+def _remove(copies: list[_Copy]) -> None:
+    for copy in copies:
+        copy.directory.cleanup()
+        _remove_released(Path(copy.directory.name))
+
+
+def _take_idle_retired() -> list[_Copy]:
+    """Detach replaced copies no run is using. Caller holds the lock."""
+    idle = [copy for copy in _retired if copy.users == 0]
+    _retired[:] = [copy for copy in _retired if copy.users]
+    return idle
 
 
 def release_copies() -> None:
     """Remove every private copy this process made. Runs at exit."""
     global _current
     with _copies_lock:
-        directories = [*_retired, *([_current[0]] if _current is not None else [])]
+        copies = [*_retired, *([_current] if _current is not None else [])]
         _retired.clear()
         _current = None
-    for directory in directories:
-        directory.cleanup()
-        _remove_released(Path(directory.name))
+    _remove(copies)
 
 
 atexit.register(release_copies)
@@ -260,10 +289,19 @@ def verified_executable(raw: bytes) -> Generator[Path]:
     """Yield a private copy holding exactly the verified bytes."""
     global _current
     with _copies_lock:
-        if _current is None or not _holds_exactly(_current[1], raw):
+        if _current is None or not _holds_exactly(_current, raw):
             replacement = _materialize(raw)
             if _current is not None:
-                _retired.append(_current[0])
+                _retired.append(_current)
             _current = replacement
-        path = _current[1]
-    yield path
+        copy = _current
+        copy.users += 1
+        idle = _take_idle_retired()
+    _remove(idle)
+    try:
+        yield copy.path
+    finally:
+        with _copies_lock:
+            copy.users -= 1
+            idle = _take_idle_retired()
+        _remove(idle)
