@@ -6,7 +6,6 @@ from codex_plugin_scanner.guard.runtime.false_positive_rules import (
 from codex_plugin_scanner.guard.runtime.secret_file_requests import (
     is_explicitly_benign_native_file_read_request,
 )
-from codex_plugin_scanner.guard.runtime.source_paths import source_path_is_allowed
 
 
 def test_skill_uri_existing(tmp_path):
@@ -146,6 +145,8 @@ def test_native_read_rejects_ambiguous_missing_and_sensitive_targets(tmp_path):
 
 def test_known_skill_paths_reject_sensitive_glob_and_traversal_targets(tmp_path):
     home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
     skill = home / ".claude" / "skills" / "safe"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("# Safe\n")
@@ -160,8 +161,12 @@ def test_known_skill_paths_reject_sensitive_glob_and_traversal_targets(tmp_path)
         "~/.claude/skills/safe/../secret.py",
         "~/.claude/skills/safe/credentials/config.ts",
     ):
-        decision = source_path_is_allowed(target, cwd=tmp_path / "workspace", home_dir=home)
-        assert not decision.allowed
+        assert not is_explicitly_benign_native_file_read_request(
+            "Read",
+            {"file_path": target},
+            cwd=workspace,
+            home_dir=home,
+        )
 
 
 def test_native_read_rejects_symlinked_skill_root(tmp_path):
