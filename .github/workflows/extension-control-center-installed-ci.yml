@@ -93,11 +93,38 @@ jobs:
         shell: bash
         env:
           HOL_GUARD_BUILD_SOURCE_COMPILER: rust/target/release/guard-command-source
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           uv sync --frozen --extra dev --python 3.12
           VERSION=$(uv run --no-sync python scripts/sync_repo_version.py --check)
-          uv build --wheel --out-dir dist
+          runtime=rust/target/release/hol-guard-runtime
+          compiler=rust/target/release/guard-command-source
+          # An installed release carries its native runtime inside the package.
+          # Without it the installed reader has no packaged identity to verify
+          # its bundle against, so it would exercise a state no shipped install
+          # is ever in. Derive the same identities the release assembly does.
+          "$compiler" export-trust > contracts/extensions/build-trust-class-map.v1.json
+          "$compiler" export-built > source-built.json
+          jq -n \
+            --slurpfile source rust/crates/guard-command/tests/fixtures/command-source-example.v1.json \
+            --slurpfile trust contracts/extensions/build-trust-class-map.v1.json \
+            --slurpfile built source-built.json \
+            '{schema:"guard.command-extension-build.v1",sources:$source,mcp_sources:[],trust:$trust[0],base:"packaged",validation_base:{catalog:$built[0].catalog,programs:[]}}' \
+            > source-build.json
+          "$compiler" compile < source-build.json > source-compiled.json
+          uv build --wheel --out-dir pure-dist
+          uv run --no-sync python scripts/build_native_hol_guard_wheel.py \
+            --wheel "pure-dist/hol_guard-${VERSION}-py3-none-any.whl" \
+            --runtime "$runtime" \
+            --output-dir dist \
+            --version "$VERSION" \
+            --platform-tag manylinux_2_17_x86_64 \
+            --target "$(rustc -vV | awk '/^host:/{print $2}')" \
+            --source-sha "$SOURCE_SHA" \
+            --rule-digest "$("$runtime" capabilities --json | jq -r '.rule_digest')" \
+            --implementation-digest "$(jq -r '.implementation_digest' source-compiled.json)" \
+            --base-program-digest "$(jq -r '.base_program_digest' source-compiled.json)"
           WHEEL=$(find dist -maxdepth 1 -type f -name 'hol_guard-*.whl' -print)
           test -n "$WHEEL"
           test "$(printf '%s\n' "$WHEEL" | wc -l)" -eq 1
@@ -105,6 +132,7 @@ jobs:
           CANARY_PYTHON="$RUNNER_TEMP/hol-guard-ecc-venv/bin/python"
           PYTHONPATH= "$CANARY_PYTHON" -m pip install --no-compile --index-url https://pypi.org/simple "$WHEEL"
           PYTHONPATH= "$CANARY_PYTHON" -c 'import importlib.metadata as m; assert m.version("hol-guard")'
+          PYTHONPATH= "$CANARY_PYTHON" -c 'import pathlib, codex_plugin_scanner as p; native = pathlib.Path(p.__file__).parent / "_native"; assert (native / "source-compiler-manifest.json").is_file(), native'
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "CANARY_PYTHON=$CANARY_PYTHON" >> "$GITHUB_ENV"
           sha256sum "$WHEEL" > extension-control-center-wheel.sha256
@@ -120,17 +148,10 @@ jobs:
       - name: Run exact installed daemon, proof-apply policy, restart, verify runtime, and restore
         shell: bash
         env:
-          # Bind this commit's native runtime: the wheel built above carries the
-          # source compiler only, and `force` makes a missing runtime fail the job
-          # instead of silently degrading the authority this spec is proving.
-          HOL_GUARD_NATIVE_BINARY: ${{ github.workspace }}/rust/target/release/hol-guard-runtime
+          # The wheel installed above carries its own runtime, so no override is
+          # set here. `force` makes a degraded native route fail the job instead
+          # of silently weakening the authority this spec is proving.
           HOL_GUARD_NATIVE: force
-          # The pure wheel built above carries no `_native/` directory, so the
-          # installed reader has no packaged source compiler to verify its bundle
-          # with and every catalog read fails closed. This is the documented
-          # development override, and it is accepted only because no packaged
-          # compiler is present to be bypassed.
-          HOL_GUARD_NATIVE_SOURCE_COMPILER: ${{ github.workspace }}/rust/target/release/guard-command-source
         run: |
           set -euo pipefail
           SESSION_FILE="$RUNNER_TEMP/ecc-dashboard-session"
