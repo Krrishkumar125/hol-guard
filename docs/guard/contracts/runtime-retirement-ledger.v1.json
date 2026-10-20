@@ -407,7 +407,7 @@
   {
    "old_node": "ci/native_runtime/test_guard_native_runtime_resident.py::test_start_lock_wait_stays_inside_request_deadline",
    "replacement_nodes": [
-    "rust/crates/guard-runtime/src/managed_resident_tests.rs::client_deadline_is_bounded",
+    "rust/crates/guard-runtime/src/managed_resident_client_timeout_tests.rs::client_deadline_is_bounded",
     "ci/native_runtime/test_native_hook_client_timeout.py::test_native_hook_client_start_timeout_contains_new_managed_processes"
    ],
    "status": "native_behavior_ported_requires_ci"
@@ -438,7 +438,7 @@
   {
    "old_node": "ci/native_runtime/test_guard_native_runtime_resident.py::test_request_shares_one_deadline_across_probe_start_and_retry",
    "replacement_nodes": [
-    "rust/crates/guard-runtime/src/managed_resident_tests.rs::client_deadline_is_bounded",
+    "rust/crates/guard-runtime/src/managed_resident_client_timeout_tests.rs::client_deadline_is_bounded",
     "ci/native_runtime/test_native_hook_client_timeout.py::test_native_hook_client_start_timeout_contains_new_managed_processes"
    ],
    "status": "native_behavior_ported_requires_ci"
