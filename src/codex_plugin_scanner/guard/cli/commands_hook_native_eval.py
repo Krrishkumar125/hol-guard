@@ -82,7 +82,8 @@ from .commands_hook_native_state import NativeArtifactHookState
 from .commands_parser_helpers import *
 from .commands_support_hook_state import _load_cursor_native_shell_allowance
 from .commands_support_runtime_artifact_policy import (
-    _runtime_artifact_has_explicit_permission_allow,
+    artifact_fact_explicit_permission_allow,
+    artifact_fact_risk_classes,
     record_policy_auto_stops,
     runtime_policy_artifact_facts_batch,
     runtime_policy_config_facts,
@@ -385,6 +386,15 @@ def evaluate_native_artifact_hook(
         runtime_artifact.artifact_id,
         runtime_artifact.publisher,
     )
+    # Both artifacts' facts are asked for in one request, under the same
+    # ``guard_home`` the composition below uses: the facts and the verdict that
+    # reads them must come from one resident, and one round trip rather than
+    # two keeps the hook off the resident's critical path twice over.
+    runtime_facts, approval_context_facts = runtime_policy_artifact_facts_batch(
+        config,
+        ((runtime_artifact, args.harness), (approval_context_artifact, policy_harness)),
+        guard_home=guard_home,
+    )
     # ``package_request`` artifacts are decided by the package evaluator, not
     # the generic command floor: the evaluator is the fail-closed semantic
     # authority for installs, and an unproven-command ``review`` floor would
@@ -395,8 +405,7 @@ def evaluate_native_artifact_hook(
     # re-review can only re-raise the cataloged risk the grant accepted.
     native_floor = (
         None
-        if runtime_artifact.artifact_type == "package_request"
-        or _runtime_artifact_has_explicit_permission_allow(runtime_artifact)
+        if runtime_artifact.artifact_type == "package_request" or artifact_fact_explicit_permission_allow(runtime_facts)
         else native_pre_tool_floor(
             event_name,
             payload_map,
@@ -418,15 +427,6 @@ def evaluate_native_artifact_hook(
     has_compound_findings = isinstance(compound_finding_count, int) and compound_finding_count > 1
     scanner_risk_signals = [signal.plain_language_summary for signal in scanner_evidence]
     artifact_risk = artifact_risk_profile(runtime_artifact)
-    # Both artifacts' facts are asked for in one request, under the same
-    # ``guard_home`` the composition below uses: the facts and the verdict that
-    # reads them must come from one resident, and one round trip rather than
-    # two keeps the hook off the resident's critical path twice over.
-    runtime_facts, approval_context_facts = runtime_policy_artifact_facts_batch(
-        config,
-        ((runtime_artifact, args.harness), (approval_context_artifact, policy_harness)),
-        guard_home=guard_home,
-    )
     stack = native_hook_compose(
         "policy_stack",
         {
@@ -573,6 +573,7 @@ def evaluate_native_artifact_hook(
         data_flow_action=approval_context_data_flow_action,
         scanner_action=scanner_action,
         current_action=approval_context_policy_action,
+        risk_classes=artifact_fact_risk_classes(approval_context_facts),
         data_flow_signals=data_flow_signals,
         scanner_evidence=scanner_evidence,
         workflow_approval_record=workflow_state.approval_record,
@@ -666,6 +667,7 @@ def evaluate_native_artifact_hook(
         alias_artifact=legacy_artifact,
         alias_artifact_hash=artifact_hash(legacy_artifact) if legacy_artifact is not None else None,
         alias_workspace=str(runtime_workspace) if runtime_workspace else None,
+        risk_classes=artifact_fact_risk_classes(runtime_facts),
         reuse=None
         if package_evaluation is not None
         else {"current_action": current_policy_action, "cursor_native_token": cursor_native_approval_hash},

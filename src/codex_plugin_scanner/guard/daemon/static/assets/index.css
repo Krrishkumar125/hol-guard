@@ -1529,8 +1529,8 @@
     max-width: 72ch;
   }
 
-  .max-w-\[320px\] {
-    max-width: 320px;
+  .max-w-\[300px\] {
+    max-width: 300px;
   }
 
   .max-w-\[380px\] {
@@ -1609,6 +1609,10 @@
     min-width: 160px;
   }
 
+  .min-w-\[170px\] {
+    min-width: 170px;
+  }
+
   .min-w-\[180px\] {
     min-width: 180px;
   }
@@ -1617,12 +1621,12 @@
     min-width: 220px;
   }
 
-  .min-w-\[920px\] {
-    min-width: 920px;
+  .min-w-\[640px\] {
+    min-width: 640px;
   }
 
-  .min-w-\[1040px\] {
-    min-width: 1040px;
+  .min-w-\[920px\] {
+    min-width: 920px;
   }
 
   .min-w-full {
@@ -3663,6 +3667,10 @@
     }
   }
 
+  .bg-rose-600 {
+    background-color: var(--color-rose-600);
+  }
+
   .bg-sky-50 {
     background-color: var(--color-sky-50);
   }
@@ -4810,6 +4818,16 @@
     }
   }
 
+  .text-brand-blue\/80 {
+    color: var(--brand-blue);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .text-brand-blue\/80 {
+      color: color-mix(in oklab, var(--brand-blue) 80%, transparent);
+    }
+  }
+
   .text-brand-dark, .text-brand-dark\/35 {
     color: var(--brand-dark);
   }
@@ -5173,6 +5191,16 @@
   @supports (color: color-mix(in lab, red, red)) {
     .text-white\/75 {
       color: color-mix(in oklab, var(--color-white) 75%, transparent);
+    }
+  }
+
+  .text-white\/80 {
+    color: #fffc;
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .text-white\/80 {
+      color: color-mix(in oklab, var(--color-white) 80%, transparent);
     }
   }
 
@@ -5631,6 +5659,22 @@
     }
   }
 
+  .marker\:hidden ::marker {
+    display: none;
+  }
+
+  .marker\:hidden::marker {
+    display: none;
+  }
+
+  .marker\:hidden ::-webkit-details-marker {
+    display: none;
+  }
+
+  .marker\:hidden::-webkit-details-marker {
+    display: none;
+  }
+
   .placeholder\:font-sans::placeholder {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
   }
@@ -5690,8 +5734,14 @@
     background-color: var(--color-white);
   }
 
-  .focus-within\:border-brand-blue:focus-within {
+  .focus-within\:border-brand-blue:focus-within, .focus-within\:border-brand-blue\/40:focus-within {
     border-color: var(--brand-blue);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .focus-within\:border-brand-blue\/40:focus-within {
+      border-color: color-mix(in oklab, var(--brand-blue) 40%, transparent);
+    }
   }
 
   .focus-within\:ring-1:focus-within {
@@ -5966,6 +6016,10 @@
       .hover\:bg-brand-purple\/90:hover {
         background-color: color-mix(in oklab, var(--brand-purple) 90%, transparent);
       }
+    }
+
+    .hover\:bg-rose-700:hover {
+      background-color: var(--color-rose-700);
     }
 
     .hover\:bg-slate-50:hover {
@@ -6313,6 +6367,16 @@
   @supports (color: color-mix(in lab, red, red)) {
     .focus\:ring-brand-blue\/30:focus {
       --tw-ring-color: color-mix(in oklab, var(--brand-blue) 30%, transparent);
+    }
+  }
+
+  .focus\:ring-rose-600\/30:focus {
+    --tw-ring-color: #e700444d;
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .focus\:ring-rose-600\/30:focus {
+      --tw-ring-color: color-mix(in oklab, var(--color-rose-600) 30%, transparent);
     }
   }
 
@@ -6735,6 +6799,10 @@
 
     .sm\:min-w-\[10rem\] {
       min-width: 10rem;
+    }
+
+    .sm\:min-w-\[220px\] {
+      min-width: 220px;
     }
 
     .sm\:flex-1 {
@@ -7174,6 +7242,10 @@
       max-width: none;
     }
 
+    .lg\:min-w-\[980px\] {
+      min-width: 980px;
+    }
+
     .lg\:grid-cols-1 {
       grid-template-columns: repeat(1, minmax(0, 1fr));
     }
@@ -7482,6 +7554,13 @@
 
   .\[\&\:\:-webkit-details-marker\]\:hidden::-webkit-details-marker {
     display: none;
+  }
+
+  @media not all and (min-width: 64rem) {
+    .max-lg\:\[\&\>\*\:nth-child\(odd\)\]\:border-l-0 > :nth-child(odd) {
+      border-left-style: var(--tw-border-style);
+      border-left-width: 0;
+    }
   }
 
   .\[\&\>article\:last-child\]\:border-b-0 > article:last-child {

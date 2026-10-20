@@ -29,6 +29,10 @@ pub const HOOK_DECISION_FEATURE: &str = "hook-decision-v1";
 /// claim had already been consumed, so a caller asks for this first.
 pub const HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE: &str = "hook-decision-post-claim-compose-v1";
 
+/// Advertised when the resident answers `artifact_directive`, the artifact
+/// hook's response directive; a resident that predates it rejects the query.
+pub const HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE: &str = "hook-decision-artifact-directive-v1";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct HookDecisionRequestV1 {
@@ -53,6 +57,37 @@ pub enum HookDecisionQueryV1 {
     },
     /// Settle a Copilot tool call: the final action and the effects to run.
     CopilotSettle { inputs: Box<CopilotSettleInputsV1> },
+    /// The artifact hook's response directive: which branch renders its
+    /// settled verdict, with which emitter, reason, message and exit code.
+    ArtifactDirective {
+        inputs: Box<ArtifactDirectiveInputsV1>,
+    },
+}
+
+/// Facts the artifact hook's response directive depends on. The verdict is
+/// already settled; these only pick how it is rendered.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactDirectiveInputsV1 {
+    /// The harness name as the hook was invoked.
+    pub harness: String,
+    /// The canonical adapter name the transport resolved for `harness`.
+    pub canonical_harness: String,
+    pub event: String,
+    pub policy_action: String,
+    /// `--json` was passed.
+    pub json: bool,
+    /// The response is written to a caller-owned stream, not stdout.
+    pub output_stream_present: bool,
+    /// The payload replays a decision recorded upstream (`artifact_id` and
+    /// `policy_action` both present).
+    pub replayed: bool,
+    /// A live approval context is attached to this response.
+    pub approval_context_present: bool,
+    /// The prompt asks to bypass Guard, so it is never offered for approval.
+    pub prompt_hard_block: bool,
+    /// The prompt asks for local secrets.
+    pub prompt_secret_read: bool,
 }
 
 /// Facts for one Copilot `preToolUse` or `permissionRequest` call.
@@ -320,6 +355,7 @@ pub enum HookDecisionPayloadV1 {
         reuse: Option<Value>,
     },
     Finalize(Box<HookFinalV1>),
+    ArtifactDirective(Box<HookResponseDirectiveV1>),
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.
         needs_facts: Vec<String>,
@@ -468,15 +504,25 @@ pub struct HookResponseDirectiveV1 {
     pub exit_code: Option<i32>,
     /// For an exit block: write the stderr explanation only on a non-zero exit.
     pub stderr_only_on_nonzero_exit: bool,
-    /// `always`, `with_approval_context` or `never`.
+    /// `always`, `with_approval_context`, `never`, or `artifact_codex` (the
+    /// Codex reason quoting the approval context or else the review hint).
     pub codex_native_reason: String,
     pub include_remediation: bool,
     pub terminal_notice: bool,
-    /// `none`, `claude_punctuated` or `codex_prompt`.
+    /// `none`, `claude_punctuated`, `codex_prompt`, `claude_prompt_secret` or
+    /// `claude_prompt_sensitive`.
     pub system_message: String,
     pub try_json_document: bool,
     /// `native_response`, `post_tool_envelope` or `fallback_envelope`.
     pub after_json: String,
     /// `block` or `allow`.
     pub envelope_decision: String,
+    /// Artifact directive only: whether an exit block also writes its stderr
+    /// explanation (grok's adapter owns its exit and writes none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_block_stderr: Option<bool>,
+    /// Artifact directive only: the JSON document's reason, `copilot` (the
+    /// Copilot approval copy) or `harness` (the harness reason).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_reason: Option<String>,
 }

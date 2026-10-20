@@ -341,6 +341,18 @@ def run_native_hook_pipeline(
                 worker=worker,
                 recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
             )
+        except NativeHookDecisionError as error:
+            # No resident directive means no rendered verdict: the outage shape.
+            return _emit_native_unavailable(
+                args,
+                payload=payload,
+                workspace=runtime_workspace,
+                context=context,
+                event_name=event_name,
+                reason_code=error.code,
+                worker=worker,
+                recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
+            )
 
     def run_native_generic_payload(*generic_args, **generic_kwargs) -> int:
         # No resident decision means no verdict: answer with the host outage shape.
