@@ -197,6 +197,34 @@ fn a_missing_path_outside_the_registered_worktree_still_says_it_is_missing() {
 }
 
 #[test]
+fn a_sibling_worktree_named_from_the_checkout_is_still_read_quietly() {
+    let w = workspace("missing-worktree-sibling");
+    // From the main checkout the worktree beside it is `../review-worktree`.
+    // That `..` passes through directories that exist, so the filesystem and
+    // a harness that tidies the name agree on where it lands.
+    let result = call(&w, "read", "../review-worktree/docs/change.md");
+    assert_eq!(
+        result.minimum_action, "allow",
+        "read: {}",
+        result.reason_code
+    );
+    for tool in ["glob", "find", "ls"] {
+        let result = call(&w, tool, "../review-worktree/docs");
+        assert_eq!(
+            result.minimum_action, "allow",
+            "{tool}: {}",
+            result.reason_code
+        );
+    }
+    let result = search(&w, "../review-worktree/docs");
+    assert_eq!(
+        result.minimum_action, "allow",
+        "grep: {}",
+        result.reason_code
+    );
+}
+
+#[test]
 fn a_missing_step_in_the_worktree_cannot_climb_out_of_it() {
     let w = workspace("missing-worktree-parent-steps");
     // Only `review-worktree` exists along this name, so the filesystem cannot
@@ -228,4 +256,17 @@ fn a_missing_step_in_the_worktree_cannot_climb_out_of_it() {
             result.reason_code
         );
     }
+
+    // A `..` through a link is resolved by the filesystem inside the
+    // worktree, but by text it lands on `plan.md` in home, which exists.
+    let deep = w.home.join("review-worktree/a/b");
+    std::fs::create_dir_all(&deep).unwrap();
+    std::os::unix::fs::symlink(&deep, w.home.join("notes/deep")).unwrap();
+    std::fs::write(w.home.join("plan.md"), "synthetic fixture\n").unwrap();
+    let result = call(&w, "read", "~/notes/deep/../../plan.md");
+    assert_ne!(
+        result.minimum_action, "allow",
+        "read through link: {}",
+        result.reason_code
+    );
 }
