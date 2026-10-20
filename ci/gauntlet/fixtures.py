@@ -510,6 +510,12 @@ def _add_realistic_shapes(main: Path, home: Path, environment: dict[str, str], s
         (".codex/plans/acme-plan-todo.md", "# Todo\n- [ ] 541 retry window\n"),
         (".codex/plans/evidence/run-1/summary.json", '{"cases": []}\n'),
         (".claude/plans/acme-plan.md", "# Plan\nSynthetic plan notes.\n"),
+        # A directory of local services an agent runs beside its checkouts:
+        # the running server leaves a hidden socket lock in its run directory,
+        # which is all that separates this tree from any other listing.
+        ("dev-services/compose.yaml", "services:\n  db:\n    image: postgres:16\n"),
+        ("dev-services/scripts/start.sh", "#!/bin/sh\necho start\n"),
+        ("dev-services/pg-run/.s.PGSQL.5432.lock", "4242\n"),
         # A plain directory with no .git, where a leaf probe finds nothing.
         (f"{PLAIN_DIRECTORY}/README.txt", "Plain notes directory.\n"),
         # Ordinary files a toolchain and a repository's own automation keep
