@@ -122,4 +122,6 @@ def test_configured_discovery_failure_reaches_the_daemon_log(tmp_path: Path, mon
     service, recorded = _recording_service(home)
     payload = service.discover_items()
     assert payload.get("discovery_issue") == "configured_host_scan_failed"
-    assert ("local_cli_configured_discovery_failed", "RuntimeError") in recorded
+    # Each failed scan names its cause, never the stage error that wraps it.
+    assert recorded
+    assert set(recorded) == {("local_cli_configured_discovery_failed", "RuntimeError")}

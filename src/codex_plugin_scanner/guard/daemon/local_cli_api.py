@@ -898,6 +898,9 @@ class LocalCliApiService:
                 remote=remote,
                 remote_harnesses=remote_harnesses,
             )
+        except DiscoveryStageError:
+            # `_discovered_servers` already recorded the underlying cause.
+            raise
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
             self._record_discovery_failure("local_cli_configured_discovery_failed")
             if strict:
