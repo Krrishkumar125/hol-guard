@@ -27,9 +27,10 @@ FILE = "active-pack-security.v1.json"
 MAX_BYTES = 262144
 
 
-# Native answers these from the request alone: no files, clock or randomness.
-# The request names the key, the authenticated record and every other input, so
-# an identical request always gets the identical verdict.
+# Native answers these from the request alone: no files, clock or randomness
+# (see the matching note in active_pack_security.rs). The request names the key,
+# the authenticated record and every other input, so the same runtime always
+# gives an identical request the identical verdict.
 _PURE = frozenset({"scope", "check", "read", "change", "marker", "binding", "resume"})
 _ANSWERS: OrderedDict[bytes, str] = OrderedDict()
 _ANSWERS_LOCK = threading.Lock()
@@ -40,9 +41,16 @@ def invoke(operation, store, **fields):
     request = {"operation": operation, "key": _key(store).hex(), **fields}
     if operation not in _PURE:
         return lifecycle.invoke("active-security", **request)
+    try:
+        runtime = lifecycle.runtime_fingerprint()
+    except OSError:
+        # A missing runtime must fail in native verification, not answer from memory.
+        return lifecycle.invoke("active-security", **request)
     # Daemon polling repeats the same few requests every second. Answering
-    # them from memory avoids a verified native spawn per poll.
-    digest = hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).digest()
+    # them from memory avoids a verified native spawn per poll. A replaced or
+    # modified runtime starts over with fresh native answers.
+    material = {"request": request, "runtime": runtime}
+    digest = hashlib.sha256(json.dumps(material, sort_keys=True, separators=(",", ":")).encode()).digest()
     with _ANSWERS_LOCK:
         answer = _ANSWERS.get(digest)
         if answer is not None:

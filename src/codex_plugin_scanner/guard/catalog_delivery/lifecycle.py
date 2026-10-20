@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
@@ -51,6 +52,19 @@ def session():
                 _SESSION.reset(token)
     except transport.NativeSourceCompilerError as exc:
         raise ValueError(f"native_pack_lifecycle_unavailable: {exc}") from exc
+
+
+def runtime_fingerprint() -> tuple[tuple[int, ...], ...]:
+    """Cheap identity of the installed runtime files.
+
+    It changes when either file is replaced or modified and raises when one is
+    missing. It never vouches for the bytes: a native request still verifies them.
+    """
+    files = (transport._NATIVE_PACKAGE / transport._MANIFEST_NAME, transport._NATIVE_PACKAGE / transport._COMPILER_NAME)
+    return tuple(
+        (status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns, status.st_ctime_ns)
+        for status in (os.stat(path) for path in files)
+    )
 
 
 def invoke(kind, **fields) -> dict[str, Any]:

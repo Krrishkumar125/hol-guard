@@ -55,6 +55,7 @@ def test_session_verifies_once_and_only_when_native_is_used(native):
 def answers(monkeypatch):
     requests = []
     monkeypatch.setattr(active_security, "_key", lambda store: b"k" * 32)
+    monkeypatch.setattr(lifecycle, "runtime_fingerprint", lambda: ((1, 2),))
     monkeypatch.setattr(active_security, "_ANSWERS", type(active_security._ANSWERS)())
 
     def invoke(kind, **fields):
@@ -96,3 +97,29 @@ def test_answers_stay_bounded(answers):
     assert len(active_security._ANSWERS) == active_security._ANSWERS_LIMIT
     active_security.invoke("read", object(), record="0")
     assert len(answers) == active_security._ANSWERS_LIMIT + 6
+
+
+def test_a_replaced_or_missing_runtime_is_asked_again(answers, monkeypatch):
+    active_security.invoke("read", object(), record="r")
+    monkeypatch.setattr(lifecycle, "runtime_fingerprint", lambda: ((3, 4),))
+    active_security.invoke("read", object(), record="r")
+    assert len(answers) == 2
+
+    def missing():
+        raise FileNotFoundError
+
+    monkeypatch.setattr(lifecycle, "runtime_fingerprint", missing)
+    active_security.invoke("read", object(), record="r")
+    active_security.invoke("read", object(), record="r")
+    assert len(answers) == 4
+
+
+def test_runtime_fingerprint_tracks_the_installed_files(monkeypatch, tmp_path):
+    monkeypatch.setattr(transport, "_NATIVE_PACKAGE", tmp_path)
+    with pytest.raises(OSError):
+        lifecycle.runtime_fingerprint()
+    (tmp_path / transport._MANIFEST_NAME).write_text("{}")
+    (tmp_path / transport._COMPILER_NAME).write_bytes(b"one")
+    first = lifecycle.runtime_fingerprint()
+    (tmp_path / transport._COMPILER_NAME).write_bytes(b"three")
+    assert lifecycle.runtime_fingerprint() != first
