@@ -241,6 +241,7 @@ def hermes_bridge_response(
     *,
     event_name: str,
     guard_home: Path | None = None,
+    deadline: float | None = None,
 ) -> tuple[str, str, int]:
     """Turn a daemon or CLI payload into Hermes stdout JSON plus exit code.
 
@@ -250,7 +251,7 @@ def hermes_bridge_response(
     """
 
     del event_name
-    rendered = native_hermes_bridge(daemon_response, guard_home=guard_home)
+    rendered = native_hermes_bridge(daemon_response, guard_home=guard_home, deadline=deadline)
     payload, exit_code = rendered if rendered is not None else (_UNAVAILABLE_BLOCK, 2)
     stdout = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
     return stdout, "", exit_code
