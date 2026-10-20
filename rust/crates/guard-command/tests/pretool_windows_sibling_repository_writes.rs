@@ -232,6 +232,11 @@ fn protected_targets_links_and_other_folders_keep_their_review() {
             format!("cat {stage}/x.ts > {sibling}/AGENTS.md"),
             format!("cat {stage}/x.ts >> {sibling}/AGENTS.md"),
             format!("cat > {sibling}/AGENTS.md <<'EOF'\nmore rules\nEOF"),
+            // Windows drops a trailing dot or space when it creates the
+            // file, so these land on the protected names above.
+            format!("cat {stage}/x.ts > {sibling}/AGENTS.md."),
+            format!("cat {stage}/x.ts > {sibling}/opencode.json."),
+            format!("cat > {sibling}/AGENTS.md. <<'EOF'\nmore rules\nEOF"),
             // Git control files, hooks and dotenv.
             format!("cat {stage}/x.ts > {sibling}/.git/config"),
             format!("cat {stage}/x.ts >> {sibling}/.git/hooks/pre-commit"),

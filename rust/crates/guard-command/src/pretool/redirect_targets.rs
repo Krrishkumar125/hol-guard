@@ -208,6 +208,7 @@ fn sibling_repository_root(
     // below the home keeps a symlink inside the home refused.
     (root != home
         && root.starts_with(&home)
+        && spelling_survives_the_filesystem(path)
         && crate::pretool::safe_writes::home_spelling_matches_target(
             path,
             &canonical,
@@ -216,6 +217,29 @@ fn sibling_repository_root(
         )
         && validated_git_marker(&root))
     .then_some(root)
+}
+
+/// Whether every component of `path` names the file the filesystem will open.
+/// On Windows a trailing dot or space is dropped when the file is created, so
+/// `AGENTS.md.` lands on the protected name that `instruction_file` and
+/// `write_target_protected` spell literally and would otherwise miss. Such a
+/// target keeps its review rather than taking the sibling-repository route.
+#[cfg(not(unix))]
+fn spelling_survives_the_filesystem(path: &std::path::Path) -> bool {
+    path.components().all(|component| match component {
+        std::path::Component::Normal(name) => name
+            .to_str()
+            .is_some_and(|name| !name.ends_with('.') && !name.ends_with(' ')),
+        _ => true,
+    })
+}
+
+/// [`spelling_survives_the_filesystem`] on Unix, where a trailing dot or space
+/// is part of the name and a screen that spells the protected name literally
+/// already sees a different file.
+#[cfg(unix)]
+fn spelling_survives_the_filesystem(_path: &std::path::Path) -> bool {
+    true
 }
 
 /// The nearest ancestor of the resolved `canonical` target that holds a `.git`
