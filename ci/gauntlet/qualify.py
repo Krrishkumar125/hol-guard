@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from . import lane_preflight, qualify_setup
+from .extension_adapters import RELEASE_ASSETS_ENV
 from .fixtures import create_numbered_dir
 from .lane_coverage import lane_coverage
 from .parallel import terminate_as_exit
@@ -420,6 +421,8 @@ def main(args: Any) -> int:
                     sdk_root=Path(sdk_info["root"]),
                     gnu_sed=info["gnu_sed"],
                 )
+                if wheel_info.get("release_assets"):
+                    env[RELEASE_ASSETS_ENV] = wheel_info["release_assets"]
                 progress(f"attempt {k} starting")
                 t0 = time.monotonic()
                 with timings.measure("live_cases"):

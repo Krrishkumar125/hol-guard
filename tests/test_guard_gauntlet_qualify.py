@@ -71,6 +71,7 @@ def test_linux_wheel_build_targets_the_host_without_a_macos_deployment_target(
             builds.append(dict(env or {}))
             (cwd / "native-dist").mkdir()
             (cwd / "native-dist" / "hol_guard-1.0.0-py3-none-linux_x86_64.whl").write_bytes(b"wheel")
+            Path((env or {})["HOL_GUARD_BUNDLE_ASSET_OUTPUT"]).mkdir()
 
     monkeypatch.setattr(qualify_setup, "run_logged", fake_run_logged)
     monkeypatch.setattr(qualify_setup, "git_show", lambda *_a, **_k: qualify_setup.DEV_WHEEL_MARKER.encode())
@@ -83,6 +84,8 @@ def test_linux_wheel_build_targets_the_host_without_a_macos_deployment_target(
     assert env["TARGET"] == "x86_64-unknown-linux-gnu"
     assert env[qualify_setup.DEV_WHEEL_MARKER] == "1"
     assert "MACOSX_DEPLOYMENT_TARGET" not in env
+    # The candidate's optional packs are exported beside the cached wheel.
+    assert result["release_assets"] == env["HOL_GUARD_BUNDLE_ASSET_OUTPUT"]
 
 
 def test_linux_refuses_a_release_wheel_whose_script_still_runs_the_size_check(

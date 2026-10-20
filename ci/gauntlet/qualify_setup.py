@@ -295,6 +295,9 @@ def _write_dev_cargo_config(worktree: Path, *, env: dict[str, str] | None = None
     config.write_text(render_profile(names, "0"), encoding="utf-8")
 
 
+RELEASE_ASSETS_DIRECTORY = "release-assets"
+
+
 def _cached_wheel(store: Path) -> dict[str, Any] | None:
     """Reuse a cached wheel only when its recorded digest matches its bytes."""
     wheels = list(store.glob("*.whl"))
@@ -304,7 +307,13 @@ def _cached_wheel(store: Path) -> dict[str, Any] | None:
     digest = digest_file(wheels[0])
     if digest_record.read_text(encoding="utf-8").strip() != digest:
         return None
-    return {"path": str(wheels[0]), "sha256": digest, "cached": True}
+    assets = store / RELEASE_ASSETS_DIRECTORY
+    return {
+        "path": str(wheels[0]),
+        "sha256": digest,
+        "cached": True,
+        "release_assets": str(assets) if assets.is_dir() else None,
+    }
 
 
 def _build_wheel(
@@ -356,8 +365,13 @@ def _build_wheel(
             stale_config = worktree / ".cargo" / "config.toml"
             if stale_config.exists():
                 stale_config.unlink()
+        # The candidate's optional packs, served to extension-control cases
+        # before their extension-data release exists.
+        assets = store / RELEASE_ASSETS_DIRECTORY
+        shutil.rmtree(assets, ignore_errors=True)
         build_env = {
             **env,
+            "HOL_GUARD_BUNDLE_ASSET_OUTPUT": str(assets),
             "HOL_GUARD_BUILD_SHA": sha,
             "PLATFORM_TAG": tag,
             "TARGET": target,
