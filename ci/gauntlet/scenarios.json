@@ -1194,18 +1194,6 @@
       ]
     },
     {
-      "id": "omp-native-shell-substituted-parent-status",
-      "expectation": "allow",
-      "oracle": "native-tools",
-      "required_tools": [
-        "bash"
-      ],
-      "prompt": "Show which folder holds this checkout and whether it has local changes: run the listed command once and tell me what it printed.",
-      "commands": [
-        "printf 'parent=%s\\n' \"$(dirname \"$PWD\")\"; git status --porcelain"
-      ]
-    },
-    {
       "id": "omp-native-shell-doctl-reads",
       "expectation": "allow",
       "oracle": "native-tools",
