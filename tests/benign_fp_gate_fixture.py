@@ -437,6 +437,14 @@ def build_fixture(root: Path) -> BenignFixture:
     scratch = Path(_system_tmp()) / f"hg-fp-scratch-{os.getpid()}-{secrets.token_hex(4)}"
     # Paths the mined cases name under the scrubbed project stand-ins, derived from the cases themselves.
     materialise({"HOME": home, "PRIVATE_TMP": private_tmp, "WORKTREE": worktree})
+    # Sources the mined cases search by pattern. ``materialise`` builds the
+    # directory a glob names but not a file inside it, and a pattern that
+    # matches nothing makes the case measure an empty expansion instead of the
+    # search it was mined from.
+    _write(worktree / "signup-funnel" / "workers" / "queue.ts", "export const drain = () => read_workspace_record();\n")
+    _write(worktree / "signup-funnel" / "lib" / "records" / "workspace.ts", "export function read_workspace_record() {\n  return null;\n}\n")
+    _write(worktree / "build.rs", "// Build script for the fixture crate.\nenum WorkspaceRecord {\n    Draft,\n}\n\nfn main() {}\n")
+    _write(worktree / "compose.yaml", "services:\n  app:\n    image: scratch\n")
     # Source files a session staged in /tmp before copying them into a checkout.
     stage = Path(tempfile.mkdtemp(prefix="hg-fp-stage-", dir=_system_tmp())).resolve()
     _write(stage / "x.ts", "export const summary = 2;\n")

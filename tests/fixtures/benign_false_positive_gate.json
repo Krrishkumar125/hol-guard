@@ -18067,9 +18067,9 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "ls -dt ${WORKTREE}/*app-portal* ${WORKTREE}/*points* ${WORKTREE}/*app-portal* 2>/dev/null | head -20; echo ===; ls -d ${WORKTREE}/* | tail -40"
+        "command": "ls -dt ${ORG}/*app-portal* ${ORG}/*service-api* 2>/dev/null | head -20; echo ===; ls -d ${ORG}/* | tail -40"
       },
-      "cwd": "worktree",
+      "cwd": "org",
       "expect": "allow"
     },
     {
