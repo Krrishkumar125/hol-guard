@@ -90,9 +90,17 @@ type EffectiveControls = {
  */
 async function appliedRevision(page: import("@playwright/test").Page): Promise<number> {
   const toast = page.getByTestId("extension-policy-applied-toast");
-  // The first save on a freshly started daemon writes the authority and
-  // recomputes the projection, which takes longer than the default wait.
-  await expect(toast).toContainText(/Applied · revision \d+/, { timeout: 60_000 });
+  try {
+    // The first save on a freshly started daemon writes the authority and
+    // recomputes the projection, which takes longer than the default wait.
+    await expect(toast).toContainText(/Applied · revision \d+/, { timeout: 60_000 });
+  } catch (error) {
+    // A refused save renders in the workspace alert. Report the sentence the
+    // operator would have read, so a regression names the failure instead of
+    // leaving a bare timeout.
+    const alert = await page.getByRole("alert").first().innerText().catch(() => "<no alert rendered>");
+    throw new Error(`applying the reviewed change failed: ${alert}`, { cause: error });
+  }
   const text = await toast.innerText();
   const revision = Number(/Applied · revision (\d+)/.exec(text)?.[1]);
   expect(Number.isInteger(revision)).toBe(true);
