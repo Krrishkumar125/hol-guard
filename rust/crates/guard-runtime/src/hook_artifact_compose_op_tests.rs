@@ -676,6 +676,22 @@ fn a_policy_lookup_selection_with_nothing_to_select_is_refused() {
 }
 
 #[test]
+fn a_package_firewall_entitlement_that_is_not_an_object_is_refused() {
+    let query: HookArtifactComposeQueryV1 = serde_json::from_value(json!({
+        "kind": "package_firewall_access",
+        "entitlement": "allowed",
+        "operation": "install",
+        "has_installed_managers": false,
+    }))
+    .unwrap();
+
+    assert_eq!(
+        compose(&query).unwrap_err(),
+        "entitlement must be an object"
+    );
+}
+
+#[test]
 fn a_signal_the_contract_rejects_refuses_the_composition() {
     // A payload this side cannot decode is not composed over a guessed-at
     // signal: the request is refused and the caller fails closed.

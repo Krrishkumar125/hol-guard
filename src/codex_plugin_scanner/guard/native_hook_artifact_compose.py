@@ -26,6 +26,7 @@ HOOK_ARTIFACT_COMPOSE_FEATURE = "hook-artifact-compose-v1"
 # for its own call.
 HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ENTITLEMENT_FEATURE = "hook-artifact-compose-package-firewall-entitlement-v1"
 HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE = "hook-artifact-compose-package-reuse-v1"
+HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE = "hook-artifact-compose-package-firewall-access-v1"
 HOOK_ARTIFACT_COMPOSE_POLICY_LOOKUP_FEATURE = "hook-artifact-compose-policy-lookup-v1"
 HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE = "hook-artifact-compose-prompt-reason-v1"
 HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE = "hook-artifact-compose-remembered-rule-v1"
@@ -166,6 +167,7 @@ _FIELDS: dict[str, frozenset[str]] = {
             "approval_reuse_source",
         }
     ),
+    "package_firewall_access": frozenset({"entitlement", "operation", "has_installed_managers"}),
     "prompt_request_reason": frozenset({"harness", "prompt_classes", "prompt_summary", "policy_action"}),
     "remembered_rule_reason": frozenset({"remembered_rules", "integrity_message", "artifact_summary"}),
     "signal_composition": frozenset({"signals", "base_action"}),
@@ -174,6 +176,7 @@ _FIELDS: dict[str, frozenset[str]] = {
 # The feature a kind needs beyond the op itself. A runtime that predates the
 # kind rejects it as an unknown kind, so the gate is per kind, not per op.
 _KIND_FEATURES: dict[str, str] = {
+    "package_firewall_access": HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE,
     "package_firewall_entitlement": HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ENTITLEMENT_FEATURE,
     "package_reuse_settle": HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE,
     "policy_lookup_select": HOOK_ARTIFACT_COMPOSE_POLICY_LOOKUP_FEATURE,
@@ -246,6 +249,12 @@ _ANSWERS: dict[str, dict[str, str]] = {
         "revalidate_required": "b",
         "saved_allow_applied": "b",
         "settled_evidence_appends": "l",
+    },
+    "package_firewall_access": {
+        "action_states": "d",
+        "available_actions": "l",
+        "block": "d",
+        "operation_allowed": "B",
     },
     "prompt_request_reason": {"reason": "s"},
     "remembered_rule_reason": {"reason": "S"},
@@ -355,6 +364,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
 
 __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ENTITLEMENT_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_POLICY_LOOKUP_FEATURE",

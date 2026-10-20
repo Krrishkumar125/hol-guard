@@ -137,11 +137,12 @@ from ..native_cisco_preflight import (
     policy_action_for_cisco_signals,
     scan_action_for_cisco_evidence,
 )
+from ..native_hook_artifact_compose import NativeHookComposeError
 from ..native_prompt import extract_prompt_requests
 from ..package_firewall_entitlement import (
-    package_firewall_action_states,
-    package_firewall_available_actions,
-    package_firewall_block_details,
+    PACKAGE_FIREWALL_AUTHORITY_UNAVAILABLE,
+    PACKAGE_FIREWALL_AUTHORITY_UNAVAILABLE_MESSAGE,
+    package_firewall_access,
 )
 from ..policy.engine import SAFE_CHANGED_HASH_ACTION, VALID_GUARD_ACTIONS, build_decision_v2, guard_action_severity
 from ..protect import build_protect_payload

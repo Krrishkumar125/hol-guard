@@ -1481,12 +1481,11 @@
         "path": "src/codex_plugin_scanner/guard/package_firewall_entitlement.py",
         "symbols": [
           "build_oauth_package_firewall_entitlement",
-          "reconcile_connect_state_with_oauth_entitlement",
-          "package_firewall_operation_allowed"
+          "reconcile_connect_state_with_oauth_entitlement"
         ],
         "entry_points": [],
-        "evidence": "build_oauth_package_firewall_entitlement and reconcile_connect_state_with_oauth_entitlement are called only from cli/connect_flow.py (install-uninstall-doctor), runtime/runner.py (cloud-sync-transport) and daemon/server_control_connect_flow.py; package_firewall_operation_allowed only from daemon/server_control_supply_chain.py (daemon-control-plane-routes). resolve_package_firewall_entitlement and the action-state helpers stay counted. The report validates this reference closure on every run.",
-        "reason": "Building and reconciling the OAuth package-firewall entitlement during connect and cloud sync, and the control API's operation gate."
+        "evidence": "build_oauth_package_firewall_entitlement and reconcile_connect_state_with_oauth_entitlement are called only from cli/connect_flow.py (install-uninstall-doctor), runtime/runner.py (cloud-sync-transport) and daemon/server_control_connect_flow.py. resolve_package_firewall_entitlement and package_firewall_access, which the CLI and the proxy call too, stay counted. The report validates this reference closure on every run.",
+        "reason": "Building and reconciling the OAuth package-firewall entitlement during connect and cloud sync."
       },
       {
         "id": "adapter-openclaw-setup",

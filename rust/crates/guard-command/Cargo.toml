@@ -108,6 +108,10 @@ name = "pretool_worktree_cd_windows"
 path = "tests/pretool_worktree_cd_windows.rs"
 
 [[test]]
+name = "pretool_windows_sibling_project_root"
+path = "tests/pretool_windows_sibling_project_root.rs"
+
+[[test]]
 name = "shim_admin_vectors"
 path = "tests/shim_admin_vectors.rs"
 
