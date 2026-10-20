@@ -45,6 +45,20 @@ fn layout_at(root: PathBuf, name: &str) -> Layout {
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     let home = fixture::canonical_spelling(&root).join("home");
+    build_layout(root, home, name)
+}
+
+/// [`layout_at`] keeping the literal spelling of `root`, the way a harness
+/// hands Guard the home the session was started in. On macOS a temporary
+/// directory is spelled `/var/folders/...` and resolves to `/private/var/...`.
+fn layout_spelled_at(root: PathBuf, name: &str) -> Layout {
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let home = root.join("home");
+    build_layout(root, home, name)
+}
+
+fn build_layout(root: PathBuf, home: PathBuf, name: &str) -> Layout {
     let session = home.join("work");
     let clone = home.join("acme-app-clone");
     let notes = home.join("plain-notes");
@@ -244,6 +258,44 @@ fn empty_git_markers_cannot_turn_plain_home_folders_into_workspaces() {
             std::fs::write(&marker, "").unwrap();
         }
         let command = format!("cat {scratch}/x.ts > {}/report.ts", folder.display());
+        assert!(!permitted(&layout, &layout.session, &command), "{command}");
+    }
+}
+
+#[test]
+fn a_home_spelled_through_a_symlinked_parent_still_writes_its_sibling_clone() {
+    // The harness hands Guard the home as the session spells it. A macOS
+    // temporary home is `/var/folders/...` and resolves to `/private/var/...`,
+    // so comparing the resolved target with the spelled one refused every
+    // write below such a home. Only the part below the home is compared now.
+    let temporary = tempfile::tempdir().unwrap();
+    let layout = layout_spelled_at(temporary.path().join("fixture"), "spelled-home");
+    let (clone, scratch) = (layout.clone.display(), layout.scratch.display());
+    for command in [
+        format!("cat {scratch}/x.ts > {clone}/src/lib/y.ts"),
+        format!("cat {scratch}/x.ts >> {clone}/src/lib/auth.ts"),
+        format!("cat > {clone}/notes.md <<'EOF'\n# Pending\n- a\nEOF"),
+    ] {
+        assert!(permitted(&layout, &layout.session, &command), "{command}");
+    }
+}
+
+#[test]
+fn a_link_inside_a_symlink_spelled_home_is_still_refused() {
+    // The screen the spelling comparison replaced kept an alias inside the
+    // home from redirecting a write. It still does: a link to the clone, and
+    // a link out of the clone, both keep their review.
+    let temporary = tempfile::tempdir().unwrap();
+    let layout = layout_spelled_at(temporary.path().join("fixture"), "spelled-home-link");
+    let alias = layout.home.join("alias");
+    symlink(&layout.clone, &alias).unwrap();
+    let (scratch, clone) = (layout.scratch.display(), layout.clone.display());
+    for command in [
+        format!("cat {scratch}/x.ts > {}/src/lib/y.ts", alias.display()),
+        format!("cat {scratch}/x.ts > {clone}/src/lib/link.ts"),
+        format!("cat {scratch}/x.ts > {clone}/linked/a.md"),
+        format!("cat {scratch}/x.ts >> {}/.zshrc", layout.home.display()),
+    ] {
         assert!(!permitted(&layout, &layout.session, &command), "{command}");
     }
 }

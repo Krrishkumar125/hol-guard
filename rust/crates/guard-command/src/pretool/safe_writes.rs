@@ -13,9 +13,10 @@ pub(super) use copies::{safe_copy_arguments, safe_copy_arguments_into};
 pub(crate) use plan_notes::plan_note_write_sources;
 pub(super) use plan_notes::plan_note_write_target;
 pub(super) use screens::autostart_write_target;
+use screens::home_execution_control_target;
+pub(super) use screens::home_spelling_matches_target;
 #[cfg(windows)]
 use screens::shared_library_part;
-use screens::{home_execution_control_target, home_spelling_matches_target};
 
 pub(super) fn bounded_file_write_target(
     value: &str,
