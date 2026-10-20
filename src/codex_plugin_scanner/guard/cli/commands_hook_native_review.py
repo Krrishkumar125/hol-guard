@@ -325,7 +325,7 @@ def review_native_artifact_hook(
                     event_name=event_name,
                     policy_action=policy_action,
                     artifact=runtime_artifact,
-                    native_reason=native_reason,
+                    native_reason=lambda: native_reason,
                 )
             _emit_native_hook_response(
                 harness=args.harness,

@@ -443,8 +443,14 @@ def _claude_prompt_system_message(
     event_name: str,
     policy_action: str,
     artifact: GuardArtifact,
-    native_reason: str,
+    native_reason: Callable[[], str],
 ) -> str | None:
+    """The system message Claude is shown, or ``None``.
+
+    The reason is read through a callable so a pass that needs no message
+    never composes one.
+    """
+
     if event_name == "UserPromptSubmit":
         if policy_action == "require-reapproval" and not _prompt_requires_hard_block(artifact):
             if "secret_read" in _prompt_request_classes(artifact):
@@ -457,18 +463,25 @@ def _claude_prompt_system_message(
                 "If Claude asks to continue, HOL Guard will route the decision through a branded approval prompt."
             )
         if policy_action in {"block", "sandbox-required"}:
-            return _ensure_terminal_punctuation(native_reason)
+            return _ensure_terminal_punctuation(native_reason())
         return None
     if event_name == "PreToolUse" and policy_action in {"require-reapproval", "block", "sandbox-required"}:
-        return _ensure_terminal_punctuation(native_reason)
+        return _ensure_terminal_punctuation(native_reason())
     return None
 
-def _codex_prompt_block_system_message(*, policy_action: str, native_reason: str) -> str | None:
+def _codex_prompt_block_system_message(*, policy_action: str, native_reason: Callable[[], str]) -> str | None:
+    """What Codex is told about a paused prompt, or ``None``.
+
+    The reason is read through a callable so a prompt that keeps running
+    never composes one.
+    """
+
     if policy_action not in {"review", "require-reapproval", "sandbox-required", "block"}:
         return None
-    if "open hol guard" not in native_reason.lower():
+    reason = native_reason()
+    if "open hol guard" not in reason.lower():
         return None
-    return f"HOL Guard paused your Codex prompt. {native_reason}"
+    return f"HOL Guard paused your Codex prompt. {reason}"
 
 def _copilot_hook_reason(*values: object | None) -> str:
     reason = _native_hook_reason(*values)
