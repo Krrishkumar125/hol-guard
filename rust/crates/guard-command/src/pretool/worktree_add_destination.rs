@@ -19,9 +19,20 @@ pub(super) fn resolve_chdir(value: &str, context: super::super::PathContext<'_>)
         .then(|| canonical.to_str().map(str::to_owned))?
 }
 
+/// Whether the command creates the directories leading to its destination.
+/// `git worktree add` does, so a destination below missing parents is still
+/// ordinary. `git clone` is reviewed on the same proof but names a parent
+/// that has to be there already, so missing components keep their review.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::pretool) enum MissingParents {
+    Created,
+    Required,
+}
+
 pub(in crate::pretool) fn fresh_destination(
     value: &str,
     context: super::super::PathContext<'_>,
+    missing_parents: MissingParents,
 ) -> Option<PathBuf> {
     let home = std::fs::canonicalize(Path::new(context.home_dir?)).ok()?;
     let cwd = std::fs::canonicalize(Path::new(context.cwd?)).ok()?;
@@ -63,6 +74,9 @@ pub(in crate::pretool) fn fresh_destination(
             }
             Err(_) => return None,
         }
+    }
+    if missing_parents == MissingParents::Required && existing_parent != parent {
+        return None;
     }
     // The parent may be reached through a symlink, as `/tmp` is on macOS.
     // Everything below judges the canonical directory exactly as if it had

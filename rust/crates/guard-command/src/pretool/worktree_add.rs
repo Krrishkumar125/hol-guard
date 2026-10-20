@@ -10,9 +10,9 @@ mod destination;
 #[path = "worktree_add_names.rs"]
 mod names;
 
-pub(in crate::pretool) use destination::fresh_destination;
 pub(in crate::pretool) use destination::fresh_temporary_parent;
 use destination::resolve_chdir;
+pub(in crate::pretool) use destination::{fresh_destination, MissingParents};
 
 pub(in crate::pretool) use names::{valid_branch_name, valid_destination_text};
 use names::{valid_local_reference, valid_path_text};
@@ -344,6 +344,7 @@ fn planned_checkout<'a>(
             cwd: chdir_cwd.as_deref().or(context.cwd),
             ..context
         },
+        MissingParents::Created,
     )?;
     Some((spec, destination, chdir_cwd))
 }
