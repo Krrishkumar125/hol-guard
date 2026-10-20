@@ -775,6 +775,8 @@ mod local_supply_chain_stale_policy_tests;
 #[cfg(test)]
 mod local_supply_chain_timestamp_tests;
 pub mod package_approval;
+#[cfg(test)]
+mod package_intent_exact_decode_tests;
 pub mod package_policy_override;
 pub mod package_protect_projection;
 mod package_shim_invocation;
