@@ -137,10 +137,10 @@ fn refuses_an_environment_with_no_interpreter_of_its_own() {
     );
 }
 
-/// An editable install or a `.pth` line holds the absolute path it was
-/// written with, which the snapshot does not hold a copy of.
+/// An editable install or a `.pth` line holds the path it was written with,
+/// which the snapshot does not hold a copy of.
 #[test]
-fn refuses_an_environment_that_imports_through_an_absolute_path() {
+fn refuses_an_environment_that_imports_through_a_path_outside_itself() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let root = directory.path().to_path_buf();
     let packages = root.join("Lib/site-packages");
@@ -162,6 +162,33 @@ fn refuses_an_environment_that_imports_through_an_absolute_path() {
         "MAPPING = {}\n",
     )
     .expect("an editable finder");
+    assert!(imports_outside_itself(&root));
+    std::fs::remove_file(packages.join("__editable___demo_finder.py")).expect("a removed finder");
+
+    // `site` joins a rooted or drive-relative line onto the drive, not onto
+    // the site directory, so it names a directory outside the environment
+    // although Rust does not call it absolute.
+    for line in [r"\work\project\src", "/work/project/src", r"C:src"] {
+        std::fs::write(packages.join("rooted.pth"), line).expect("a rooted entry");
+        assert!(imports_outside_itself(&root), "{line} should be outside");
+    }
+    std::fs::remove_file(packages.join("rooted.pth")).expect("a removed entry");
+    assert!(!imports_outside_itself(&root));
+}
+
+/// Reading stops at a bound, and a directory larger than it is one this read
+/// never reached the end of, so it settles nothing and keeps its review.
+#[test]
+fn refuses_a_site_packages_too_large_to_read_through() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let root = directory.path().to_path_buf();
+    let packages = root.join("Lib/site-packages");
+    std::fs::create_dir_all(&packages).expect("a site-packages");
+    for index in 0..SITE_ENTRIES_MAX {
+        std::fs::write(packages.join(format!("package_{index}")), "").expect("an entry");
+    }
+    assert!(!imports_outside_itself(&root));
+    std::fs::write(packages.join("package_over"), "").expect("one entry too many");
     assert!(imports_outside_itself(&root));
 }
 

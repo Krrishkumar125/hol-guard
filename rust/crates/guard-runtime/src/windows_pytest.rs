@@ -195,12 +195,14 @@ fn environment_interpreter(environment: &Path) -> Result<PathBuf, RestrictedPyte
 /// Where an environment keeps the packages a run imports.
 const SITE_PACKAGES: [&str; 2] = ["Lib/site-packages", "lib/site-packages"];
 /// A `site-packages` holds a handful of `.pth` files among its packages;
-/// reading the directory stays bounded whatever it holds.
+/// reading the directory stays bounded whatever it holds. A directory with
+/// more entries than this is one the planner never finishes reading, so it is
+/// refused rather than cleared on the part that was read.
 const SITE_ENTRIES_MAX: usize = 4096;
 /// A `.pth` file is a short list of paths; a larger one is not one.
 const PTH_MAX_BYTES: u64 = 64 * 1024;
 
-/// Whether the environment imports through an absolute path out of itself.
+/// Whether the environment imports through a path out of itself.
 ///
 /// The snapshot is a copy of the workspace at a path of its own, and the
 /// container grants nothing outside it. A `.pth` line or an editable-install
@@ -213,7 +215,13 @@ fn imports_outside_itself(environment: &Path) -> bool {
         let Ok(entries) = std::fs::read_dir(environment.join(relative)) else {
             continue;
         };
-        for entry in entries.take(SITE_ENTRIES_MAX).flatten() {
+        for (seen, entry) in entries.flatten().enumerate() {
+            // `read_dir` hands entries back in no particular order, so the
+            // finder or `.pth` that decides this may be past the bound. Having
+            // read as far as the bound allows settles nothing.
+            if seen >= SITE_ENTRIES_MAX {
+                return true;
+            }
             let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
             if name.starts_with("__editable__") {
                 return true;
@@ -234,7 +242,15 @@ fn imports_outside_itself(environment: &Path) -> bool {
                 .filter(|line| {
                     !line.is_empty() && !line.starts_with('#') && !line.starts_with("import ")
                 })
-                .any(|line| Path::new(line).is_absolute())
+                .any(|line| {
+                    let path = Path::new(line);
+                    // `site` joins a relative line onto the site directory.
+                    // A rooted line (`\src`, `/src`) or a drive-relative one
+                    // (`C:src`) escapes that join and names a directory the
+                    // snapshot holds no copy of, as a fully absolute line does.
+                    path.has_root()
+                        || matches!(path.components().next(), Some(Component::Prefix(_)))
+                })
             {
                 return true;
             }

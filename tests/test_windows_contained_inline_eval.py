@@ -115,11 +115,14 @@ def test_windows_backend_never_reaches_posix_sandboxes(monkeypatch, tmp_path):
         _backend_argv(plan, private_root=tmp_path)
 
 
-def test_windows_contains_eval_profiles_only(monkeypatch):
+def test_windows_contains_the_profiles_it_has_a_runner_for(monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
     assert platform_contains(_receipt())
     assert platform_contains({"required_execution_profile": "node-eval-readonly-v1"})
-    assert not platform_contains(_receipt("pytest-readonly-v2"))
+    # The read-only pytest profile has a Windows planner and runner, so a
+    # receipt naming it is rewritten into the sink rather than left as a deny.
+    assert platform_contains(_receipt("pytest-readonly-v2"))
+    # The workspace sandbox has no Windows backend.
     assert not platform_contains(_receipt("workspace-contained-v1"))
 
 
