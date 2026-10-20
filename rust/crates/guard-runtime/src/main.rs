@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 #![recursion_limit = "512"]
 
+mod active_pack_security;
 mod adapter_inventory;
 #[cfg(all(test, unix))]
 mod adapter_vectors_tests;
@@ -36,11 +37,13 @@ mod approval_reuse_diagnostic_vectors_tests;
 mod approval_scope_contract;
 mod approval_scope_material;
 mod approval_scope_op;
+mod approval_scope_select_op;
 mod archive_acquisition_op;
 mod archive_inspect;
 mod archive_inspect_containment;
 mod archive_verdict_seam;
 mod artifact_risk_op;
+mod bash_post_delivery;
 #[cfg(unix)]
 mod binding_capture_capture;
 #[cfg(unix)]
@@ -191,6 +194,8 @@ mod continuation_grants;
 mod continuation_lineage;
 mod continuation_metadata;
 mod continuation_store;
+#[cfg(test)]
+mod contributed_mcp_catalog_test_support;
 mod contributed_mcp_decision_op;
 mod copilot_detect;
 #[cfg(all(test, unix))]
@@ -427,6 +432,8 @@ mod hook_direct_evidence;
 mod hook_env_stamp;
 #[cfg(all(test, unix))]
 mod mcp_config_discovery_tests;
+mod pack_lifecycle;
+mod pack_preparation;
 // The seams the evidence writer runs on. Each is reached through
 // hook_evidence_writer_op; the readers also have their own tests.
 #[allow(dead_code)]
@@ -482,6 +489,7 @@ mod mcp_proxy_decision_op;
 mod mcp_proxy_decision_tests;
 #[cfg(test)]
 mod mcp_proxy_decision_vectors_tests;
+mod mcp_proxy_inline_approval;
 mod mcp_proxy_package;
 mod mcp_proxy_postclaim;
 mod mcp_proxy_projection;
@@ -525,6 +533,11 @@ mod mcp_tool_policy_lookup;
 mod mcp_tool_policy_proxy;
 mod mcp_tool_policy_revalidate;
 mod memory_pattern;
+#[cfg(target_os = "macos")]
+mod native_bash_client;
+mod native_bash_reply_validation;
+mod native_bash_review_descriptor;
+mod native_bash_review_scope;
 mod native_decision_receipt;
 mod native_exact_action_op;
 mod native_hook_receipt;
@@ -640,6 +653,7 @@ mod runner_authority_signature;
 mod runner_sync_policy;
 mod runner_sync_signals;
 mod runner_sync_url;
+mod runtime_artifact_identity_op;
 mod runtime_cli;
 mod runtime_detector_run_op;
 mod secrets_cli;
@@ -677,7 +691,9 @@ mod supply_chain_eval_caller;
 mod supply_chain_eval_rounds;
 mod supply_chain_eval_seams;
 mod supply_chain_eval_transport;
+mod tool_action_identity_op;
 mod totp;
+mod verified_read_decision_op;
 #[cfg(windows)]
 mod windows_node_build;
 #[cfg(windows)]

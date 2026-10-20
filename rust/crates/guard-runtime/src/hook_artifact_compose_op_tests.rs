@@ -273,3 +273,206 @@ fn the_package_evaluator_owns_command_control_failures_but_not_secret_denies() {
     );
     assert_eq!(native_edge_floor(&secret, None), Some(GuardAction::Block));
 }
+
+fn observe_query(fields: Value) -> HookArtifactComposeQueryV1 {
+    let mut query = json!({
+        "kind": "observe_executable_action",
+        "current_config_action": Value::Null,
+        "current_action_override": Value::Null,
+        "trusted_cli_override": Value::Null,
+        "untrusted_hook_payload_hint": Value::Null,
+        "package_action": Value::Null,
+        "data_flow_action": Value::Null,
+        "scanner_action": Value::Null,
+        "package_evaluation_action": Value::Null,
+    });
+    for (key, value) in fields.as_object().unwrap() {
+        query[key] = value.clone();
+    }
+    serde_json::from_value(query).unwrap()
+}
+
+#[test]
+fn observe_mode_records_an_allow_when_nothing_let_work_through() {
+    let answer = compose(&observe_query(json!({}))).unwrap();
+
+    assert_eq!(answer["executable_action"], "allow");
+}
+
+#[test]
+fn observe_mode_keeps_the_strictest_source_that_still_executes() {
+    // The warning ran; the block is the gate observe mode removed, so it does
+    // not name the action the harness would have taken.
+    let answer = compose(&observe_query(json!({
+        "current_config_action": "allow",
+        "scanner_action": "warn",
+        "package_action": "block",
+    })))
+    .unwrap();
+
+    assert_eq!(answer["executable_action"], "warn");
+}
+
+#[test]
+fn observe_mode_ignores_every_source_that_asked_for_a_gate() {
+    for gate in ["review", "require-reapproval", "sandbox-required", "block"] {
+        let answer = compose(&observe_query(json!({ "data_flow_action": gate }))).unwrap();
+
+        assert_eq!(answer["executable_action"], "allow", "{gate}");
+    }
+}
+
+#[test]
+fn observe_mode_contributes_nothing_for_a_source_name_this_build_cannot_read() {
+    let answer = compose(&observe_query(json!({
+        "trusted_cli_override": "quarantine",
+        "untrusted_hook_payload_hint": "warn",
+    })))
+    .unwrap();
+
+    assert_eq!(answer["executable_action"], "warn");
+}
+
+#[test]
+fn observe_mode_reads_the_package_evaluations_own_action() {
+    let answer = compose(&observe_query(
+        json!({ "package_evaluation_action": "warn" }),
+    ))
+    .unwrap();
+
+    assert_eq!(answer["executable_action"], "warn");
+}
+
+fn settle(query: Value) -> Value {
+    compose(&serde_json::from_value(query).unwrap()).unwrap()
+}
+
+fn package_settle(reasons: Value, stored_action: Value, claim: bool) -> Value {
+    settle(json!({
+        "kind": "package_reuse_settle",
+        "reasons": reasons,
+        "claim_saved_approval": claim,
+        "current_action": "review",
+        "evaluation_policy_action": "allow",
+        "stored_policy_action": stored_action,
+        "stored_artifact_hash": Value::Null,
+        "approval_reuse_source": Value::Null,
+    }))
+}
+
+#[test]
+fn a_package_request_with_no_saved_reason_keeps_the_composed_action() {
+    let answer = package_settle(json!([{"code": "package_unverified"}]), Value::Null, false);
+
+    assert_eq!(answer["reuse_applied"], json!(false));
+    assert_eq!(answer["policy_action"], json!("review"));
+    assert_eq!(answer["approval_reuse_source"], Value::Null);
+    assert_eq!(answer["evidence_appends"], json!([]));
+    assert_eq!(answer["settled_evidence_appends"], json!([]));
+}
+
+#[test]
+fn a_saved_package_approval_applies_the_evaluations_action_and_names_its_source() {
+    let answer = package_settle(
+        json!([{"code": "saved_package_approval", "approval_claim_disposition": "consumed"}]),
+        Value::Null,
+        false,
+    );
+
+    assert_eq!(answer["reuse_applied"], json!(true));
+    assert_eq!(answer["saved_allow_applied"], json!(true));
+    assert_eq!(answer["claim_disposition"], json!("consumed"));
+    assert_eq!(answer["policy_action"], json!("allow"));
+    assert_eq!(
+        answer["approval_reuse_source"],
+        json!("saved_package_policy")
+    );
+    assert_eq!(answer["revalidate_required"], json!(false));
+}
+
+#[test]
+fn a_claimed_saved_allow_revalidates_at_the_execution_boundary() {
+    let answer = package_settle(
+        json!([{"code": "saved_package_approval"}]),
+        Value::Null,
+        true,
+    );
+
+    assert_eq!(answer["revalidate_required"], json!(true));
+    assert_eq!(answer["claim_disposition"], Value::Null);
+}
+
+#[test]
+fn only_a_disposition_the_claim_can_report_is_kept() {
+    let answer = package_settle(
+        json!([{"code": "saved_package_approval", "approval_claim_disposition": "elsewhere"}]),
+        Value::Null,
+        false,
+    );
+
+    assert_eq!(answer["claim_disposition"], Value::Null);
+}
+
+#[test]
+fn the_first_reason_carrying_reuse_evidence_ends_the_scan() {
+    let answer = package_settle(
+        json!([
+            {"code": "saved_package_block", "approval_reuse": {"action": "block", "status": "accepted"}},
+            {"code": "saved_package_approval", "approval_claim_disposition": "retained"},
+        ]),
+        Value::Null,
+        true,
+    );
+
+    // The second reason is never read, so no saved allow is applied and the
+    // claim never revalidates -- the behaviour the Python loop's break had.
+    assert_eq!(answer["saved_allow_applied"], json!(false));
+    assert_eq!(answer["revalidate_required"], json!(false));
+    assert_eq!(
+        answer["reuse_evidence"],
+        json!({"action": "block", "status": "accepted"})
+    );
+    assert_eq!(
+        answer["evidence_appends"],
+        json!([{
+            "source": "approval_reuse",
+            "input_source": "saved_package_policy",
+            "action": "block",
+            "status": "accepted",
+        }])
+    );
+}
+
+#[test]
+fn a_stored_block_holds_the_request_and_names_the_saved_decision() {
+    let answer = package_settle(json!([]), json!("block"), false);
+
+    assert_eq!(answer["policy_action"], json!("block"));
+    assert_eq!(
+        answer["approval_reuse_source"],
+        json!("saved_policy_decision")
+    );
+    assert_eq!(answer["approval_reuse"]["action"], json!("block"));
+    assert_eq!(
+        answer["settled_evidence_appends"][0]["input_source"],
+        json!("saved_policy_decision")
+    );
+}
+
+#[test]
+fn a_stored_block_beside_package_reuse_keeps_the_package_source_and_adds_no_second_evidence() {
+    let answer = package_settle(
+        json!([{"code": "saved_package_approval"}]),
+        json!("block"),
+        false,
+    );
+
+    // The reason scan already recorded the reuse, so the settlement names the
+    // package source and does not describe the same reuse twice.
+    assert_eq!(answer["policy_action"], json!("block"));
+    assert_eq!(
+        answer["approval_reuse_source"],
+        json!("saved_package_policy")
+    );
+    assert_eq!(answer["settled_evidence_appends"], json!([]));
+}

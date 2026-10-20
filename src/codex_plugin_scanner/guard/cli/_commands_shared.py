@@ -171,12 +171,13 @@ from ..runtime.runner import (
     sync_supply_chain_bundle,
 )
 from ..runtime.secret_file_requests import (
-    build_file_read_request_artifact,
-    build_file_write_request_artifact,
     build_tool_action_request_artifact,
     extract_sensitive_file_read_request,
+    extract_sensitive_file_read_request_artifact,
+    extract_sensitive_file_read_request_artifact_from_action,
     extract_sensitive_file_read_request_from_action,
     extract_sensitive_file_write_request,
+    extract_sensitive_file_write_request_artifact,
     extract_sensitive_tool_action_request,
     literal_cd_execution_context,
 )
@@ -267,9 +268,9 @@ _SETTINGS_POLICY_RISK_ACTIONS: dict[str, dict[str, dict[str, str]]] = {
         "ask-all": {"malicious_skill": "require-reapproval"},
     },
     "packages": {
-        "warn": {"package_script": "warn"},
-        "ask-lifecycle": {"package_script": "require-reapproval"},
-        "ask-all": {"package_script": "require-reapproval"},
+        "warn": {"package_script": "warn", "package_install": "allow"},
+        "ask-lifecycle": {"package_script": "require-reapproval", "package_install": "allow"},
+        "ask-all": {"package_script": "require-reapproval", "package_install": "require-reapproval"},
     },
     "output-scanning": {
         "off": {

@@ -346,12 +346,11 @@ pub(super) fn compose_with(
     }) {
         return Err(invalid());
     }
-    let mut extra_reads = existing(&[
-        "/bin",
-        "/usr/bin",
+    let mut extra_reads = existing(super::launch_roots::MAC_PROGRAM_ROOTS);
+    extra_reads.extend(existing(&[
         "/private/var/select",
         "/private/var/db/timezone",
-    ]);
+    ]));
     extra_reads.extend(input.exec_roots.iter().cloned());
     extra_reads.extend(input.read_only_roots.iter().cloned());
     let mut writable = vec![workspace.clone(), input.private_root.clone()];
@@ -385,7 +384,18 @@ pub(super) fn compose_with(
     // nothing the command could not already run.
     let mut executable = vec![workspace.clone(), input.private_root.clone()];
     executable.extend(linked.map(|linked| linked.checkout().to_path_buf()));
-    executable.extend(existing(&["/bin", "/usr/bin"]));
+    // The same sealed directories the reachability check names, so a command
+    // judged containable is one the profile can actually run. The tools that
+    // change the machine live here too, and they are stopped by what this
+    // profile withholds rather than by where they sit: `(deny default)`
+    // refuses the system operations `umount`, `nvram`, `shutdown` and `pfctl`
+    // need, every mach service but the user-database lookup is unreachable so
+    // `networksetup`, `systemsetup`, `diskutil` and `launchctl` cannot reach
+    // configd, diskarbitrationd or launchd, nothing outside the workspace and
+    // the run's private directory is writable, and the run is not root. The
+    // privilege names above stay denied by literal path across all four
+    // directories, as they already were.
+    executable.extend(existing(super::launch_roots::MAC_PROGRAM_ROOTS));
     executable.extend(input.exec_roots.iter().cloned());
     let privileged = privileged_executables();
     let mut lines = vec![

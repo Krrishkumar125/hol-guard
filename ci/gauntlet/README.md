@@ -12,7 +12,7 @@ The core catalog pairs ordinary coding tasks with synthetic protection cases:
 
 The additional Watch case uses a fresh private Guard home and one fixed harmless Python command. A fixture scope hook rejects model substitutions before execution; that hook is not evidence of Guard protection. Passing requires authenticated resident Watch bindings before and after the call, a correlated Rust would-have-stopped receipt, successful nonblocking execution, and no approvals. All Protect cases remain unchanged.
 
-The Watch tool contract requires an explicit positive timeout of at most 120 seconds (the live prompt requests 120); omission is rejected because OMP 18.4.12 otherwise defaults to 300 seconds. OMP's benign optional arguments `env: {}`, `pty: false`, and `async: false` are accepted, but environment overrides, PTY/background execution, additional executable inputs, and alternate working directories remain blocked. The actual workspace path is checked before public evidence redacts it as `{{workspace}}`.
+The Watch tool contract requires an explicit positive timeout of at most 120 seconds (the live prompt requests 120); omission is rejected because OMP 18.11.3 otherwise defaults to 300 seconds. OMP's benign optional arguments `env: {}`, `pty: false`, and `async: false` are accepted, but environment overrides, PTY/background execution, additional executable inputs, and alternate working directories remain blocked. The actual workspace path is checked before public evidence redacts it as `{{workspace}}`.
 
 The runner appends verified fixture provenance to the agent's system context: generated workspace/HOME data, a synthetic environment marker, a credential-isolated agent process, and runner-owned loopback collectors. The Watch case omits the generated HOME and workspace paths from that context, because the agent already starts in the workspace and a retyped path is rejected by the scope before Guard sees anything. It does not supply completions or force tool calls. A model response without the required tool attempt remains `not-exercised` and cannot qualify Guard.
 
@@ -54,6 +54,8 @@ Real sessions were stopped on ordinary work the catalog never ran. Nine more `na
 | Global `url.<base>.insteadOf` | `omp-native-git-global-instead-of` | two `insteadOf` rewrites and an `origin` remote spelled with the shorthand |
 | Large ordinary global gitconfig | `omp-native-git-large-global-config` | generated alias keys, no includes, over 256 KiB |
 | Years-old clone with default signing | `omp-native-git-long-lived-clone-branch-work` | thousands of retired `branch.*` entries past 256 KiB and `commit.gpgsign = true` in the shared repository config; `git config --get`, `git switch -c`, `git add` |
+| Years-old clone gaining sibling worktrees | `omp-native-git-long-lived-clone-worktree-add` | the same shared repository config, an existing `fix/report-export` branch and an `origin/main` ref; `git -C ... worktree add` for the existing branch and for a new `-b` branch from `origin/main`. The static gate's twin adds an executable `post-checkout` hook, and the same add must stay reviewed |
+| Fast-forward of an already fetched origin branch | `omp-native-git-fast-forward-merge-origin` | `origin` is a GitHub URL and `origin/main` is one commit ahead of the checked-out `feature` branch; `git merge --ff-only origin/main` advances `HEAD` without `git pull`. Its twin `git-fast-forward-merge-post-merge-hook` adds a user `post-merge` hook, and the same merge must stay reviewed with `HEAD` unmoved and the hook never run |
 | Missing `.git` leaf probe, hidden marker listing, empty marker read | `omp-native-listing-probes-and-markers` | `acme-plain` has no `.git`; `other-project` holds an empty tracked `.keep` |
 | Clone or linked worktree outside cwd | `omp-native-git-sibling-worktree-reads` | `other-project-wt` (branch `fix/report-window`) via `git -C ... log` and `status --short` |
 | Compound git reads | `omp-native-git-compound-reads` | `;`-joined `rev-parse`/`echo`/`log` and `log`/`status`; the prompt also says "do not delete anything" |
@@ -300,7 +302,7 @@ PATH="$candidate/.venv/bin:$sdk/node_modules/.bin:$PATH" .venv/bin/python -m ci.
   --case CASE_ID --output /absolute/path/outside-the-checkout/gauntlet-evidence
 ```
 
-A `--case` run is investigation evidence, not qualification. The candidate worktree stays under the run root until you remove it with `git worktree remove`. Linux builds only the development-profile wheel: the release profile runs the published size check, which has no budget for the local `linux_x86_64` wheel, so `--release-profile-wheel` (or a candidate that predates development wheels) needs `--wheel` there.
+A `--case` run is investigation evidence, not qualification. The candidate worktree stays under the run root until you remove it with `git worktree remove`.
 
 On a machine that also runs HOL Guard for everyday work, that Guard's package shims (`~/.hol-guard/package-shims/bin`) usually come first on `PATH`. The runner starts each agent as `bun <sdk>/…/omp … <prompt>`, so the host shim reviews that launch and can stop it before the agent starts (#4833). The case then fails as `harness-error` with zero inference rounds. Each case runs its own isolated Guard, so for Gauntlet runs only, leave the host shim directory out of `PATH` and put the real Bun directory after the SDK:
 
@@ -339,7 +341,7 @@ python -m ci.gauntlet qualify --sha FULL_TESTED_SOURCE_SHA \
 ```
 
 - Caches under `--cache-root` (default `~/.cache/hol-guard-gauntlet`): one SDK prefix per candidate `package-lock.json` digest, and one native wheel per tested SHA and platform, built in a persistent `build-worktree` so `rust/target` stays warm. Builds serialize on a flock'd lock and run under `nice`; all setup output lands in `run_root/logs/setup.log`. Pass `--sdk-root` to skip the SDK cache or `--wheel` to skip the build (required on hosts other than macOS and Linux x86_64). On Linux the build produces the host's glibc `linux_x86_64` development wheel for local runs; the published Linux wheel is the static musl build from the nightly workflow.
-- Wheel builds default to a development profile: no LTO, 16 codegen units and workspace crates at `opt-level = 0`, with distribution size budgets skipped because the wheel is never published. Only workspace crates drop their optimization level — dependencies keep theirs but are also compiled without LTO, and Cargo keeps the dev and release variants' artifacts side by side in the warm build tree, so the first dev build compiles dependencies once and later builds of either profile reuse them. Dev wheels cache under a separate `…-dev` store key so they never shadow release wheels. Pass `--release-profile-wheel` for the production fat-LTO build; candidates whose `build-native-wheel-macos.sh` predates the dev-profile switch fall back to the release profile automatically.
+- Wheel builds default to a development profile: no LTO, 16 codegen units and workspace crates at `opt-level = 0`, because the wheel is never published. Only workspace crates drop their optimization level — dependencies keep theirs but are also compiled without LTO, and Cargo keeps the dev and release variants' artifacts side by side in the warm build tree, so the first dev build compiles dependencies once and later builds of either profile reuse them. Dev wheels cache under a separate `…-dev` store key so they never shadow release wheels. Pass `--release-profile-wheel` for the production fat-LTO build; candidates whose `build-native-wheel-macos.sh` predates the dev-profile switch fall back to the release profile automatically.
 - For the release PR, the `Gauntlet full-task runtime` workflow builds the same development-profile wheel on every push to the Release Please branch and uploads it as `hol-guard-native-build-macos-arm64`; a newer head cancels the older build. Download the artifact from the run for the exact head and pass it with `--wheel`. The run still checks that the installed runtime's embedded build SHA equals `--sha`.
 - Roots are private to the calling user: the default `--run-root` is `/tmp/hol-guard-gauntlet-<uid>/<sha>-<stamp>` and the default `--work-parent` `/tmp/hol-guard-gauntlet-<uid>/w`. The run-root parent, work parent, cache root and its `locks/`, `sdk/` and `wheels/` subdirectories must be real directories owned by this user with no group or other permissions — symlinks and foreign owners are rejected, and a shared-mode directory is rejected unless it sits inside the driver's own default roots, which are tightened to `0700` instead.
 - Each attempt is a complete fresh `run --native-luna-route --fail-fast` in a pristine detached worktree under `--run-root` with its own evidence and work directories; no results are stitched. `--max-load` (default `2 * os.cpu_count()`) gates new cases on host load, bounded by `--max-load-wait` (default 180 s). A retry happens only while attempts remain **and** every failed case is `not-exercised`, `inference-error` or `harness-error` — product outcomes (`false-positive`, `false-negative`, `task-incomplete`) always stop the loop.
@@ -441,14 +443,13 @@ python -m ci.gauntlet installed \
   `~/.codex`, `~/.omp` or `~/.hol-guard`.
 - Evidence is `hol-guard-installed-acceptance.v1` in `installed-acceptance.json`, and the exit
   status is zero only when every harness registered, every replay agreed and the aged pass left
-  nothing behind. `.github/workflows/gauntlet-installed-acceptance.yml` runs it on a weekly
-  schedule and on dispatch, against both the wheel and a PyInstaller onedir build of the same
-  commit. Like the rest of the Gauntlet it is not a required check.
-- **A pull request that changes the lane runs it with `--report-only`.** These steps assert
-  against the shipped build, so gating lane changes on them would block the lane on defects it did
-  not introduce and cannot fix from here. Report-only still writes the evidence, prints the
-  findings and puts them in the job summary; it only declines to fail the job. The scheduled and
-  dispatched runs are strict.
+  nothing behind. `.github/workflows/gauntlet-installed-acceptance.yml` runs it only on manual
+  dispatch, against both the wheel and a PyInstaller onedir build of the same commit. Like the
+  rest of the Gauntlet it runs asynchronously, off CI/CD: no pull request or schedule triggers it,
+  and it is never a required check.
+- **The `report_only` dispatch input runs it with `--report-only`.** Report-only still writes the
+  evidence, prints the findings and puts them in the job summary; it only declines to fail the
+  job. Dispatched runs are strict by default.
 
 #### What it found on installed 3.46.0
 

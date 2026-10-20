@@ -12,6 +12,7 @@ from ..approval_scope_support import (
     request_scope_contract,
     resolve_request_scope_selection,
 )
+from ..native_approval_scope import ApprovalScopeUnavailableError
 from ..review_contracts import (
     GuardReviewContractError,
     build_local_review_request_claim,
@@ -130,6 +131,8 @@ def apply_exact_cloud_review(
             oauth=oauth,
             store=store,
         )
+    except ApprovalScopeUnavailableError as error:
+        raise _reject(store, "native_approval_scope_unavailable", now=current) from error
     except IneligibleApprovalScopeError as error:
         raise _reject(store, "remote_exact_not_permitted", now=current) from error
     except GuardReviewContractError as error:

@@ -148,10 +148,8 @@ fn combine_liveness(
 }
 
 pub(crate) fn stop_managed(state_base: &Path, retire_clients: bool) -> Result<(), String> {
-    // Materialize the current runtime scope even when no resident state is
-    // present.  This keeps the stop command's authenticated, private-home
-    // contract deterministic for callers that use it to initialize a fresh
-    // scope before publishing test or recovery state.
+    // Materialize the private runtime scope even without resident state, so
+    // stop can initialize it before publishing test or recovery state.
     let digest = runtime_digest()?;
     let _ = state_scope(state_base, &digest)?;
     let request = br#"{"operation":"shutdown","request":{}}"#;
@@ -186,11 +184,12 @@ pub(crate) fn stop_managed(state_base: &Path, retire_clients: bool) -> Result<()
     .is_ok()
     {
         containment::wait_for_stop_containment(&scope, &digest, deadline, &process_ids)?;
-        // The children are gone; wait for the supervisors that reaped them to
-        // finish writing before the budget is cleared and the scope is read
-        // as final, with no new supervisor let in while the probe waits.
-        exit_record::quiesce_under_startup_lock(state_base, &digest, &scope)?;
-        let _ = restart_budget::clear(&scope);
+        // The children are gone; clear the budget only under the startup
+        // lock, since a start that got there first has already charged it.
+        let startup = exit_record::quiesce_under_startup_lock(state_base, &digest, &scope)?;
+        if startup.is_some() {
+            let _ = restart_budget::clear(&scope);
+        }
         return Ok(());
     }
     // Clean up after a resident that died without a shutdown request, so
@@ -228,11 +227,7 @@ pub(crate) fn serve_managed(
     let owner_start_marker = process_start_marker(owner_process_id)?;
     let scope = state_scope(state_base, expected_digest)?;
     let owner_lock = acquire_managed_owner_lock(state_base)?;
-    // Build the immutable catalog read snapshot off the request path so the
-    // first catalog_read does not pay for it; failures surface on that read.
-    thread::spawn(|| {
-        let _ = guard_command::catalog_read_model::packaged_catalog_read_snapshot();
-    });
+    // Discovery metadata is loaded in bounded pages only when requested.
     // Initialize before fallible policy startup so every client can see a
     // resident still starting. This guard drops before owner_lock on all exits.
     let _diagnostic_lifetime =
@@ -479,6 +474,7 @@ pub(crate) fn client_timeout(payload: &[u8]) -> Duration {
             | "shim_admin",
         ) => CONTAINED_RUNNER_TIMEOUT_CEILING_MS,
         Some("codex_request_resume") => CODEX_REQUEST_RESUME_TIMEOUT_CEILING_MS,
+        Some("native_bash_execute") => guard_contracts::NATIVE_BASH_EXECUTE_MAX_TIMEOUT_MS + 1_000,
         Some("daemon_lifecycle_decide") => DAEMON_LIFECYCLE_TIMEOUT_CEILING_MS,
         _ => CLIENT_TIMEOUT_CEILING_MS,
     };

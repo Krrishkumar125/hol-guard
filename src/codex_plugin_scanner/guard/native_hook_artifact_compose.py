@@ -21,6 +21,10 @@ from .native_context import _canonical_request_sha256, _resolve_digest_home, ens
 from .native_execution import _resident_request
 
 HOOK_ARTIFACT_COMPOSE_FEATURE = "hook-artifact-compose-v1"
+# A query kind an older resident does not know is rejected as an unknown
+# kind, so each kind added after the op requires its own feature and only
+# for its own call.
+HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE = "hook-artifact-compose-package-reuse-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-compose-request.v1"
 _RESULT_SCHEMA = "guard-hook-artifact-compose-result.v1"
 _RESIDENT_CODE = re.compile(r"^native_hook_artifact_compose_[a-z_]{1,64}$")
@@ -60,6 +64,18 @@ _FIELDS: dict[str, frozenset[str]] = {
     "tool_grant_apply": frozenset(),
     "grant_settle": frozenset(
         {"current_action", "policy_action", "approval_context_action", "granted_action", "native_floor"}
+    ),
+    "observe_executable_action": frozenset(
+        {
+            "current_config_action",
+            "current_action_override",
+            "trusted_cli_override",
+            "untrusted_hook_payload_hint",
+            "package_action",
+            "data_flow_action",
+            "scanner_action",
+            "package_evaluation_action",
+        }
     ),
     "saved_reuse": frozenset(
         {
@@ -123,7 +139,21 @@ _FIELDS: dict[str, frozenset[str]] = {
         }
     ),
     "decision_build_copy": frozenset({"copy", "reason", "signals"}),
+    "package_reuse_settle": frozenset(
+        {
+            "reasons",
+            "claim_saved_approval",
+            "current_action",
+            "evaluation_policy_action",
+            "stored_policy_action",
+            "stored_artifact_hash",
+            "approval_reuse_source",
+        }
+    ),
 }
+
+# The feature a kind needs beyond the op itself.
+_KIND_FEATURES: dict[str, str] = {"package_reuse_settle": HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE}
 
 # The exact answer shape of each query kind. Spec letters: a action,
 # A action or null, b bool, s string, S string or null, d dict, D dict or null,
@@ -152,6 +182,7 @@ _ANSWERS: dict[str, dict[str, str]] = {
     "config_action": {"action": "a", "auto_stop_events": "l"},
     "tool_grant_apply": {"approval_context_policy_action": "a", "current_policy_action": "a", "policy_action": "a"},
     "grant_settle": {"approval_context_policy_action": "a", "current_policy_action": "a", "policy_action": "a"},
+    "observe_executable_action": {"executable_action": "a"},
     "saved_reuse": {"approval_reuse": "d", "approval_reuse_source": "S", "policy_action": "a"},
     "saved_block_reuse": {"approval_reuse": "d", "policy_action": "a"},
     "trusted_override": {"claim_required": "b", "evidence": "D", "reason_code": "S"},
@@ -165,6 +196,18 @@ _ANSWERS: dict[str, dict[str, str]] = {
     },
     "decision_copy": {"decision_overrides": "d", "risk_headline": "S"},
     "decision_build_copy": {"decision_v2": "d", "risk_headline": "S"},
+    "package_reuse_settle": {
+        "approval_reuse": "D",
+        "approval_reuse_source": "S",
+        "claim_disposition": "S",
+        "evidence_appends": "l",
+        "policy_action": "a",
+        "reuse_applied": "b",
+        "reuse_evidence": "D",
+        "revalidate_required": "b",
+        "saved_allow_applied": "b",
+        "settled_evidence_appends": "l",
+    },
 }
 
 
@@ -228,7 +271,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
         request=request,
         guard_home=home,
         timeout_seconds=_TIMEOUT_SECONDS,
-        required_feature=HOOK_ARTIFACT_COMPOSE_FEATURE,
+        required_feature=_KIND_FEATURES.get(kind, HOOK_ARTIFACT_COMPOSE_FEATURE),
         response_schema=_RESULT_SCHEMA,
     )
     if (
@@ -261,6 +304,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
 
 __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE",
     "NativeHookComposeError",
     "NativeHookComposeValidationError",
     "native_hook_compose",

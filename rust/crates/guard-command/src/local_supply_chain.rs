@@ -1077,6 +1077,12 @@ pub const VALID_RISK_ACTION_KEYS: &[&str] = &[
     "guard_bypass",
     "cloud_advisory",
     "encoded_exfiltration",
+    "package_unknown",
+    "package_lockfile_drift",
+    "package_direct_source",
+    "package_custom_registry",
+    "package_install",
+    "low_trust_artifact",
 ];
 
 /// `DEFAULT_SECURITY_LEVEL` (config.py).
@@ -1708,6 +1714,12 @@ fn security_level_risk_rows(level: &str) -> &'static [(&'static str, &'static st
                 ("guard_bypass", "warn"),
                 ("cloud_advisory", "allow"),
                 ("encoded_exfiltration", "warn"),
+                ("package_unknown", "allow"),
+                ("package_lockfile_drift", "allow"),
+                ("package_direct_source", "allow"),
+                ("package_custom_registry", "allow"),
+                ("package_install", "allow"),
+                ("low_trust_artifact", "warn"),
             ],
         ),
         (
@@ -1727,6 +1739,12 @@ fn security_level_risk_rows(level: &str) -> &'static [(&'static str, &'static st
                 ("guard_bypass", "warn"),
                 ("cloud_advisory", "allow"),
                 ("encoded_exfiltration", "warn"),
+                ("package_unknown", "allow"),
+                ("package_lockfile_drift", "allow"),
+                ("package_direct_source", "allow"),
+                ("package_custom_registry", "allow"),
+                ("package_install", "allow"),
+                ("low_trust_artifact", "warn"),
             ],
         ),
         (
@@ -1746,6 +1764,12 @@ fn security_level_risk_rows(level: &str) -> &'static [(&'static str, &'static st
                 ("guard_bypass", "block"),
                 ("cloud_advisory", "warn"),
                 ("encoded_exfiltration", "require-reapproval"),
+                ("package_unknown", "allow"),
+                ("package_lockfile_drift", "allow"),
+                ("package_direct_source", "allow"),
+                ("package_custom_registry", "allow"),
+                ("package_install", "allow"),
+                ("low_trust_artifact", "require-reapproval"),
             ],
         ),
         (
@@ -1765,6 +1789,12 @@ fn security_level_risk_rows(level: &str) -> &'static [(&'static str, &'static st
                 ("guard_bypass", "block"),
                 ("cloud_advisory", "require-reapproval"),
                 ("encoded_exfiltration", "block"),
+                ("package_unknown", "block"),
+                ("package_lockfile_drift", "require-reapproval"),
+                ("package_direct_source", "require-reapproval"),
+                ("package_custom_registry", "allow"),
+                ("package_install", "allow"),
+                ("low_trust_artifact", "require-reapproval"),
             ],
         ),
         (
@@ -1784,6 +1814,12 @@ fn security_level_risk_rows(level: &str) -> &'static [(&'static str, &'static st
                 ("guard_bypass", "block"),
                 ("cloud_advisory", "block"),
                 ("encoded_exfiltration", "block"),
+                ("package_unknown", "block"),
+                ("package_lockfile_drift", "block"),
+                ("package_direct_source", "block"),
+                ("package_custom_registry", "block"),
+                ("package_install", "block"),
+                ("low_trust_artifact", "block"),
             ],
         ),
         (
@@ -1803,6 +1839,12 @@ fn security_level_risk_rows(level: &str) -> &'static [(&'static str, &'static st
                 ("guard_bypass", "block"),
                 ("cloud_advisory", "warn"),
                 ("encoded_exfiltration", "require-reapproval"),
+                ("package_unknown", "allow"),
+                ("package_lockfile_drift", "allow"),
+                ("package_direct_source", "allow"),
+                ("package_custom_registry", "allow"),
+                ("package_install", "allow"),
+                ("low_trust_artifact", "require-reapproval"),
             ],
         ),
     ];
@@ -1849,6 +1891,12 @@ fn posture_risk_rows(posture: &str) -> Option<&'static [(&'static str, &'static 
                 ("guard_bypass", "block"),
                 ("cloud_advisory", "allow"),
                 ("encoded_exfiltration", "block"),
+                ("package_unknown", "allow"),
+                ("package_lockfile_drift", "allow"),
+                ("package_direct_source", "allow"),
+                ("package_custom_registry", "allow"),
+                ("package_install", "allow"),
+                ("low_trust_artifact", "require-reapproval"),
             ],
         ),
         (
@@ -1868,6 +1916,12 @@ fn posture_risk_rows(posture: &str) -> Option<&'static [(&'static str, &'static 
                 ("guard_bypass", "block"),
                 ("cloud_advisory", "require-reapproval"),
                 ("encoded_exfiltration", "block"),
+                ("package_unknown", "require-reapproval"),
+                ("package_lockfile_drift", "require-reapproval"),
+                ("package_direct_source", "require-reapproval"),
+                ("package_custom_registry", "allow"),
+                ("package_install", "allow"),
+                ("low_trust_artifact", "require-reapproval"),
             ],
         ),
     ];
@@ -3568,6 +3622,7 @@ fn workspace_scan_intent(
         execution_context_hashes: Vec::new(),
         execution_context_cwds: Vec::new(),
         execution_context_reason_codes: Vec::new(),
+        routine_local_runner: false,
     })
 }
 
@@ -4305,10 +4360,15 @@ pub fn package_evaluation_requires_external_archive_binding(
     evaluation: &PackageRequestEvaluation,
 ) -> bool {
     let source_hashes = evaluation.external_archive_source_hashes();
-    if source_hashes
-        .iter()
-        .any(|h| h.as_str().is_some_and(|s| s.len() == 64))
-    {
+    if source_hashes.iter().any(|h| {
+        // Python measures the hash in characters, and Python is the authority
+        // this lane must agree with. Counting bytes instead moved the trigger
+        // in both directions -- a 64-character hash that encodes to more than
+        // 64 bytes stopped demanding a binding, and a 64-byte string shorter
+        // than 64 characters started demanding one. Neither is the digest this
+        // looks for; matching Python is the contract, not a tighter rule.
+        h.as_str().is_some_and(|s| s.chars().count() == 64)
+    }) {
         return true;
     }
     if evaluation

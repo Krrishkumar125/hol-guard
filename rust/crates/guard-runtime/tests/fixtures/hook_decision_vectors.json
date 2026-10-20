@@ -484,7 +484,7 @@
    }
   },
   {
-   "name": "prompt_submit_asks_prompt_clean",
+   "name": "prompt_submit_asks_whether_the_prompt_carries_a_request",
    "query": {
     "kind": "compose_current",
     "inputs": {
@@ -512,7 +512,82 @@
    },
    "expect": {
     "needs_facts": [
-     "prompt_clean"
+     "prompt_request_free"
+    ],
+    "composition": null,
+    "event_name": "UserPromptSubmit"
+   }
+  },
+  {
+   "name": "prompt_submit_asks_about_a_credential_file_next",
+   "query": {
+    "kind": "compose_current",
+    "inputs": {
+     "harness": "codex",
+     "canonical_harness": "codex",
+     "event_fields": {
+      "hook_event_name": "UserPromptSubmit"
+     },
+     "tool_name_text": "Bash",
+     "configured_action": "review",
+     "has_configured_override": false,
+     "has_narrow_override": false,
+     "runtime_artifact_checked": false,
+     "prompt_nonblank": true,
+     "has_command_text": false,
+     "facts": {
+      "prompt_request_free": true
+     },
+     "cli_action": null,
+     "has_payload_action": false,
+     "payload_action": null,
+     "native_edge": null,
+     "daemon_status": null,
+     "fail_mode": null,
+     "permission_decision_reason": null
+    }
+   },
+   "expect": {
+    "needs_facts": [
+     "prompt_credential_free"
+    ],
+    "composition": null,
+    "event_name": "UserPromptSubmit"
+   }
+  },
+  {
+   "name": "prompt_submit_asks_about_an_attachment_last",
+   "query": {
+    "kind": "compose_current",
+    "inputs": {
+     "harness": "codex",
+     "canonical_harness": "codex",
+     "event_fields": {
+      "hook_event_name": "UserPromptSubmit"
+     },
+     "tool_name_text": "Bash",
+     "configured_action": "review",
+     "has_configured_override": false,
+     "has_narrow_override": false,
+     "runtime_artifact_checked": false,
+     "prompt_nonblank": true,
+     "has_command_text": false,
+     "facts": {
+      "prompt_request_free": true,
+      "prompt_credential_free": true
+     },
+     "cli_action": null,
+     "has_payload_action": false,
+     "payload_action": null,
+     "native_edge": null,
+     "daemon_status": null,
+     "fail_mode": null,
+     "permission_decision_reason": null
+    }
+   },
+   "expect": {
+    "needs_facts": [
+     "prompt_attachment_free"
     ],
     "composition": null,
     "event_name": "UserPromptSubmit"
@@ -536,7 +611,9 @@
      "prompt_nonblank": true,
      "has_command_text": false,
      "facts": {
-      "prompt_clean": true
+      "prompt_request_free": true,
+      "prompt_credential_free": true,
+      "prompt_attachment_free": true
      },
      "cli_action": null,
      "has_payload_action": false,
@@ -590,7 +667,7 @@
      "prompt_nonblank": true,
      "has_command_text": false,
      "facts": {
-      "prompt_clean": false
+      "prompt_request_free": false
      },
      "cli_action": null,
      "has_payload_action": false,

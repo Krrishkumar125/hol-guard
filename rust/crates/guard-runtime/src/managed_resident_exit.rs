@@ -7,9 +7,12 @@
 //! start-serve-exit cycle or a failure, and the only place that can keep the
 //! child's stderr.
 
+#[cfg(windows)]
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+#[cfg(windows)]
+use std::time::Instant;
+use std::time::{Duration, SystemTime};
 
 use super::resident_failure_log;
 use super::restart_budget;
@@ -22,26 +25,35 @@ use super::restart_budget;
 /// its whole run, from before the spawn until after the record is written,
 /// and a stop takes the exclusive lock so that "stopped" means no supervisor
 /// is still inside the scope.
+///
+/// Only Windows needs this. A Unix scope can be removed while a supervisor
+/// still has files open in it, and making every Unix stop wait out the
+/// supervisor's stderr tail would push it past the bound callers give it.
+#[cfg(windows)]
 const SUPERVISOR_HOLD_FILE: &str = "supervisor-exit.v1.lock";
 /// A supervisor that has already reaped its child has one bounded record
 /// write and the budget lock left to do, so a stop polls for the hold rather
 /// than sleeping out its whole bound.
+#[cfg(windows)]
 const SUPERVISOR_QUIESCE_RETRY_DELAY: Duration = Duration::from_millis(10);
 /// How long a stop waits for the supervisors inside the scope to finish.
 ///
 /// This must outlast everything a supervisor still does while holding the
 /// scope, not just the writes themselves: it waits up to
 /// `MANAGED_STOP_TIMEOUT` for the child's stderr, because a grandchild can
-/// keep that pipe open after the resident is gone, and the restart budget
-/// then takes its own bounded lock wait. Bounding the stop by
+/// keep that pipe open after the resident is gone, and the failure record
+/// and the restart budget then take their own bounded lock waits. Bounding the stop by
 /// `MANAGED_STOP_TIMEOUT` alone would race that ordinary tail and report a
 /// resident that has in fact stopped as still running.
+#[cfg(windows)]
 const SUPERVISOR_QUIESCE_TIMEOUT: Duration = Duration::from_secs(5);
 
+#[cfg(windows)]
 struct SupervisorHold {
     file: File,
 }
 
+#[cfg(windows)]
 impl Drop for SupervisorHold {
     fn drop(&mut self) {
         let _ = fs2::FileExt::unlock(&self.file);
@@ -54,6 +66,10 @@ impl Drop for SupervisorHold {
 /// exactly as long as the supervisor writes.
 pub(super) struct SupervisedScope {
     scope: PathBuf,
+    /// When the scope was claimed, before the child was spawned. A failure
+    /// record written after this belongs to a later run.
+    started: SystemTime,
+    #[cfg(windows)]
     _hold: Option<SupervisorHold>,
 }
 
@@ -61,50 +77,87 @@ pub(super) struct SupervisedScope {
 /// this supervisor.
 pub(super) fn supervised_scope(state_base: &Path, digest: &str) -> Result<SupervisedScope, String> {
     let scope = crate::resident_state::state_scope(state_base, digest)?;
-    let hold = hold_scope(&scope);
-    Ok(SupervisedScope { scope, _hold: hold })
+    let started = SystemTime::now();
+    #[cfg(windows)]
+    let supervised = {
+        let hold = hold_scope(&scope);
+        SupervisedScope {
+            scope,
+            started,
+            _hold: hold,
+        }
+    };
+    #[cfg(not(windows))]
+    let supervised = SupervisedScope { scope, started };
+    Ok(supervised)
 }
 
 /// Claiming the scope is best effort: a hold that cannot be taken leaves the
 /// stop path exactly as it was before, and a resident must still start.
+#[cfg(windows)]
 fn hold_scope(scope: &Path) -> Option<SupervisorHold> {
     let file = open_hold_file(scope).ok()?;
     fs2::FileExt::try_lock_shared(&file).ok()?;
     Some(SupervisorHold { file })
 }
 
+#[cfg(windows)]
 fn open_hold_file(scope: &Path) -> Result<File, String> {
     let private_root = crate::resident_state::private_root_for_scope(scope)?;
     let path = scope.join(SUPERVISOR_HOLD_FILE);
-    #[cfg(windows)]
-    let file = {
-        let (file, directory_binding) =
-            crate::resident_state::private_lock_file(&path, &private_root)?;
-        // The supervisor must not hold a directory barrier for its child's
-        // lifetime; other clients still bind this ancestry.
-        drop(directory_binding);
-        file
-    };
-    #[cfg(not(windows))]
-    let file = crate::resident_state::private_lock_file(&path, &private_root)?;
+    let (file, directory_binding) = crate::resident_state::private_lock_file(&path, &private_root)?;
+    // The supervisor must not hold a directory barrier for its child's
+    // lifetime; other clients still bind this ancestry.
+    drop(directory_binding);
     Ok(file)
 }
 
 /// Quiesce the scope while holding the home-wide startup lock a client takes
 /// before it spawns, so no new supervisor can claim the scope while the probe
 /// waits and keep it claimed for its resident's whole life.
+///
+/// The lock is handed back so the caller can clear the restart budget under
+/// it. Without it a start may already have charged the budget for a new run,
+/// and that charge must stand.
+#[cfg(windows)]
 pub(super) fn quiesce_under_startup_lock(
     state_base: &Path,
     digest: &str,
     scope: &Path,
-) -> Result<(), String> {
-    let _startup = hold_startup_for_quiesce(state_base, digest);
-    wait_for_supervisor_quiesce(scope)
+) -> Result<Option<crate::resident_state::StartupLock>, String> {
+    let startup = hold_startup_for_quiesce(state_base, digest);
+    wait_for_supervisor_quiesce(scope)?;
+    Ok(startup)
+}
+
+/// A Unix supervisor takes no hold, so there is nothing to wait for: the
+/// scope stays removable while its last writes finish. The startup lock is
+/// still taken for the budget, but only if it is free now, so a start in
+/// progress cannot hold up the stop.
+#[cfg(not(windows))]
+pub(super) fn quiesce_under_startup_lock(
+    state_base: &Path,
+    digest: &str,
+    _scope: &Path,
+) -> Result<Option<crate::resident_state::StartupLock>, String> {
+    if let Ok(Some(lock)) = crate::resident_state::acquire_startup_lock(state_base) {
+        return Ok(Some(lock));
+    }
+    if matches!(
+        crate::resident_state::clear_stale_startup_lock(state_base, digest),
+        Ok(true)
+    ) {
+        return Ok(crate::resident_state::acquire_startup_lock(state_base)
+            .ok()
+            .flatten());
+    }
+    Ok(None)
 }
 
 /// Take the startup lock clients spawn under, waiting out a start that is
 /// already under way. Best effort: a lock that cannot be had leaves the probe
 /// as it was, bounded by its own timeout.
+#[cfg(windows)]
 fn hold_startup_for_quiesce(
     state_base: &Path,
     digest: &str,
@@ -130,11 +183,13 @@ fn hold_startup_for_quiesce(
 /// Wait until no supervisor is writing in this scope any more. The caller has
 /// already proved the serving children are gone; this proves the processes
 /// that reap them have finished their records, so the scope can be read as
-/// final and, on Windows, removed.
+/// final and removed.
+#[cfg(windows)]
 pub(super) fn wait_for_supervisor_quiesce(scope: &Path) -> Result<(), String> {
     wait_for_supervisor_quiesce_within(scope, SUPERVISOR_QUIESCE_TIMEOUT)
 }
 
+#[cfg(windows)]
 fn wait_for_supervisor_quiesce_within(scope: &Path, timeout: Duration) -> Result<(), String> {
     let Ok(file) = open_hold_file(scope) else {
         // A hold that cannot be opened cannot have been taken either.
@@ -201,10 +256,16 @@ pub(super) fn record_supervised_exit(
     // must not cost the user the reason the run ended.
     let stderr = stderr.unwrap_or_default();
     let scope = supervised.scope.clone();
-    resident_failure_log::write_run(&scope, &stderr, note.as_deref());
+    resident_failure_log::write_run_unless_superseded(
+        &scope,
+        &stderr,
+        note.as_deref(),
+        supervised.started,
+    );
     let _ = restart_budget::release_after_exit(&scope, success, ran_for);
     // The hold is released last: it is what tells a waiting stop that these
     // writes are over.
+    #[cfg(windows)]
     drop(supervised);
 }
 
@@ -222,6 +283,6 @@ pub(super) fn record_supervised_run(
     record_supervised_exit(supervised, stderr, status.success(), status.code(), ran_for);
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 #[path = "managed_resident_supervisor_hold_tests.rs"]
 mod supervisor_hold_tests;

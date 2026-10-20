@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 from ..blocked_request_mode import is_unlinked_connector_setup_reason
 from ..models import GuardAction
-from ..native_data_flow import detect_data_flow_exfiltration
+from ..native_data_flow import DataFlowArtifactNaming, detect_data_flow_exfiltration
 from ..native_hook_approval_context import native_hook_approval_context_token, runtime_hook_approval_context_inputs
 from ..runtime.approval_context import approval_context_tokens_validation_reason
 from ..runtime.command_extensions import risk_classes_for_command_action
@@ -532,10 +532,19 @@ def _runtime_action_data_flow_signals(
     *,
     workspace: Path | None,
     guard_home: Path | None = None,
-) -> tuple[RiskSignalV2, ...]:
+    naming: DataFlowArtifactNaming | None = None,
+) -> tuple[tuple[RiskSignalV2, ...], GuardArtifact | None]:
+    """The action's data-flow signals and the artifact they earn.
+
+    Both come from the one resident call that raised the signals, so the id the
+    review is saved under is derived once, by the side that found the flow.
+    """
+
     if action_envelope is None:
-        return ()
-    return detect_data_flow_exfiltration(action_envelope, workspace=workspace, guard_home=guard_home)
+        return (), None
+    return detect_data_flow_exfiltration(
+        action_envelope, workspace=workspace, guard_home=guard_home, naming=naming
+    )
 
 def _runtime_data_flow_summary(signals: tuple[RiskSignalV2, ...]) -> str:
     sink_type = _runtime_data_flow_sink_type(signals)

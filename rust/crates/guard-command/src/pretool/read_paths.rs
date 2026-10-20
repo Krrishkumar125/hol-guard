@@ -5,7 +5,7 @@ pub(super) use allowances::{
     project_skill_listing_directory, skill_link_resolves_over_home,
 };
 #[path = "read_feature_directories.rs"]
-mod feature_directories;
+pub(super) mod feature_directories;
 #[path = "read_path_harness_notes.rs"]
 pub(super) mod harness_notes;
 #[path = "hidden_listing.rs"]
@@ -283,28 +283,27 @@ fn path_gate(
     read_only: bool,
     credential_names: bool,
 ) -> bool {
-    if !location_allowed(
-        canonical,
-        home_dir,
-        cwd,
-        verified_temporary,
-        credential_names,
-    ) || !(guard_secure_fs::hidden_read_parts_allowed(canonical)
-        || (read_only && guard_secure_fs::hidden_empty_work_tree_file(canonical))
-        || (read_only && project_dotfile_read(canonical, home_dir))
-        || guard_safety_doc(canonical, home_dir)
+    // Reading a scratch file in the private temporary directory is routine.
+    let temporary = verified_temporary
         || (read_only
-            && (agent_skill_document(canonical, home_dir)
-                || agent_home_state(canonical, home_dir)
-                || project_skill_document(canonical, home_dir, cwd)
-                || codex_notes_document(canonical, home_dir)
-                || harness_notes::harness_home_document(canonical, home_dir)
-                || git_ref_document(canonical, home_dir, cwd)
-                || git_config_document(canonical, cwd)
-                || worktree_gitfile(canonical)
-                || scratch::workspace_scratch_read(canonical, home_dir, cwd)
-                || virtualenv_activation_script(canonical)))
-        || (read_only && execution_output_log(canonical, home_dir)))
+            && private_temporary::inside_private_temporary_directory(canonical, home_dir));
+    if !location_allowed(canonical, home_dir, cwd, temporary, credential_names)
+        || !(guard_secure_fs::hidden_read_parts_allowed(canonical)
+            || (read_only && guard_secure_fs::hidden_empty_work_tree_file(canonical))
+            || (read_only && project_dotfile_read(canonical, home_dir))
+            || guard_safety_doc(canonical, home_dir)
+            || (read_only
+                && (agent_skill_document(canonical, home_dir)
+                    || agent_home_state(canonical, home_dir)
+                    || project_skill_document(canonical, home_dir, cwd)
+                    || codex_notes_document(canonical, home_dir)
+                    || harness_notes::harness_home_document(canonical, home_dir)
+                    || git_ref_document(canonical, home_dir, cwd)
+                    || git_config_document(canonical, cwd)
+                    || worktree_gitfile(canonical)
+                    || scratch::workspace_scratch_read(canonical, home_dir, cwd)
+                    || virtualenv_activation_script(canonical)))
+            || (read_only && execution_output_log(canonical, home_dir)))
     {
         return false;
     }

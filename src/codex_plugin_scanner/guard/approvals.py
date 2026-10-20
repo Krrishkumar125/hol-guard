@@ -460,6 +460,9 @@ def apply_approval_resolution(
     if request["status"] != "pending":
         raise ApprovalRequestAlreadyResolvedError(f"Approval request already resolved: {request_id}")
     require_resolvable_approval_request(request)
+    from .native_bash_review_preflight import require_verified_bash_review
+
+    require_verified_bash_review(store, request, require_execution=action == "allow" or persist_policy is True)
     resolved_at = now or _now()
     temporary_mcp_selection: TemporaryMcpGrantSelection | None = None
     if (mcp_grant_target is None) != (mcp_grant_duration is None):
@@ -489,14 +492,18 @@ def apply_approval_resolution(
             duration=local_tool_grant_duration,
             now=resolved_at,
         )
-    contract, exact_token = request_scope_observation(request)
+    contract, exact_token = (
+        request_scope_observation(request, guard_home=store.guard_home)
+        if request.get("artifact_type") == "native_bash_request"
+        else request_scope_observation(request)
+    )
     selection = resolve_request_scope_selection(
         request,
         action=action,
         requested_scope=scope,
         contract_version=scope_contract_version,
         contract_digest=scope_contract_digest,
-        contract=contract,
+        guard_home=store.guard_home,
     )
     requested_scope = selection.requested_scope
     scope = selection.applied_scope

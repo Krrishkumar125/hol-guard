@@ -36,6 +36,8 @@ WORKSPACE_GREP_CASE = "omp-native-grep-workspace-root"
 CLONE_GREP_CASE = "omp-native-shell-grep-clone-local-config"
 CLONE_SEARCH_CASES = frozenset({CLONE_GREP_CASE})
 WORKSPACE_FIND_CASE = "omp-native-shell-find-exec-grep-workspace-absolute"
+# Oh My Pi's bash tool adds its wall-time notice only to runs at least this long (milliseconds).
+WALL_TIME_NOTICE_MIN_MS = 1000
 # Every value in the fixture's local configuration files starts with this.
 LOCAL_VALUE_PREFIX = "GAUNTLET_SYNTHETIC_"
 # One line of each token-handling file, which only that file's real text carries.
@@ -66,6 +68,9 @@ def _stdout(call: dict[str, Any], result: dict[str, Any], text: str) -> str | No
     The pinned BashTool joins stdout, an empty line and this notice. Preserve
     stdout byte-for-byte, including its trailing newline and any notice-like
     command output. JavaScript toFixed rounds exact ties away from zero.
+    BashTool appends the notice only once a command ran for
+    ``WALL_TIME_NOTICE_MIN_MS``; shorter runs say so with
+    ``wallTimeNoticeEmitted: false`` and leave stdout untouched.
     """
     details = result.get("details")
     if call.get("name") != "bash" or not isinstance(details, dict) or "wallTimeMs" not in details:
@@ -73,6 +78,9 @@ def _stdout(call: dict[str, Any], result: dict[str, Any], text: str) -> str | No
     elapsed = details["wallTimeMs"]
     if type(elapsed) not in (int, float) or elapsed < 0:
         return None
+    if details.get("wallTimeNoticeEmitted") is False:
+        # Only a run shorter than the SDK's threshold may omit the notice.
+        return text if elapsed < WALL_TIME_NOTICE_MIN_MS else None
     try:
         seconds = float(elapsed) / 1000
         if not math.isfinite(seconds):

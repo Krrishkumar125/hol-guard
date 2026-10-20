@@ -276,6 +276,9 @@ pub(super) fn workspace_exec_roots(
             continue;
         }
         let Some(accepted) = accept_entry(path, home, workspace) else {
+            if let Some(system) = super::launch_roots::system_program_directory(path) {
+                keep_entry(&mut entries, &system);
+            }
             continue;
         };
         if let Ok(canonical) = path.canonicalize() {

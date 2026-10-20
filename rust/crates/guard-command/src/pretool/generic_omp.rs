@@ -534,7 +534,7 @@ fn project_skill_listing(target: &str, context: &OmpContext<'_>) -> bool {
 /// segment, such as `src/*.ts`. Oh My Pi matches that segment against the
 /// directory's own entries only: its glob tool passes `recursive: false` and
 /// its input schema has no field that turns recursion on (checked in Oh My Pi
-/// 18.4.12 and 18.8.3). `listing` rejects any key outside that schema, and a
+/// 18.4.12, 18.8.3 and 18.11.3). `listing` rejects any key outside that schema, and a
 /// `pattern` key keeps the walk. A selector with no literal directory gains
 /// a `**/` prefix there, and `**` crosses directories, so neither is
 /// single-level.
@@ -741,7 +741,7 @@ fn walk_inside_session(target: &str, context: &OmpContext<'_>) -> bool {
 
 /// Oh My Pi's `lsp` tool asks the session's language servers about code.
 /// The actions its read-only sessions keep (`LSP_READONLY_ACTIONS`, checked
-/// in Oh My Pi 18.4.12 and 18.8.3) only report on files. Every other action
+/// in Oh My Pi 18.4.12, 18.8.3 and 18.11.3) only report on files. Every other action
 /// can change the workspace or reach the server unchecked: `rename` and
 /// `code_actions` apply edits across files, `rename_file` moves a file to any
 /// destination, and `request` sends a raw server request. Those go to review

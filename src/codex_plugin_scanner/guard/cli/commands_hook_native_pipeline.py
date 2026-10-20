@@ -54,7 +54,11 @@ from .commands_support_connect import _synced_policy_payload
 from .commands_support_hook_payload import _hook_action_envelope, _normalize_hook_payload
 from .commands_support_hook_state import _load_single_claude_pending_permission
 from .commands_support_permission_store import _discard_claude_pending_permissions
-from .commands_support_runtime_artifacts import _hook_event_name, _hook_runtime_artifact
+from .commands_support_runtime_artifacts import (
+    _hook_event_name,
+    _hook_runtime_artifact,
+    _runtime_data_flow_naming,
+)
 from .commands_support_runtime_policy import _runtime_action_data_flow_signals
 from .commands_support_runtime_resolution import (
     _canonical_harness_name,
@@ -245,8 +249,17 @@ def run_native_hook_pipeline(
             worker=worker,
             recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
         )
-    data_flow_signals = _runtime_action_data_flow_signals(
-        action_envelope, workspace=runtime_workspace, guard_home=context.guard_home
+    data_flow_signals, data_flow_artifact = _runtime_action_data_flow_signals(
+        action_envelope,
+        workspace=runtime_workspace,
+        guard_home=context.guard_home,
+        naming=_runtime_data_flow_naming(
+            harness=args.harness,
+            payload=payload,
+            action_envelope=action_envelope,
+            home_dir=context.home_dir,
+            workspace=runtime_workspace,
+        ),
     )
     extension_control_snapshot = ExtensionControlRuntimeSnapshot.from_authority_view(
         store.read_extension_control_authority_for_registry(BUILT_IN_COMMAND_EXTENSION_REGISTRY)
@@ -257,6 +270,7 @@ def run_native_hook_pipeline(
             payload=payload,
             action_envelope=action_envelope,
             data_flow_signals=data_flow_signals,
+            data_flow_artifact=data_flow_artifact,
             home_dir=context.home_dir,
             guard_home=context.guard_home,
             workspace=runtime_workspace,
@@ -406,8 +420,17 @@ def _fresh_native_artifact_evaluation(
         workspace=runtime_workspace,
         guard_home=context.guard_home,
     )
-    fresh_data_flow_signals = _runtime_action_data_flow_signals(
-        fresh_action_envelope, workspace=runtime_workspace, guard_home=context.guard_home
+    fresh_data_flow_signals, fresh_data_flow_artifact = _runtime_action_data_flow_signals(
+        fresh_action_envelope,
+        workspace=runtime_workspace,
+        guard_home=context.guard_home,
+        naming=_runtime_data_flow_naming(
+            harness=args.harness,
+            payload=payload,
+            action_envelope=fresh_action_envelope,
+            home_dir=context.home_dir,
+            workspace=runtime_workspace,
+        ),
     )
     fresh_snapshot = ExtensionControlRuntimeSnapshot.from_authority_view(
         store.read_extension_control_authority_for_registry(BUILT_IN_COMMAND_EXTENSION_REGISTRY)
@@ -418,6 +441,7 @@ def _fresh_native_artifact_evaluation(
             payload=payload,
             action_envelope=fresh_action_envelope,
             data_flow_signals=fresh_data_flow_signals,
+            data_flow_artifact=fresh_data_flow_artifact,
             home_dir=context.home_dir,
             guard_home=context.guard_home,
             workspace=runtime_workspace,

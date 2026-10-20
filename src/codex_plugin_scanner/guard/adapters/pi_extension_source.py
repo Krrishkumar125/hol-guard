@@ -60,7 +60,7 @@ def managed_extension_source(
     harness: str = "pi",
     display_name: str = "Pi",
 ) -> str:
-    return render_extension_source_variant_v1(
+    source = render_extension_source_variant_v1(
         guard_home=guard_home,
         home_dir=home_dir,
         settings_path=settings_path,
@@ -73,3 +73,4 @@ def managed_extension_source(
         platform_name=os.name,
         variant=_ACTIVE_SOURCE_VARIANT_V1,
     )
+    return source

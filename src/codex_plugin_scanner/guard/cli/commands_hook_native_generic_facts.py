@@ -32,31 +32,56 @@ def hook_classifiers(
 ) -> dict[str, Callable[[str | None], bool]]:
     """Classifier verdicts keyed by the fact name the resident requests."""
 
-    def prompt_clean(_event: str | None) -> bool:
-        from ..native_context import bound_context_digest_home
+    def _prompt_text() -> str | None:
+        prompt_text = payload.get("prompt")
+        return prompt_text if isinstance(prompt_text, str) else None
+
+    def prompt_request_free(_event: str | None) -> bool:
         from ..native_prompt import extract_prompt_requests
+
+        prompt_text = _prompt_text()
+        if prompt_text is None:
+            return False
+        return not extract_prompt_requests(prompt_text, guard_home=guard_home)
+
+    # The scans below run in the caller's own resident, and a resident that
+    # cannot answer leaves the prompt unclassified rather than ending the hook:
+    # an unanswered observation is not a clear one.
+    def prompt_credential_free(_event: str | None) -> bool:
+        from ..native_context import bound_context_digest_home
         from ..native_sensitive_request import NativeSensitiveRequestError
         from .commands_support_codex_paths import _codex_prompt_credential_file_artifact
-        from .commands_support_codex_prompt_attachments import _codex_prompt_attachment_artifact
 
-        prompt_text = payload.get("prompt")
-        if not isinstance(prompt_text, str) or extract_prompt_requests(prompt_text, guard_home=guard_home):
+        prompt_text = _prompt_text()
+        if prompt_text is None:
             return False
-        # The scans run in the caller's own resident, and a resident that
-        # cannot answer leaves the prompt unclassified rather than ending the
-        # hook: an unanswered prompt is not a clean one.
         try:
             with bound_context_digest_home(guard_home):
-                credential = _codex_prompt_credential_file_artifact(
-                    prompt_text=prompt_text,
-                    cwd=runtime_workspace,
-                    config_path="<runtime>",
-                )
-                if credential is not None:
-                    return False
                 return (
-                    home_dir is None
-                    or _codex_prompt_attachment_artifact(
+                    _codex_prompt_credential_file_artifact(
+                        prompt_text=prompt_text,
+                        cwd=runtime_workspace,
+                        config_path="<runtime>",
+                    )
+                    is None
+                )
+        except NativeSensitiveRequestError:
+            return False
+
+    def prompt_attachment_free(_event: str | None) -> bool:
+        from ..native_context import bound_context_digest_home
+        from ..native_sensitive_request import NativeSensitiveRequestError
+        from .commands_support_codex_prompt_attachments import _codex_prompt_attachment_artifact
+
+        prompt_text = _prompt_text()
+        if prompt_text is None:
+            return False
+        if home_dir is None:
+            return True
+        try:
+            with bound_context_digest_home(guard_home):
+                return (
+                    _codex_prompt_attachment_artifact(
                         prompt_text=prompt_text,
                         home_dir=home_dir,
                         config_path="<runtime>",
@@ -88,7 +113,9 @@ def hook_classifiers(
         )
 
     return {
-        "prompt_clean": prompt_clean,
+        "prompt_request_free": prompt_request_free,
+        "prompt_credential_free": prompt_credential_free,
+        "prompt_attachment_free": prompt_attachment_free,
         "post_tool_read_only_inspection": post_tool_read_only_inspection,
         "verified_apply_patch": verified_apply_patch,
     }

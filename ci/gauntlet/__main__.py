@@ -200,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Total seconds to wait on host load before proceeding anyway",
     )
     qualify.add_argument("--effort", choices=("medium", "high", "low"), default="medium")
+    qualify.add_argument("--native-route", help="Explicit pinned native OMP backend (default: Luna)")
     qualify.add_argument("--cache-root", type=Path, default=Path.home() / ".cache" / "hol-guard-gauntlet")
     qualify.add_argument(
         "--run-root",
@@ -302,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
 
             return qualify_main(args)
         full_task_cli.validate(args)
-        if args.profile in {"approval-retry", "connector-setup"} and args.harness == "omp":
+        if args.profile == "connector-setup" and args.harness == "omp":
             raise ValueError(f"--profile {args.profile} runs through an installed harness CLI, not the omp lane")
         if args.harness != "omp":
             return _run_harness(args)
@@ -431,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
                     slot_dir=args.slot_dir,
                     max_load=args.max_load,
                     max_load_wait=args.max_load_wait if args.max_load_wait is not None else 180.0,
+                    profile=args.profile,
                 )
         print(
             json.dumps(

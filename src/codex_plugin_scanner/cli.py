@@ -319,6 +319,8 @@ def _resolve_legacy_args(
         "preflight",
         "pytest-contained",
         "execute-contained-test",
+        "execute-bound-bash",
+        "ack-bound-bash",
         "diff",
         "test-eval",
         "command",
