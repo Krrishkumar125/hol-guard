@@ -273,13 +273,15 @@ def _prompt_request_reason(
     """
 
     prompt_summary = artifact.metadata.get("prompt_summary")
+    harness = response_payload.get("harness")
+    policy_action = response_payload.get("policy_action")
     answer = composer(
         "prompt_request_reason",
         {
-            "harness": _optional_string(response_payload.get("harness")),
+            "harness": harness if isinstance(harness, str) else None,
             "prompt_classes": sorted(_prompt_request_classes(artifact)),
             "prompt_summary": prompt_summary if isinstance(prompt_summary, str) else None,
-            "policy_action": _optional_string(response_payload.get("policy_action")),
+            "policy_action": policy_action if isinstance(policy_action, str) else None,
         },
         guard_home=guard_home,
     )
