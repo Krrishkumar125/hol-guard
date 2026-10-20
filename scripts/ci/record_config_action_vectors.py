@@ -170,7 +170,7 @@ def record() -> list[dict[str, object]]:
     from codex_plugin_scanner.guard import protection_events
     from codex_plugin_scanner.guard.cli import commands_support_runtime_artifact_policy as policy
     from codex_plugin_scanner.guard.cli import commands_support_runtime_policy as runtime_policy
-    from codex_plugin_scanner.guard.cli.commands_support_prompts import _prompt_requires_hard_block
+    from codex_plugin_scanner.guard.cli.commands_support_prompts import _prompt_request_classes
     from codex_plugin_scanner.guard.harness_posture import harness_posture_override
 
     events: list[dict[str, object]] = []
@@ -200,7 +200,9 @@ def record() -> list[dict[str, object]]:
                 "harness_posture_override": harness_posture_override(config, HARNESS),
             },
             "artifact": {
-                "hard_block": _prompt_requires_hard_block(artifact),
+                # The resident reads the hard block off the prompt's own
+                # classes, so the caller sends them and decides nothing.
+                "hard_block": False,
                 "configured_override": _typed_override(
                     config.resolve_action_override(HARNESS, artifact.artifact_id, artifact.publisher)
                 ),
@@ -220,6 +222,9 @@ def record() -> list[dict[str, object]]:
                 "skill_is_known_bad": runtime_policy._artifact_skill_is_known_bad(artifact),
             },
         }
+        prompt_classes = sorted(_prompt_request_classes(artifact))
+        if prompt_classes:
+            query["artifact"]["prompt_request_classes"] = prompt_classes  # type: ignore[index]
         data_flow = {
             "weak": _old_data_flow_action(config, False),
             "strong": _old_data_flow_action(config, True),

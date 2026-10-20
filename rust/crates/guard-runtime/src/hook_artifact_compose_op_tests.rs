@@ -549,8 +549,11 @@ fn a_prompts_own_classes_decide_the_hard_block() {
     let vectors: Vec<Value> = serde_json::from_str(&text).unwrap();
     let base = vectors
         .iter()
-        .find(|vector| vector["query"]["artifact"]["hard_block"] == json!(false))
-        .expect("a recorded query the caller did not hard block");
+        .find(|vector| {
+            vector["query"]["artifact"]["prompt_request_classes"].is_null()
+                && vector["expected"]["action"] != json!("block")
+        })
+        .expect("a recorded query that carries no prompt classes and is not blocked");
     let mut query = base["query"].clone();
     query["kind"] = json!("config_action");
 
@@ -561,7 +564,8 @@ fn a_prompts_own_classes_decide_the_hard_block() {
     let bypass: HookArtifactComposeQueryV1 = serde_json::from_value(bypass).unwrap();
     assert_eq!(compose(&bypass).unwrap()["action"], json!("block"));
 
-    // Any other prompt keeps exactly the answer the recorded query had.
+    // Any other prompt keeps exactly the answer the recorded query had, so
+    // reading the classes can only find a block and never invent one.
     let mut ordinary = query;
     ordinary["artifact"]["prompt_request_classes"] = json!(["secret_read"]);
     let ordinary: HookArtifactComposeQueryV1 = serde_json::from_value(ordinary).unwrap();
