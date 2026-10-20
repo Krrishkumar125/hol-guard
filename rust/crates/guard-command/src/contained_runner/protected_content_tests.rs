@@ -3,13 +3,54 @@
 //! ordinary code, committed exclusion without reading, and the hard bounds.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use super::snapshot::{complete_workspace_snapshot, reject_external_node_modules};
 use super::vector_support::Workspace;
 
 const PROTECTED_REVIEW: &str = "protected workspace content requires Guard review";
+
+/// Withdraw read access so a snapshot that opened the file would surface an I/O
+/// error instead of the protected verdict. Unix clears every mode bit; Windows
+/// has no equivalent, so the read-only attribute is the closest marker there.
+fn deny_reads(path: &Path) {
+    let mut permissions = fs::metadata(path).expect("metadata").permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        permissions.set_mode(0o000);
+    }
+    #[cfg(not(unix))]
+    permissions.set_readonly(true);
+    fs::set_permissions(path, permissions).expect("deny reads");
+}
+
+/// Restore read and write access so the workspace root can be removed on drop.
+fn restore_reads(path: &Path) {
+    let mut permissions = fs::metadata(path).expect("metadata").permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        permissions.set_mode(0o600);
+    }
+    #[cfg(not(unix))]
+    permissions.set_readonly(false);
+    fs::set_permissions(path, permissions).expect("restore reads");
+}
+
+/// Whether withdrawn read access really makes a read fail here. An unprivileged
+/// Unix process cannot open mode 000; root reads straight through it, and the
+/// Windows read-only attribute does not block reads at all.
+fn read_trap_is_armed() -> bool {
+    #[cfg(unix)]
+    {
+        !nix::unistd::geteuid().is_root()
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
 
 fn write(path: &Path, content: &str) {
     fs::create_dir_all(path.parent().expect("parent")).expect("parent dirs");
@@ -75,13 +116,14 @@ fn generic_package_names_stay_in_the_snapshot() {
 /// Presence alone decides review, so an unreadable credential still produces
 /// the protected verdict instead of a read failure.
 ///
-/// Mode 000 makes a stray read fail only for an unprivileged process. Root
-/// reads straight through it, so there the verdicts below still hold but the
+/// Withdrawn read access makes a stray read fail only for an unprivileged Unix
+/// process. Root reads straight through mode 000, and the Windows read-only
+/// attribute never blocks reads, so there the verdicts below still hold but the
 /// file proves nothing about whether it was opened; the trap is checked to be
 /// armed wherever it can be.
 #[test]
 fn protected_presence_is_decided_without_reading_the_file() {
-    let unprivileged = !nix::unistd::geteuid().is_root();
+    let trap_armed = read_trap_is_armed();
     for relative in [
         ".env.example",
         ".git-credentials",
@@ -106,10 +148,10 @@ fn protected_presence_is_decided_without_reading_the_file() {
         write(&workspace.path.join("package.json"), "{}\n");
         let protected = workspace.path.join(relative);
         write(&protected, "must-not-read\n");
-        fs::set_permissions(&protected, fs::Permissions::from_mode(0o000)).expect("chmod");
+        deny_reads(&protected);
         assert!(
-            !unprivileged || fs::read(&protected).is_err(),
-            "{relative}: mode 000 must make a read of the credential fail"
+            !trap_armed || fs::read(&protected).is_err(),
+            "{relative}: withdrawn read access must make a read of the credential fail"
         );
 
         assert_eq!(
@@ -122,6 +164,8 @@ fn protected_presence_is_decided_without_reading_the_file() {
             vec!["package.json".to_owned()],
             "{relative}"
         );
+
+        restore_reads(&protected);
     }
 }
 
