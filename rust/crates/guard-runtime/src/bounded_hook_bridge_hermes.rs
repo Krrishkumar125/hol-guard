@@ -10,7 +10,6 @@ use crate::claude_hook_bridge_render::py_strip;
 use crate::pyjson::PyVal;
 
 const DEFAULT_REASON: &str = "HOL Guard blocked this action";
-const BLOCK_ACTIONS: [&str; 4] = ["review", "require-reapproval", "sandbox-required", "block"];
 
 fn text_of(value: Option<&PyVal>) -> Option<&str> {
     match value {
@@ -83,6 +82,7 @@ pub(crate) fn hermes_bridge_response(daemon_response: &[(String, PyVal)], unmap:
         ("decision".to_owned(), PyVal::Str(decision.to_owned())),
         ("reason".to_owned(), PyVal::Str(reason)),
     ];
-    let blocks = BLOCK_ACTIONS.contains(&policy_action.as_str());
+    // The exit status follows the document: only a cleared action exits 0.
+    let blocks = decision == "block";
     rendered(&payload, String::new(), if blocks { 2 } else { 0 }, unmap)
 }
