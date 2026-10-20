@@ -393,7 +393,13 @@ def contained_workspace_write_execute_native(
         operation="contained_workspace_write_execute",
         request=request,
         guard_home=guard_home,
-        timeout_seconds=timeout_seconds,
+        # The request above already hands the write its full execution budget.
+        # Waiting for exactly that long leaves nothing for the resident to spawn
+        # the process, drain its output and frame a reply, so a write that uses
+        # its whole budget would come back as a transport failure and count
+        # toward the shared native-runtime circuit. The contained runners add
+        # the same slack for the same reason.
+        timeout_seconds=timeout_seconds + _CONTAINED_RUNNER_TRANSPORT_SLACK_SECONDS,
         required_feature=_CONTAINED_EXECUTION_FEATURE,
     )
     if decoded is None:
