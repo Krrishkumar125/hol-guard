@@ -132,6 +132,8 @@ pub(super) unsafe fn spawn(
     binding: Binding,
     deadline: &super::launch::LaunchDeadline,
 ) -> libc::pid_t {
+    // This process exits with the child, so the request reaches nothing else.
+    unsafe { crate::macos_code_image::harden_next_exec() };
     let mut child = 0;
     let spawned = unsafe {
         libc::posix_spawn(

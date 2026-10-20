@@ -12,6 +12,10 @@ const CS_INVALID_ALLOWED: u32 = 0x0000_0020;
 const CS_DEBUGGED: u32 = 0x1000_0000;
 const REQUIRED_DYNAMIC: u32 = CS_VALID | CS_HARD | CS_KILL | CS_ENFORCEMENT | CS_RUNTIME;
 const FORBIDDEN_DYNAMIC: u32 = CS_INVALID_ALLOWED | CS_DEBUGGED;
+const CS_EXEC_SET_HARD: u32 = 0x0010_0000;
+const CS_EXEC_SET_KILL: u32 = 0x0020_0000;
+const CS_EXEC_SET_ENFORCEMENT: u32 = 0x0040_0000;
+const CS_OPS_SET_STATUS: u32 = 9;
 
 const SEC_CHECK_ALL_ARCHITECTURES: u32 = 1 << 0;
 const SEC_STRICT_VALIDATE: u32 = 1 << 4;
@@ -143,6 +147,25 @@ unsafe fn read_binding(information: CfDictionary) -> io::Result<Binding> {
     }
     unsafe { std::ptr::copy_nonoverlapping(source, cdhash.as_mut_ptr(), cdhash.len()) };
     Ok(Binding { cdhash })
+}
+
+/// Asks the kernel to mark every image this process executes from now on as
+/// hard, kill and enforced. Newer macOS releases already apply these to a
+/// hardened-runtime image, but macOS 14 leaves them off unless the spawning
+/// process requests them. The call only adds restrictions, and
+/// [`dynamic_mismatch`] still decides whether the child may run, so a refused
+/// request just leaves that check to reject the image. Makes only a system
+/// call, so it is safe in a forked child.
+pub(crate) unsafe fn harden_next_exec() {
+    let mut flags = CS_EXEC_SET_HARD | CS_EXEC_SET_KILL | CS_EXEC_SET_ENFORCEMENT;
+    unsafe {
+        csops(
+            0,
+            CS_OPS_SET_STATUS,
+            (&mut flags as *mut u32).cast(),
+            size_of::<u32>(),
+        );
+    }
 }
 
 pub(crate) unsafe fn dynamic_matches(pid: libc::pid_t, binding: Binding) -> bool {
