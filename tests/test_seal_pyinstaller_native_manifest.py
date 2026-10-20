@@ -228,3 +228,79 @@ def test_sealer_rejects_runtime_uncompressed_size_mismatch(tmp_path: Path) -> No
 
     with pytest.raises(ValueError, match="size does not match"):
         sealer.seal(archive)
+
+
+def _onedir_tree(tmp_path: Path, *, unsigned: bytes, signed: bytes, compiler: bool = True) -> Path:
+    """Build a onedir tree whose manifests describe the runtime before signing."""
+    tree = tmp_path / "hol-guard"
+    native = tree / "_internal" / "codex_plugin_scanner" / "_native"
+    native.mkdir(parents=True)
+    (native / "hol-guard-runtime").write_bytes(signed)
+    (native / "runtime-manifest.json").write_text(
+        json.dumps(
+            {
+                "schema": "hol-guard-native-runtime.v1",
+                "protocol_version": 1,
+                "package_version": "3.50.0",
+                "target": "aarch64-apple-darwin",
+                "platform_tag": "macosx_11_0_arm64",
+                "source_sha": "a" * 40,
+                "rule_digest": "b" * 64,
+                "runtime_sha256": hashlib.sha256(unsigned).hexdigest(),
+                "runtime_size": len(unsigned),
+            }
+        )
+    )
+    if compiler:
+        (native / "source-compiler-manifest.json").write_text(
+            json.dumps(
+                {
+                    "schema": "hol-guard-native-source-compiler.v2",
+                    "protocol_version": 1,
+                    "package_version": "3.50.0",
+                    "target": "aarch64-apple-darwin",
+                    "platform_tag": "macosx_11_0_arm64",
+                    "executable": "hol-guard-runtime",
+                    "source_sha": "a" * 40,
+                    "base_program_digest": "c" * 64,
+                    "implementation_digest": "d" * 64,
+                    "compiler_sha256": hashlib.sha256(unsigned).hexdigest(),
+                    "compiler_size": len(unsigned),
+                }
+            )
+        )
+    return tree
+
+
+def test_seal_onedir_rebinds_source_compiler_manifest_to_signed_runtime(tmp_path: Path) -> None:
+    """Apple signing rewrites the runtime, so both manifests must be resealed.
+
+    Resealing only the runtime manifest leaves the source compiler manifest
+    describing the unsigned bytes. The installed bundle then fails to verify for
+    the life of the release, and the extensions catalog read model never becomes
+    available.
+    """
+    sealer = _load(SEALER, "seal_pyinstaller_native_manifest")
+    unsigned = b"runtime-before-apple-signing"
+    signed = unsigned + b"\x00" * 64  # a signature blob grows the Mach-O
+    tree = _onedir_tree(tmp_path, unsigned=unsigned, signed=signed)
+
+    sealer.seal_onedir(tree)
+
+    native = tree / "_internal" / "codex_plugin_scanner" / "_native"
+    runtime_manifest = json.loads((native / "runtime-manifest.json").read_text())
+    compiler_manifest = json.loads((native / "source-compiler-manifest.json").read_text())
+    assert runtime_manifest["runtime_size"] == len(signed)
+    assert runtime_manifest["runtime_sha256"] == hashlib.sha256(signed).hexdigest()
+    assert compiler_manifest["compiler_size"] == len(signed)
+    assert compiler_manifest["compiler_sha256"] == hashlib.sha256(signed).hexdigest()
+    assert compiler_manifest["base_program_digest"] == "c" * 64
+
+
+def test_seal_onedir_requires_a_source_compiler_manifest(tmp_path: Path) -> None:
+    sealer = _load(SEALER, "seal_pyinstaller_native_manifest")
+    runtime = b"runtime-without-a-compiler-manifest"
+    tree = _onedir_tree(tmp_path, unsigned=runtime, signed=runtime, compiler=False)
+
+    with pytest.raises(ValueError, match="missing its source compiler manifest"):
+        sealer.seal_onedir(tree)
