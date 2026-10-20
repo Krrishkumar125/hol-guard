@@ -111,6 +111,18 @@ class ExtensionControlApiService:
         self._pending_proofs: OrderedDict[str, _PendingMutation] = OrderedDict()
         self._applied_mutations: OrderedDict[str, _AppliedMutation] = OrderedDict()
 
+    def rebind_registry(self, registry: CommandSafetyExtensionRegistry) -> None:
+        """Serve a registry the daemon recovered after starting on another.
+
+        Proofs prepared against the previous registry name its catalog digest,
+        and a preview in flight sees the registry change, so both fail as
+        conflicts.
+        """
+
+        with self._apply_lock:
+            self._registry = registry
+            self.catalog_digest = registry.catalog_digest
+
     def recommendation_inputs(self) -> tuple[CommandSafetyExtensionRegistry, ExtensionControlRuntimeSnapshot]:
         return self._registry, self._runtime.current()
 
