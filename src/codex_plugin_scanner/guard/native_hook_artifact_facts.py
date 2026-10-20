@@ -1,0 +1,78 @@
+"""Resident bridge for the ``hook_artifact_facts`` op.
+
+The native configured-policy action reads a small set of per-artifact facts:
+whether the prompt asks to bypass Guard, the command-action floor, whether an
+explicit catalog permission earned a verified allow, which risk classes the
+artifact carries, how strong its evidence is, whether it installs a boot item.
+Each of those decides part of the verdict the resident then applies, so the
+resident derives them from the artifact itself. This module ships the artifact
+type and its metadata unchanged and hands the answer back; nothing is computed
+here, so an unavailable resident cannot soften a fact into a quieter action.
+
+``configured_override`` is the one input the caller still supplies: it is the
+artifact, publisher or harness setting the config resolves, not a reading of
+the artifact, and it rides through the op so the facts leave here complete.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from pathlib import Path
+from uuid import uuid4
+
+from .native_context import _resolve_digest_home, ensure_resident_prerequisite
+from .native_execution import _resident_request
+from .native_store_policy import _payload
+
+HOOK_ARTIFACT_FACTS_FEATURE = "hook-artifact-facts-v1"
+_REQUEST_SCHEMA = "guard-hook-artifact-facts-request.v1"
+_RESULT_SCHEMA = "guard-hook-artifact-facts-result.v1"
+_TIMEOUT_SECONDS = 10.0
+_MAX_REQUEST_BYTES = 4 * 1024 * 1024
+
+
+class HookArtifactFactsUnavailableError(RuntimeError):
+    """The resident could not derive the artifact facts."""
+
+
+def native_hook_artifact_facts(
+    *,
+    artifact_type: str,
+    metadata: Mapping[str, object],
+    configured_override: str | None,
+    guard_home: Path | None = None,
+) -> dict[str, object]:
+    """Return the resident's ``PolicyArtifactFactsV1`` for one artifact.
+
+    Raises ``HookArtifactFactsUnavailableError`` when the resident cannot
+    answer, which the hook pipeline's fail-closed handling turns into an
+    availability response rather than a verdict.
+    """
+
+    home = Path(_resolve_digest_home(guard_home))
+    if not ensure_resident_prerequisite(home):
+        raise HookArtifactFactsUnavailableError
+    wire: dict[str, object] = {
+        "schema": _REQUEST_SCHEMA,
+        "request_id": f"hook-artifact-facts-{uuid4().hex}",
+        "artifact_type": artifact_type,
+        "metadata": dict(metadata),
+        "configured_override": configured_override,
+    }
+    try:
+        response = _resident_request(
+            operation="hook_artifact_facts",
+            request=wire,
+            guard_home=home,
+            timeout_seconds=_TIMEOUT_SECONDS,
+            required_feature=HOOK_ARTIFACT_FACTS_FEATURE,
+            response_schema=_RESULT_SCHEMA,
+            max_request_bytes=_MAX_REQUEST_BYTES,
+            record_success=False,
+        )
+    except (TypeError, ValueError, OSError, RuntimeError):
+        raise HookArtifactFactsUnavailableError from None
+    payload = _payload(response, wire, home)
+    if not isinstance(payload, dict):
+        raise HookArtifactFactsUnavailableError
+    return payload

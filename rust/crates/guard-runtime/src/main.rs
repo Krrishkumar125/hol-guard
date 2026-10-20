@@ -412,6 +412,7 @@ mod hook_adapter_op;
 mod hook_approval_context;
 mod hook_artifact_compose_op;
 mod hook_artifact_compose_reuse;
+mod hook_artifact_facts_op;
 mod hook_authority_state_op;
 mod hook_bridge_daemon_start;
 mod hook_bridge_fallback;
