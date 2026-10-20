@@ -694,6 +694,10 @@ function resolveQueueCategoryId(item: GuardApprovalRequest): QueueCategoryId {
     return "destructive_shell";
   }
 
+  if (secretReadAction(item, command, text) && hasSecretSignal(decisionCategories, text)) {
+    return "secret_file_read";
+  }
+
   const commandCategory = categoryFromCommandExtension(
     envelope?.command_category ?? item.queue_command_category,
   );
@@ -735,10 +739,6 @@ function resolveQueueCategoryId(item: GuardApprovalRequest): QueueCategoryId {
 
   if (packageInstallCommand(command)) {
     return "package_install";
-  }
-
-  if (secretReadAction(item, command, text) && hasSecretSignal(decisionCategories, text)) {
-    return "secret_file_read";
   }
 
   if (envelope?.action_type === "mcp_tool") {
@@ -1074,8 +1074,7 @@ function gitOperationCommand(command: string): boolean {
 }
 
 function dockerCommand(command: string): boolean {
-  const normalized = command.toLowerCase();
-  return /\b(?:docker|docker-compose)\b/.test(normalized);
+  return /(?:^|[;&|]\s*)(?:sudo\s+)?(?:docker|docker-compose)(?:\s|$)/i.test(command);
 }
 
 function githubCommand(command: string): boolean {

@@ -83,18 +83,13 @@ def _settleable_uncertainties_only(evidence: Mapping[str, object], count: object
         return False
     permission_observations = evidence.get("permission_observations")
     if isinstance(permission_observations, list) and any(
-        isinstance(item, Mapping) and item.get("uncertainty_reasons")
-        for item in permission_observations
+        isinstance(item, Mapping) and item.get("uncertainty_reasons") for item in permission_observations
     ):
         return False
     observations = evidence.get("observations")
     if not isinstance(observations, list):
         return False
-    uncertain = [
-        item
-        for item in observations
-        if isinstance(item, Mapping) and item.get("uncertainty_reasons")
-    ]
+    uncertain = [item for item in observations if isinstance(item, Mapping) and item.get("uncertainty_reasons")]
     return len(uncertain) == count and all(
         item.get("extension_id") == "command.container-runtime" for item in uncertain
     )
@@ -109,9 +104,7 @@ def _definite_review_binding(native_result: Mapping[str, object]) -> Mapping[str
     if not isinstance(evidence, Mapping) or evidence.get("evaluation_error"):
         return None
     binding = _evidence_binding(native_result)
-    if binding is None or not _settleable_uncertainties_only(
-        evidence, binding.get("uncertainty_count")
-    ):
+    if binding is None or not _settleable_uncertainties_only(evidence, binding.get("uncertainty_count")):
         return None
     if not isinstance(binding.get("observations_digest"), str):
         return None

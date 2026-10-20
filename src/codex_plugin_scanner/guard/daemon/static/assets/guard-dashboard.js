@@ -13901,6 +13901,9 @@ function resolveQueueCategoryId(item) {
   if (textIncludesAny(text2, ["destructive shell command", " rm -", "rm -rf", "delete files", "wipe", "force-clean", "git clean -fd", "truncate"])) {
     return "destructive_shell";
   }
+  if (secretReadAction(item, command, text2) && hasSecretSignal(decisionCategories, text2)) {
+    return "secret_file_read";
+  }
   const commandCategory = categoryFromCommandExtension(
     envelope?.command_category ?? item.queue_command_category
   );
@@ -13933,9 +13936,6 @@ function resolveQueueCategoryId(item) {
   }
   if (packageInstallCommand(command)) {
     return "package_install";
-  }
-  if (secretReadAction(item, command, text2) && hasSecretSignal(decisionCategories, text2)) {
-    return "secret_file_read";
   }
   if (envelope?.action_type === "mcp_tool") {
     return "mcp_tool";
@@ -14191,8 +14191,7 @@ function gitOperationCommand(command) {
   return /\bgit(?:\s+(?:-c\s+\S+|--git-dir(?:=|\s+)\S+|--work-tree(?:=|\s+)\S+|--no-pager|--bare))*\s+(?:add|commit|push|pull|fetch|clone|status|diff|log|show|branch|rev-parse|worktree|remote|config|merge|rebase|reset|checkout|restore|clean|stash|tag|apply|cherry-pick|revert|ls-files|ls-remote|grep)\b/.test(normalized) || /(?:^|[;&|]\s*)git\s+-c\s+/i.test(command);
 }
 function dockerCommand(command) {
-  const normalized = command.toLowerCase();
-  return /\b(?:docker|docker-compose)\b/.test(normalized);
+  return /(?:^|[;&|]\s*)(?:sudo\s+)?(?:docker|docker-compose)(?:\s|$)/i.test(command);
 }
 function githubCommand(command) {
   const normalized = command.toLowerCase();

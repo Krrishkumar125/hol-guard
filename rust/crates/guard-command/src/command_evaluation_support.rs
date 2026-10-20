@@ -94,7 +94,7 @@ pub(crate) fn current_critical_floor_factors(
 }
 
 pub(crate) fn unavailable_authority_fail_closed(
-    control_resolution: &crate::extension_control::ExtensionControlResolution,
+    control_resolution: &crate::extension_control::ControlResolution,
     extension_ids: &[String],
     minimum_action: crate::command_evaluation::CommandDecisionFloor,
     workspace_write_candidates: &[DecisionFactor],

@@ -397,6 +397,23 @@ assert(
   "T-QS-31-git-routed: git -C commands get the Git workspace operation category"
 );
 
+const dockerConfigSecretReadItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-docker-config-secret",
+  risk_summary: "Reads a credential store path.",
+  action_envelope_json: {
+    ...shellEnvelope,
+    action_type: "file_read",
+    command: "cat ~/.docker/config.json",
+    target_paths: ["~/.docker/config.json"],
+  },
+};
+
+assert(
+  resolveQueueCategory(dockerConfigSecretReadItem).id === "secret_file_read",
+  "T-QS-31-docker-secret: reading ~/.docker/config.json stays secret_file_read instead of docker_command"
+);
+
 const categorizedDockerItem: GuardApprovalRequest = {
   ...BASE_REQUEST,
   request_id: "req-categorized-docker",
