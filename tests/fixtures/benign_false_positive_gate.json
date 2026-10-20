@@ -9136,6 +9136,23 @@
       "expect": "allow"
     },
     {
+      "id": "git-worktree-add-long-lived-clone-nested-destination",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "cursor",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${HOME}/project worktree add -b fix/report-nested ${HOME}/reviews/pending/report origin/main"
+      },
+      "cwd": "parent",
+      "expect": "allow"
+    },
+    {
       "id": "neg-git-worktree-add-long-lived-clone-post-checkout-hook",
       "fix_area": "worktree-add",
       "harnesses": [
