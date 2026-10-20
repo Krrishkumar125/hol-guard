@@ -193,7 +193,9 @@ def _most_restrictive_policy_lookup(
         {"lookups": [dict(lookup) for lookup in lookups]},
         guard_home=guard_home,
     )
-    return cast("PolicyDecisionLookupResult", composed)
+    # The resident owns the selection; this only reads its row back under the
+    # name the callers use, so the cast goes through ``object``.
+    return cast("PolicyDecisionLookupResult", cast("object", composed))
 
 
 def _approval_authority_revision(connection: sqlite3.Connection) -> int:
