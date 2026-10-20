@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 from uuid import uuid4
 
 from .native_context import _resolve_digest_home, ensure_resident_prerequisite
@@ -54,7 +53,7 @@ def _composed(payload: dict[str, object]) -> PolicyDecisionLookupResult | None:
 
 
 def native_policy_lookup_compose(
-    candidates: Sequence[dict[str, Any]],
+    candidates: Sequence[PolicyDecisionLookupResult],
     *,
     guard_home: Path | None = None,
 ) -> PolicyDecisionLookupResult:
