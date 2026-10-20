@@ -187,6 +187,31 @@ fn macos_profile(input: &Input) -> Result<String, RestrictedPytestError> {
     compose_macos_profile(input, &existing(MAC_ROOTS), &files)
 }
 
+/// The framework version roots of `executables` that no writer can reach.
+///
+/// A subpath grant over a directory the run can write would let it execute a
+/// binary it writes for itself, so a root is kept only when it lies outside
+/// every writable root, and outside the workspace even under a read-only
+/// profile, where another writer still reaches it. An executable under a
+/// refused root keeps its own literal grant instead.
+fn sealed_framework_roots(
+    executables: &[PathBuf],
+    workspace: &Path,
+    writes: &[PathBuf],
+) -> Vec<PathBuf> {
+    framework_exec_roots(executables)
+        .into_iter()
+        .filter(|root| {
+            !overlaps(root, workspace) && !writes.iter().any(|write| overlaps(root, write))
+        })
+        .collect()
+}
+
+/// Whether either path holds the other, so a grant over one reaches the other.
+fn overlaps(left: &Path, right: &Path) -> bool {
+    path_is_within(left, right) || path_is_within(right, left)
+}
+
 fn compose_macos_profile(
     input: &Input,
     system_roots: &[PathBuf],
@@ -237,7 +262,13 @@ fn compose_macos_profile(
     // A framework interpreter re-execs a binary beside itself, so its version
     // directory is granted as a subpath and the privileged names are denied
     // back out; everything else stays an exec list of the binaries themselves.
-    let framework_roots = framework_exec_roots(&input.allowed_executables);
+    // A subpath grant over a directory the run can write would let it execute
+    // a binary it writes for itself, so a version root is granted only when it
+    // lies outside every writable root, and outside the workspace even in a
+    // read-only profile, where another writer still reaches it. An executable
+    // under a refused root keeps its own literal grant below.
+    let framework_roots =
+        sealed_framework_roots(&input.allowed_executables, &input.workspace, &writes);
     let named: Vec<PathBuf> = input
         .allowed_executables
         .iter()
@@ -422,4 +453,44 @@ pub(super) fn evaluate(operation: &str, input: &Value) -> Option<Value> {
         Ok(value) => json!({"value":value}),
         Err(error) => crate::restricted_command::error_reply(error),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sealed_framework_roots, PathBuf};
+    use std::fs;
+
+    fn framework(root: &std::path::Path, name: &str) -> PathBuf {
+        let version = root.join(name).join("Versions/A");
+        fs::create_dir_all(version.join("bin")).unwrap();
+        fs::write(version.join("bin/tool"), b"x").unwrap();
+        version
+    }
+
+    #[test]
+    fn a_framework_the_run_can_write_keeps_a_literal_grant() {
+        let base = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join(format!("guard-framework-{}", std::process::id()));
+        let workspace = base.join("workspace");
+        let output = base.join("output");
+        let sealed = base.join("sealed");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&output).unwrap();
+        fs::create_dir_all(&sealed).unwrap();
+        let inside = framework(&workspace, "Foo.framework");
+        let written = framework(&output, "Bar.framework");
+        let toolchain = framework(&sealed, "Python.framework");
+
+        let executables = vec![
+            inside.join("bin/tool"),
+            written.join("bin/tool"),
+            toolchain.join("bin/tool"),
+        ];
+        let roots = sealed_framework_roots(&executables, &workspace, &[output.clone()]);
+
+        assert_eq!(roots, vec![toolchain]);
+        fs::remove_dir_all(&base).unwrap();
+    }
 }

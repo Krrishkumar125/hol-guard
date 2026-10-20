@@ -122,5 +122,23 @@ mod tests {
         .expect("a shimmed system interpreter is a valid contained pytest launcher");
         assert_eq!(executable, resolved);
         assert!(launch.ends_with("python3"));
+        // The runner execs `plan.command`, so the shim must not survive into
+        // it: the lookup it would make is the one resolution answered here.
+        assert_eq!(
+            super::super::authority::launched_path(&launch, &executable),
+            resolved
+        );
+    }
+
+    /// A launcher that forwards nowhere keeps its own path, so a virtual
+    /// environment still execs its `bin/python` and keeps that prefix.
+    #[test]
+    fn a_launcher_that_is_not_a_shim_stays_in_the_command() {
+        let launch = Path::new("/bin/ls");
+        let executable = Path::new("/usr/bin/true");
+        assert_eq!(
+            super::super::authority::launched_path(launch, executable),
+            launch
+        );
     }
 }
