@@ -262,7 +262,13 @@ test("installed Protection Center keeps canonical routes and real-daemon inspect
   expect(extensionResponses.some((response) => response.path === "/v2/extension-controls/catalog/extensions/command.git/rules" && response.status === 200)).toBe(true);
   expect(extensionResponses.some((response) => response.path === "/v1/extension-controls/catalog")).toBe(false);
   expect(extensionResponses.some((response) => response.path === "/v1/extension-controls/effective" && response.status === 200)).toBe(true);
-  expect(extensionResponses.every((response) => (response.status >= 200 && response.status < 300) || response.status === 304)).toBe(true);
+  // A daemon still preparing its catalog read model answers a v2 catalog read
+  // with 503 and the dashboard retries it; every other answer is a success.
+  expect(extensionResponses.every((response) =>
+    (response.status >= 200 && response.status < 300)
+    || response.status === 304
+    || (response.status === 503 && response.path.startsWith("/v2/extension-controls/catalog/")),
+  )).toBe(true);
   expect(runtimeErrors).toEqual([]);
 });
 
