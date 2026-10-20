@@ -52,8 +52,9 @@ fn a_missing_storage_gate_defers() {
     assert!(storage_gate(&home).is_ok());
 }
 
-/// The daemon's Windows hold, `msvcrt.locking` on the gate's first byte,
-/// keeps the resident out until it is released.
+/// An exclusive Windows hold that overlaps the gate's range, here
+/// `msvcrt.locking` on the first byte, keeps the resident out until it is
+/// released.
 #[cfg(windows)]
 #[test]
 fn a_daemon_storage_hold_defers_on_windows() {
@@ -163,7 +164,7 @@ fn consume_with(
     assert_eq!(artifact_id, "claude-code:native-pretool:Read");
     let receipt: Value = serde_json::from_slice::<Value>(&edge).unwrap()["receipt"].clone();
     let identity =
-        crate::native_exact_action_op::review_binding_for(&exact, Some(&receipt)).unwrap();
+        crate::native_exact_action_op::review_binding_for(&exact, Some(&receipt), None).unwrap();
     let (path, connection) = local_store(tag);
     if seed {
         seed_approval(&path, &connection, &identity, &workspace);

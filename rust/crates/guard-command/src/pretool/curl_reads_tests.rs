@@ -23,6 +23,8 @@ fn proven_in(command: &str, context: crate::pretool::PathContext<'_>) -> bool {
 fn plain_public_reads_are_proven() {
     for command in [
         "curl https://example.com/api/health",
+        "curl -q -fsS http://127.0.0.1:3001/alpha/list",
+        "curl --disable --url https://example.com/api/health",
         "curl -sS --max-time 20 https://example.com/api/health",
         "curl -s --max-time=15 https://example.com/api/health",
         "curl -fsS https://example.com/install.txt",
@@ -46,6 +48,8 @@ fn plain_public_reads_are_proven() {
 fn bodies_files_credentials_and_routing_stay_reviewed() {
     for command in [
         "curl -L https://example.com/r",
+        "curl -s -q https://example.com/r",
+        "curl --disable --no-disable https://example.com/r",
         "curl -fsSL https://example.com/install.txt",
         "curl --location https://example.com/r",
         "curl -sL -H 'Metadata-Flavor: Google' https://example.com/r",
@@ -115,6 +119,56 @@ fn a_dev_port_in_the_daemon_range_follows_the_daemon_state() {
     assert!(proven_in(command, context), "daemon on 4781");
     std::fs::write(guard.join("daemon-state.json"), r#"{"port": 5173}"#).unwrap();
     assert!(!proven_in(command, context), "daemon on 5173");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// An agent starts its own server on a port it picked and then reads it back.
+/// The port is nothing well known, so only Guard's own daemon state can say it
+/// is free, and every local service keeps its review.
+#[test]
+fn a_port_the_agent_chose_for_its_own_server_is_proven() {
+    let home = std::env::temp_dir().join(format!("curl-reads-chosen-{}", std::process::id()));
+    let guard = home.join(".hol-guard");
+    std::fs::create_dir_all(&guard).unwrap();
+    let home_dir = home.to_str().unwrap();
+    let context = crate::pretool::PathContext {
+        home_dir: Some(home_dir),
+        ..Default::default()
+    };
+    let command = "curl -s --max-time 3 http://127.0.0.1:9303/json/version";
+    assert!(!proven_in(command, context), "no daemon state");
+    std::fs::write(guard.join("daemon-state.json"), r#"{"port": 4781}"#).unwrap();
+    assert!(proven_in(command, context), "daemon on 4781");
+    for proven_command in [
+        "curl -s http://127.0.0.1:9303/json/list",
+        "curl -s http://localhost:5474/requests/b934a610",
+        "curl -s http://127.0.0.1:31999/health",
+    ] {
+        assert!(proven_in(proven_command, context), "{proven_command}");
+    }
+    for reviewed in [
+        // Stores, brokers, model servers, proxies and automation drivers.
+        "curl -s http://127.0.0.1:5432/",
+        "curl -s http://127.0.0.1:6379/",
+        "curl -s http://127.0.0.1:11434/api/tags",
+        "curl -s http://127.0.0.1:9000/minio/health/live",
+        "curl -s http://127.0.0.1:1080/",
+        "curl -s http://127.0.0.1:9515/status",
+        // Blocks a service binds whole: MongoDB, VNC, X11 and the kubelet.
+        "curl -s http://127.0.0.1:27018/",
+        "curl -s http://127.0.0.1:5901/",
+        "curl -s http://127.0.0.1:6010/",
+        "curl -s http://127.0.0.1:10252/metrics",
+        // The ephemeral range, where no server waits for a named client.
+        "curl -s http://127.0.0.1:49152/",
+        // The daemon's own port stays unreachable whatever else is proven.
+        "curl -s http://127.0.0.1:4781/v1/requests?status=pending",
+        // Only a read: a body or a redirect keeps the review here too.
+        "curl -s -d x=1 http://127.0.0.1:9303/json/version",
+        "curl -sL http://127.0.0.1:9303/json/version",
+    ] {
+        assert!(!proven_in(reviewed, context), "{reviewed}");
+    }
     let _ = std::fs::remove_dir_all(&home);
 }
 

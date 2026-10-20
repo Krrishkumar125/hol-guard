@@ -196,6 +196,7 @@ def record_mcp_relay_evidence(store: object, guard_home: Path, record: object) -
                 policy_action=policy_action,
                 scanner_evidence=scanner_evidence,
                 redaction_level=redaction_level,
+                connector_setup=decision.connector_setup if policy_action == "review" else None,
             )
         if queued is not None:
             # After the receipt, as the proxy raises them.
@@ -266,16 +267,22 @@ def _raise_approval_surface(store: Any, guard_home: Path, harness: str, queued: 
     a failure leaves the request in the approval center the user opens.
     """
 
+    _raise_notices(store, queued.notices)
+    with contextlib.suppress(Exception):
+        _open_approval_center(store, guard_home, harness, queued)
+
+
+def _raise_notices(store: Any, notices: tuple[dict[str, Any], ...]) -> None:
+    """The desktop notice each queued request raises, as the proxy raises it."""
+
     from ..approvals import (  # pyright: ignore[reportPrivateUsage]
         _notify_pending_approval,
         _QueuedNotice,
     )
 
-    for notice in queued.notices:
+    for notice in notices:
         with contextlib.suppress(Exception):
             _notify_pending_approval(store=store, request=_QueuedNotice(**notice))  # pyright: ignore[reportArgumentType]
-    with contextlib.suppress(Exception):
-        _open_approval_center(store, guard_home, harness, queued)
 
 
 def _open_approval_center(store: Any, guard_home: Path, harness: str, queued: _QueuedApproval) -> None:
@@ -327,6 +334,7 @@ def _record_unprompted_review(
     policy_action: str,
     scanner_evidence: tuple[dict[str, object], ...],
     redaction_level: str,
+    connector_setup: Any = None,
 ) -> None:
     """The silent inbox row ``_queue_approval_center_response`` leaves.
 
@@ -355,6 +363,7 @@ def _record_unprompted_review(
                     signals,
                     policy_action=policy_action,
                     scanner_evidence=scanner_evidence,
+                    connector_setup=connector_setup,
                 )
             ]
         },
@@ -387,6 +396,8 @@ def _decision(value: object) -> Any:
         pending_approval_reuse_decision=payload["pending_approval_reuse_decision"],
         approval_reuse_claim_disposition=payload["approval_reuse_claim_disposition"],
         post_claim_revalidated=payload["post_claim_revalidated"],
+        policy_action=payload["policy_action"],
+        connector_setup=payload.get("connector_setup"),
     )
 
 

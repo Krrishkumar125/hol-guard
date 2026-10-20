@@ -19,20 +19,24 @@ def _coalesce_string(*values: object | None) -> str:
     return "unknown-artifact"
 
 
-def _artifact_id_from_event(harness: str, payload: dict[str, object]) -> str:
-    """Resolve runtime-artifact identity after the CLI support graph is loaded."""
+def _artifact_id_from_event(harness: str, payload: dict[str, object], guard_home: Path | None) -> str:
+    """Name the runtime artifact the event belongs to; the resident owns the rule.
 
-    from .commands_support_runtime_artifacts import _artifact_id_from_event as resolve
+    The name selects the configured action override for the event, so Python
+    never derives it. A resident that cannot answer leaves the caller with no
+    artifact identity, which the pipeline turns into the harness outage
+    response rather than a guessed name that no override would match.
+    """
 
-    return resolve(harness, payload)
+    from ..native_hook_decision import NativeHookDecisionError
+    from ..native_hook_render import native_artifact_id_from_event
 
-
-def _hook_event_name(payload: dict[str, object]) -> str | None:
-    """Resolve event names lazily to keep hook startup independent of import order."""
-
-    from .commands_support_runtime_artifacts import _hook_event_name as resolve
-
-    return resolve(payload)
+    artifact_id = native_artifact_id_from_event(
+        harness, _canonical_harness_name(harness), payload, guard_home=guard_home
+    )
+    if artifact_id is None:
+        raise NativeHookDecisionError("native_artifact_id_unavailable")
+    return artifact_id
 
 
 def _embedded_script_evidence(command_text: str | None) -> list[dict[str, object]]:
@@ -89,7 +93,6 @@ def _observed_action_detail(
 
 if TYPE_CHECKING:
     from ._commands_shared import _hook_command_text, _now
-    from .commands_support_hook_payload import _hook_command_has_encoded_markers
     from .commands_support_interaction import _record_harness_usage_for_hook
     from .commands_support_prompts import (
         _copilot_hook_reason,
@@ -138,69 +141,6 @@ from .commands_support_runtime_policy import _runtime_hook_effective_policy_conf
 # Bump when generic-hook classification or action-composition semantics change.
 _GENERIC_HOOK_EVALUATOR_POLICY_VERSION = "generic-hook-evaluation-v3"
 
-_GENERIC_HOOK_NON_CONTENT_FIELDS = frozenset(
-    {
-        "action_id",
-        "approval_center_url",
-        "approval_delivery",
-        "approval_request_id",
-        "approval_requests",
-        "call_id",
-        "daemon_status",
-        "event_id",
-        "event_time",
-        "fail_mode",
-        "hook_id",
-        "invocation_id",
-        "message_id",
-        "permission_decision_reason",
-        "policy_action",
-        "received_at",
-        "request_id",
-        "review_hint",
-        "session_id",
-        "thread_id",
-        "timestamp",
-        "tool_call_id",
-        "tool_use_id",
-        "trace_id",
-        "turn_id",
-        "user_override",
-    }
-)
-
-
-def _generic_hook_payload_digest(payload: Mapping[str, object]) -> str:
-    """Return a stable action digest without delivery metadata or policy hints.
-
-    Hook transports assign fresh request, session, tool-use, and timestamp fields
-    when an otherwise identical action is retried.  Those top-level delivery
-    fields are not part of the action the user reviewed.  Nested fields remain
-    intact because, for an opaque tool, a value such as
-    ``tool_input.request_id`` can be a real action argument.
-    """
-
-    content_payload = {
-        key: value
-        for key, value in payload.items()
-        if _generic_hook_content_key(key) not in _GENERIC_HOOK_NON_CONTENT_FIELDS
-        and _generic_hook_content_key(key) != "artifact_hash"
-    }
-    encoded = json.dumps(
-        content_payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def _generic_hook_content_key(key: str) -> str:
-    """Canonicalize top-level hook keys across snake/camel/kebab transports."""
-
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", key).replace("-", "_").lower()
-
 
 def _generic_hook_approval_context_inputs(
     *,
@@ -234,7 +174,6 @@ def _generic_hook_approval_context_inputs(
         home_dir=home_dir,
         runtime_workspace=runtime_workspace,
         payload=payload,
-        payload_digest=_generic_hook_payload_digest(payload),
         tool_command=tool_command,
         config=config,
         policy_config=_runtime_hook_effective_policy_config(config),
@@ -309,11 +248,21 @@ def _generic_hook_saved_decision(
     )
     if saved is None:
         # No saved authority to read: a near match can still explain the miss.
+        # Naming the recomputed action lets the resident compose what the miss
+        # means in the same call, so the miss path costs one round trip rather
+        # than three and nothing here has to name a saved action for a row the
+        # resident just rejected.
         artifact_hash = native_hook_approval_context_token("generic_hook_approval_context", approval_context_inputs)
-        diagnosed_reason, diagnosed_stored_hash = store.approval_reuse_diagnostic(
-            harness, artifact_id, artifact_hash, workspace, publisher
+        diagnosed_reason, diagnosed_stored_hash, diagnosed_reuse = store.approval_reuse_miss(
+            harness, artifact_id, artifact_hash, workspace, publisher, current_action=current_action
         )
         saved_present = diagnosed_reason is not None
+        if diagnosed_reuse is not None:
+            return artifact_hash, None, None, _decision_from_native_payload(diagnosed_reuse), saved_present
+        # The resident composed nothing: either there were no saved rows to
+        # diagnose, or it could not answer at all. Ask the sole authority for
+        # the composition; an unreachable one preserves the recomputed action
+        # unchanged and claims no saved decision.
         verdict = evaluate_approval_reuse(
             current_action,
             "allow" if saved_present else None,
@@ -321,8 +270,6 @@ def _generic_hook_saved_decision(
             validation_reason=cast(ApprovalReuseValidationFailure | None, diagnosed_reason),
         )
         reuse = with_saved_artifact_hash_provenance(
-            # Resident unreachable: preserve the recomputed action unchanged;
-            # the saved decision is not claimed.
             verdict if verdict is not None else approval_reuse_authority_unavailable(current_action),
             diagnosed_stored_hash,
         )
@@ -605,11 +552,13 @@ def run_native_generic_payload(
     payload_map = dict(payload)
     payload_map.pop("blocked_request_guidance", None)
     blocked_request_guidance: str | None = None
-    artifact_id = _coalesce_string(
-        getattr(args, "artifact_id", None),
-        payload_map.get("artifact_id"),
-        _artifact_id_from_event(args.harness, payload_map),
+    # Only ask the resident to name the artifact when the event carried no
+    # name of its own; the round trip is on the hook hot path.
+    artifact_id = _optional_string(getattr(args, "artifact_id", None)) or _optional_string(
+        payload_map.get("artifact_id")
     )
+    if artifact_id is None:
+        artifact_id = _artifact_id_from_event(args.harness, payload_map, store.guard_home)
     artifact_name = _coalesce_string(
         getattr(args, "artifact_name", None),
         payload_map.get("artifact_name"),
@@ -1006,7 +955,7 @@ def run_native_generic_payload(
         approval_context=live_hook_approval_context(payload_map, harness=args.harness, guard_home=store.guard_home),
         canonical_harness=canonical_harness,
         coalesce=_coalesce_string,
-        content_flagged=_hook_command_has_encoded_markers(command_text),
+        command_text=command_text,
         directive=directive,
         envelope=hook_envelope,
         event_name=hook_event_name,

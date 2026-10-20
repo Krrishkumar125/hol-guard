@@ -129,9 +129,15 @@ pub(super) fn safe_listing_segment(
                 surviving += 1;
                 search::safe_recursive_target(argument, context)
             }
+            // A listing without a glob admits a name that is not there, because
+            // the shell prints an error and nothing else. One glob beside it
+            // does not change what that name prints, so it keeps the same
+            // admission: `ls pkg/bun.lock* pkg/package-lock.json` is how an
+            // agent asks which lockfile a project keeps.
             Operand::Plain => {
                 surviving += 1;
                 safe_reads::bounded_read_target(argument, context.home_dir, context.cwd, true)
+                    || absent_listing_operand(argument, context)
             }
             Operand::QuotedLiteral => {
                 surviving += 1;
@@ -196,7 +202,11 @@ pub(super) fn absent_listing_operand(value: &str, context: super::PathContext<'_
                         let name = part.to_string_lossy();
                         // `.git` is the one marker agents probe for. A missing
                         // leaf prints only an error and reveals no content.
-                        !name.starts_with('.') || (index == 0 && name == ".git")
+                        // `.github` holds a project's workflows, never a
+                        // credential, so a probe for them may name it anywhere.
+                        !name.starts_with('.')
+                            || (index == 0 && name == ".git")
+                            || name == ".github"
                     })
                     && listable_ancestor(ancestor, context);
             }

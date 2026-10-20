@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +27,7 @@ from typing import Any
 
 from . import qualify_setup
 from .fixtures import create_numbered_dir
+from .lane_coverage import lane_coverage
 from .parallel import terminate_as_exit
 from .source_identity import SHA
 from .timing import PhaseTimings
@@ -74,6 +76,7 @@ def attempt_argv(
     work_root: Path,
     timeout: float,
     max_rounds: int,
+    native_route: str | None = None,
 ) -> list[str]:
     """The candidate's own runner invocation for one complete fresh attempt."""
     argv = [
@@ -81,7 +84,7 @@ def attempt_argv(
         "-m",
         "ci.gauntlet",
         "run",
-        "--native-luna-route",
+        *(["--native-route", native_route] if native_route else ["--native-luna-route"]),
         "--reasoning-effort",
         effort,
         "--sdk-root",
@@ -181,12 +184,26 @@ def summarize_attempt(
     return record
 
 
-def run_attempt(argv: list[str], *, cwd: Path, env: dict[str, str], log: Path) -> int:
-    """Run one attempt in its own process group; interrupts reap the whole group."""
+def run_attempt(
+    argv: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    log: Path,
+    on_started: Callable[[], None] | None = None,
+) -> int:
+    """Run one attempt in its own process group; interrupts reap the whole group.
+
+    `on_started` fires once the child exists. An interrupt arriving after that
+    leaves no attempt record, so without the callback the report would say the
+    lane was never driven while inference had already run against the candidate.
+    """
     with log.open("wb") as stream:
         process = subprocess.Popen(
             argv, cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True
         )
+        if on_started is not None:
+            on_started()
         try:
             return process.wait()
         except BaseException:
@@ -289,6 +306,12 @@ def main(args: Any) -> int:
     started = time.monotonic()
     timings = PhaseTimings()
     sha = args.sha
+    native_route = getattr(args, "native_route", None)
+    if native_route:
+        from .luna_route import BACKENDS, parse_backend
+
+        if args.effort not in BACKENDS[parse_backend(native_route)]:
+            raise ValueError("unsupported effort for --native-route")
     if SHA.fullmatch(sha) is None:
         raise ValueError("--sha must be a full 40-character commit")
     if args.candidate_sha is not None and SHA.fullmatch(args.candidate_sha) is None:
@@ -317,6 +340,9 @@ def main(args: Any) -> int:
     (run_root / "logs").mkdir()
 
     attempts: list[dict[str, Any]] = []
+    # Attempt numbers whose process started. An attempt that is interrupted
+    # mid-run leaves no record, and the lane was still driven.
+    driven: list[int] = []
     candidate: Path | None = None
     verify_result: dict[str, Any] | None = None
     wheel_info: dict[str, Any] | None = None
@@ -364,6 +390,7 @@ def main(args: Any) -> int:
                 argv = attempt_argv(
                     python=candidate / ".venv" / "bin" / "python",
                     effort=args.effort,
+                    native_route=native_route,
                     sdk_root=Path(sdk_info["root"]),
                     jobs=args.jobs,
                     host_slots=args.host_slots,
@@ -385,7 +412,13 @@ def main(args: Any) -> int:
                 progress(f"attempt {k} starting")
                 t0 = time.monotonic()
                 with timings.measure("live_cases"):
-                    rc = run_attempt(argv, cwd=candidate, env=env, log=run_root / "logs" / f"attempt-{k}.log")
+                    rc = run_attempt(
+                        argv,
+                        cwd=candidate,
+                        env=env,
+                        log=run_root / "logs" / f"attempt-{k}.log",
+                        on_started=lambda attempt=k: driven.append(attempt),
+                    )
                 record = summarize_attempt(k, evidence, rc, time.monotonic() - t0, _read_summary(evidence))
                 record["work_root"] = str(work)
                 attempts.append(record)
@@ -439,6 +472,10 @@ def main(args: Any) -> int:
             "sha": sha,
             "candidate_sha": args.candidate_sha,
             "qualified": qualified,
+            # One lane of eleven, and null when no attempt started. The rest carry
+            # the work a person actually does, so the record names them rather
+            # than letting `qualified` stand for them.
+            "coverage": lane_coverage(driven=bool(driven)),
             "prepare_only": args.prepare_only,
             "candidate": str(candidate) if prepared and error is None and candidate is not None else None,
             "independent_verifier": info.get("independent_verifier"),

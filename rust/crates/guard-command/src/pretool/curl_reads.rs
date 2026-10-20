@@ -12,7 +12,8 @@
 //! conventional dev-server port ([`super::loopback_ports`]) that neither
 //! Guard's daemon nor a local service answering a plain GET with
 //! credentials, cluster state or a debugger ([`LOCAL_ADMIN_PORTS`]) may
-//! listen on. Private, link-local
+//! listen on, or on a port the agent chose for a server it started itself,
+//! screened against the whole local-service list. Private, link-local
 //! and metadata addresses, other loopback spellings, rebinding names and
 //! names under reserved test suffixes stay reviewed: those resolve to local
 //! services rather than public content. The response body and headers reach
@@ -22,10 +23,13 @@
 //! credential shape, a JWT or a long opaque token stays reviewed, since the
 //! request line itself can carry data to the host.
 
+#[path = "curl_reads_bound.rs"]
+mod bound;
 #[path = "curl_output_targets.rs"]
 pub(in crate::pretool) mod output_targets;
 #[path = "url_secrets.rs"]
 pub(super) mod url_secrets;
+pub use bound::bound_curl_read_destinations;
 
 pub(crate) const NETWORK_READ_REASON: &str = "native_exact_safe_network_read";
 
@@ -110,15 +114,23 @@ pub(super) fn safe_curl_segment(
     if model.dialect != "posix" || segment.pipeline_index != 0 {
         return false;
     }
-    let arguments = &segment.arguments;
+    read_urls(&segment.arguments, context).is_some()
+}
+
+fn read_urls<'a>(arguments: &'a [String], context: super::PathContext<'_>) -> Option<Vec<&'a str>> {
     if arguments.iter().any(|argument| expands(argument)) {
-        return false;
+        return None;
     }
-    let mut urls = 0usize;
+    let mut urls = Vec::new();
     let mut options = true;
     let mut index = 0;
     while index < arguments.len() {
         let argument = arguments[index].as_str();
+        // curl disables default configuration only in this exact position.
+        if index == 0 && matches!(argument, "-q" | "--disable") {
+            index += 1;
+            continue;
+        }
         if options && argument == "--" {
             options = false;
             index += 1;
@@ -126,24 +138,22 @@ pub(super) fn safe_curl_segment(
         }
         if !options || !argument.starts_with('-') || argument == "-" {
             if !readable_url(argument, context) {
-                return false;
+                return None;
             }
-            urls += 1;
+            urls.push(argument);
             index += 1;
             continue;
         }
-        let Some(consumed) = option_consumed(arguments, index, context) else {
-            return false;
-        };
+        let consumed = option_consumed(arguments, index, context)?;
         if let Some(url) = url_option(arguments, index) {
             if !readable_url(url, context) {
-                return false;
+                return None;
             }
-            urls += 1;
+            urls.push(url);
         }
         index += consumed;
     }
-    urls > 0
+    (!urls.is_empty()).then_some(urls)
 }
 
 /// A whole `curl` segment, generic checks included, that the native proof
@@ -306,10 +316,24 @@ pub(in crate::pretool) fn loopback_url(raw: &str, home_dir: Option<&str>) -> boo
         && matches!(url.scheme(), "http" | "https")
         && url.username().is_empty()
         && url.password().is_none()
-        && url.port_or_known_default().is_some_and(|port| {
-            super::loopback_ports::dev_server_port(port, &LOCAL_ADMIN_PORTS, home_dir)
-        })
+        && url
+            .port_or_known_default()
+            .is_some_and(|port| reachable_loopback_port(port, home_dir))
         && !url_secrets::carries_secret(&url)
+}
+
+/// A loopback port this request may reach: a conventional dev-server port, or
+/// one the agent chose for the server it started itself while Guard's daemon
+/// state records another port. A chosen port is screened against the local
+/// services whose plain answer carries credentials, stored data or control of
+/// another process, the same list the workspace sandbox grants against, so
+/// only a port nothing well known claims is reachable by number alone.
+fn reachable_loopback_port(port: u16, home_dir: Option<&str>) -> bool {
+    use super::loopback_ports::{
+        chosen_server_port, dev_server_port, local_service_port, LOCAL_SERVICE_PORTS,
+    };
+    dev_server_port(port, &LOCAL_ADMIN_PORTS, home_dir)
+        || (!local_service_port(port) && chosen_server_port(port, LOCAL_SERVICE_PORTS, home_dir))
 }
 
 fn public_url(raw: &str) -> bool {

@@ -14,8 +14,8 @@
 
 use super::query::{self, pre_tool_command, pre_tool_input, strip};
 use super::{render, Context, HookDirectDefer};
+use crate::hook_evidence_store_gate::StorageGateHold;
 use crate::local_store_read::STORE_FILE_NAME;
-use fs2::FileExt;
 use guard_command::hook_responses::Object;
 use guard_contracts::{GuardStoreRequestV1, NativeExactActionQueryV1, GUARD_STORE_REQUEST_SCHEMA};
 use serde_json::{json, Map, Value};
@@ -45,8 +45,14 @@ pub(super) fn answer(
     let NativeExactActionQueryV1::ExactAction { tool_name, .. } = exact else {
         return Err(HookDirectDefer::SavedDecision);
     };
-    let identity = crate::native_exact_action_op::review_binding_for(exact, receipt)
-        .ok_or(HookDirectDefer::SavedDecision)?;
+    let identity = crate::native_exact_action_op::review_binding_for(
+        exact,
+        receipt,
+        context
+            .recorded_payload
+            .get(crate::hook_direct::EXECUTION_ENVIRONMENT_FIELD),
+    )
+    .ok_or(HookDirectDefer::SavedDecision)?;
     let launch_target = launch_target(context.payload)?;
     let mut allowed = result.clone();
     for key in ["decision", "minimum_action", "policy_action"] {
@@ -135,11 +141,10 @@ fn launch_target(payload: &Map<String, Value>) -> Result<String, HookDirectDefer
 
 /// The daemon's storage gate, held shared until the spend commits. A gate
 /// the daemon has not created yet, or one held exclusively, defers.
-pub(crate) fn storage_gate(guard_home: &Path) -> Result<File, HookDirectDefer> {
+pub(crate) fn storage_gate(guard_home: &Path) -> Result<StorageGateHold, HookDirectDefer> {
     let gate = open_no_follow(&guard_home.join(STORAGE_GATE_FILE_NAME))
         .ok_or(HookDirectDefer::SavedDecision)?;
-    FileExt::try_lock_shared(&gate).map_err(|_| HookDirectDefer::SavedDecision)?;
-    Ok(gate)
+    StorageGateHold::try_shared(gate).map_err(|_| HookDirectDefer::SavedDecision)
 }
 
 #[cfg(unix)]
@@ -152,10 +157,10 @@ fn open_no_follow(path: &Path) -> Option<File> {
         .ok()
 }
 
-/// The gate opened without following a link at the leaf. Python takes it
-/// with `msvcrt.locking` on its first byte, which has no shared mode; the
-/// shared whole-file `LockFileEx` here still excludes that hold and any
-/// exclusive one, so a spend never overlaps a daemon store call.
+/// The gate opened without following a link at the leaf. Python takes the
+/// same whole-file `LockFileEx` range, so this shared hold coexists with
+/// Python's shared holds, as `flock` does on POSIX, and still defers to an
+/// exclusive maintenance hold.
 #[cfg(windows)]
 fn open_no_follow(path: &Path) -> Option<File> {
     use std::os::windows::fs::{MetadataExt, OpenOptionsExt};

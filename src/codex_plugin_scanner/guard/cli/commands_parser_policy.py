@@ -288,14 +288,24 @@ def _configure_guard_policy_parsers(
     settings_output_parser.add_argument("policy", choices=("off", "warn", "ask"))
     _add_guard_common_args(settings_output_parser, suppress_defaults=True)
     settings_output_parser.add_argument("--json", action="store_true")
+    settings_fleet_posture_parser = settings_set_subparsers.add_parser(
+        "fleet-posture",
+        help="Choose how much machine detail Guard reports to Guard Cloud (on or off)",
+    )
+    settings_fleet_posture_parser.add_argument("fleet_posture", choices=("on", "off"))
+    _add_guard_common_args(settings_fleet_posture_parser, suppress_defaults=True)
+    settings_fleet_posture_parser.add_argument("--json", action="store_true")
     settings_explain_parser = settings_subparsers.add_parser(
         "explain", help="Explain current Guard settings in plain language"
     )
     _add_guard_common_args(settings_explain_parser, suppress_defaults=True)
-    settings_explain_parser.add_argument("--json", action="store_true")
+    settings_explain_parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    settings_list_parser = settings_subparsers.add_parser("list", help="Show the saved local Guard settings")
+    _add_guard_common_args(settings_list_parser, suppress_defaults=True)
+    settings_list_parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     settings_doctor_parser = settings_subparsers.add_parser("doctor", help="Diagnose Guard settings for common issues")
     _add_guard_common_args(settings_doctor_parser, suppress_defaults=True)
-    settings_doctor_parser.add_argument("--json", action="store_true")
+    settings_doctor_parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     approval_password_parser = settings_subparsers.add_parser(
         "approval-password",
         help="Manage local approval password gate state",

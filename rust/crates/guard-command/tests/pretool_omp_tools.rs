@@ -200,6 +200,59 @@ fn artifact_references_are_allowed_only_in_exact_form() {
 }
 
 #[test]
+fn proc_references_are_reads_of_the_sessions_own_jobs() {
+    let f = fixture();
+    for path in [
+        "proc://",
+        "proc://bg_1",
+        "proc://bg_12",
+        "proc://build-42",
+        "proc://web",
+        "proc://bg_1:1-40",
+        "proc://bg_1:raw",
+        "proc://bg_1:1-40:raw",
+        "proc://Reviewer.2",
+    ] {
+        let result = omp(&f, "read", json!({"path": path}));
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+        assert_eq!(result.reason_code, "native_omp_proc_read", "{path}");
+    }
+    for path in [
+        "proc://bg_1/kill",
+        "proc://bg_1/mode",
+        "proc://bg_1/",
+        "proc:///etc/passwd",
+        "proc://../bg_1",
+        "proc://.hidden",
+        "proc://bg_1:5",
+        "proc://bg_1:a-b",
+        "proc://bg_1:raw:raw",
+        "proc://bg_1:1-2:3-4",
+        "proc://bg_1:conflicts",
+        "proc://bg 1",
+        "proc://bg_1%2fkill",
+        "proc://bg_1?x=1",
+        "proc://bg_1#frag",
+        "proc://:1-5",
+        "proc://~",
+        "PROC://bg_1",
+    ] {
+        let result = omp(&f, "read", json!({"path": path}));
+        assert_ne!(result.reason_code, "native_omp_proc_read", "{path}");
+    }
+    // Only the read tool serves a job's output; a write to the same selector
+    // sends stdin or cancels, and other harnesses have no such scheme.
+    for tool in ["write", "edit"] {
+        let result = omp(&f, tool, json!({"path": "proc://bg_1", "content": "x"}));
+        assert_ne!(result.reason_code, "native_omp_proc_read", "{tool}");
+    }
+    assert_ne!(
+        run(&f, "codex", "read", json!({"path": "proc://bg_1"})).reason_code,
+        "native_omp_proc_read"
+    );
+}
+
+#[test]
 fn skill_and_note_documents_are_readable_in_bounds() {
     let f = fixture();
     for path in [
@@ -260,7 +313,6 @@ fn listings_allow_verified_directories_only() {
         }
         for input in [
             json!({"path": "~/.ssh"}),
-            json!({"path": "~/.codex/sessions"}),
             json!({"path": "../../../etc"}),
             json!({"path": "/etc"}),
             json!({"path": "~/missing-directory"}),
@@ -272,6 +324,18 @@ fn listings_allow_verified_directories_only() {
         ] {
             assert!(!allowed(&omp(&f, tool, input.clone())), "{tool} {input}");
         }
+        // A harness home keeps its login in files the content screens refuse,
+        // so a listing of one of its directories prints session and plan
+        // names and nothing else. `ls ~/.codex/sessions` already gets that
+        // answer in a shell; `find` walks below the directory it is given,
+        // so it keeps its review.
+        let listing = omp(&f, tool, json!({"path": "~/.codex/sessions"}));
+        assert_eq!(
+            allowed(&listing),
+            tool != "find",
+            "{tool}: {}",
+            listing.reason_code
+        );
     }
     assert!(!allowed(&run(
         &f,
@@ -363,12 +427,20 @@ fn project_skill_folders_list_by_name() {
             ".git",
             ".git/skills",
             ".claude",
-            "~/.codex",
             "~/.agents/../project/.agents",
         ] {
             let result = omp(&f, tool, json!({"path": path, "hidden": true}));
             assert!(!allowed(&result), "{tool} {path}");
         }
+        // The harness home itself lists by name for the tools that stay in
+        // the directory they are given, the same as `ls ~/.codex`.
+        let home = omp(&f, tool, json!({"path": "~/.codex", "hidden": true}));
+        assert_eq!(
+            allowed(&home),
+            tool != "find",
+            "{tool}: {}",
+            home.reason_code
+        );
     }
     // A glob inside the folder keeps the full tree proof.
     assert!(!allowed(&omp(

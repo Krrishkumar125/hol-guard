@@ -7,6 +7,13 @@ from pathlib import Path
 
 import pytest
 
+from .mcp_policy_catalog_fixture import (  # noqa: F401
+    mcp_policy_delivery,
+    mcp_policy_inventory,
+    native_mcp_catalog_admission,
+)
+from .mcp_policy_native_fixture import native_mcp_policy_admission  # noqa: F401
+
 
 def _resolve_native_hook_runtime() -> Path:
     """Resolve the caller-pinned runtime path used by native hook tests.
@@ -68,6 +75,9 @@ def _native_context_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[P
     # The managed resident refuses to serve until the policy verifier key the
     # publisher would normally provision exists; seed a test key once.
     provision_native_policy_verifier_key(guard_home, b"\x07" * 32)
+    from .mcp_policy_native_fixture import _FIXTURE_KEYS
+
+    _FIXTURE_KEYS[guard_home] = b"\x07" * 32
     # Pre-warm the capabilities cache and the persistent resident client pool
     # at session scope.  Tests that patch subprocess.Popen globally would
     # otherwise intercept the first probe/pool spawn mid-test and break the
@@ -189,7 +199,12 @@ def _ambient_context_digest_home(
 
     ``context_digest`` calls resolve their guard home either from the bound
     flow context or the default user home; both are pointed at the keyed
-    session home.  Unit tests default to ``HOL_GUARD_NATIVE=off`` so the
+    session home.  ``native_hook_approval_context`` imports the lookup by
+    name at module load, so it holds its own reference and has to be bound
+    separately; without that its tokens are asked of whatever guard home the
+    runner happens to have, and whether a resident can answer there depends
+    on what else already ran in the same worker process.  Unit tests default
+    to ``HOL_GUARD_NATIVE=off`` so the
     adapter's status probe is additionally re-evaluated under ``force`` —
     scoped to the ``native_context`` module only, leaving every other
     off-mode surface (hook eval, fail-safe denials) untouched.  With no
@@ -198,6 +213,7 @@ def _ambient_context_digest_home(
     """
 
     from codex_plugin_scanner.guard import native_context, native_runtime
+    from codex_plugin_scanner.guard import native_hook_approval_context
     from codex_plugin_scanner.guard.runtime import approval_context
 
     real_status = native_runtime.native_runtime_status
@@ -227,6 +243,11 @@ def _ambient_context_digest_home(
 
     monkeypatch.setattr(native_context, "native_runtime_status", _digest_status)
     monkeypatch.setattr(native_context, "context_digest_guard_home", lambda: _native_context_home)
+    monkeypatch.setattr(
+        native_hook_approval_context,
+        "context_digest_guard_home",
+        lambda: _native_context_home,
+    )
     monkeypatch.setattr(
         approval_context,
         "_context_digest_guard_home",

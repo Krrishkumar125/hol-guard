@@ -27,6 +27,7 @@ from .fixtures import digest_file, mkdir_private
 
 REQUIRED_TOOLS = ("git", "uv", "bun", "npm", "rg", "curl")
 DEV_WHEEL_MARKER = "HOL_GUARD_DEV_WHEEL"
+SIZE_CHECK_MARKER = "check_wheel_size.py"
 DEV_WHEEL_ENV = {
     "CARGO_PROFILE_RELEASE_LTO": "false",
     "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "16",
@@ -38,7 +39,7 @@ GNU_SED_DIRS = (
     Path("/usr/local/opt/gnu-sed/libexec/gnubin"),
 )
 LOCK_DIR = "ci/pi-exact-continuation"
-# The local Linux wheel is never published, so the release size budgets do not cover it.
+# The local Linux wheel is never published.
 LINUX_LOCAL_TAG = "linux_x86_64"
 
 
@@ -396,12 +397,18 @@ def ensure_wheel(
     tag, target, deployment = host_platform()
     profile = "release" if release_profile else "dev"
     if profile == "dev" and DEV_WHEEL_MARKER.encode() not in git_show(repo, sha, WHEEL_BUILD_SCRIPT):
-        # Candidates older than the dev-profile switch still run the stable size check.
+        # Candidates older than the dev-profile switch build the release profile.
         profile = "release"
-    if profile == "release" and tag == LINUX_LOCAL_TAG:
+    if (
+        profile == "release"
+        and tag == LINUX_LOCAL_TAG
+        and SIZE_CHECK_MARKER.encode() in git_show(repo, sha, WHEEL_BUILD_SCRIPT)
+    ):
+        # A candidate from before the size check was removed still runs it, and
+        # its budgets have no local Linux entry. Refuse before the build, not after.
         raise RuntimeError(
-            "release-profile wheels run the published size check, which has no budget for the local "
-            "linux_x86_64 wheel; build the development profile or pass --wheel"
+            "this candidate's wheel script runs the published size check, which has no budget for the "
+            "local linux_x86_64 wheel; build the development profile or pass --wheel"
         )
     private_dir(cache_root / "wheels", tighten=driver_owned(cache_root / "wheels"))
     store = cache_root / "wheels" / f"{sha}-{tag}{'-dev' if profile == 'dev' else ''}"

@@ -18,6 +18,11 @@ pub const HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA: &str = "guard-hook-artifact-comp
 pub const HOOK_ARTIFACT_COMPOSE_RESULT_SCHEMA: &str = "guard-hook-artifact-compose-result.v1";
 /// Capability advertised by the runtime when this operation is available.
 pub const HOOK_ARTIFACT_COMPOSE_FEATURE: &str = "hook-artifact-compose-v1";
+/// Capability advertised when the `package_reuse_settle` query is served. A
+/// runtime that predates the query rejects it as an unknown kind, so the
+/// caller requires this feature for that query alone.
+pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE: &str =
+    "hook-artifact-compose-package-reuse-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -38,6 +43,8 @@ pub enum HookArtifactComposeQueryV1 {
     ToolGrantApply,
     /// Settle a local CLI grant result and the native floor.
     GrantSettle(GrantSettleQueryV1),
+    /// What observe mode records as the action that would have executed.
+    ObserveExecutableAction(Box<ObserveExecutableActionQueryV1>),
     /// Non-package saved-approval reuse composition.
     SavedReuse(Box<SavedReuseQueryV1>),
     /// A saved block selected for a package request.
@@ -54,6 +61,29 @@ pub enum HookArtifactComposeQueryV1 {
     DecisionCopy(Box<DecisionCopyQueryV1>),
     /// Build the canonical decision and its copy in the same resident request.
     DecisionBuildCopy(Box<DecisionBuildCopyQueryV1>),
+    /// Settle a package request's saved-approval reuse from the reasons the
+    /// evaluation carries, folding the saved-block reuse of the same request.
+    PackageReuseSettle(Box<PackageReuseSettleQueryV1>),
+}
+
+/// The package-request facts the reuse settlement reads. `reasons` is the
+/// evaluation's reason list as it stands after the stored-policy override.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PackageReuseSettleQueryV1 {
+    pub reasons: Vec<Value>,
+    /// The caller claims a saved approval on this pass.
+    pub claim_saved_approval: bool,
+    /// The composed action before any reuse is applied.
+    pub current_action: Value,
+    /// The evaluation's own action after the stored-policy override.
+    pub evaluation_policy_action: Value,
+    /// The saved decision's action, `null` when nothing is saved.
+    pub stored_policy_action: Value,
+    /// The saved decision's artifact hash, `null` when nothing is saved.
+    pub stored_artifact_hash: Value,
+    /// The source already named for this request's reuse evidence, if any.
+    pub approval_reuse_source: Value,
 }
 
 /// Guard configuration facts the native policy-config action reads.
@@ -96,7 +126,12 @@ pub struct PolicyArtifactFactsV1 {
     /// `str(confidence or "")` of the artifact risk confidence.
     pub confidence_text: String,
     pub confidence_strong: bool,
+    /// A caller that already knows the artifact installs a boot or login
+    /// item says so here; the resident reads `action_class` for the rest.
     pub writes_launch_agent: bool,
+    /// `action_class` metadata; absent or non-string arrives as `null`.
+    #[serde(default)]
+    pub action_class: Option<String>,
     pub skill_is_known_bad: bool,
 }
 
@@ -159,6 +194,29 @@ pub struct GrantSettleQueryV1 {
     pub approval_context_action: Value,
     pub granted_action: Value,
     pub native_floor: Value,
+}
+
+/// The composed sources observe mode re-reads to name the action that would
+/// have run.
+///
+/// Each field carries one source's action, or null when that source said
+/// nothing. They arrive as raw values rather than as `GuardAction` because an
+/// unrecognized source name must be ignored here, not normalized into a
+/// verdict: observe mode reports what the harness would have done, so a source
+/// this build cannot read contributes nothing instead of a guess.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ObserveExecutableActionQueryV1 {
+    pub current_config_action: Value,
+    pub current_action_override: Value,
+    pub trusted_cli_override: Value,
+    pub untrusted_hook_payload_hint: Value,
+    pub package_action: Value,
+    pub data_flow_action: Value,
+    pub scanner_action: Value,
+    /// The package evaluation's own action, which the composition trace does
+    /// not always carry.
+    pub package_evaluation_action: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -5,6 +5,7 @@ from __future__ import annotations
 from .pi_extension_contained_tests_source import with_contained_test_routing
 from .pi_extension_input_source import INPUT_HANDLER_SOURCE
 from .pi_extension_source_tail_shared_v1 import build_source_tail_shared_v1
+from .pi_extension_tool_resume_source import with_tool_approval_resume
 
 
 def build_extension_source_tail(
@@ -47,6 +48,7 @@ def build_extension_source_tail(
     shared_source = shared_source[:input_start] + INPUT_HANDLER_SOURCE + shared_source[input_end:]
     if harness in {"omp", "pi"}:
         shared_source = with_contained_test_routing(shared_source, harness=harness)
+    shared_source = with_tool_approval_resume(shared_source, harness=harness)
     return shared_source + (
         "    const hookDeadlineAt = Date.now() + GUARD_TIMEOUT_MS - GUARD_DEADLINE_RESERVE_MS;\n"
         "    const signal = handlerAbortSignal(ctx);\n"
@@ -107,6 +109,8 @@ def build_extension_source_tail(
         "        tool_response: toolOutput,\n"
         "        is_error: event.isError === true,\n"
         "    };\n"
+        "    const bashDelivery = boundBashPostObservation(event, guardToolInput);\n"
+        "    if (bashDelivery) guardPayload.guard_bash_owner_delivery = bashDelivery;\n"
         "    if (resolvedDirectoryTarget !== undefined) {\n"
         "      guardPayload.resolved_directory_target = resolvedDirectoryTarget;\n"
         "    }\n"
@@ -205,7 +209,9 @@ def build_extension_source_tail(
         "        return blockedToolResult(\n"
         "          modelVisibleBlockedReason(reason, 'structured_review_cancelled'), event.details);\n"
         "      }\n"
-        "      return undefined;\n"
+        "      const deliveryDetails = response.reason_code === 'native_bash_owner_result_allow'\n"
+        "        ? markBoundBashResultDelivery(event, digest.sha256) : undefined;\n"
+        "      return deliveryDetails ? { details: deliveryDetails } : undefined;\n"
         "    }\n"
         '    if (response.model_output_action === "allow_original") {\n'
         "      const reason = response.reason ||\n"
