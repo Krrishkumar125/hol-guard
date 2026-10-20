@@ -47,6 +47,10 @@ REPORT_KEYS = frozenset({"summary", "report", "architecture", "files"})
 # A delegation whose result schema names a credential-shaped field. The names are labels for the
 # answer, not secrets, so the call is ordinary work under the secret-read setting.
 TASK_SCHEMA_CASE = "omp-native-task-result-schema-token-fields"
+# A subtask reporting that a file holds no credential writes the answer in
+# prose, so the whole task output is withheld when the scanner reads
+# `Token: no` as an assigned secret and the parent never gets the result.
+CREDENTIAL_REPORT_CASE = "omp-native-task-credential-absence-report"
 # The three string fields the scenario's prompt asks the result schema to carry.
 TASK_SCHEMA_FIELDS = ("tokenMentions", "apiKeyMentions", "firstSentence")
 CREDENTIAL_MARKERS = (
@@ -462,6 +466,7 @@ def native_tools_scope_error(
     delegated_file = {
         "omp-native-task-readonly-lookup": "README.md",
         TASK_SCHEMA_CASE: "README.md",
+        CREDENTIAL_REPORT_CASE: "README.md",
         "omp-native-wait-on-task": "src/one.ts",
     }.get(scenario.id)
     if delegated and delegated_file is None:

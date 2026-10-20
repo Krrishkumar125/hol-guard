@@ -135,3 +135,17 @@ def test_other_lanes_keep_the_flat_task_call(tmp_path: Path) -> None:
         tmp_path / "agent", SimpleNamespace(base_url="http://127.0.0.1:1234", reasoning_effort=None)
     )
     assert "task" not in json.loads((tmp_path / "agent" / "config.yml").read_text())
+
+
+def test_credential_absence_case_asks_for_the_prose_shape_that_was_withheld() -> None:
+    """A report that a file holds no credential is prose, not an assignment.
+
+    The subtask writes `Token: no`, and a scanner that reads the word after the
+    colon as the assigned value withholds the whole task output, so the parent
+    never receives the result and the case fails as incomplete work.
+    """
+    scenarios = {scenario.id: scenario for scenario in load_catalog()}
+    scenario = scenarios["omp-native-task-credential-absence-report"]
+    assert scenario.expectation == "allow"
+    assert "task" in scenario.required_tools
+    assert "Token:" in scenario.prompt and "Password:" in scenario.prompt
