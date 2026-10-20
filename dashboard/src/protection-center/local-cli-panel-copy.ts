@@ -179,6 +179,17 @@ export function customExtensionStateLabel(item: LocalCliItem): string {
   return item.surface === "mcp" ? "Detected · Permissions not configured. Inspect this connection." : item.example_label;
 }
 
+/**
+ * The status line under a custom extension in the list. An MCP server is
+ * listed once per app that configures it, so its line names that app; the
+ * detail page already shows it under the title.
+ */
+export function customExtensionRowBehavior(item: LocalCliItem): string {
+  const continuity = continuityCopy(item);
+  const state = continuity ? `${continuity.title}. ${continuity.description}` : customExtensionStateLabel(item);
+  return item.surface === "mcp" && item.source_label ? `${item.source_label} · ${state}` : state;
+}
+
 export function continuityCopy(item: LocalCliItem): { title: string; description: string } | null {
   const status = item.continuity?.status;
   if (status === "applied") {

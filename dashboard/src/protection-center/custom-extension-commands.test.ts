@@ -5,6 +5,7 @@ import { normalizeLocalCliItem } from "../local-cli-api";
 import { commandPermissionChanges, mcpCatalogCopy, mcpToolCanReceiveDirectAllow, rebaseCommandDraft } from "./mcp-catalog-state";
 import { commandStatesPayload, withCommandState } from "./custom-extension-commands";
 import { customExtensionStateLabel } from "./local-clis-panel";
+import { customExtensionRowBehavior } from "./local-cli-panel-copy";
 
 {
   const catalog = {
@@ -146,6 +147,22 @@ assert.equal(
   "Every tool from this server is blocked.",
 );
 
+{
+  // One MCP server configured in three apps is three rows; each names its app.
+  const detected = (source_label: string | undefined) => normalizeLocalCliItem({
+    cli_id: "local-cli.mcp-truenas", name: "truenas-pilot", kind: "executable",
+    identity_hash: "c".repeat(64), example_label: "python3", observed_count: 1,
+    state: "unset", grant_revision: 0, authority_revision: 1, surface: "mcp", commands: [],
+    source_label,
+  });
+  const unset = "Detected · Permissions not configured. Inspect this connection.";
+  for (const app of ["Claude Code", "Oh My Pi", "OpenCode"]) {
+    assert.equal(customExtensionRowBehavior(detected(app)), `${app} · ${unset}`);
+  }
+  assert.equal(customExtensionRowBehavior(detected(undefined)), unset);
+  // A command-line extension keeps its line; its app is not a connection host.
+  assert.equal(customExtensionRowBehavior(legacyAllowed), "Matching commands from this file are allowed.");
+}
 
 console.log("custom-extension-commands.test.ts: all assertions passed");
 

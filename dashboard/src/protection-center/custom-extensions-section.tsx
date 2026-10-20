@@ -13,10 +13,9 @@ import {
   profileSetupCommand,
 } from "./custom-extension-profile";
 import {
-  continuityCopy,
   customExtensionActionLabel,
+  customExtensionRowBehavior,
   customExtensionRowDescription,
-  customExtensionStateLabel,
 } from "./local-cli-panel-copy";
 import { mcpCatalogCopy } from "./mcp-catalog-state";
 
@@ -33,14 +32,13 @@ function CustomExtensionRow(props: {
     else onOpen(item.cli_id);
   }, [item, onOpen, onSetUp]);
   const action = customExtensionActionLabel(item);
-  const continuity = continuityCopy(props.item);
   const catalog = mcpCatalogCopy(props.item);
   return (
     <ProtectionModuleRow
       extensionId={props.item.cli_id}
       name={customExtensionDisplayName(props.item)}
       description={customExtensionRowDescription(props.item, catalog?.title ?? null)}
-      behavior={continuity ? `${continuity.title}. ${continuity.description}` : customExtensionStateLabel(props.item)}
+      behavior={customExtensionRowBehavior(props.item)}
       brand={props.item.brand}
       badge={customExtensionBadge(props.item) ?? undefined}
       actionLabel={action ?? undefined}
