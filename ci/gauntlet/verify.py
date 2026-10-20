@@ -311,7 +311,8 @@ def _reconcile_case_retries(report: dict[str, Any], directory: Path, expected: S
     here, and required to be one of the outcomes a re-run is allowed for — the rule
     ``case_retry.retryable`` applies, enforced by the side that does not trust the
     runner. The file name binds to its own entry, so one case's history cannot point
-    at another case's evidence, and the digest still binds the bytes.
+    at another case's evidence, and the digest still binds the bytes. The outcome and
+    reason the history row shows readers must be the ones judged here.
     """
     by_id = {scenario.id: scenario for scenario in expected}
     for entry in report.get("case_retries") or []:
@@ -332,6 +333,8 @@ def _reconcile_case_retries(report: dict[str, Any], directory: Path, expected: S
         result = assess_case(scenario, case)
         if result != case.get("assessment"):
             raise ValueError("a superseded attempt's claimed result does not match observed evidence")
+        if (entry.get("outcome"), entry.get("reason")) != (result["outcome"], result["reason"]):
+            raise ValueError("a superseded attempt's declared outcome does not match its evidence")
         if not retry_eligible(result):
             raise ValueError("a superseded attempt was never eligible for a re-run")
 

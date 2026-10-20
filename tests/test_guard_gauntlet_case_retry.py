@@ -444,10 +444,18 @@ def _declined() -> dict[str, Any]:
 def _history(tmp_path: Path, case: dict[str, Any] | None = None) -> tuple[dict[str, Any], Path]:
     kept = tmp_path / "superseded" / "a.attempt-1.json"
     kept.parent.mkdir(parents=True, exist_ok=True)
-    kept.write_text(json.dumps(case if case is not None else _declined()))
+    case = case if case is not None else _declined()
+    kept.write_text(json.dumps(case))
     report = {
         "case_retries": [
-            {"id": "a", "attempt": 1, "evidence": kept.name, "evidence_sha256": digest_file(kept)},
+            {
+                "id": "a",
+                "attempt": 1,
+                "outcome": case["assessment"]["outcome"],
+                "reason": case["assessment"]["reason"],
+                "evidence": kept.name,
+                "evidence_sha256": digest_file(kept),
+            },
         ]
     }
     return report, kept
@@ -489,6 +497,9 @@ def test_the_verifier_rejects_a_banked_attempt_that_was_never_eligible(tmp_path:
         (lambda report, kept: _rewrite(kept, report, {"id": "elsewhere"}), "another case's evidence"),
         (lambda report, kept: _rewrite(kept, report, {"expectation": "block"}), "another case's evidence"),
         (lambda report, kept: _rewrite(kept, report, {"assessment": {"outcome": "pass"}}), "does not match"),
+        (lambda report, kept: report["case_retries"][0].update(outcome="harness-error"), "declared outcome"),
+        (lambda report, kept: report["case_retries"][0].update(reason="host crashed"), "declared outcome"),
+        (lambda report, kept: report["case_retries"][0].pop("outcome"), "declared outcome"),
     ],
 )
 def test_the_verifier_rejects_a_superseded_attempt_it_cannot_reconcile(
