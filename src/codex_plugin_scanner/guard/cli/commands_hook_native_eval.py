@@ -224,31 +224,19 @@ def _runtime_cisco_scanner_evidence(
     runtime_workspace: Path | None,
     raw_shell_cwds: object,
 ) -> tuple[GuardRiskSignalV3, ...]:
-    """Scan every distinct proven shell cwd that may resolve a relative target."""
+    """Scan every distinct proven shell cwd that may resolve a relative target.
 
-    workspaces: list[Path | None] = []
-    if isinstance(raw_shell_cwds, list):
-        for value in raw_shell_cwds:
-            if not isinstance(value, str) or not value.strip():
-                continue
-            candidate = Path(value).expanduser().resolve(strict=False)
-            if candidate not in workspaces:
-                workspaces.append(candidate)
-    if not workspaces:
-        workspaces.append(runtime_workspace)
+    The resident plans the action against each of those directories and
+    approves the rest for every one of those plans, so the directories are
+    handed over as the payload reported them: which of them is a scan root,
+    and which findings they share, are the resident's to settle.
+    """
 
-    primary_workspace = runtime_workspace or next((item for item in workspaces if item is not None), None)
-    approved_scan_roots = tuple(item for item in workspaces if item is not None)
-    evidence: list[GuardRiskSignalV3] = []
-    for workspace in workspaces:
-        for signal in scan_action_for_cisco_evidence(
-            action_envelope,
-            workspace=workspace or primary_workspace,
-            approved_scan_roots=approved_scan_roots,
-        ):
-            if signal not in evidence:
-                evidence.append(signal)
-    return tuple(evidence)
+    return scan_action_for_cisco_evidence(
+        action_envelope,
+        workspace=runtime_workspace,
+        shell_cwds=raw_shell_cwds if isinstance(raw_shell_cwds, list) else (),
+    )
 
 
 def evaluate_native_artifact_hook(
@@ -1033,7 +1021,12 @@ def evaluate_native_artifact_hook(
             policy_action=policy_action,
             guard_payload=response_payload,
         ):
-            native_reason = _runtime_artifact_native_reason(runtime_artifact, response_payload)
+            native_reason = _runtime_artifact_native_reason(
+                runtime_artifact,
+                response_payload,
+                composer=native_hook_compose,
+                guard_home=context.guard_home,
+            )
             _record_cursor_pending_shell_permission(
                 store=store,
                 guard_home=context.guard_home,

@@ -41,14 +41,18 @@ fn require_absent(path: &Path) -> io::Result<()> {
     }
 }
 
-fn path_override(image: &Path) -> PathBuf {
+/// Every name under which an interpreter may read a `._pth` path selector.
+/// POSIX appends the suffix and Windows replaces the extension. Windows checks
+/// both, so an extension-less or dotted-version image such as `python3.12`,
+/// which `with_extension` turns into `python3._pth`, cannot dodge the check.
+fn path_overrides(image: &Path) -> Vec<PathBuf> {
+    let mut appended = image.as_os_str().to_os_string();
+    appended.push("._pth");
+    let mut paths = vec![PathBuf::from(appended)];
     if cfg!(windows) {
-        image.with_extension("_pth")
-    } else {
-        let mut path = image.as_os_str().to_os_string();
-        path.push("._pth");
-        PathBuf::from(path)
+        paths.push(image.with_extension("_pth"));
     }
+    paths
 }
 
 fn capture(
@@ -86,8 +90,11 @@ fn capture(
     if !include_sites {
         bindings.push(directory_binding(requested_bin)?);
         bindings.push(directory_binding(&requested_root)?);
-        require_absent(&path_override(executable))?;
-        require_absent(&path_override(&canonical))?;
+        for image in [executable, canonical.as_path()] {
+            for selector in path_overrides(image) {
+                require_absent(&selector)?;
+            }
+        }
         if requested_bin != requested_root {
             require_absent(&requested_bin.join("pyvenv.cfg"))?;
         }

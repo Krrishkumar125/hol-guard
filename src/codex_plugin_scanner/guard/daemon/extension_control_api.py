@@ -59,6 +59,7 @@ from .extension_control_prepared import (
     expire_leases,
     expired,
     prepare_candidate,
+    release_all_leases,
     request_digest,
 )
 from .extension_control_request import request_needs_proof, required_request_string
@@ -412,6 +413,9 @@ class ExtensionControlApiService:
 
     def expire_prepared_cache_leases(self):
         expire_leases(self)
+
+    def release_prepared_cache_leases(self):
+        return release_all_leases(self)
 
     def apply(self, payload: dict[str, object]) -> dict[str, object]:
         with self._apply_lock:

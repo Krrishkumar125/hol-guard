@@ -11171,6 +11171,12 @@ def test_guard_hook_emits_codex_runtime_denial_with_guard_remediation(tmp_path, 
     assert "approve it in hol guard, then retry." not in reason
 
 
+def _composer_never_called(*_args: object, **_kwargs: object) -> dict[str, object]:
+    """Fail when a reason the CLI still composes locally reaches the resident."""
+
+    raise AssertionError("the resident must not be asked for this reason")
+
+
 def test_runtime_artifact_native_reason_truncates_long_risk_summaries() -> None:
     artifact = GuardArtifact(
         artifact_id="claude-code:project:tool-action:test",
@@ -11186,6 +11192,8 @@ def test_runtime_artifact_native_reason_truncates_long_risk_summaries() -> None:
     reason = guard_commands_module._runtime_artifact_native_reason(
         artifact,
         {"risk_summary": long_summary},
+        composer=_composer_never_called,
+        guard_home=None,
     )
 
     assert reason.startswith("HOL Guard flagged this request: ")
@@ -11212,6 +11220,8 @@ def test_runtime_artifact_native_reason_prefers_decision_v2_harness_message() ->
             },
             "risk_summary": "Generic fallback summary.",
         },
+        composer=_composer_never_called,
+        guard_home=None,
     )
 
     assert reason == "HOL Guard stopped this exact shell command before it touched secrets."
