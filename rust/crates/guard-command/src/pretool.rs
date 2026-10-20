@@ -105,6 +105,7 @@ mod git_worktree;
 pub(crate) mod github_conversation;
 mod guard_diagnostics;
 mod listing_reads;
+mod listing_temporary;
 mod lookup_reads;
 mod metadata_reads;
 mod npm_environment;

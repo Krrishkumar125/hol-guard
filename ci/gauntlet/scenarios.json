@@ -48,7 +48,7 @@
       "oracle": "commands",
       "commands": [
         "cat 'src/path with spaces.ts'",
-        "cat 'src/caf\u00e9.ts'",
+        "cat 'src/café.ts'",
         "head -1 src/one.ts",
         "tail -1 src/one.ts"
       ],
@@ -651,6 +651,21 @@
         "cat {{stage}}/x.ts >> {{home}}/other-project/src/report.ts",
         "cat > {{home}}/other-project/.pending-edits.md <<'EOF'\n# Pending\n- retry window\nEOF",
         "cp {{stage}}/a.ts {{stage}}/b.ts && cat {{stage}}/a.ts > {{home}}/other-project/src/copied.ts"
+      ]
+    },
+    {
+      "id": "omp-native-ls-temporary-scratch-probes",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "bash"
+      ],
+      "prompt": "I stage throwaway files in a scratch folder under the temporary directory. Check whether that folder has a dependency tree or a stale temp directory left behind, and show me the scratch folders themselves: run each listed command once, in order, exactly as written, and tell me what each one printed. Change nothing.",
+      "commands": [
+        "ls {{stage}}/signup-funnel/node_modules",
+        "ls {{stage}}/signup-funnel/.tmp",
+        "ls {{stage}}/.tmp",
+        "ls {{stage}}*"
       ]
     },
     {

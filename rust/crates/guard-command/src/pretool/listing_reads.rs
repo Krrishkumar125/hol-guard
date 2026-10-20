@@ -197,18 +197,17 @@ pub(super) fn absent_listing_operand(value: &str, context: super::PathContext<'_
     for ancestor in expanded.ancestors() {
         match std::fs::symlink_metadata(ancestor) {
             Ok(_) => {
-                return !missing.is_empty()
-                    && missing.iter().enumerate().all(|(index, part)| {
-                        let name = part.to_string_lossy();
-                        // `.git` is the one marker agents probe for. A missing
-                        // leaf prints only an error and reveals no content.
-                        // `.github` holds a project's workflows, never a
-                        // credential, so a probe for them may name it anywhere.
-                        !name.starts_with('.')
-                            || (index == 0 && name == ".git")
-                            || name == ".github"
-                    })
-                    && listable_ancestor(ancestor, context);
+                let spelled = missing.iter().enumerate().all(|(index, part)| {
+                    let name = part.to_string_lossy();
+                    // `.git` is the one marker agents probe for. A missing
+                    // leaf prints only an error and reveals no content.
+                    // `.github` holds a project's workflows, never a
+                    // credential, so a probe for them may name it anywhere.
+                    !name.starts_with('.') || (index == 0 && name == ".git") || name == ".github"
+                }) || super::listing_temporary::private_temporary_ancestor(
+                    ancestor, context,
+                );
+                return !missing.is_empty() && spelled && listable_ancestor(ancestor, context);
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 let Some(name) = ancestor.file_name() else {
@@ -264,7 +263,6 @@ fn leaf_glob_operand(value: &str, context: super::PathContext<'_>) -> bool {
         // pattern only screens its fixed path; every match is screened below.
         || super::sensitive_path_argument(value)
         || super::sensitive_read_path_argument(directory)
-        || !safe_reads::safe_listing_arguments(&[directory.to_owned()], context)
     {
         return false;
     }
@@ -286,6 +284,15 @@ fn leaf_glob_operand(value: &str, context: super::PathContext<'_>) -> bool {
     let Some(base) = expanded_path(directory, context) else {
         return false;
     };
+    // The listing names the matches, not the directory holding them, so a
+    // temporary root agents keep their scratch directories in answers for a
+    // pattern below it (`ls /tmp/tmp.ab12*`) although listing that root
+    // whole stays reviewed. Every match is screened on its own below.
+    if !safe_reads::safe_listing_arguments(&[directory.to_owned()], context)
+        && !super::listing_temporary::temporary_glob_directory(&base, context)
+    {
+        return false;
+    }
     let Ok(entries) = std::fs::read_dir(&base) else {
         return false;
     };
