@@ -37,6 +37,18 @@ pub(super) fn plan_note_output_target(target: &str, context: PathContext<'_>) ->
 }
 
 pub(super) fn safe_output_target(target: &str, context: PathContext<'_>) -> bool {
+    // NTFS reads any later colon as a stream name, and `C:name` is relative
+    // to that drive's own directory. The only colon a Windows target may
+    // hold is the designator of a `C:/` drive path.
+    #[cfg(windows)]
+    if target.char_indices().any(|(index, value)| {
+        value == ':'
+            && !(index == 1
+                && target.as_bytes()[0].is_ascii_alphabetic()
+                && target.as_bytes().get(2) == Some(&b'/'))
+    }) {
+        return false;
+    }
     if plan_note_output_target(target, context) {
         return true;
     }

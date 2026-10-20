@@ -191,3 +191,68 @@ fn worktree_added_beside_the_session_repository_is_proved() {
     let command = format!("git -C {project} worktree add {workflows} fix/report-export");
     assert!(!allowed(&session, &command), "{command}");
 }
+
+#[test]
+fn existing_program_in_the_profile_temporary_folder_stays_reviewed() {
+    let session = session("program");
+    let sibling = spelled(&session.sibling);
+    for name in ["tool.exe", "setup.CMD", "run.ps1"] {
+        std::fs::write(session.temporary.join(name), "program").unwrap();
+        let program = spelled(&session.temporary.join(name));
+        // Windows opens `tool.exe.` as `tool.exe`.
+        for target in [program.clone(), format!("{program}.")] {
+            let command = format!("git -C {sibling} show HEAD:src/report.ts > {target}");
+            assert!(!allowed(&session, &command), "{command}");
+        }
+    }
+    // An existing ordinary file there is still a scratch copy.
+    std::fs::write(session.temporary.join("report.ts"), "old").unwrap();
+    let copy = spelled(&session.temporary.join("report.ts"));
+    let command = format!("git -C {sibling} show HEAD:src/report.ts > {copy}");
+    assert!(
+        allowed(&session, &command),
+        "{command}: {}",
+        action(&session, &command)
+    );
+}
+
+#[test]
+fn drive_path_redirect_names_no_stream_and_no_drive_relative_path() {
+    let session = session("stream");
+    let sibling = spelled(&session.sibling);
+    let project = spelled(&session.project);
+    let inside = format!("{project}/report-main.ts");
+    let command = format!("git -C {sibling} show HEAD:src/report.ts > {inside}");
+    assert!(
+        allowed(&session, &command),
+        "{command}: {}",
+        action(&session, &command)
+    );
+    std::fs::write(session.project.join("credentials"), "secret").unwrap();
+    for target in [
+        format!("{inside}:stream"),
+        format!("{project}/credentials:stream"),
+        format!("{project}/credentials:stream:$DATA"),
+        "report-main.ts:stream".to_owned(),
+        format!("{}report-main.ts", &project[..2]),
+    ] {
+        let command = format!("git -C {sibling} show HEAD:src/report.ts > {target}");
+        assert!(!allowed(&session, &command), "{command}");
+    }
+}
+
+#[test]
+fn existing_source_file_in_the_profile_temporary_folder_is_still_a_scratch_copy() {
+    let session = session("source");
+    let sibling = spelled(&session.sibling);
+    // `.js` is a program extension to Windows Script Host, but a workspace
+    // loads it as source the way POSIX hosts treat it.
+    std::fs::write(session.temporary.join("bundle.js"), "old").unwrap();
+    let copy = spelled(&session.temporary.join("bundle.js"));
+    let command = format!("git -C {sibling} show HEAD:src/report.ts > {copy}");
+    assert!(
+        allowed(&session, &command),
+        "{command}: {}",
+        action(&session, &command)
+    );
+}
