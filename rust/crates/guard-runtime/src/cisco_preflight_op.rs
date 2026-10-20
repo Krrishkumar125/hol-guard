@@ -31,7 +31,7 @@ fn request_digest(request: &CiscoPreflightRequestV1) -> Result<String, &'static 
 fn within_bounds(query: &CiscoPreflightQueryV1) -> bool {
     let count = match query {
         CiscoPreflightQueryV1::Plan(plan) => {
-            plan.target_paths.len() + plan.approved_scan_roots.len()
+            plan.target_paths.len() + plan.approved_scan_roots.len() + plan.shell_cwds.len()
         }
         CiscoPreflightQueryV1::Revalidate(_) => 1,
         CiscoPreflightQueryV1::Evidence(evidence) => evidence.steps.len(),

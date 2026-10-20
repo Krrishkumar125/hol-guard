@@ -162,14 +162,24 @@ pub(crate) fn finding_signal(
     })
 }
 
+/// Report a signal unless it was already reported.
+fn report(signals: &mut Vec<Value>, signal: Value) {
+    if !signals.contains(&signal) {
+        signals.push(signal);
+    }
+}
+
 /// Final signals of a plan whose scan steps carry the analyzers' results.
+///
+/// A plan may reach one finding from more than one of the workspaces it was
+/// planned against, so a signal already reported is not reported again.
 pub(crate) fn evidence(steps: &[CiscoStepV1]) -> Result<Value, &'static str> {
-    let mut signals = Vec::new();
+    let mut signals: Vec<Value> = Vec::new();
     for step in steps {
         match step {
             CiscoStepV1::Signal { signal } => {
                 GuardRiskSignalV3::decode(signal).map_err(|_| "invalid signal step")?;
-                signals.push(signal.clone());
+                report(&mut signals, signal.clone());
             }
             CiscoStepV1::Scan {
                 kind,
@@ -188,7 +198,10 @@ pub(crate) fn evidence(steps: &[CiscoStepV1]) -> Result<Value, &'static str> {
                         .map_err(|_| "unknown scanner status")?,
                 };
                 for finding in findings {
-                    signals.push(finding_signal(finding, status, name)?.to_value());
+                    report(
+                        &mut signals,
+                        finding_signal(finding, status, name)?.to_value(),
+                    );
                 }
             }
         }

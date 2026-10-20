@@ -38,6 +38,11 @@ pub struct CiscoPlanQueryV1 {
     pub home: Option<String>,
     #[serde(default)]
     pub approved_scan_roots: Vec<String>,
+    /// Every proven shell working directory the action's relative targets may
+    /// resolve against. Each is planned as a selected workspace in turn, and
+    /// all of them are approved roots for every one of those plans.
+    #[serde(default)]
+    pub shell_cwds: Vec<String>,
     #[serde(default)]
     pub target_paths: Vec<String>,
     pub sources: Vec<String>,
