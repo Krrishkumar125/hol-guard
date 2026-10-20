@@ -117,10 +117,7 @@ mod tests {
             "pytest".to_owned(),
         ];
         let (launch, executable) = super::super::validation::resolve_pytest_executable(
-            &command,
-            &workspace,
-            &workspace,
-            "/usr/bin",
+            &command, &workspace, &workspace, "/usr/bin",
         )
         .expect("a shimmed system interpreter is a valid contained pytest launcher");
         assert_eq!(executable, resolved);

@@ -726,7 +726,7 @@
       ],
       "prompt": "Check the project's calculation helper with the system Python: run each listed command once, in order, and tell me what they printed.",
       "commands": [
-        "python3 -c \"import sys; print(sys.version_info[0])\"",
+        "python3 -c \"import sys; print(sys.version_info[0], sys.executable)\"",
         "python3 test_calc.py"
       ]
     },
