@@ -111,10 +111,10 @@ can be present while `maintainerGithubIds` is explicitly empty; that extension
 stays unclaimable until maintainers change the reviewed override. Omitting the
 field permits verified introducing-author authority.
 
-When one GitHub account is credited on several extensions, a public directory
-keeps each profile field from the earliest extension id that supplies it. A
-later listing does not replace that value. Profile text is display copy, not a
-certification.
+Each listing publishes its own contributor profile with that extension. The same
+GitHub account can carry different profile copy on different extensions. The
+canonical listing, including every profile, must stay within 16,384 bytes.
+Profile text is display copy, not a certification.
 
 ### Reviewed claim authority
 

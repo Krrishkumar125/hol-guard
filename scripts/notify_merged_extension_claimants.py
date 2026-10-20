@@ -338,19 +338,28 @@ def _validate_contributor_profile(profile: object, extension_id: str) -> None:
             maximum = 280 if field == "description" else 80
             minimum = 12 if field == "description" else 2
             _plain_text(profile[field], minimum=minimum, maximum=maximum, field=f"contributors.profile.{field}")
-    website = profile.get("website")
+    website = _profile_link(profile, "website", extension_id)
     if website is not None:
         _public_reference(website, field="contributors.profile.website")
-    linkedin = profile.get("linkedin")
+    linkedin = _profile_link(profile, "linkedin", extension_id)
     if linkedin is not None:
-        if not isinstance(linkedin, str) or LINKEDIN_RE.fullmatch(linkedin) is None:
+        if LINKEDIN_RE.fullmatch(linkedin) is None:
             raise ClaimNoticeError(f"{extension_id}: contributor LinkedIn link is invalid")
         _public_reference(linkedin, field="contributors.profile.linkedin")
-    x_url = profile.get("x")
+    x_url = _profile_link(profile, "x", extension_id)
     if x_url is not None:
-        if not isinstance(x_url, str) or X_RE.fullmatch(x_url) is None:
+        if X_RE.fullmatch(x_url) is None:
             raise ClaimNoticeError(f"{extension_id}: contributor X link is invalid")
         _public_reference(x_url, field="contributors.profile.x")
+
+
+def _profile_link(profile: dict[str, Any], field: str, extension_id: str) -> str | None:
+    if field not in profile:
+        return None
+    value = profile[field]
+    if not isinstance(value, str):
+        raise ClaimNoticeError(f"{extension_id}: contributor profile fields do not match the canonical schema")
+    return value
 
 
 def _validate_v2_credit_fields(listing: dict[str, Any], extension_id: str) -> None:
