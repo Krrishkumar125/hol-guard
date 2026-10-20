@@ -367,12 +367,62 @@ assert(
 const containerCommandItem: GuardApprovalRequest = {
   ...BASE_REQUEST,
   request_id: "req-container",
-  action_envelope_json: { ...shellEnvelope, command: "docker compose down -v" },
+  action_envelope_json: { ...shellEnvelope, command: "helm upgrade api ./chart" },
 };
 
 assert(
   resolveQueueCategory(containerCommandItem).label === "Container or deploy command",
   "T-QS-31: container and deploy commands get a specific category"
+);
+
+const dockerComposeCommandItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-docker-compose",
+  action_envelope_json: { ...shellEnvelope, command: "docker version --format '{{.Server.Version}}'" },
+};
+
+assert(
+  resolveQueueCategory(dockerComposeCommandItem).label === "Docker command",
+  "T-QS-31-docker: docker commands get the Docker category even without command_category metadata"
+);
+
+const gitRoutedStatusItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-git-routed-status",
+  action_envelope_json: { ...shellEnvelope, command: "git --no-pager -C ~/workspace/repo status --short" },
+};
+
+assert(
+  resolveQueueCategory(gitRoutedStatusItem).label === "Git workspace operation",
+  "T-QS-31-git-routed: git -C commands get the Git workspace operation category"
+);
+
+const githubCommandItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-gh-cli",
+  action_envelope_json: { ...shellEnvelope, command: "  sudo gh pr view 123" },
+};
+
+assert(
+  resolveQueueCategory(githubCommandItem).label === "GitHub command",
+  "T-QS-31-gh-cli: gh CLI commands get the GitHub command category even with leading whitespace or sudo"
+);
+
+const dockerConfigSecretReadItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-docker-config-secret",
+  risk_summary: "Reads a credential store path.",
+  action_envelope_json: {
+    ...shellEnvelope,
+    action_type: "file_read",
+    command: "cat ~/.docker/config.json",
+    target_paths: ["~/.docker/config.json"],
+  },
+};
+
+assert(
+  resolveQueueCategory(dockerConfigSecretReadItem).id === "secret_file_read",
+  "T-QS-31-docker-secret: reading ~/.docker/config.json stays secret_file_read instead of docker_command"
 );
 
 const categorizedDockerItem: GuardApprovalRequest = {
