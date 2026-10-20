@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import threading
 import time
 from contextlib import suppress
@@ -16,9 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..daemon.background_diagnostics import record_background_event
 from ..file_identity import full_stat_identity
 from ..native_resident_client import native_resident_client_request
 from ..native_runtime import _isolated_environment, native_runtime_status
+from ..secret_redaction import sanitize_secret
 from ..strict_json_pairs import unique_json_object
 from .authority import VerifiedDistribution
 
@@ -37,6 +40,32 @@ _retry_after = 0.0
 _refresh_worker: threading.Thread | None = None
 _refresh_after = 0.0
 _transport: ContextVar[list[Any] | None] = ContextVar("catalog_preparation_transport", default=None)
+# Preparation reverifies the installed release from scratch on every attempt, so
+# a deterministic fault (a resealed runtime whose manifests disagree, a corrupt
+# asset) fails every attempt identically. One failure can still be a cold start
+# racing a restarting resident, so a read only reports a failing preparation
+# after this many consecutive attempts have failed.
+PERSISTENT_PREPARATION_FAILURES = 2
+# `installed_discovery` reports a failing preparation with this exact message.
+# The read path matches it by value, the way this module already classifies the
+# handle codes above, so a test that stubs this module keeps its behaviour.
+PREPARATION_FAILING = "native discovery preparation failing"
+PREPARING = "native discovery preparing"
+_failures = 0
+_MAX_FAILURE_DETAIL = 160
+# Preparation wraps arbitrary OS errors, whose text carries the file that
+# failed. daemon.log is a support artifact, so every path-shaped run goes.
+_PATH_LIKE = re.compile(r"[^\s'\"]*[/\\][^\s'\"]*")
+_UNPRINTABLE = re.compile(r"[^\x20-\x7e]")
+
+
+def _failure_detail(error: BaseException) -> str:
+    """One bounded, path-free line naming a preparation failure."""
+
+    message = sanitize_secret(_PATH_LIKE.sub("<path>", _UNPRINTABLE.sub(" ", str(error)))).strip()
+    if len(message) > _MAX_FAILURE_DETAIL:
+        message = message[:_MAX_FAILURE_DETAIL] + "..."
+    return f"error={type(error).__name__}" + (f" detail={message}" if message else "")
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -209,18 +238,24 @@ def _prepare_discovery(guard_home: Path, authority, *, fetch=None) -> DiscoveryH
 
 
 def _prepare_ready(home):
-    global _handle, _worker, _retry_after
+    global _handle, _worker, _retry_after, _failures
     handle = None
     try:
         from .installed_bundle import load_installed_bundle
 
         handle = prepare_discovery(home, load_installed_bundle())
-    except (ImportError, OSError, ValueError, KeyError, TypeError):
-        pass
+    except (ImportError, OSError, ValueError, KeyError, TypeError) as error:
+        # A permanent fault here used to leave no line anywhere while every
+        # catalog read answered 503, so a broken installed runtime could only
+        # be found by probing the bundle. The thread stays non-fatal and the
+        # backoff below is unchanged; this only records what failed.
+        record_background_event("catalog_preparation_failed", _failure_detail(error))
     finally:
         with _ready_lock:
-            if _home == home and _handle is None:
-                _handle = handle
+            if _home == home:
+                if _handle is None:
+                    _handle = handle
+                _failures = 0 if handle is not None else _failures + 1
             _worker = None
             _retry_after = time.monotonic() + (1.0 if handle is None else 0.0)
         request_refresh(home)
@@ -244,8 +279,11 @@ def _refresh(home, store):
         with _ready_lock:
             if _home == home:
                 _handle = handle
-    except Exception:
-        pass  # Complete previous view and active protection remain independent.
+    except Exception as error:
+        # Complete previous view and active protection remain independent, so
+        # this stays non-fatal; it is recorded because a publication that never
+        # refreshes is otherwise indistinguishable from one that never ran.
+        record_background_event("catalog_publication_refresh_failed", _failure_detail(error))
     finally:
         with _ready_lock:
             _refresh_worker = None
@@ -273,17 +311,26 @@ def request_refresh(home: Path, *, store=None):
 
 
 def installed_discovery(guard_home: Path) -> DiscoveryHandle:
-    """Nonblocking control-plane readiness; the worker verifies and prepares."""
-    global _home, _worker, _handle
+    """Nonblocking control-plane readiness; the worker verifies and prepares.
+
+    Raises ``ValueError(PREPARING)`` while preparation may still succeed, and
+    ``ValueError(PREPARATION_FAILING)`` once consecutive attempts have failed.
+    Both keep the caller off a trusted snapshot; only the second tells it that
+    waiting cannot help.
+    """
+    global _home, _worker, _handle, _failures
     home = guard_home.absolute()
     with _ready_lock:
         if _home == home and _handle is not None:
             return _handle
         if _worker is None and time.monotonic() >= _retry_after:
+            if _home != home:
+                _failures = 0
             _home, _handle = home, None
             _worker = threading.Thread(target=_prepare_ready, args=(home,), name="catalog-preparation", daemon=True)
             _worker.start()
-    raise ValueError("native discovery preparing")
+        failing = _home == home and _failures >= PERSISTENT_PREPARATION_FAILURES
+    raise ValueError(PREPARATION_FAILING if failing else PREPARING)
 
 
 def invalidate(home, handle):
