@@ -201,10 +201,21 @@ Provider errors, unexercised cases and benign interruptions remain failures;
 parallelism cannot turn them into qualification.
 
 `qualification.json` includes `phase_seconds` for preflight, source setup,
-SDK setup, wheel preparation, installation, live cases, verification and
-cleanup. Repeated attempts accumulate in their phase rather than hiding
-retry cost. The existing `elapsed_seconds` is the end-to-end measurement,
+SDK setup, the lane check, wheel preparation, installation, live cases,
+verification and cleanup. Repeated attempts accumulate in their phase rather
+than hiding retry cost. The existing `elapsed_seconds` is the end-to-end measurement,
 including cold build and cleanup; a cached-wheel run must be reported as such.
+
+Once the SDK is in place and before the wheel is built, `qualify` spends one
+trivial completion on the backend it is about to use, through the same adapter
+and the same loopback Chat Completions protocol the cases use. It passes only
+when the backend reports a positive `total_tokens`. A signed-out provider does
+not fail loudly on its own: it answers every case with a well-formed empty stop
+until the round cap, so the run reaches `inference-error` for the whole catalog
+only after a cold wheel build and a full retry, and the evidence reads like a
+product failure when nothing about Guard was exercised. The lane check turns
+that into a named failure in seconds. Restore the provider's login and run
+again; there is nothing to diagnose in the candidate.
 
 The native inference adapter treats sixty seconds without a model text,
 reasoning or tool-argument delta as a stalled medium/low request. Transport
