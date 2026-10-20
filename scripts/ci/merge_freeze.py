@@ -11,9 +11,15 @@ paths keep that result honest:
   re-evaluates pull requests whose CI already finished. A finished check cannot
   be changed by flipping a variable, and a re-run reuses the workflow file the
   run started with, so reconcile posts a failing check run with the aggregate's
-  own name while frozen. When the freeze lifts it re-runs the real aggregate,
-  whose newer result replaces that check run. The failing check run is never
-  turned green by hand, so a pull request only passes on a real CI result.
+  own name while frozen.
+
+GitHub keeps the newest run of each check suite and the required check passes
+only when every one of them passes. The freeze check run usually lands in a
+suite of its own, where no later CI run can replace it, so lifting the freeze
+marks it neutral; CI's own runs still have to pass in their suites. When it
+shares a suite with CI, lifting re-runs the real aggregate instead, whose newer
+result replaces it there. Neither path lets a pull request pass without a real
+CI result.
 
 The gate runs the copy of this file from the pull request's base revision, so a
 pull request cannot change the policy that decides whether it may merge.
@@ -238,26 +244,48 @@ def _newest(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
     return max(runs, key=lambda run: (run.get("completed_at") or run.get("started_at") or "", run["id"]), default=None)
 
 
+def _suite(run: Mapping[str, Any]) -> Any:
+    return (run.get("check_suite") or {}).get("id")
+
+
+def _current(runs: list[dict[str, Any]]) -> tuple[dict[str, Any], ...]:
+    """The newest run of each check suite, which is what the required check reads."""
+    latest: dict[Any, dict[str, Any]] = {}
+    for run in runs:
+        held = latest.get(_suite(run))
+        if held is None or run["id"] > held["id"]:
+            latest[_suite(run)] = run
+    return tuple(latest.values())
+
+
 @dataclass(frozen=True)
 class Aggregate:
-    """The aggregate check runs on one head commit, split the way GitHub ranks them."""
+    """The aggregate check runs on one head commit, read the way GitHub ranks them."""
 
-    # The newest finished run, which is the result GitHub's required check reads.
-    result: dict[str, Any] | None
+    runs: tuple[dict[str, Any], ...]
+    # The newest run of each check suite. The required check passes only when
+    # every one of them passes.
+    current: tuple[dict[str, Any], ...]
     # The newest finished run from CI itself, never a freeze check run.
     real: dict[str, Any] | None
-    # CI runs still going. Each one finishes later than any check run posted now,
-    # so its result will replace whatever the required check shows today.
+    # CI runs still going.
     in_flight: bool
+
+    def failing_overlays(self) -> list[dict[str, Any]]:
+        return [run for run in self.current if _is_overlay(run) and _finished_failing(run)]
+
+    def shares_suite_with_ci(self, overlay: Mapping[str, Any]) -> bool:
+        return any(not _is_overlay(run) and _suite(run) == _suite(overlay) for run in self.runs)
 
 
 def _aggregate(api: Api, sha: str) -> Aggregate:
-    runs = api.pages(_aggregate_path(sha, "all"), key="check_runs")
-    finished = [run for run in runs if run.get("status") == "completed"]
+    runs = tuple(api.pages(_aggregate_path(sha, "all"), key="check_runs"))
+    real = [run for run in runs if not _is_overlay(run)]
     return Aggregate(
-        result=_newest(finished),
-        real=_newest([run for run in finished if not _is_overlay(run)]),
-        in_flight=any(run.get("status") != "completed" and not _is_overlay(run) for run in runs),
+        runs=runs,
+        current=_current(list(runs)),
+        real=_newest([run for run in real if run.get("status") == "completed"]),
+        in_flight=any(run.get("status") != "completed" for run in real),
     )
 
 
@@ -271,14 +299,19 @@ def _gate_failed(api: Api, job_id: int) -> bool:
 IN_FLIGHT_WHILE_FROZEN = (
     "CI is still running and could finish green after the freeze took effect; re-run this workflow once it finishes"
 )
+LIFTED_TITLE = "Merge freeze lifted"
+LIFTED_SUMMARY = (
+    "The merge freeze was lifted. This check run no longer blocks the pull request; "
+    "CI's own `hol-guard / required` result still has to pass."
+)
 
 
 def _hold(api: Api, pull: Pull, reason: str, repository: str, dry_run: bool) -> Outcome:
     aggregate = _aggregate(api, pull.head_sha)
-    if aggregate.result is not None and _finished_failing(aggregate.result):
+    if any(_finished_failing(run) for run in aggregate.current):
         if aggregate.in_flight:
             return Outcome(pull.number, "held", IN_FLIGHT_WHILE_FROZEN, error=True)
-        return Outcome(pull.number, "held", "newest aggregate result already fails")
+        return Outcome(pull.number, "held", "a current aggregate result already fails")
     if dry_run:
         return Outcome(pull.number, "would block", "post a failing aggregate check run")
     api.call(
@@ -293,44 +326,73 @@ def _hold(api: Api, pull: Pull, reason: str, repository: str, dry_run: bool) -> 
             "output": {"title": "Merge freeze active", "summary": freeze_summary(reason, repository)},
         },
     )
-    latest = api.pages(_aggregate_path(pull.head_sha, "latest"), key="check_runs")
-    if not latest or any(_passes(run) for run in latest):
-        return Outcome(pull.number, "blocked", "the latest aggregate check run still passes", error=True)
+    if not _aggregate(api, pull.head_sha).failing_overlays():
+        return Outcome(pull.number, "blocked", "the freeze check run is not among the current results", error=True)
     if aggregate.in_flight:
         return Outcome(pull.number, "blocked", IN_FLIGHT_WHILE_FROZEN, error=True)
     return Outcome(pull.number, "blocked", "posted a failing aggregate check run")
 
 
-def _release(api: Api, pull: Pull, dry_run: bool) -> Outcome:
-    aggregate = _aggregate(api, pull.head_sha)
-    result, real = aggregate.result, aggregate.real
-    if result is None:
-        return Outcome(pull.number, "unchanged", "")
-    if _is_overlay(result):
-        if not _finished_failing(result):
-            return Outcome(pull.number, "unchanged", "")
-        if aggregate.in_flight:
-            # The running aggregate reads the lifted flag and its result replaces
-            # the freeze check run. If it had already passed its gate while
-            # frozen it fails there, and the next dispatch re-runs it.
-            return Outcome(pull.number, "waiting", "CI is still running; its result replaces the freeze check run")
-        if real is None:
-            # A fork awaiting approval or a pull request whose CI never started
-            # stays blocked until CI reports; nothing here may stand in for it.
-            return Outcome(pull.number, "waiting", "no CI result yet; the freeze check run stays until CI reports")
-    elif aggregate.in_flight or not (_finished_failing(result) and _gate_failed(api, result["id"])):
-        # A genuine CI failure, a pass, or a run still going needs nothing here.
-        return Outcome(pull.number, "unchanged", "")
-    if real is None:
-        return Outcome(pull.number, "unchanged", "")
-    if dry_run:
-        return Outcome(pull.number, "would release", "re-run the aggregate")
+def _rerun(api: Api, pull: Pull, job: Mapping[str, Any]) -> Outcome | None:
     try:
-        api.call("POST", f"actions/jobs/{real['id']}/rerun")
+        api.call("POST", f"actions/jobs/{job['id']}/rerun")
     except ApiError as exc:
         # Keep the block: a pull request must never go green on a stale result.
         return Outcome(pull.number, "release failed", f"could not re-run the aggregate ({exc})", error=True)
-    return Outcome(pull.number, "released", "re-ran the aggregate; its result replaces the freeze check run")
+    return None
+
+
+def _release(api: Api, pull: Pull, dry_run: bool) -> Outcome:
+    aggregate = _aggregate(api, pull.head_sha)
+    overlays = aggregate.failing_overlays()
+    if not overlays:
+        gate_failures = [
+            run
+            for run in aggregate.current
+            if not _is_overlay(run) and _finished_failing(run) and _gate_failed(api, run["id"])
+        ]
+        # A genuine CI failure, a pass, or a run still going needs nothing here.
+        if aggregate.in_flight or not gate_failures:
+            return Outcome(pull.number, "unchanged", "")
+        if dry_run:
+            return Outcome(pull.number, "would release", "re-run the aggregate")
+        for run in gate_failures:
+            failed = _rerun(api, pull, run)
+            if failed is not None:
+                return failed
+        return Outcome(pull.number, "released", "re-ran the aggregate")
+    if aggregate.real is None and not aggregate.in_flight:
+        # A fork awaiting approval or a pull request whose CI never started
+        # stays blocked until CI reports; nothing here may stand in for it.
+        return Outcome(pull.number, "waiting", "no CI result yet; the freeze check run stays until CI reports")
+    own = [overlay for overlay in overlays if not aggregate.shares_suite_with_ci(overlay)]
+    shared = [overlay for overlay in overlays if aggregate.shares_suite_with_ci(overlay)]
+    if shared and aggregate.in_flight:
+        # The running aggregate reads the lifted flag and its result replaces the
+        # freeze check run in their shared suite.
+        return Outcome(pull.number, "waiting", "CI is still running; its result replaces the freeze check run")
+    if dry_run:
+        return Outcome(pull.number, "would release", "lift the freeze check run")
+    for overlay in own:
+        # Alone in its suite, the freeze check run is the only thing it can
+        # block. Marking it neutral leaves CI's runs to decide on their own.
+        api.call(
+            "PATCH",
+            f"check-runs/{overlay['id']}",
+            {
+                "status": "completed",
+                "conclusion": "neutral",
+                "output": {"title": LIFTED_TITLE, "summary": LIFTED_SUMMARY},
+            },
+        )
+    for overlay in shared:
+        job = _newest([run for run in aggregate.runs if not _is_overlay(run) and _suite(run) == _suite(overlay)])
+        if job is None:
+            continue
+        failed = _rerun(api, pull, job)
+        if failed is not None:
+            return failed
+    return Outcome(pull.number, "released", "lifted the freeze check run")
 
 
 def reconcile(

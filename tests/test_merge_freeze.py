@@ -203,7 +203,13 @@ def test_documented_commands_match_the_real_names() -> None:
 
 
 class FakeApi:
-    """GitHub REST stand-in. `latest` views mimic GitHub: the newest run for the name wins."""
+    """GitHub REST stand-in.
+
+    Runs carry a check suite. GitHub keeps the newest run of each suite, and the
+    required check passes only when all of them pass. CI's runs share suite
+    ``CI_SUITE``; freeze check runs land in ``overlay_suite``, their own by
+    default, the way GitHub places them in practice.
+    """
 
     def __init__(self, pulls: list[dict[str, Any]]) -> None:
         self.pulls = pulls
@@ -213,7 +219,8 @@ class FakeApi:
         self.tick = 0
         self.next_id = 900
         self.rerun_error: freeze.ApiError | None = None
-        self.mask_latest = False
+        self.overlay_suite = OVERLAY_SUITE
+        self.drop_posts = False
 
     def stamp(self) -> str:
         self.tick += 1
@@ -228,6 +235,7 @@ class FakeApi:
                 "status": status,
                 "conclusion": conclusion,
                 "external_id": "",
+                "check_suite": {"id": CI_SUITE},
                 "started_at": stamp,
                 "completed_at": stamp if conclusion else None,
             }
@@ -241,10 +249,7 @@ class FakeApi:
             return self.pulls
         sha = path.split("/")[1]
         runs = self.runs.get(sha, [])
-        if "filter=latest" in path:
-            pool = [r for r in runs if not r["external_id"]] if self.mask_latest else runs
-            newest = freeze._newest(pool)
-            return [newest] if newest else []
+        assert "filter=all" in path
         return list(runs)
 
     def call(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
@@ -253,17 +258,20 @@ class FakeApi:
             return self.jobs[int(path.rsplit("/", 1)[1])]
         if (method, path) == ("POST", "check-runs"):
             assert body is not None
-            self.next_id += 1
+            # GitHub ids only grow, so a new check run always outranks older ones.
+            self.next_id = max([self.next_id, *(r["id"] for rs in self.runs.values() for r in rs)]) + 1
             stamp = self.stamp()
             run = {
                 "id": self.next_id,
                 "status": body["status"],
                 "conclusion": body["conclusion"],
                 "external_id": body["external_id"],
+                "check_suite": {"id": self.overlay_suite},
                 "started_at": stamp,
                 "completed_at": stamp,
             }
-            self.runs.setdefault(body["head_sha"], []).append(run)
+            if not self.drop_posts:
+                self.runs.setdefault(body["head_sha"], []).append(run)
             return run
         if method == "PATCH":
             run_id = int(path.rsplit("/", 1)[1])
@@ -293,16 +301,21 @@ def api_pull(number: int, sha: str, ref: str = "feature", repo: str | None = REP
 
 
 SHA_A, SHA_B, SHA_C = "a" * 40, "b" * 40, "c" * 40
+CI_SUITE, OVERLAY_SUITE = 1, 2
 
 
 def run(api: FakeApi, freeze_raw: str | None, allow: str | None = None, *, dry_run: bool = False) -> freeze.Plan:
     return freeze.reconcile(api, REPO, freeze_raw, allow, dry_run=dry_run, log=lambda _line: None)  # type: ignore[arg-type]
 
 
-def newest_state(api: FakeApi, sha: str) -> tuple[str | None, str | None]:
-    newest = freeze._newest(api.runs[sha])
-    assert newest is not None
-    return newest["status"], newest["conclusion"]
+def required_state(api: FakeApi, sha: str) -> str:
+    """What the required check reads: every suite's newest run must pass."""
+    current = freeze._current(api.runs.get(sha, []))
+    if any(freeze._finished_failing(r) for r in current):
+        return "failure"
+    if not current or any(r["status"] != "completed" for r in current):
+        return "pending"
+    return "success"
 
 
 def test_freezing_blocks_a_pull_request_whose_ci_already_finished_green() -> None:
@@ -311,7 +324,7 @@ def test_freezing_blocks_a_pull_request_whose_ci_already_finished_green() -> Non
     plan = run(api, "true")
     assert [o.action for o in plan.outcomes] == ["blocked"]
     assert not plan.failed
-    assert newest_state(api, SHA_A) == ("completed", "failure")
+    assert required_state(api, SHA_A) == "failure"
     _, _, body = next(w for w in api.writes if w[1] == "check-runs")
     assert body["name"] == "hol-guard / required"
     assert body["output"]["title"] == "Merge freeze active"
@@ -328,14 +341,26 @@ def test_freezing_twice_is_idempotent() -> None:
     assert api.mutations() == []
 
 
-def test_a_rerun_that_went_green_during_the_freeze_is_blocked_again() -> None:
+def test_a_later_green_ci_run_does_not_replace_a_freeze_check_run_in_its_own_suite() -> None:
     api = FakeApi([api_pull(1, SHA_A)])
     api.add_real(SHA_A, "success")
     run(api, "true")
     api.add_real(SHA_A, "success", run_id=101)
-    assert newest_state(api, SHA_A) == ("completed", "success")
+    assert required_state(api, SHA_A) == "failure"
+    api.writes.clear()
+    assert [o.action for o in run(api, "true").outcomes] == ["held"]
+    assert api.mutations() == []
+
+
+def test_a_rerun_that_went_green_in_a_shared_suite_is_blocked_again() -> None:
+    api = FakeApi([api_pull(1, SHA_A)])
+    api.overlay_suite = CI_SUITE
+    api.add_real(SHA_A, "success")
     run(api, "true")
-    assert newest_state(api, SHA_A) == ("completed", "failure")
+    api.add_real(SHA_A, "success", run_id=1001)
+    assert required_state(api, SHA_A) == "success"
+    assert [o.action for o in run(api, "true").outcomes] == ["blocked"]
+    assert required_state(api, SHA_A) == "failure"
 
 
 def test_a_pull_request_with_no_ci_yet_is_held_too() -> None:
@@ -374,7 +399,7 @@ def test_a_pull_request_sharing_a_blocked_head_commit_cannot_release_it() -> Non
     plan = run(api, "true", "1")
     assert [o.action for o in plan.outcomes] == ["held", "held"]
     assert api.mutations() == []
-    assert newest_state(api, SHA_A) == ("completed", "failure")
+    assert required_state(api, SHA_A) == "failure"
 
 
 def test_freezing_while_ci_is_in_flight_asks_for_another_pass() -> None:
@@ -392,19 +417,43 @@ def test_freezing_while_ci_is_in_flight_asks_for_another_pass() -> None:
     assert api.mutations() == []
 
 
-def test_unfreezing_reruns_the_real_aggregate_whose_result_replaces_the_overlay() -> None:
+def test_unfreezing_marks_a_freeze_check_run_in_its_own_suite_neutral() -> None:
     api = FakeApi([api_pull(1, SHA_A)])
     api.add_real(SHA_A, "success")
     run(api, "true")
     api.writes.clear()
     plan = run(api, "false")
     assert [o.action for o in plan.outcomes] == ["released"]
-    # The freeze check run is never turned green by hand; only CI's own result passes.
-    assert api.mutations() == [("POST", "actions/jobs/100/rerun")]
-    assert newest_state(api, SHA_A) == ("completed", "success")
+    assert api.mutations() == [("PATCH", "check-runs/901")]
+    _, _, body = api.writes[-1]
+    assert body["conclusion"] == "neutral"
+    assert body["output"]["title"] == freeze.LIFTED_TITLE
+    assert required_state(api, SHA_A) == "success"
     api.writes.clear()
     assert [o.action for o in run(api, "false").outcomes] == ["unchanged"]
     assert api.mutations() == []
+
+
+def test_lifting_a_freeze_check_run_never_hides_a_ci_failure() -> None:
+    api = FakeApi([api_pull(1, SHA_A)])
+    api.add_real(SHA_A, "success")
+    run(api, "true")
+    api.add_real(SHA_A, "failure", run_id=101)
+    run(api, "false")
+    assert required_state(api, SHA_A) == "failure"
+
+
+def test_unfreezing_reruns_the_real_aggregate_when_it_shares_the_suite() -> None:
+    api = FakeApi([api_pull(1, SHA_A)])
+    api.overlay_suite = CI_SUITE
+    api.add_real(SHA_A, "success")
+    run(api, "true")
+    api.writes.clear()
+    plan = run(api, "false")
+    assert [o.action for o in plan.outcomes] == ["released"]
+    # In a shared suite only CI's newer result may replace the freeze check run.
+    assert api.mutations() == [("POST", "actions/jobs/100/rerun")]
+    assert required_state(api, SHA_A) == "success"
 
 
 def test_unfreezing_reruns_a_gate_failure_that_has_no_overlay() -> None:
@@ -413,7 +462,7 @@ def test_unfreezing_reruns_a_gate_failure_that_has_no_overlay() -> None:
     plan = run(api, "false")
     assert [o.action for o in plan.outcomes] == ["released"]
     assert ("POST", "actions/jobs/100/rerun") in api.mutations()
-    assert newest_state(api, SHA_A) == ("completed", "success")
+    assert required_state(api, SHA_A) == "success"
 
 
 def test_unfreezing_leaves_a_genuine_ci_failure_alone() -> None:
@@ -426,18 +475,20 @@ def test_unfreezing_leaves_a_genuine_ci_failure_alone() -> None:
 
 def test_a_rerun_failure_keeps_the_block_and_fails_the_dispatch() -> None:
     api = FakeApi([api_pull(1, SHA_A)])
+    api.overlay_suite = CI_SUITE
     api.add_real(SHA_A, "success")
     run(api, "true")
     api.rerun_error = freeze.ApiError(403, "run is still in progress")
     plan = run(api, "false")
     assert plan.failed
     assert plan.outcomes[0].action == "release failed"
-    assert newest_state(api, SHA_A) == ("completed", "failure")
+    assert required_state(api, SHA_A) == "failure"
     assert not any(m == "PATCH" for m, _ in api.mutations())
 
 
-def test_unfreezing_while_ci_is_in_flight_waits_for_its_result() -> None:
+def test_unfreezing_while_ci_is_in_flight_in_a_shared_suite_waits_for_its_result() -> None:
     api = FakeApi([api_pull(1, SHA_A)])
+    api.overlay_suite = CI_SUITE
     api.add_real(SHA_A, "success")
     run(api, "true")
     api.add_real(SHA_A, None, run_id=101)
@@ -449,13 +500,22 @@ def test_unfreezing_while_ci_is_in_flight_waits_for_its_result() -> None:
     assert [r["conclusion"] for r in api.runs[SHA_A] if r["external_id"]] == ["failure"]
 
 
+def test_unfreezing_while_ci_is_in_flight_lifts_a_freeze_check_run_in_its_own_suite() -> None:
+    api = FakeApi([api_pull(1, SHA_A)])
+    api.add_real(SHA_A, "success")
+    run(api, "true")
+    api.add_real(SHA_A, None, run_id=101)
+    assert [o.action for o in run(api, "false").outcomes] == ["released"]
+    assert required_state(api, SHA_A) == "pending"
+
+
 def test_unfreezing_with_no_real_aggregate_keeps_the_block_until_ci_reports() -> None:
     api = FakeApi([api_pull(1, SHA_A)])
     run(api, "true")
     api.writes.clear()
     assert [o.action for o in run(api, "false").outcomes] == ["waiting"]
     assert api.mutations() == []
-    assert newest_state(api, SHA_A) == ("completed", "failure")
+    assert required_state(api, SHA_A) == "failure"
 
 
 def test_an_invalid_value_blocks_everything() -> None:
@@ -469,10 +529,10 @@ def test_an_invalid_value_blocks_everything() -> None:
 def test_an_ineffective_overlay_fails_the_dispatch_loudly() -> None:
     api = FakeApi([api_pull(1, SHA_A)])
     api.add_real(SHA_A, "success")
-    api.mask_latest = True
+    api.drop_posts = True
     plan = run(api, "true")
     assert plan.failed
-    assert "still passes" in plan.outcomes[0].detail
+    assert "not among the current results" in plan.outcomes[0].detail
 
 
 def test_dry_run_writes_nothing() -> None:
