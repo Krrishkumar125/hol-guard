@@ -489,52 +489,6 @@ def _runtime_artifact_exact_match_context(artifact: GuardArtifact) -> str | None
     )
 
 
-def _artifact_risk_confidence(artifact: GuardArtifact) -> object:
-    confidence = artifact.metadata.get("risk_confidence")
-    if confidence is None:
-        confidence = artifact.metadata.get("confidence")
-    if isinstance(confidence, str) and confidence.strip():
-        return confidence
-    signals = artifact.metadata.get("risk_signals")
-    if not isinstance(signals, Sequence) or isinstance(signals, (str, bytes)):
-        return confidence
-    for signal in signals:
-        if not isinstance(signal, Mapping):
-            continue
-        signal_confidence = signal.get("confidence")
-        if isinstance(signal_confidence, str) and signal_confidence.strip():
-            return signal_confidence
-    return confidence
-
-
-def _artifact_skill_is_known_bad(artifact: GuardArtifact) -> bool:
-    if artifact.metadata.get("known_bad_skill") is True:
-        return True
-    if artifact.metadata.get("skill_is_known_bad") is True:
-        return True
-    intel = artifact.metadata.get("threat_intel")
-    return isinstance(intel, Mapping) and intel.get("known_bad") is True
-
-
-def _artifact_writes_launch_agent(artifact: GuardArtifact) -> bool:
-    """Whether a producer already asserted the artifact installs a boot item.
-
-    Reading the mechanism out of ``action_class`` is the resident's, which is
-    why that label travels beside this flag rather than being folded into it
-    here: a second copy of the mechanism table could withhold a stop the
-    protected posture asked for.
-    """
-
-    return artifact.metadata.get("persistence_writes_launch_agent") is True
-
-
-def _artifact_action_class(artifact: GuardArtifact) -> str | None:
-    """The artifact's ``action_class`` label, or ``None`` when it has none."""
-
-    action_class = artifact.metadata.get("action_class")
-    return action_class if isinstance(action_class, str) else None
-
-
 def _runtime_action_data_flow_signals(
     action_envelope: GuardActionEnvelope | None,
     *,

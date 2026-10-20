@@ -151,6 +151,7 @@ pub mod pretool_omp_eval_contained_bash;
 pub mod pretool_omp_eval_content;
 pub mod pretool_omp_eval_read_helpers;
 pub mod pretool_omp_fp_proofs;
+pub mod pretool_omp_grep_glob_paths;
 pub mod pretool_omp_hashline_edits;
 pub mod pretool_omp_home_documents;
 pub mod pretool_omp_home_dotdir_listing;

@@ -18,6 +18,11 @@ pub const HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA: &str = "guard-hook-artifact-comp
 pub const HOOK_ARTIFACT_COMPOSE_RESULT_SCHEMA: &str = "guard-hook-artifact-compose-result.v1";
 /// Capability advertised by the runtime when this operation is available.
 pub const HOOK_ARTIFACT_COMPOSE_FEATURE: &str = "hook-artifact-compose-v1";
+/// Capability advertised when the `policy_lookup_select` query is served. A
+/// runtime that predates the query rejects it as an unknown kind, so the
+/// caller requires this feature for that query alone.
+pub const HOOK_ARTIFACT_COMPOSE_POLICY_LOOKUP_FEATURE: &str =
+    "hook-artifact-compose-policy-lookup-v1";
 /// Capability advertised when the `prompt_request_reason` query is served.
 /// A runtime that predates the query rejects it as an unknown kind, so the
 /// caller requires this feature for that query alone.
@@ -76,6 +81,8 @@ pub enum HookArtifactComposeQueryV1 {
     DecisionCopy(Box<DecisionCopyQueryV1>),
     /// Build the canonical decision and its copy in the same resident request.
     DecisionBuildCopy(Box<DecisionBuildCopyQueryV1>),
+    /// Which of the non-consuming policy lookups the hook is answered from.
+    PolicyLookupSelect(PolicyLookupSelectQueryV1),
     /// What a flagged prompt request tells the user, before any harness copy.
     PromptRequestReason(PromptRequestReasonQueryV1),
     /// Why a remembered local rule was refused while local trust is degraded.
@@ -362,6 +369,15 @@ pub struct DecisionCopyQueryV1 {
     pub base_harness_message: Value,
     pub base_dashboard_primary_detail: Value,
     pub remembered_rule_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PolicyLookupSelectQueryV1 {
+    /// The lookups in probe order, the direct artifact first. Each is a saved
+    /// decision lookup result: `decision`, `ignored_local_integrity`,
+    /// `trust_status` and `authority_revision`.
+    pub lookups: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

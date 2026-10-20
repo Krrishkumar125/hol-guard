@@ -25,6 +25,7 @@ HOOK_ARTIFACT_COMPOSE_FEATURE = "hook-artifact-compose-v1"
 # kind, so each kind added after the op requires its own feature and only
 # for its own call.
 HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE = "hook-artifact-compose-package-reuse-v1"
+HOOK_ARTIFACT_COMPOSE_POLICY_LOOKUP_FEATURE = "hook-artifact-compose-policy-lookup-v1"
 HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE = "hook-artifact-compose-prompt-reason-v1"
 HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE = "hook-artifact-compose-remembered-rule-v1"
 HOOK_ARTIFACT_COMPOSE_SIGNAL_COMPOSITION_FEATURE = "hook-artifact-compose-signal-composition-v1"
@@ -142,6 +143,7 @@ _FIELDS: dict[str, frozenset[str]] = {
         }
     ),
     "decision_build_copy": frozenset({"copy", "reason", "signals"}),
+    "policy_lookup_select": frozenset({"lookups"}),
     "package_reuse_settle": frozenset(
         {
             "reasons",
@@ -162,14 +164,15 @@ _FIELDS: dict[str, frozenset[str]] = {
 # kind rejects it as an unknown kind, so the gate is per kind, not per op.
 _KIND_FEATURES: dict[str, str] = {
     "package_reuse_settle": HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE,
+    "policy_lookup_select": HOOK_ARTIFACT_COMPOSE_POLICY_LOOKUP_FEATURE,
     "prompt_request_reason": HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE,
     "remembered_rule_reason": HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE,
     "signal_composition": HOOK_ARTIFACT_COMPOSE_SIGNAL_COMPOSITION_FEATURE,
 }
 
 # The exact answer shape of each query kind. Spec letters: a action,
-# A action or null, b bool, s string, S string or null, d dict, D dict or null,
-# l list.
+# A action or null, b bool, i integer, s string, S string or null, d dict,
+# D dict or null, l list.
 _ANSWERS: dict[str, dict[str, str]] = {
     "policy_stack": {
         "approval_context_config_action": "a",
@@ -208,6 +211,12 @@ _ANSWERS: dict[str, dict[str, str]] = {
     },
     "decision_copy": {"decision_overrides": "d", "risk_headline": "S"},
     "decision_build_copy": {"decision_v2": "d", "risk_headline": "S"},
+    "policy_lookup_select": {
+        "authority_revision": "i",
+        "decision": "D",
+        "ignored_local_integrity": "D",
+        "trust_status": "d",
+    },
     "package_reuse_settle": {
         "approval_reuse": "D",
         "approval_reuse_source": "S",
@@ -241,6 +250,8 @@ def _field_valid(spec: str, value: object) -> bool:
             return isinstance(value, str) and value in GUARD_ACTION_VALUES
         case "b":
             return isinstance(value, bool)
+        case "i":
+            return isinstance(value, int) and not isinstance(value, bool)
         case "s":
             return isinstance(value, str)
         case "d":
@@ -327,6 +338,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
 __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_POLICY_LOOKUP_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_SIGNAL_COMPOSITION_FEATURE",
