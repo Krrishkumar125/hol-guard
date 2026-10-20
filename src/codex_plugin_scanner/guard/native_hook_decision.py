@@ -203,16 +203,43 @@ def native_compose_current(
 def native_post_claim_reuse(inputs: Mapping[str, object], *, guard_home: Path | None = None) -> tuple[str, str | None]:
     """The action and validation reason for re-evaluating a claimed saved approval."""
 
+    action, reason, _ = native_post_claim_decision(inputs, guard_home=guard_home)
+    return action, reason
+
+
+def native_post_claim_decision(
+    inputs: Mapping[str, object],
+    *,
+    guard_home: Path | None = None,
+) -> tuple[str, str | None, dict[str, Any] | None]:
+    """Re-evaluate a claimed saved approval, with its reuse decision when composed.
+
+    A request that names the claimed approval's context token asks the resident
+    to compare the tokens and to say what the re-evaluated claim means for
+    reuse, so the caller makes one request rather than three and never names a
+    saved action itself.  A request that settles the context on its own gets
+    the original two fields back and ``None`` here.
+    """
+
+    composed = "claimed_context_token" in inputs
+
     def validate(payload: dict[str, Any]) -> None:
-        if set(payload) != {"kind", "current_action", "validation_reason"}:
+        expected = {"kind", "current_action", "validation_reason"}
+        if set(payload) != (expected | {"reuse"} if composed else expected):
             raise NativeHookDecisionError(_INVALID)
         reason = payload["validation_reason"]
         if reason is not None and not isinstance(reason, str):
             raise NativeHookDecisionError(_INVALID)
+        if composed and not isinstance(payload["reuse"], dict):
+            raise NativeHookDecisionError(_INVALID)
         _action(payload["current_action"])
 
     payload = _decide({"kind": "post_claim_reuse", "inputs": dict(inputs)}, guard_home, validate)
-    return _action(payload["current_action"]), payload["validation_reason"]
+    return (
+        _action(payload["current_action"]),
+        payload["validation_reason"],
+        payload["reuse"] if composed else None,
+    )
 
 
 def native_finalize(
@@ -298,5 +325,6 @@ __all__ = [
     "native_compose_current",
     "native_copilot_settle",
     "native_finalize",
+    "native_post_claim_decision",
     "native_post_claim_reuse",
 ]

@@ -347,3 +347,90 @@ def test_a_prompt_scan_the_resident_cannot_answer_is_not_clean(monkeypatch: pyte
     )
 
     assert classifiers["prompt_clean"](None) is False
+
+
+_SAVED_TOKEN = (
+    "guard-approval-context:v1:eyJjYXBhYmlsaXRpZXMiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYW"
+    "FhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiY29udGVudCI6ImJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYm"
+    "JiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIiLCJpZGVudGl0eSI6ImNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2"
+    "NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MiLCJwb2xpY3kiOiJkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZG"
+    "RkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkIiwic2FuZGJveCI6ImVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZW"
+    "VlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWUiLCJ2ZXJzaW9uIjoxfQ"
+)
+_MOVED_TOKEN = (
+    "guard-approval-context:v1:eyJjYXBhYmlsaXRpZXMiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYW"
+    "FhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiY29udGVudCI6ImZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZm"
+    "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmYiLCJpZGVudGl0eSI6ImNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2"
+    "NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MiLCJwb2xpY3kiOiJkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZG"
+    "RkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkIiwic2FuZGJveCI6ImVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZW"
+    "VlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWUiLCJ2ZXJzaW9uIjoxfQ"
+)
+
+
+def _claim_with_tokens(current_token: str) -> dict[str, Any]:
+    return {
+        "current_policy_action": "allow",
+        "reuse_action": "allow",
+        "reuse_saved_action": "allow",
+        "post_claim_refresh_failed": False,
+        "claimed_context_token": _SAVED_TOKEN,
+        "current_context_token": current_token,
+        "fresh_local_approval": True,
+        "durable_exact_approval": False,
+        "has_ignored_integrity": False,
+        "claim_row_invalid": False,
+    }
+
+
+@pytest.mark.usefixtures("native_approval_reuse_runtime")
+def test_naming_the_claimed_token_composes_the_reuse_decision() -> None:
+    action, reason, reuse = decision.native_post_claim_decision(_claim_with_tokens(_SAVED_TOKEN))
+    assert (action, reason) == ("allow", None)
+    assert reuse is not None
+    assert reuse["action"] == "allow"
+    assert reuse["saved_action"] == "allow"
+    assert reuse["saved_artifact_hash_is_context_token"] is True
+
+
+@pytest.mark.usefixtures("native_approval_reuse_runtime")
+def test_a_context_that_moved_after_the_claim_never_reuses_it() -> None:
+    action, reason, reuse = decision.native_post_claim_decision(_claim_with_tokens(_MOVED_TOKEN))
+    assert (action, reason) == ("require-reapproval", "approval_reuse_context_changed_after_claim")
+    assert reuse is not None
+    assert reuse["action"] == "require-reapproval"
+    assert reuse["status"] == "rejected"
+
+
+@pytest.mark.usefixtures("native_approval_reuse_runtime")
+def test_a_claim_that_settles_the_context_neither_way_is_refused() -> None:
+    incomplete = {key: value for key, value in _CLAIM.items() if key != "context_changed"}
+    with pytest.raises(decision.NativeHookDecisionError) as error:
+        decision.native_post_claim_reuse(incomplete)
+    assert error.value.code == "native_hook_decision_facts_missing"
+
+
+@pytest.mark.parametrize("reuse", [None, "allow", []])
+def test_a_composed_request_answered_without_a_decision_raises(monkeypatch: pytest.MonkeyPatch, reuse: object) -> None:
+    payload: dict[str, Any] = {"kind": "post_claim_reuse", "current_action": "allow", "validation_reason": None}
+    if reuse is not None:
+        payload["reuse"] = reuse
+    _resident_returning(monkeypatch, lambda request: _good(request, payload=payload))
+    with pytest.raises(decision.NativeHookDecisionError):
+        decision.native_post_claim_decision(_claim_with_tokens(_SAVED_TOKEN))
+
+
+def test_an_uncomposed_request_answered_with_a_decision_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    _resident_returning(
+        monkeypatch,
+        lambda request: _good(
+            request,
+            payload={
+                "kind": "post_claim_reuse",
+                "current_action": "allow",
+                "validation_reason": None,
+                "reuse": {"action": "allow"},
+            },
+        ),
+    )
+    with pytest.raises(decision.NativeHookDecisionError):
+        decision.native_post_claim_reuse(_CLAIM)

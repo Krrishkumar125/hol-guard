@@ -140,3 +140,94 @@ fn rejected_query_is_a_bound_error_reply_with_its_code() {
     assert_eq!(reply["request_id"], "req-hook");
     assert!(reply["request_sha256"].as_str().is_some());
 }
+
+const SAVED_TOKEN: &str = concat!(
+    "guard-approval-context:v1:",
+    "eyJjYXBhYmlsaXRpZXMiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiY29udGVudCI6ImJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIiLCJpZGVudGl0eSI6ImNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MiLCJwb2xpY3kiOiJkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkIiwic2FuZGJveCI6ImVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWUiLCJ2ZXJzaW9uIjoxfQ"
+);
+const MOVED_TOKEN: &str = concat!(
+    "guard-approval-context:v1:",
+    "eyJjYXBhYmlsaXRpZXMiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiY29udGVudCI6ImZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmYiLCJpZGVudGl0eSI6ImNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MiLCJwb2xpY3kiOiJkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkIiwic2FuZGJveCI6ImVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWUiLCJ2ZXJzaW9uIjoxfQ"
+);
+
+/// A post-claim request that names both context tokens, so the resident
+/// compares them and composes the reuse decision itself.
+fn claim_with_tokens(saved: Value, current: Value) -> Value {
+    json!({"kind": "post_claim_reuse", "inputs": {
+        "current_policy_action": "allow", "reuse_action": "allow", "reuse_saved_action": "allow",
+        "post_claim_refresh_failed": false,
+        "claimed_context_token": saved, "current_context_token": current,
+        "fresh_local_approval": true, "durable_exact_approval": false,
+        "has_ignored_integrity": false, "claim_row_invalid": false,
+    }})
+}
+
+#[test]
+fn a_caller_that_compares_the_tokens_itself_gets_no_composition() {
+    let payload = &resident(&json!({"kind": "post_claim_reuse", "inputs": {
+        "current_policy_action": "allow", "reuse_action": "allow", "reuse_saved_action": "allow",
+        "post_claim_refresh_failed": false, "context_changed": false,
+        "has_ignored_integrity": false, "claim_row_invalid": false,
+    }}))["payload"];
+    assert_eq!(payload["current_action"], "allow");
+    assert!(payload["validation_reason"].is_null());
+    assert!(payload.get("reuse").is_none());
+}
+
+#[test]
+fn a_request_that_settles_the_context_neither_way_is_refused() {
+    let code = rejection(&json!({"kind": "post_claim_reuse", "inputs": {
+        "current_policy_action": "allow", "reuse_action": "allow", "reuse_saved_action": "allow",
+        "post_claim_refresh_failed": false,
+        "has_ignored_integrity": false, "claim_row_invalid": false,
+    }}));
+    assert_eq!(code.as_deref(), Some("native_hook_decision_facts_missing"));
+}
+
+#[test]
+fn an_unmoved_context_keeps_the_claimed_allow() {
+    let payload = &resident(&claim_with_tokens(
+        Value::from(SAVED_TOKEN),
+        Value::from(SAVED_TOKEN),
+    ))["payload"];
+    assert_eq!(payload["current_action"], "allow");
+    assert!(payload["validation_reason"].is_null());
+    assert_eq!(payload["reuse"]["action"], "allow");
+    assert_eq!(payload["reuse"]["saved_action"], "allow");
+    assert_eq!(
+        payload["reuse"]["saved_artifact_hash_is_context_token"],
+        true
+    );
+}
+
+#[test]
+fn a_moved_context_never_reuses_the_claimed_allow() {
+    let payload = &resident(&claim_with_tokens(
+        Value::from(SAVED_TOKEN),
+        Value::from(MOVED_TOKEN),
+    ))["payload"];
+    assert_eq!(payload["current_action"], "require-reapproval");
+    assert_eq!(
+        payload["validation_reason"],
+        "approval_reuse_context_changed_after_claim"
+    );
+    assert_eq!(payload["reuse"]["action"], "require-reapproval");
+    assert_eq!(payload["reuse"]["status"], "rejected");
+    assert_eq!(
+        payload["reuse"]["saved_artifact_hash_is_context_token"],
+        true
+    );
+}
+
+#[test]
+fn a_legacy_stored_hash_is_named_as_one_and_cannot_prove_the_context() {
+    let payload = &resident(&claim_with_tokens(
+        Value::from("sha256:legacy"),
+        Value::from(SAVED_TOKEN),
+    ))["payload"];
+    assert_eq!(payload["current_action"], "require-reapproval");
+    assert_eq!(
+        payload["reuse"]["saved_artifact_hash_is_context_token"],
+        false
+    );
+}
