@@ -311,6 +311,15 @@ mod unix_tests {
     /// the real owner uid, and whether the body text holds a secret.
     struct BodyHost {
         secret: bool,
+        uid: u32,
+    }
+
+    /// The uid that owns a path the test itself created, which is the uid the
+    /// check must accept. The crate forbids `unsafe_code`, so the owner is read
+    /// from the filesystem rather than from `getuid`.
+    fn owner_uid(path: &Path) -> u32 {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(path).unwrap().uid()
     }
 
     impl InspectionHost for BodyHost {
@@ -318,7 +327,7 @@ mod unix_tests {
             None
         }
         fn current_uid(&self) -> Option<u32> {
-            Some(unsafe { libc::getuid() })
+            Some(self.uid)
         }
         fn secret_content_found(&self, _: &str, _: bool) -> bool {
             self.secret
@@ -354,7 +363,10 @@ mod unix_tests {
     }
 
     fn is_safe(operand: &str, cwd: &Path, home: &Path) -> bool {
-        let host = BodyHost { secret: false };
+        let host = BodyHost {
+            secret: false,
+            uid: owner_uid(cwd),
+        };
         let ctx = Ctx::new(&host, "/", "/");
         github_pr_body_file_is_safe(operand, Some(cwd), Some(home), &ctx)
     }
@@ -496,7 +508,10 @@ mod unix_tests {
         let root = scratch("secret");
         let body = root.join("pr-body.md");
         fs::write(&body, "## Summary\n- Focused change.\n").unwrap();
-        let host = BodyHost { secret: true };
+        let host = BodyHost {
+            secret: true,
+            uid: owner_uid(&root),
+        };
         let ctx = Ctx::new(&host, "/", "/");
         assert!(!github_pr_body_file_is_safe(
             &body.to_string_lossy(),
@@ -512,7 +527,10 @@ mod unix_tests {
         let root = scratch("missing");
         let body = root.join("pr-body.md");
         fs::write(&body, "## Summary\n- Focused change.\n").unwrap();
-        let host = BodyHost { secret: false };
+        let host = BodyHost {
+            secret: false,
+            uid: owner_uid(&root),
+        };
         let ctx = Ctx::new(&host, "/", "/");
         let text = body.to_string_lossy().into_owned();
         assert!(!github_pr_body_file_is_safe(&text, None, Some(&root), &ctx));
