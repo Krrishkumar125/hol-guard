@@ -30,6 +30,33 @@ class Client:
         }}}
 
 
+def _credit_listing(contributors: list[dict[str, object]]) -> dict[str, object]:
+    return {
+        "summary": "Reviews destructive file-transfer operations through a bounded native command contract.",
+        "contributors": contributors,
+        "originalContributions": [],
+        "upstream": None,
+    }
+
+
+def test_contributor_profile_does_not_expand_claim_notice_credit_identity() -> None:
+    credit = {"githubId": "123", "githubLogin": "example-author", "roles": ["author"]}
+    notices._validate_v2_credit_fields(
+        _credit_listing([{**credit, "profile": {"description": "Writes bounded file-transfer coverage.", "website": "https://example.com"}}]),
+        "command.blitcp",
+    )
+    with pytest.raises(notices.ClaimNoticeError, match="profile"):
+        notices._validate_v2_credit_fields(
+            _credit_listing([{**credit, "profile": {"email": "person@example.com"}}]),
+            "command.blitcp",
+        )
+    with pytest.raises(notices.ClaimNoticeError, match="canonical schema"):
+        notices._validate_v2_credit_fields(
+            _credit_listing([{**credit, "email": "person@example.com"}]),
+            "command.blitcp",
+        )
+
+
 def test_comment_queries_are_bounded_and_preserve_trusted_actor_identity() -> None:
     client = Client()
     rows = batched_pull_comments(client, list(range(1, 62)))

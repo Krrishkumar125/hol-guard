@@ -139,6 +139,57 @@ def test_numeric_maintainers_and_exact_identity() -> None:
         validate_listing(row, expected_id="command.someone-else")
 
 
+def test_v2_contributor_profile_is_public_presentation_only() -> None:
+    row = listing()
+    profile = {
+        "description": "Writes bounded file-transfer coverage.",
+        "organization": "Example Labs",
+        "website": "https://example.com/tools",
+        "linkedin": "https://www.linkedin.com/in/example-author",
+        "x": "https://x.com/example",
+    }
+    row["contributors"] = [
+        {"githubId": "123", "githubLogin": "example-author", "roles": ["author"], "profile": profile}
+    ]
+    assert validate_listing(row)["contributors"] == row["contributors"]
+    assert "maintainerGithubIds" not in validate_listing(row)
+    row["contributors"] = [
+        {"githubId": "123", "githubLogin": "example-author", "roles": ["author"], "profile": {}}
+    ]
+    with pytest.raises(BuilderError):
+        validate_listing(row)
+    row["contributors"] = [
+        {
+            "githubId": "123",
+            "githubLogin": "example-author",
+            "roles": ["author"],
+            "profile": {"website": "https://user:secret@example.com"},
+        }
+    ]
+    with pytest.raises(BuilderError):
+        validate_listing(row)
+    row["contributors"] = [
+        {
+            "githubId": "123",
+            "githubLogin": "example-author",
+            "roles": ["author"],
+            "profile": {"linkedin": "https://evil.example/in/example-author"},
+        }
+    ]
+    with pytest.raises(BuilderError):
+        validate_listing(row)
+    row["contributors"] = [
+        {
+            "githubId": "123",
+            "githubLogin": "example-author",
+            "roles": ["author"],
+            "profile": {"description": "line one\nline two here"},
+        }
+    ]
+    with pytest.raises(BuilderError):
+        validate_listing(row)
+
+
 def test_v2_credit_is_not_accepted_claim_authority() -> None:
     row = listing()
     row.update(
