@@ -23,11 +23,9 @@ _MAX_NATIVE_REQUEST_BYTES = 128 * 1024
 
 def hook_classifiers(
     *,
-    canonical_harness: str,
     guard_home: Path | None,
     home_dir: Path | None,
     payload: Mapping[str, object],
-    runtime_artifact_checked: bool,
     runtime_workspace: Path | None,
 ) -> dict[str, Callable[[str | None], bool]]:
     """Classifier verdicts keyed by the fact name the resident requests."""
@@ -75,22 +73,19 @@ def hook_classifiers(
             home_dir=home_dir,
         )
 
-    def verified_apply_patch(event: str | None) -> bool:
-        from .commands_support_apply_patch_policy import verified_non_sensitive_codex_apply_patch
+    def apply_patch_targets_non_sensitive(_event: str | None) -> bool:
+        from .commands_support_apply_patch_policy import apply_patch_targets_are_non_sensitive
 
-        return verified_non_sensitive_codex_apply_patch(
-            canonical_harness=canonical_harness,
-            event_name=event,
+        return apply_patch_targets_are_non_sensitive(
             home_dir=home_dir,
             payload=payload,
-            runtime_artifact_checked=runtime_artifact_checked,
             runtime_workspace=runtime_workspace,
         )
 
     return {
         "prompt_clean": prompt_clean,
         "post_tool_read_only_inspection": post_tool_read_only_inspection,
-        "verified_apply_patch": verified_apply_patch,
+        "apply_patch_targets_non_sensitive": apply_patch_targets_non_sensitive,
     }
 
 

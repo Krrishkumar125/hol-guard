@@ -44,6 +44,27 @@ _BASE_INPUTS: dict[str, Any] = {
 }
 
 
+_PATCH_INPUTS: dict[str, Any] = {
+    **_BASE_INPUTS,
+    "tool_name_text": "apply_patch",
+    "runtime_artifact_checked": True,
+    "native_request": {
+        "tool_name": "apply_patch",
+        "tool_input": {"patch": "*** Begin Patch\n*** Update File: README.md\n*** End Patch\n"},
+        "cwd": "/work/project",
+        "home_dir": "/work",
+        "host": {
+            "process_cwd": "/work/project",
+            "home": "/work",
+            "account_home": None,
+            "groups": [],
+            "environment": {"HOME": "/work"},
+            "git_executable": None,
+        },
+    },
+}
+
+
 def _subset(expected: object, actual: object, path: str = "payload") -> list[str]:
     if isinstance(expected, dict):
         if not isinstance(actual, dict):
@@ -93,14 +114,20 @@ def test_classifiers_run_only_when_the_resident_asks() -> None:
         for name in (
             "prompt_clean",
             "post_tool_read_only_inspection",
-            "verified_apply_patch",
+            "apply_patch_targets_non_sensitive",
         )
     }
+    # The resident owns the benign tool-action verdict, and it reads the
+    # harness, the tool name and the patch text off the request it was given,
+    # so a Bash call asks no classifier at all.
     composition, facts = decision.native_compose_current(_BASE_INPUTS, classifiers)
-    # The resident owns the benign tool-action verdict; no classifier is asked.
     assert composition["composed_action"] == "review"
     assert composition["verified_benign"] is False
-    assert facts == {"verified_apply_patch": False}
+    assert facts == {} and asked == []
+
+    composition, facts = decision.native_compose_current(_PATCH_INPUTS, classifiers)
+    assert composition["composed_action"] == "review"
+    assert facts == {"apply_patch_targets_non_sensitive": False}
     assert [name for name, _ in asked] == list(facts)
     assert {event for _, event in asked} == {"PreToolUse"}
 
@@ -258,11 +285,9 @@ def test_composition_inputs_forward_raw_tool_call_without_verdicts(tmp_path: Pat
         "git_executable",
     }
     classifiers = hook_classifiers(
-        canonical_harness="codex",
         guard_home=None,
         home_dir=tmp_path,
         payload=payload,
-        runtime_artifact_checked=False,
         runtime_workspace=tmp_path,
     )
     assert "benign_native_file_read" not in classifiers
@@ -297,14 +322,11 @@ def test_resident_relaxes_review_default_for_benign_read_without_a_python_verdic
             runtime_workspace=workspace,
         )
         classifiers = hook_classifiers(
-            canonical_harness="codex",
             guard_home=None,
             home_dir=home,
             payload=payload,
-            runtime_artifact_checked=False,
             runtime_workspace=workspace,
         )
-        classifiers["verified_apply_patch"] = lambda _event: False
         return decision.native_compose_current(inputs, classifiers)
 
     event = {"hook_event_name": "PreToolUse"}
@@ -338,11 +360,9 @@ def test_a_prompt_scan_the_resident_cannot_answer_is_not_clean(monkeypatch: pyte
         lambda *_args, **_kwargs: ToolOutputAnswer(False, None, "native_codex_tool_output_unavailable"),
     )
     classifiers = hook_classifiers(
-        canonical_harness="codex",
         guard_home=None,
         home_dir=tmp_path,
         payload={"hook_event_name": "UserPromptSubmit", "prompt": "Read .codex/attachments/a/b.txt please."},
-        runtime_artifact_checked=False,
         runtime_workspace=tmp_path,
     )
 

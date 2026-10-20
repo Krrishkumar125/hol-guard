@@ -13,7 +13,9 @@ use guard_contracts::{
 };
 use serde_json::Value;
 
-use crate::hook_decision_native_facts::{benign_native_file_read, benign_tool_action};
+use crate::hook_decision_native_facts::{
+    apply_patch_may_be_verified, benign_native_file_read, benign_tool_action,
+};
 
 pub(crate) const COPILOT_BENIGN_HINT_REASON: &str =
     "untrusted_hook_payload_hint_ignored_guard_verified_benign";
@@ -177,7 +179,10 @@ fn relax_configured_default(
     if event == Some("PostToolUse") && inputs.runtime_artifact_checked && canonical == "codex" {
         return fact(inputs, "post_tool_read_only_inspection");
     }
-    if fact(inputs, "verified_apply_patch")? {
+    if event == Some("PreToolUse")
+        && apply_patch_may_be_verified(inputs)
+        && fact(inputs, "apply_patch_targets_non_sensitive")?
+    {
         return Ok(true);
     }
     let pre = event == Some("PreToolUse");
