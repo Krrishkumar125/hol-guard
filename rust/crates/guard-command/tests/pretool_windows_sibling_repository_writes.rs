@@ -5,8 +5,8 @@
 //! quoted heredoc. The POSIX proof (`pretool_sibling_repository_writes`) never
 //! compiled here, and the sibling-repository lookup it relies on returned
 //! nothing off Unix, so every such write was reviewed. Instruction files, Git
-//! control files, links, programs and folders that are not repositories keep
-//! their review.
+//! control files, links, programs, folders that are not repositories and
+//! repositories another account owns keep their review.
 
 #[allow(dead_code)]
 #[path = "support/git_helper_fixture.rs"]
@@ -33,6 +33,26 @@ fn spelled(path: &Path) -> String {
         .unwrap()
         .trim_start_matches(r"\\?\")
         .replace('\\', "/")
+}
+
+/// A junction is the link an unprivileged Windows user can make.
+fn junction(link: &Path, target: &Path) {
+    let made = std::process::Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(native(link))
+        .arg(native(target))
+        .output()
+        .unwrap();
+    assert!(made.status.success(), "{made:?}");
+}
+
+/// The drive path in native spelling, without the verbatim prefix that
+/// `cmd` and `icacls` do not take.
+fn native(path: &Path) -> String {
+    path.to_str()
+        .unwrap()
+        .trim_start_matches(r"\\?\")
+        .to_owned()
 }
 
 struct Layout {
@@ -143,8 +163,16 @@ fn homes(layout: &Layout) -> [String; 2] {
 fn redirects_into_a_sibling_repository_are_the_edits_a_file_tool_makes() {
     let layout = layout("allowed");
     let (sibling, stage) = (spelled(&layout.sibling), spelled(&layout.stage));
+    // A linked worktree's `.git` is a file naming its admin directory.
+    let worktree = layout.home.join("other-project-fix");
+    git(
+        &layout.sibling,
+        &["worktree", "add", "--quiet", &spelled(&worktree)],
+    );
+    let worktree = spelled(&worktree);
     for home in homes(&layout) {
         for command in [
+            format!("cat {stage}/x.ts > {worktree}/src/summary.ts"),
             format!("cat {stage}/x.ts > {sibling}/src/summary.ts"),
             format!("cat {stage}/x.ts > {sibling}/src/new.ts"),
             format!("cat {stage}/x.ts >> {sibling}/src/summary.ts"),
@@ -165,15 +193,34 @@ fn protected_targets_links_and_other_folders_keep_their_review() {
     let layout = layout("reviewed");
     let (sibling, stage) = (spelled(&layout.sibling), spelled(&layout.stage));
     let (home_folder, notes) = (spelled(&layout.home), spelled(&layout.notes));
-    // A junction is the link an unprivileged Windows user can make.
-    let junction = layout.sibling.join("linked");
-    let made = std::process::Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
-        .arg(&junction)
-        .arg(&layout.notes)
-        .output()
-        .unwrap();
-    assert!(made.status.success(), "{made:?}");
+    // Junctions inside the repository, to a folder in the home and to one
+    // outside it.
+    junction(&layout.sibling.join("linked"), &layout.notes);
+    junction(&layout.sibling.join("out"), &layout.stage);
+    // A `.git` file is the shape of a linked worktree or a submodule. One
+    // whose admin directory does not link back to it is not a repository:
+    // a worktree entry another checkout owns, and a submodule's module store.
+    let admin = layout.sibling.join(".git");
+    let elsewhere = spelled(&layout.home.join("elsewhere").join(".git"));
+    std::fs::create_dir_all(admin.join("worktrees/stray")).unwrap();
+    std::fs::write(admin.join("worktrees/stray/commondir"), "../..\n").unwrap();
+    std::fs::write(
+        admin.join("worktrees/stray/gitdir"),
+        format!("{elsewhere}\n"),
+    )
+    .unwrap();
+    std::fs::create_dir_all(admin.join("modules/stray")).unwrap();
+    let mut gitlinks = Vec::new();
+    for (name, store) in [
+        ("stray-worktree", "worktrees"),
+        ("stray-submodule", "modules"),
+    ] {
+        let folder = layout.home.join(name);
+        std::fs::create_dir_all(&folder).unwrap();
+        let gitdir = spelled(&admin.join(store).join("stray"));
+        std::fs::write(folder.join(".git"), format!("gitdir: {gitdir}\n")).unwrap();
+        gitlinks.push(spelled(&folder));
+    }
     // A folder holding an empty `.git` marker is not a repository.
     let empty = layout.home.join("empty-marker");
     std::fs::create_dir_all(empty.join(".git")).unwrap();
@@ -193,6 +240,12 @@ fn protected_targets_links_and_other_folders_keep_their_review() {
             format!("cat {stage}/x.ts > {sibling}/src/run.cmd"),
             format!("cat {stage}/x.ts > {sibling}/src/summary.ts:stream"),
             format!("cat {stage}/x.ts > {sibling}/linked/a.md"),
+            format!("cat {stage}/x.ts > {sibling}/out/x.ts"),
+            format!("cat {stage}/x.ts > {sibling}/out/new.ts"),
+            format!("cat > {sibling}/out/b.md <<'EOF'\nx\nEOF"),
+            // `.git` files whose admin directory does not link back.
+            format!("cat {stage}/x.ts > {}/report.ts", gitlinks[0]),
+            format!("cat {stage}/x.ts > {}/report.ts", gitlinks[1]),
             // Folders that are not repositories, and the home itself.
             format!("cat {stage}/x.ts > {notes}/a.md"),
             format!("cat {stage}/x.ts > {empty}/report.ts"),
@@ -206,4 +259,26 @@ fn protected_targets_links_and_other_folders_keep_their_review() {
         }
     }
     assert!(wrongly_allowed.is_empty(), "{wrongly_allowed:#?}");
+}
+
+#[test]
+fn repository_another_account_owns_keeps_its_review() {
+    let layout = layout("owner");
+    let (sibling, stage) = (spelled(&layout.sibling), spelled(&layout.stage));
+    let command = format!("cat {stage}/x.ts > {sibling}/src/summary.ts");
+    let home = spelled(&layout.home);
+    assert!(
+        action(&layout, &home, &command).starts_with("allow "),
+        "{command}"
+    );
+    // LocalService stands in for another account that planted a checkout in
+    // a home whose ACL was widened.
+    let changed = std::process::Command::new("icacls")
+        .arg(native(&layout.sibling))
+        .args(["/setowner", "*S-1-5-19"])
+        .output()
+        .unwrap();
+    assert!(changed.status.success(), "{changed:?}");
+    let decision = action(&layout, &home, &command);
+    assert!(!decision.starts_with("allow "), "{command}: {decision}");
 }

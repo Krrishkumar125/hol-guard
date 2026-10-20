@@ -232,22 +232,30 @@ fn repository_below_home(
 
 /// Windows has no execution sink to contain a `cd` into a sibling checkout,
 /// so that route stays closed, but a redirect writes one file the same way a
-/// file-edit tool does. Only the resolved home bounds the search, which the
-/// profile's own ACL already restricts to the user; the caller still validates
-/// the marker and screens the target.
+/// file-edit tool does. The resolved home must be a local disk path, so a
+/// profile on a network share stays reviewed (a mapped drive or a link onto a
+/// share resolves to its `\\?\UNC\` form), and the repository must be owned
+/// by the agent's user, as on Unix. The caller still validates the marker and
+/// screens the target.
 #[cfg(not(unix))]
 fn repository_below_home(
     canonical: &std::path::Path,
     _home_dir: &str,
     home: &std::path::Path,
 ) -> Option<std::path::PathBuf> {
-    if !canonical.starts_with(home) {
+    use std::path::{Component, Prefix};
+    let local = matches!(
+        home.components().next(),
+        Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::VerbatimDisk(_))
+    );
+    if !local || !canonical.starts_with(home) {
         return None;
     }
     canonical
         .ancestors()
         .take_while(|directory| *directory != home)
         .find(|directory| directory.join(".git").symlink_metadata().is_ok())
+        .filter(|root| guard_runtime_windows_process::owned_by_current_user(root))
         .map(std::path::Path::to_path_buf)
 }
 
