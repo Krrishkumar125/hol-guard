@@ -60,6 +60,12 @@ pub struct ApprovalReuseDiagnosticRequestV1 {
     pub now: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<ApprovalReuseDiagnosticEvidenceV1>,
+    /// The action the caller recomputed for this request. When it is present
+    /// the resident also composes what the miss means for reuse, so the caller
+    /// never has to decide that for itself; when it is absent the result keeps
+    /// its original two fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_action: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -73,7 +79,8 @@ pub struct ApprovalReuseDiagnosticResultV1 {
     pub status: String,
     /// `ok`, or one of the `native_approval_reuse_diagnostic_*` failure codes.
     pub code: String,
-    /// `{"reason": str|null, "stored_hash": str|null}` or
+    /// `{"reason": str|null, "stored_hash": str|null}` (with a `reuse`
+    /// decision alongside them when the request named a `current_action`) or
     /// `{"need": "integrity_evidence", "policy": bool, "local_once": bool}`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,

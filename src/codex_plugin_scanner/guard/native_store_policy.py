@@ -183,11 +183,46 @@ def native_approval_reuse_diagnostic(
     now: str,
     evidence_provider: EvidenceProvider,
 ) -> tuple[str | None, str | None]:
-    """Diagnose a saved-allow miss as ``(reason, stored_hash)``.
+    """Diagnose a saved-allow miss as ``(reason, stored_hash)``."""
+
+    reason, stored_hash, _reuse = native_approval_reuse_miss(
+        store_path=store_path,
+        guard_home=guard_home,
+        harness=harness,
+        artifact_id=artifact_id,
+        artifact_hash=artifact_hash,
+        workspace=workspace,
+        publisher=publisher,
+        now=now,
+        evidence_provider=evidence_provider,
+        current_action=None,
+    )
+    return reason, stored_hash
+
+
+def native_approval_reuse_miss(
+    *,
+    store_path: Path | str,
+    guard_home: Path,
+    harness: str,
+    artifact_id: str,
+    artifact_hash: str | None,
+    workspace: str | None,
+    publisher: str | None,
+    now: str,
+    evidence_provider: EvidenceProvider,
+    current_action: str | None,
+) -> tuple[str | None, str | None, Mapping[str, object] | None]:
+    """Diagnose a saved-allow miss as ``(reason, stored_hash, reuse)``.
 
     The first call carries no evidence; when the resident finds rows whose
     integrity it must verify it answers with a ``need`` naming the evidence, the
     provider supplies it, and the identical request is repeated with it.
+
+    Naming ``current_action`` also asks the resident what the miss means for
+    reuse, so the caller never has to name a saved action for a row it was
+    just told did not authorize the request. The composed ``reuse`` payload is
+    returned unparsed; ``None`` means the caller did not ask for one.
     """
 
     request: dict[str, object] = {
@@ -202,6 +237,9 @@ def native_approval_reuse_diagnostic(
         "publisher": publisher,
         "now": now,
     }
+    if current_action is not None:
+        request["current_action"] = current_action
+    expected = {"reason", "stored_hash"} if current_action is None else {"reason", "stored_hash", "reuse"}
     for _attempt in range(2):
         try:
             response = _resident_request(
@@ -222,12 +260,13 @@ def native_approval_reuse_diagnostic(
             evidence = evidence_provider(payload.get("policy") is True, payload.get("local_once") is True)
             request["evidence"] = {key: value for key, value in evidence.items() if value is not None}
             continue
-        reason, stored_hash = payload.get("reason"), payload.get("stored_hash")
+        reason, stored_hash, reuse = payload.get("reason"), payload.get("stored_hash"), payload.get("reuse")
         if (
-            set(payload) == {"reason", "stored_hash"}
+            set(payload) == expected
             and (reason is None or isinstance(reason, str))
             and (stored_hash is None or isinstance(stored_hash, str))
+            and (current_action is None or isinstance(reuse, dict))
         ):
-            return reason, stored_hash
+            return reason, stored_hash, reuse if current_action is not None else None
         break
     raise ApprovalReuseDiagnosticUnavailableError
