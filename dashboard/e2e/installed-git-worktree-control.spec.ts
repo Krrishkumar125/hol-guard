@@ -48,7 +48,9 @@ async function applyOneChange(page: Page): Promise<EffectiveControls> {
   expect(approvalPassword.length).toBeGreaterThan(20);
   await page.getByRole("button", { name: "Review 1 change" }).click();
   const dialog = page.getByRole("dialog", { name: "Review and apply 1 protection setting change" });
-  await expect(dialog).toBeVisible();
+  // The daemon computes the real outcome before the review opens, and the
+  // first one after a start is the slowest.
+  await expect(dialog).toBeVisible({ timeout: 60_000 });
   await dialog.getByLabel("Approval password").fill(approvalPassword);
   const effective = page.waitForResponse((response) =>
     new URL(response.url()).pathname === "/v1/extension-controls/effective" && response.status() === 200);
@@ -117,24 +119,32 @@ test("a rejected save from the real daemon reads as a sentence, never a protocol
   await openPolicy(page);
   // Ask the real daemon to apply against a revision that cannot exist. Nothing
   // is stubbed: this is the daemon's own rejection envelope.
-  const rejection = await page.evaluate(async (permission) => {
+  const rejection = await page.evaluate(async () => {
+    const token = sessionStorage.getItem("guard-token") ?? "";
+    const headers = { "Content-Type": "application/json", "X-Guard-Dashboard-Session": token };
+    // Take the authority the daemon is actually serving, so the only thing
+    // wrong with the request below is the revision it claims to amend. A
+    // hand-written body would be refused for its shape instead, and that
+    // rejection would prove nothing about a stale draft.
+    const effective = await (await fetch("/v1/extension-controls/effective", { headers })).json() as {
+      revision: number;
+      catalog_digest: string;
+      layers: unknown[];
+    };
     const response = await fetch("/v1/extension-controls/preview", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Guard-Dashboard-Session": sessionStorage.getItem("guard-token") ?? "",
-      },
+      headers,
       body: JSON.stringify({
-        previous_revision: 2_000_000_000,
-        catalog_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-        layers: [{ layer_id: "local", controls: [{ target: { kind: "permission", target_id: permission }, state: "enabled" }] }],
+        previous_revision: effective.revision + 1,
+        catalog_digest: effective.catalog_digest,
+        layers: effective.layers,
         actor_id: "installed-e2e",
         idempotency_key: "installed-e2e-stale-revision",
         nonce: "installed-e2e-stale-revision",
       }),
     });
     return { status: response.status, body: await response.json() as Record<string, unknown> };
-  }, permissionId);
+  });
 
   // A bad session header or an unknown route would also answer >= 400, and
   // this case is only worth anything if the daemon rejected the stale revision
