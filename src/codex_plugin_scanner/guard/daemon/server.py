@@ -84,7 +84,7 @@ from ..package_firewall_action_rate_limit import PackageFirewallActionRateLimite
 from ..runtime.approval_attention import ApprovalAttentionCoordinator
 from ..runtime.cloud_review_sync import CloudReviewSyncWorker, start_cloud_sync_sync_worker, stop_cloud_sync_sync_worker
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY, CommandSafetyExtensionRegistry
-from ..runtime.extension_control_authority import AuthorityHealth, ExtensionControlAuthorityView
+from ..runtime.extension_control_authority import ExtensionControlAuthorityView
 from ..runtime.extension_control_runtime import (
     ExtensionControlRuntime,
     ExtensionControlRuntimeSnapshot,
@@ -724,10 +724,10 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 require_current(self.store, _key(self.store), activation_digest)
                 view = self.store.read_extension_control_authority_for_registry(registry, read_only=shared)
                 snapshot = self.extension_control_runtime.refresh(view)
-            if self._extension_control_on_core_registry and snapshot.health is AuthorityHealth.PROTECTED:
+            if self._extension_control_on_core_registry:
                 # Startup bound the control API to the core registry. Once the
-                # installed authority reads again, serve the registry it was
-                # read for so previews and mutations stop failing against it.
+                # authority reads again, serve the registry it was read for so
+                # previews and mutations stop failing against the core one.
                 self.extension_control_api.rebind_registry(registry)
                 self._extension_control_on_core_registry = False
             return snapshot

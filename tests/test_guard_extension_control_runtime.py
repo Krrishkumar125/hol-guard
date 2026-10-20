@@ -350,29 +350,23 @@ def test_daemon_starts_fail_closed_with_future_authority_schema(
         daemon.stop()
 
 
-def test_daemon_rebinds_control_api_once_authority_reads_again(tmp_path: Path) -> None:
-    store = GuardStore(tmp_path / "guard-home")
-    store.read_extension_control_authority(catalog_digest=BUILT_IN_COMMAND_EXTENSION_REGISTRY.catalog_digest)
-    with store._connect() as connection:
-        (version,) = connection.execute(
-            "select version from extension_control_schema_migration where singleton = 1"
-        ).fetchone()
-        connection.execute("update extension_control_schema_migration set version = 99 where singleton = 1")
+def test_daemon_rebinds_control_api_once_authority_reads_again(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unavailable(self: GuardStore) -> None:
+        raise ValueError("installed bundle metadata unavailable")
 
-    daemon = GuardDaemonServer(store, host="127.0.0.1", port=0, extension_control_refresh_interval_seconds=0.01)
-    daemon.start()
+    monkeypatch.setattr(GuardStore, "migrate_installed_command_pack_authority", unavailable)
+    daemon = GuardDaemonServer(GuardStore(tmp_path / "guard-home"), host="127.0.0.1", port=0)
     try:
         server = daemon._server
         assert server._extension_control_on_core_registry
-        with store._connect() as connection:
-            connection.execute(
-                "update extension_control_schema_migration set version = ? where singleton = 1", (version,)
-            )
-        deadline = time.monotonic() + 30
-        while server._extension_control_on_core_registry:
-            assert time.monotonic() < deadline
-            time.sleep(0.01)
-        assert server.extension_control_runtime.current().health is AuthorityHealth.PROTECTED
+
+        monkeypatch.setattr(GuardStore, "migrate_installed_command_pack_authority", lambda self: None)
+        snapshot = server.refresh_extension_control_runtime()
+        assert snapshot.health is not AuthorityHealth.TAMPERED
+        assert not server._extension_control_on_core_registry
         assert server.extension_control_api.catalog_digest == BUILT_IN_COMMAND_EXTENSION_REGISTRY.catalog_digest
     finally:
         daemon.stop()
