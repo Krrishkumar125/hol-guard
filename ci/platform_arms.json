@@ -163,11 +163,11 @@
    "body": "c1b28980b610"
   },
   {
+   "verdict": "other-platform",
+   "note": "Windows resolves a sibling repository root in its own arm above (PR #5399), so this stub is now reached only on a platform Guard does not ship for. Returning `None` there leaves such a command reviewed, which is the honest answer where there is no containment sink at all.",
    "file": "rust/crates/guard-command/src/pretool/contained_wrapper.rs",
    "item": "pub(super) fn sibling_project_root( _target: &std::path::Path, _home: &str, ) -> Option<std::path::PathBuf>",
-   "verdict": "windows-unsupported",
-   "note": "One of the two arms this inventory was written for. `cd`-containment callers have no execution sink on Windows, so a sibling repository root is never resolved and a command that would run contained there is reviewed instead. PR #5200 shipped this stub with a `#![cfg(unix)]` integration test, so nothing ever exercised it. Closing it needs a Windows containment sink, not a different return value here.",
-   "cfg": "not(unix)",
+   "cfg": "not(any(unix, windows))",
    "body": "5ff1fe342d3b"
   },
   {
@@ -305,6 +305,14 @@
    "note": "The group- and other-writable mode check is skipped, so a kubeconfig in a directory that other accounts can write is still trusted. The surrounding checks still require the file to sit outside the agent's own trees and outside any repository. Closing it needs an ACL read, not a mode mask.",
    "cfg": "not(unix)",
    "body": "a7b8cd6c3dcf"
+  },
+  {
+   "verdict": "windows-permissive",
+   "note": "The Unix arm reads the mode bits and returns `true` for a world-writable directory, which makes the caller keep a glob below it reviewed: anyone can plant a matching link between the screen and the shell's expansion. The non-Unix stub returns `false`, so that check never fires on Windows and a glob under a shared writable root such as `C:\\Windows\\Temp` can be admitted where Unix reviews it. Nothing exercises the stub off Unix. Closing it means reading the directory's DACL for a write grant to a group wider than the owner, next to the ownership queries `guard-runtime-windows-process` already makes.",
+   "file": "rust/crates/guard-command/src/pretool/listing_temporary.rs",
+   "item": "pub(super) fn writable_by_anyone(_directory: &std::path::Path) -> bool",
+   "cfg": "not(unix)",
+   "body": "c9deb6aa42df"
   },
   {
    "file": "rust/crates/guard-command/src/pretool/package_script_route.rs",
@@ -1363,12 +1371,12 @@
    "body": "fca58fb9c85d"
   },
   {
+   "verdict": "windows-unsupported",
+   "note": "Every contained execution operation returns `native_operation_unavailable_on_this_platform`. This is the resident-side face of the containment gap. The list the arm covers grows as contained operations are added; the answer off Unix stays the same, so a reviewer checks only that a new operation belongs in it.",
    "file": "rust/crates/guard-runtime/src/resident_ops.rs",
    "item": "fn evaluate_resident_bytes_with_cancellation -- non-Unix block",
-   "verdict": "windows-unsupported",
-   "note": "Every contained execution operation returns `native_operation_unavailable_on_this_platform`. This is the resident-side face of the containment gap.",
    "cfg": "not(unix)",
-   "body": "003784382045"
+   "body": "4193f98cb016"
   },
   {
    "verdict": "other-platform",
