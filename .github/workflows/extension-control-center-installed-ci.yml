@@ -3,6 +3,7 @@ name: Extension Control Center installed CI
 on:
   pull_request:
     branches:
+      - main
       - release/3.0
       - release/3.2
     paths:
@@ -21,6 +22,7 @@ on:
       - .github/workflows/extension-control-center-installed-ci.yml
   push:
     branches:
+      - main
       - release/3.0
     paths:
       - dashboard/**
@@ -178,7 +180,8 @@ jobs:
             GUARD_INSTALLED_APPROVAL_PASSWORD="$APPROVAL_PASSWORD" \
             GUARD_INSTALLED_POLICY_PHASE="apply" \
               bunx playwright test --config playwright.installed.config.ts \
-              e2e/installed-extension-control-center.spec.ts
+              e2e/installed-extension-control-center.spec.ts \
+              e2e/installed-git-worktree-control.spec.ts
           )
 
           stop_server
@@ -214,7 +217,8 @@ jobs:
             GUARD_INSTALLED_APPROVAL_PASSWORD="$APPROVAL_PASSWORD" \
             GUARD_INSTALLED_POLICY_PHASE="verify" \
               bunx playwright test --config playwright.installed.config.ts \
-              e2e/installed-extension-control-center.spec.ts
+              e2e/installed-extension-control-center.spec.ts \
+              e2e/installed-git-worktree-control.spec.ts
           )
 
           HOL_GUARD_ARTIFACT_SECRET="$SESSION" \

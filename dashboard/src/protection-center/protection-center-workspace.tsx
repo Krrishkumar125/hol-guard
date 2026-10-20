@@ -37,6 +37,7 @@ import {
 } from "./protection-workspace-states";
 import { deriveProtectionStatus } from "./model/protection-presentation";
 import { ReviewModal, type ProtectionPendingChange } from "./protection-change-review";
+import { protectionChangeErrorMessage } from "./protection-change-error";
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
@@ -251,12 +252,11 @@ export function ProtectionCenterWorkspace(props: {
       setPending(null);
       await load();
     } catch (error) {
-      const recovery = error instanceof ExtensionControlApiError ? error.recoveryAction : undefined;
-      setMutationError(`${error instanceof Error ? error.message : "Protection change failed"}${recovery ? ` · ${recovery}` : ""}`);
+      setMutationError(protectionChangeErrorMessage(error, recoveryCommand, recoveryShell));
     } finally {
       setBusy(false);
     }
-  }, [load, pending, state]);
+  }, [load, pending, recoveryCommand, recoveryShell, state]);
 
   const runAuthorityAction = useCallback(async (kind: "repair" | "acknowledge", credentials: { approval_password?: string; approval_totp_code?: string }) => {
     const startHealth = state.kind === "ready" ? state.effective.health : null;

@@ -1,0 +1,156 @@
+import { expect, test } from "@playwright/test";
+
+import { ExtensionControlApiError } from "../src/extension-controls-api";
+import { protectionChangeErrorMessage } from "../src/protection-center/protection-change-error";
+
+/**
+ * The flow an operator actually runs first: open a tool they already have, set
+ * one of its everyday capabilities to Allow, and save it. It broke in a real
+ * install and no test caught it, because the installed coverage only ever
+ * blocked a capability on an extension nobody runs. This drives the real
+ * daemon, the real wheel and the real authority, with no stubbed responses.
+ */
+
+function requiredEnvironment(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+const origin = requiredEnvironment("GUARD_INSTALLED_ORIGIN");
+const session = requiredEnvironment("GUARD_INSTALLED_DASHBOARD_SESSION");
+const policyPhase = process.env.GUARD_INSTALLED_POLICY_PHASE ?? "read-only";
+const approvalPassword = process.env.GUARD_INSTALLED_APPROVAL_PASSWORD ?? "";
+const extensionId = "command.git";
+const permissionId = "command.git.permission.worktree";
+
+type Page = import("@playwright/test").Page;
+
+type EffectiveControls = {
+  revision: number;
+  controls: Array<{ target: { kind: string; target_id: string }; state: string }>;
+  projection?: { permissions: Array<{ permission_id: string; effective_state: string; local_state: string }> };
+};
+
+async function openPolicy(page: Page) {
+  await page.addInitScript(({ daemon, token }) => {
+    sessionStorage.setItem("guard-token", token);
+    sessionStorage.setItem("guardDaemon", daemon);
+  }, { daemon: origin, token: session });
+  await page.goto(`/extensions/${extensionId}?tab=policy`);
+  expect(page.url()).not.toContain(session);
+  await expect(page.getByTestId("protection-module-detail")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("#extension-policy-heading")).toHaveText("Protection settings");
+  return page.locator(`[data-permission-id="${permissionId}"]`);
+}
+
+async function applyOneChange(page: Page): Promise<EffectiveControls> {
+  expect(approvalPassword.length).toBeGreaterThan(20);
+  await page.getByRole("button", { name: "Review 1 change" }).click();
+  const dialog = page.getByRole("dialog", { name: "Review and apply 1 protection setting change" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Approval password").fill(approvalPassword);
+  const effective = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === "/v1/extension-controls/effective" && response.status() === 200);
+  await dialog.getByRole("button", { name: "Apply 1 reviewed change" }).click();
+  try {
+    const response = await effective;
+    return await response.json() as EffectiveControls;
+  } catch (error) {
+    // A failed save renders in the workspace alert. Report the sentence the
+    // operator would have read, so a regression names the failure instead of
+    // leaving a bare wait-for-response timeout.
+    const alert = await page.getByRole("alert").first().innerText().catch(() => "<no alert rendered>");
+    throw new Error(`saving the worktree setting failed: ${alert}`, { cause: error });
+  }
+}
+
+test("installed dashboard saves Allow on an everyday capability of an active tool", async ({ page }, testInfo) => {
+  test.skip(policyPhase !== "apply", "the save runs before the deliberate daemon restart");
+  test.setTimeout(180_000);
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+
+  const row = await openPolicy(page);
+  await expect(row).toBeVisible();
+  await expect(row.getByRole("heading", { name: "Git worktree" })).toBeVisible();
+  const allow = row.getByRole("radio", { name: "Allow" });
+  await expect(allow).toBeEnabled();
+  await allow.click();
+  await expect(page.getByText("1 unsaved setting change.")).toBeVisible();
+
+  const effective = await applyOneChange(page);
+  expect(effective.revision).toBeGreaterThan(0);
+  await expect(page.getByTestId("extension-policy-applied-toast")).toContainText(`Applied · revision ${effective.revision}`);
+  expect(effective.controls).toContainEqual({ target: { kind: "permission", target_id: permissionId }, state: "enabled" });
+  expect(effective.projection?.permissions.find((permission) => permission.permission_id === permissionId)?.local_state)
+    .toBe("enabled");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+
+  const savedRow = await openPolicy(page);
+  await expect(savedRow.getByRole("radio", { name: "Allow" })).toHaveAttribute("aria-checked", "true");
+  await page.screenshot({ path: testInfo.outputPath("installed-git-worktree-allowed.png"), fullPage: true });
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("the saved Allow survives a daemon restart and can be returned to Recommended", async ({ page }) => {
+  test.skip(policyPhase !== "verify", "persistence runs only after the workflow restarts the real daemon");
+  test.setTimeout(180_000);
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+
+  const row = await openPolicy(page);
+  await expect(row.getByRole("radio", { name: "Allow" })).toHaveAttribute("aria-checked", "true");
+
+  await row.getByRole("radio", { name: "Recommended" }).click();
+  const effective = await applyOneChange(page);
+  expect(effective.controls.some((control) =>
+    control.target.kind === "permission" && control.target.target_id === permissionId)).toBe(false);
+  const restored = await openPolicy(page);
+  await expect(restored.getByRole("radio", { name: "Recommended" })).toHaveAttribute("aria-checked", "true");
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("a rejected save from the real daemon reads as a sentence, never a protocol code", async ({ page }) => {
+  test.skip(policyPhase === "read-only", "runs once, alongside the save it protects");
+  test.setTimeout(120_000);
+  await openPolicy(page);
+  // Ask the real daemon to apply against a revision that cannot exist. Nothing
+  // is stubbed: this is the daemon's own rejection envelope.
+  const rejection = await page.evaluate(async (permission) => {
+    const response = await fetch("/v1/extension-controls/preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Guard-Dashboard-Session": sessionStorage.getItem("guard-token") ?? "",
+      },
+      body: JSON.stringify({
+        previous_revision: 2_000_000_000,
+        catalog_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        layers: [{ layer_id: "local", controls: [{ target: { kind: "permission", target_id: permission }, state: "enabled" }] }],
+        actor_id: "installed-e2e",
+        idempotency_key: "installed-e2e-stale-revision",
+        nonce: "installed-e2e-stale-revision",
+      }),
+    });
+    return { status: response.status, body: await response.json() as Record<string, unknown> };
+  }, permissionId);
+
+  expect(rejection.status).toBeGreaterThanOrEqual(400);
+  const code = rejection.body.error;
+  expect(typeof code).toBe("string");
+  const rendered = protectionChangeErrorMessage(
+    new ExtensionControlApiError(
+      code as string,
+      rejection.status,
+      code as string,
+      typeof rejection.body.recovery === "object" && rejection.body.recovery !== null
+        ? (rejection.body.recovery as { action?: string }).action
+        : undefined,
+      typeof rejection.body.cause === "string" ? rejection.body.cause : undefined,
+    ),
+  );
+  expect(rendered).not.toContain(code as string);
+  expect(rendered).not.toMatch(/\b[a-z]+(_[a-z]+){2,}\b/);
+  expect(rendered.endsWith(".")).toBe(true);
+});
