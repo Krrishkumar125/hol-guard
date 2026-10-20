@@ -223,7 +223,9 @@ fn protected_or_workspace_holding_venvs_and_venv_pytest_scripts_are_rejected() {
     assert!(launcher_root(&venv.join("bin/python3")).is_some());
     let inner = venv.join("share/project");
     fs::create_dir_all(&inner).unwrap();
-    assert!(external_root(&venv.join("bin/python3"), &base, &inner).is_none());
+    // The image the launcher really reaches, so the workspace rule is what refuses.
+    let image = forwarded_tool(&base).unwrap_or_else(|| base.clone());
+    assert!(external_root(&venv.join("bin/python3"), &image, &inner).is_none());
     assert!(admit("python3", &inner, &venv).is_err());
     let workspace = fixture.0.join("workspace");
     let script = venv.join("bin/pytest");
