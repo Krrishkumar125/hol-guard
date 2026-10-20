@@ -16,7 +16,6 @@ from ..harness_posture import harness_posture_override
 from ..models import GuardAction, GuardArtifact
 from ..native_hook_artifact_compose import native_hook_compose
 from ..protection_events import record_protection_event
-from ..protection_posture import is_high_confidence
 from .commands_support_prompts import _prompt_requires_hard_block
 from .commands_support_runtime_resolution import _canonical_harness_name
 
@@ -109,7 +108,6 @@ def runtime_policy_artifact_facts(config: GuardConfig, artifact: GuardArtifact, 
         "shell_local_script_review": metadata.get("reason_code") == "shell_local_script_execution_review",
         "guard_default_action": _typed_text(default_action),
         "confidence_text": str(confidence or ""),
-        "confidence_strong": is_high_confidence(confidence),
         "writes_launch_agent": _artifact_writes_launch_agent(artifact),
         "action_class": _artifact_action_class(artifact),
         "skill_is_known_bad": _artifact_skill_is_known_bad(artifact),

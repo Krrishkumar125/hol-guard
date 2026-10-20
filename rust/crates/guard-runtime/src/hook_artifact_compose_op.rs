@@ -84,6 +84,9 @@ pub(crate) fn compose(query: &HookArtifactComposeQueryV1) -> Result<Value, Strin
         HookArtifactComposeQueryV1::ClaimedReuse(query) => reuse::claimed_reuse(query),
         HookArtifactComposeQueryV1::DecisionCopy(query) => reuse::decision_copy(query),
         HookArtifactComposeQueryV1::DecisionBuildCopy(query) => reuse::decision_build_copy(query)?,
+        HookArtifactComposeQueryV1::RememberedRuleReason(query) => {
+            reuse::remembered_rule_reason(query)
+        }
         HookArtifactComposeQueryV1::PackageReuseSettle(query) => reuse::package_reuse_settle(query),
         HookArtifactComposeQueryV1::PackageFirewallAccess(query) => {
             package_firewall::package_firewall_access(query)?

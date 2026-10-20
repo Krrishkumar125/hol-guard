@@ -26,6 +26,7 @@ HOOK_ARTIFACT_COMPOSE_FEATURE = "hook-artifact-compose-v1"
 # for its own call.
 HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE = "hook-artifact-compose-package-reuse-v1"
 HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE = "hook-artifact-compose-package-firewall-access-v1"
+HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE = "hook-artifact-compose-remembered-rule-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-compose-request.v1"
 _RESULT_SCHEMA = "guard-hook-artifact-compose-result.v1"
 _RESIDENT_CODE = re.compile(r"^native_hook_artifact_compose_[a-z_]{1,64}$")
@@ -152,12 +153,15 @@ _FIELDS: dict[str, frozenset[str]] = {
         }
     ),
     "package_firewall_access": frozenset({"entitlement", "operation", "has_installed_managers"}),
+    "remembered_rule_reason": frozenset({"remembered_rules", "integrity_message", "artifact_summary"}),
 }
 
-# The feature a kind needs beyond the op itself.
+# The feature a kind needs beyond the op itself. A runtime that predates the
+# kind rejects it as an unknown kind, so the gate is per kind, not per op.
 _KIND_FEATURES: dict[str, str] = {
     "package_firewall_access": HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE,
     "package_reuse_settle": HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE,
+    "remembered_rule_reason": HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE,
 }
 
 # The exact answer shape of each query kind. Spec letters: a action,
@@ -219,6 +223,7 @@ _ANSWERS: dict[str, dict[str, str]] = {
         "block": "d",
         "operation_allowed": "B",
     },
+    "remembered_rule_reason": {"reason": "S"},
 }
 
 
@@ -317,6 +322,7 @@ __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE",
     "NativeHookComposeError",
     "NativeHookComposeValidationError",
     "native_hook_compose",

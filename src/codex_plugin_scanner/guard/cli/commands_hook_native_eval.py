@@ -931,6 +931,8 @@ def evaluate_native_artifact_hook(
         scanner_risk_signals=scanner_risk_signals,
         remembered_rule_reason=(
             _remembered_rule_rejection_reason(
+                composer=native_hook_compose,
+                guard_home=guard_home,
                 response_payload={"remembered_rule_rejection": remembered_rule_rejection},
                 artifact=runtime_artifact,
             )
