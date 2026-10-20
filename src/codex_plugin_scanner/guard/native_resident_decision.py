@@ -103,18 +103,6 @@ def resident_decide(
     of resetting the failure streak on every reply.
     """
 
-    runtime_status = native_runtime_status()
-    if (
-        not runtime_status.available
-        or not runtime_status.compatible
-        or runtime_status.identity is None
-        or runtime_status.capabilities is None
-        or "resident-protocol-v2" not in runtime_status.capabilities.features
-        or spec.feature not in runtime_status.capabilities.features
-    ):
-        # Reject unsupported operations before preparing a store or resident.
-        # The transport repeats this gate with the same resolved status.
-        raise spec.fail(spec.unavailable)
     try:
         home = _resolve_digest_home(guard_home)
     except (OSError, RuntimeError, ValueError):
@@ -130,6 +118,10 @@ def resident_decide(
         digest = "sha256:" + _canonical_request_sha256(request)
     except (OSError, TypeError, ValueError):
         raise spec.fail(f"{spec.prefix}_request_invalid") from None
+    # Resolve the runtime status here, not at entry: the daemon route transport
+    # pins the runtime for the duration of its own call, so a status read before
+    # that pin reports the ambient mode and would fail a pinned route closed.
+    runtime_status = native_runtime_status()
     response = transport(
         operation=spec.operation,
         request=request,
