@@ -84,7 +84,7 @@ from .commands_support_hook_state import _load_cursor_native_shell_allowance
 from .commands_support_runtime_artifact_policy import (
     _runtime_artifact_has_explicit_permission_allow,
     record_policy_auto_stops,
-    runtime_policy_artifact_facts,
+    runtime_policy_artifact_facts_batch,
     runtime_policy_config_facts,
 )
 from .commands_support_runtime_artifacts import _hook_event_name, _optional_string
@@ -224,31 +224,19 @@ def _runtime_cisco_scanner_evidence(
     runtime_workspace: Path | None,
     raw_shell_cwds: object,
 ) -> tuple[GuardRiskSignalV3, ...]:
-    """Scan every distinct proven shell cwd that may resolve a relative target."""
+    """Scan every distinct proven shell cwd that may resolve a relative target.
 
-    workspaces: list[Path | None] = []
-    if isinstance(raw_shell_cwds, list):
-        for value in raw_shell_cwds:
-            if not isinstance(value, str) or not value.strip():
-                continue
-            candidate = Path(value).expanduser().resolve(strict=False)
-            if candidate not in workspaces:
-                workspaces.append(candidate)
-    if not workspaces:
-        workspaces.append(runtime_workspace)
+    The resident plans the action against each of those directories and
+    approves the rest for every one of those plans, so the directories are
+    handed over as the payload reported them: which of them is a scan root,
+    and which findings they share, are the resident's to settle.
+    """
 
-    primary_workspace = runtime_workspace or next((item for item in workspaces if item is not None), None)
-    approved_scan_roots = tuple(item for item in workspaces if item is not None)
-    evidence: list[GuardRiskSignalV3] = []
-    for workspace in workspaces:
-        for signal in scan_action_for_cisco_evidence(
-            action_envelope,
-            workspace=workspace or primary_workspace,
-            approved_scan_roots=approved_scan_roots,
-        ):
-            if signal not in evidence:
-                evidence.append(signal)
-    return tuple(evidence)
+    return scan_action_for_cisco_evidence(
+        action_envelope,
+        workspace=runtime_workspace,
+        shell_cwds=raw_shell_cwds if isinstance(raw_shell_cwds, list) else (),
+    )
 
 
 def evaluate_native_artifact_hook(
@@ -430,12 +418,21 @@ def evaluate_native_artifact_hook(
     has_compound_findings = isinstance(compound_finding_count, int) and compound_finding_count > 1
     scanner_risk_signals = [signal.plain_language_summary for signal in scanner_evidence]
     artifact_risk = artifact_risk_profile(runtime_artifact)
+    # Both artifacts' facts are asked for in one request, under the same
+    # ``guard_home`` the composition below uses: the facts and the verdict that
+    # reads them must come from one resident, and one round trip rather than
+    # two keeps the hook off the resident's critical path twice over.
+    runtime_facts, approval_context_facts = runtime_policy_artifact_facts_batch(
+        config,
+        ((runtime_artifact, args.harness), (approval_context_artifact, policy_harness)),
+        guard_home=guard_home,
+    )
     stack = native_hook_compose(
         "policy_stack",
         {
             "policy_config": runtime_policy_config_facts(config, args.harness),
-            "runtime": runtime_policy_artifact_facts(config, runtime_artifact, args.harness),
-            "approval_context": runtime_policy_artifact_facts(config, approval_context_artifact, policy_harness),
+            "runtime": runtime_facts,
+            "approval_context": approval_context_facts,
             "data_flow_strong": data_flow_strong,
             "cli_action": cli_action,
             "payload_action_present": "policy_action" in payload_map,
@@ -1033,7 +1030,12 @@ def evaluate_native_artifact_hook(
             policy_action=policy_action,
             guard_payload=response_payload,
         ):
-            native_reason = _runtime_artifact_native_reason(runtime_artifact, response_payload)
+            native_reason = _runtime_artifact_native_reason(
+                runtime_artifact,
+                response_payload,
+                composer=native_hook_compose,
+                guard_home=context.guard_home,
+            )
             _record_cursor_pending_shell_permission(
                 store=store,
                 guard_home=context.guard_home,

@@ -1,6 +1,7 @@
 //! Native OS policy construction for a contained launch plan.
-use super::authority::{ancestor_paths, dedupe_parent_paths, framework_exec_roots, runtime_roots};
+use super::authority::{ancestor_paths, dedupe_parent_paths, runtime_roots};
 use super::credentials::{denials, patterns, seatbelt_string};
+use super::framework_grants::{framework_grants, sealed_on_disk, FrameworkGrants};
 use super::*;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -237,13 +238,25 @@ fn compose_macos_profile(
     // A framework interpreter re-execs a binary beside itself, so its version
     // directory is granted as a subpath and the privileged names are denied
     // back out; everything else stays an exec list of the binaries themselves.
-    let framework_roots = framework_exec_roots(&input.allowed_executables);
-    let named: Vec<PathBuf> = input
+    // A version root is granted as a subpath only when no one but root can
+    // write it; otherwise its executables, and the interpreter its stub
+    // re-execs, keep literal grants below.
+    let FrameworkGrants {
+        roots: framework_roots,
+        interpreters,
+    } = framework_grants(
+        &input.allowed_executables,
+        &input.workspace,
+        &writes,
+        sealed_on_disk,
+    );
+    let mut named: Vec<PathBuf> = input
         .allowed_executables
         .iter()
         .filter(|path| !path_is_within_any(path, &framework_roots))
         .cloned()
         .collect();
+    named.extend(interpreters);
     if named.is_empty() && framework_roots.is_empty() {
         return Err(RestrictedPytestError::new(
             PYTEST_INVALID_COMMAND_REASON_CODE,

@@ -226,6 +226,27 @@ def test_a_second_kind_added_after_the_op_requires_its_own_feature(monkeypatch: 
     assert required == [compose.HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE]
 
 
+def test_the_signal_composition_kind_requires_its_own_feature(monkeypatch: pytest.MonkeyPatch) -> None:
+    required = _feature_recorder(
+        monkeypatch,
+        payload={
+            "action": "block",
+            "reason": "bypass signal 'det' forces block",
+            "downgraded": False,
+            "upgraded": True,
+            "normalization_reason_code": None,
+            "original_action": None,
+        },
+    )
+    composed = compose.native_hook_compose(
+        "signal_composition",
+        {"signals": [], "base_action": "allow"},
+        guard_home=None,
+    )
+    assert composed["action"] == "block"
+    assert required == [compose.HOOK_ARTIFACT_COMPOSE_SIGNAL_COMPOSITION_FEATURE]
+
+
 def test_the_kinds_the_op_shipped_with_require_the_op_feature(monkeypatch: pytest.MonkeyPatch) -> None:
     required = _feature_recorder(monkeypatch)
     compose.native_hook_compose("tool_grant_apply", {}, guard_home=None)
@@ -290,3 +311,26 @@ def test_a_claimed_saved_allow_is_read_back_when_the_resident_cannot_settle() ->
     assert evaluation._claimed_saved_package_allow(unknown) == "retained"
     assert evaluation._claimed_saved_package_allow(other) is None
     assert evaluation._claimed_saved_package_allow([]) is None
+
+
+def test_the_policy_lookup_selection_requires_its_own_feature(monkeypatch: pytest.MonkeyPatch) -> None:
+    required = _feature_recorder(monkeypatch)
+    with pytest.raises(compose.NativeHookComposeError):
+        compose.native_hook_compose("policy_lookup_select", {"lookups": []}, guard_home=None)
+    assert required == [compose.HOOK_ARTIFACT_COMPOSE_POLICY_LOOKUP_FEATURE]
+
+
+@pytest.mark.parametrize("revision", [True, "7", 7.0, None])
+def test_integer_answers_reject_anything_but_an_integer(
+    monkeypatch: pytest.MonkeyPatch,
+    revision: object,
+) -> None:
+    payload = {
+        "authority_revision": revision,
+        "decision": None,
+        "ignored_local_integrity": None,
+        "trust_status": {},
+    }
+    _resident_returning(monkeypatch, lambda request: _good(request, payload=payload))
+    with pytest.raises(compose.NativeHookComposeError):
+        compose.native_hook_compose("policy_lookup_select", {"lookups": []}, guard_home=None)

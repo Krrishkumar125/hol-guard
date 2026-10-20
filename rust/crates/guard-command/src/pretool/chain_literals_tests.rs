@@ -168,6 +168,8 @@ fn a_command_naming_a_bound_variable_refuses_the_chain() {
     for command in [
         "X=build; zformat -f X /Users/me/.ssh; rm -rf $X",
         "X=build && zstyle -s ctx style X && rm -rf $X",
+        // `zstyle -e` stores code that a later lookup runs.
+        "x=/srv; c='x=/Users/me'; zstyle -e :x s 'eval $c'; zstyle -s :x s y; cat $x/.ssh/id_rsa",
         "X=build && strftime -s X %s 0 && rm -rf $X",
         "X=build && zstat -A X f && rm -rf $X",
         "X=build && sysread X && rm -rf $X",

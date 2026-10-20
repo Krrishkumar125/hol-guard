@@ -55,6 +55,7 @@ from ..native_execution import (
     mcp_stdio_session_close_native,
     mcp_stdio_session_open_native,
 )
+from ..native_hook_artifact_compose import NativeHookComposeError
 from ..native_mcp_proxy_decision import (
     NativeMcpProxyDecisionError,
     cursor_fact,
@@ -1008,6 +1009,7 @@ class RuntimeMcpGuardProxy:
             NativeMcpProxyDecisionError,
             NativeDecisionAuthorityError,
             NativeDecisionUnavailableError,
+            NativeHookComposeError,
             NativePackageArtifactUnavailableError,
             KeyError,
             TypeError,

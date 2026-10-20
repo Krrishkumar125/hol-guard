@@ -338,6 +338,12 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                     policy_store,
                 )
             }
+            ResidentOperationV1::ApprovalPersistSelect(request) => {
+                crate::approval_persist_select_op::evaluate_approval_persist_select_request(
+                    &request,
+                    policy_store,
+                )
+            }
             ResidentOperationV1::ApprovalResolutionPlan(request) => {
                 crate::approval_resolution_plan_op::evaluate_approval_resolution_plan_request(
                     &request,
@@ -469,6 +475,9 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
             }
             ResidentOperationV1::HookArtifactCompose(request) => {
                 crate::hook_artifact_compose_op::evaluate_hook_artifact_compose_request(&request)
+            }
+            ResidentOperationV1::HookArtifactFacts(request) => {
+                crate::hook_artifact_facts_op::evaluate_hook_artifact_facts_request(&request)
             }
             ResidentOperationV1::ConsumerArtifactCompose(request) => {
                 crate::consumer_artifact_compose_op::evaluate_consumer_artifact_compose_request(
