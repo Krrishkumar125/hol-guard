@@ -15,7 +15,8 @@ from typing import Any
 import pytest
 
 from ci.gauntlet.catalog import Scenario
-from ci.gauntlet.runner import case_coverage, disqualifying
+from ci.gauntlet.qualify import RETRYABLE_OUTCOMES
+from ci.gauntlet.runner import PRODUCT_FAILURES, case_coverage, disqualifying
 from ci.gauntlet.summary import render_summary_markdown
 
 
@@ -23,9 +24,26 @@ def _result(outcome: str) -> dict[str, Any]:
     return {"assessment": {"outcome": outcome, "reason": "fixture"}}
 
 
-@pytest.mark.parametrize("outcome", ["false-positive", "false-negative"])
-def test_a_product_failure_ends_the_attempt(outcome: str) -> None:
+@pytest.mark.parametrize("outcome", ["false-positive", "false-negative", "task-incomplete"])
+def test_an_outcome_a_fresh_attempt_cannot_clear_ends_this_one(outcome: str) -> None:
+    # `task-incomplete` is not a Guard mistake, but the scenario's own required
+    # effects are missing and `qualify.retryable` will not run the attempt again.
     assert disqualifying(_result(outcome)) is True
+
+
+def test_the_stop_rule_and_the_retry_rule_agree() -> None:
+    # The two sets partition every outcome: anything a fresh attempt can clear is
+    # retried and does not stop, and anything else stops and is never retried.
+    assert PRODUCT_FAILURES.isdisjoint(RETRYABLE_OUTCOMES)
+    assert PRODUCT_FAILURES | RETRYABLE_OUTCOMES | {"pass"} == {
+        "pass",
+        "false-positive",
+        "false-negative",
+        "task-incomplete",
+        "not-exercised",
+        "inference-error",
+        "harness-error",
+    }
 
 
 @pytest.mark.parametrize("outcome", ["pass", "not-exercised", "inference-error", "harness-error"])

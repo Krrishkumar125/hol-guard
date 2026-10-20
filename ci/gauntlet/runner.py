@@ -71,13 +71,17 @@ from .supply_chain import stage_supply_chain
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-# The only outcomes that say Guard itself did the wrong thing: it stopped
-# ordinary work, or it let a protected operation through.
-PRODUCT_FAILURES = frozenset({"false-positive", "false-negative"})
+# The outcomes a fresh attempt cannot clear. The first two say Guard itself did
+# the wrong thing: it stopped ordinary work, or it let a protected operation
+# through. `task-incomplete` says the scenario's own required effects are missing
+# after Guard allowed the work, which `qualify.retryable` also refuses to retry;
+# continuing past one spends the rest of the catalog on an attempt that can
+# neither pass nor be run again.
+PRODUCT_FAILURES = frozenset({"false-positive", "false-negative", "task-incomplete"})
 
 
 def disqualifying(result: dict[str, Any]) -> bool:
-    """True when this case proved a product failure, so running the rest proves nothing.
+    """True when this case ended the attempt's chance of passing, so the rest proves nothing.
 
     A case the model never exercised, a provider round that died, or a host tool
     that failed with no Guard deny behind it says nothing about Guard. Ending the
