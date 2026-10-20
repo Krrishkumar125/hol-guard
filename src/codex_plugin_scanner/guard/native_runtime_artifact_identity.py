@@ -24,26 +24,6 @@ class NativeRuntimeArtifactIdentityError(RuntimeError):
     """The native owner could not supply a complete, request-bound artifact id."""
 
 
-def prompt_multi_artifact_id(
-    harness: str,
-    member_artifact_ids: Sequence[str],
-    *,
-    guard_home: Path | None = None,
-    timeout_seconds: float = 10.0,
-) -> str:
-    """Return the resident's artifact id for a merged multi-prompt request."""
-
-    identity = {"kind": "prompt_multi", "member_artifact_ids": [str(item) for item in member_artifact_ids]}
-    return _request_identity(
-        harness,
-        identity,
-        prefix=f"{harness}:session:prompt:multi:",
-        digest_chars=24,
-        guard_home=guard_home,
-        timeout_seconds=timeout_seconds,
-    )
-
-
 def data_flow_artifact_id(
     harness: str,
     *,
