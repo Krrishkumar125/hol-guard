@@ -70,6 +70,11 @@ def _factor(
     )
 
 
+def test_proof_binding_digest_must_be_lowercase_sha256() -> None:
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        _ = replace(_proof(), binding_digest="not-a-digest")
+
+
 def test_containment_must_be_enforced_and_bind_every_effect_requirement() -> None:
     with pytest.raises(ValueError, match="must be enforced"):
         _ = replace(_proof(), enforced=False)
