@@ -363,6 +363,13 @@ class _ControlPostRoutes:
                 except IneligibleApprovalScopeError as error:
                     self._write_ineligible_approval_scope_error(error)
                     return
+                except ApprovalScopeUnavailableError:
+                    self._write_json(
+                        {"resolved": False, "error": "native_approval_scope_unavailable"},
+                        status=503,
+                        extra_headers={"Cache-Control": "no-store"},
+                    )
+                    return
                 except ValueError as error:
                     self._write_json({"resolved": False, "error": str(error)}, status=400)
                     return
