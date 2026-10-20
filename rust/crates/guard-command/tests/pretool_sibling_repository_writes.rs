@@ -72,6 +72,8 @@ fn layout_spelled(name: &str) -> SpelledLayout {
         .join(format!("{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(base.join("real")).unwrap();
+    // Only the `spelled` link may differ from the resolved path.
+    let base = fixture::canonical_spelling(&base);
     symlink(base.join("real"), base.join("spelled")).unwrap();
     let root = base.join("spelled").join("fixture");
     std::fs::create_dir_all(&root).unwrap();
