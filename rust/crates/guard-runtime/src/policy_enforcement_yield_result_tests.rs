@@ -1,0 +1,102 @@
+use super::*;
+
+use super::super::policy_enforcement_facts::payload_facts;
+
+/// The shape a delegated subtask returns when its parent asked for named
+/// findings: every field is an answer about a credential, none is one.
+fn report() -> Value {
+    json!({"tool_name": "yield", "tool_input": {"data": {
+        "firstSentence": "Settings example project.",
+        "tokenMentions": "No, the README does not mention a token.",
+        "apiKeyMentions": "No, the README does not mention an API key."
+    }}})
+}
+
+fn facts(payload: &Value, harness: &str, reason_code: &str) -> bool {
+    payload_facts(payload, harness, PreToolActionTypeV1::Harness, reason_code)
+        .expect("yield payload")
+        .sensitive_target
+}
+
+fn decision(payload: &Value) -> String {
+    let mut installed = policy("allow");
+    installed
+        .risk_actions
+        .insert("local_secret_read".into(), "block".into());
+    let native = guard_command::pretool::evaluate_pre_tool_envelope("omp", "PreToolUse", payload);
+    apply_pre_tool_policy(&snapshot(installed), payload, native)
+        .expect("yield envelope")
+        .decision
+}
+
+#[test]
+fn a_verified_report_answers_in_its_parents_field_names() {
+    assert!(!facts(&report(), "omp", "native_omp_yield_metadata"));
+    assert_eq!(decision(&report()), "allow");
+}
+
+#[test]
+fn a_nested_finding_carries_the_same_labels() {
+    let payload = json!({"tool_name": "yield", "tool_input": {"data": {
+        "summary": "No credentials are referenced.",
+        "findings": [
+            {"file": "README.md", "tokenMentions": "none", "secretsFound": false},
+            {"file": "SETUP.md", "apiKeyMentions": "none"}
+        ],
+        "counts": {"passwordHits": 0}
+    }}});
+    assert!(!facts(&payload, "omp", "native_omp_yield_metadata"));
+}
+
+#[test]
+fn a_path_selector_in_the_report_keeps_its_floor() {
+    let payload = json!({"tool_name": "yield", "tool_input": {"data": {
+        "tokenMentions": "No, the README does not mention a token.",
+        "path": "~/.aws/credentials"
+    }}});
+    assert!(facts(&payload, "omp", "native_omp_yield_metadata"));
+}
+
+#[test]
+fn a_native_sensitive_verdict_inside_the_report_still_counts() {
+    let payload = json!({"tool_name": "yield", "tool_input": {"data": {
+        "tokenMentions": "No, the README does not mention a token.",
+        "sensitive_target": true
+    }}});
+    assert!(facts(&payload, "omp", "native_omp_yield_metadata"));
+}
+
+#[test]
+fn only_a_verified_omp_yield_report_is_exempt() {
+    for (harness, reason_code) in [
+        ("omp", "native_omp_yield_report_review"),
+        ("omp", "native_pre_tool_unknown"),
+        ("claude-code", "native_omp_yield_metadata"),
+        ("codex", "native_omp_yield_metadata"),
+    ] {
+        assert!(
+            facts(&report(), harness, reason_code),
+            "{harness} {reason_code}"
+        );
+    }
+}
+
+#[test]
+fn the_exemption_is_only_for_the_report_body() {
+    for payload in [
+        // A credential-named argument beside the report, not inside it.
+        json!({"tool_name": "yield", "tool_input": {
+            "data": {"summary": "Done."}, "apiToken": "placeholder"}}),
+        // Another tool reusing the report shape.
+        json!({"tool_name": "eval", "tool_input": {"data": {
+            "tokenMentions": "No, the README does not mention a token."}}}),
+        // A report whose body is a string, which names nothing.
+        json!({"tool_name": "yield", "tool_input": {
+            "data": "{\"tokenMentions\":\"no\"}", "accessKey": "placeholder"}}),
+    ] {
+        assert!(
+            facts(&payload, "omp", "native_omp_yield_metadata"),
+            "{payload}"
+        );
+    }
+}

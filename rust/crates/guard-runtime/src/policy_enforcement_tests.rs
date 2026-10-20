@@ -473,6 +473,8 @@ mod omp_eval_output_tests;
 mod post_tool_tests;
 #[path = "policy_enforcement_task_schema_tests.rs"]
 mod task_schema_tests;
+#[path = "policy_enforcement_yield_result_tests.rs"]
+mod yield_result_tests;
 
 #[test]
 fn observe_keeps_only_a_warn_floor_over_a_proven_allow_silent() {
