@@ -5,7 +5,8 @@
 //! the lookups it permits, the final action, receipt/activity dispositions and
 //! the response directive. It also settles Copilot tool calls
 //! (`copilot_settle`) and picks the artifact hook's response
-//! (`artifact_directive`). Every query is pure and fails closed: a malformed
+//! (`artifact_directive`) and the route its review-tier verdicts take
+//! (`artifact_review_route`). Every query is pure and fails closed: a malformed
 //! request yields a `native_hook_decision_*` error, never a default verdict.
 
 use guard_contracts::{
@@ -15,6 +16,7 @@ use guard_contracts::{
 };
 
 use crate::hook_decision_artifact_directive::artifact_directive;
+use crate::hook_decision_artifact_review_route::artifact_review_route;
 use crate::hook_decision_compose::{compose, Composed};
 use crate::hook_decision_finalize::{finalize, post_claim, post_claim_reuse};
 use crate::hook_decision_native_facts::{verdict_handoff, VerdictHandoff};
@@ -104,6 +106,9 @@ pub(crate) fn decide(query: &HookDecisionQueryV1) -> Result<HookDecisionPayloadV
         }),
         HookDecisionQueryV1::ArtifactDirective { inputs } => Ok(
             HookDecisionPayloadV1::ArtifactDirective(Box::new(artifact_directive(inputs)?)),
+        ),
+        HookDecisionQueryV1::ArtifactReviewRoute { inputs } => Ok(
+            HookDecisionPayloadV1::ArtifactReviewRoute(Box::new(artifact_review_route(inputs)?)),
         ),
     }
 }

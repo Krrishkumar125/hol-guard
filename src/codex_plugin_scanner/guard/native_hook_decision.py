@@ -5,8 +5,9 @@ verdicts) and renders host output. The resident decides everything between:
 event and action normalization, composition of the current action, which
 grant lookups are permitted, the final action after approval reuse and Watch
 mode, receipt and activity dispositions, and the response directive. It also
-settles Copilot tool calls and names the effects the transport runs, and picks
-how the artifact hook renders its settled verdict. There is
+settles Copilot tool calls and names the effects the transport runs, picks how
+the artifact hook renders its settled verdict, and routes its review-tier
+verdicts. There is
 no Python evaluator: a reply that is not a bound, strictly decoded ``ok``
 raises ``NativeHookDecisionError`` and callers fail closed.
 """
@@ -32,6 +33,8 @@ HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE = "hook-decision-post-claim-compose-v1"
 # The artifact hook's response directive; a resident that predates it rejects
 # the query, so the capability is demanded first.
 HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE = "hook-decision-artifact-directive-v1"
+# The route a reviewed artifact verdict takes; demanded first for the same reason.
+HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE = "hook-decision-artifact-review-route-v1"
 _UNAVAILABLE = "native_hook_decision_unavailable"
 _INVALID = "native_hook_decision_payload_invalid"
 _TIMEOUT_SECONDS = 5.0
@@ -117,6 +120,40 @@ _ARTIFACT_INPUT_FIELDS = frozenset(
         "output_stream_present",
         "replayed",
         "approval_context_present",
+        "prompt_hard_block",
+        "prompt_secret_read",
+    }
+)
+_REVIEW_ROUTE_FIELDS: dict[str, Any] = {
+    "route": str,
+    "terminalize": str,
+    "record_claude_notice": bool,
+    "attach_cursor_request_ids": bool,
+    "system_message": str,
+    "additional_context": str,
+    "silent_review": (dict, type(None)),
+}
+_REVIEW_ROUTE_SILENT = frozenset({"silent_review", "silent_block"})
+# Values the review executor dispatches on; anything else is malformed.
+_REVIEW_ROUTE_VALUES: dict[str, frozenset[str]] = {
+    "route": frozenset(
+        {"continue", "observe", "copilot_response", "native_response", "queue_approval", *_REVIEW_ROUTE_SILENT}
+    ),
+    "terminalize": frozenset({"none", "enforce", "observe"}),
+    "system_message": frozenset({"none", "claude_punctuated", "claude_prompt_secret", "claude_prompt_sensitive"}),
+    "additional_context": frozenset({"none", "claude_prompt_secret", "claude_prompt_sensitive"}),
+}
+_REVIEW_ROUTE_INPUT_FIELDS = frozenset(
+    {
+        "harness",
+        "canonical_harness",
+        "event",
+        "policy_action",
+        "artifact_type",
+        "observe_mode",
+        "asks_for_approval",
+        "json",
+        "output_stream_present",
         "prompt_hard_block",
         "prompt_secret_read",
     }
@@ -318,6 +355,34 @@ def native_finalize(
     return {key: payload[key] for key in _FINAL_FIELDS}
 
 
+def native_artifact_review_route(inputs: Mapping[str, object], *, guard_home: Path | None = None) -> dict[str, Any]:
+    """The branch a reviewed artifact verdict takes, and what that branch is told."""
+
+    if set(inputs) != _REVIEW_ROUTE_INPUT_FIELDS:
+        raise NativeHookDecisionError(_INVALID)
+
+    def validate(payload: dict[str, Any]) -> None:
+        if set(payload) != {"kind", *_REVIEW_ROUTE_FIELDS}:
+            raise NativeHookDecisionError(_INVALID)
+        chosen = _shape({key: payload[key] for key in _REVIEW_ROUTE_FIELDS}, _REVIEW_ROUTE_FIELDS)
+        for key, allowed in _REVIEW_ROUTE_VALUES.items():
+            if chosen[key] not in allowed:
+                raise NativeHookDecisionError(_INVALID)
+        silent = chosen["silent_review"]
+        if (silent is not None) != (chosen["route"] in _REVIEW_ROUTE_SILENT):
+            raise NativeHookDecisionError(_INVALID)
+        if silent is not None and _shape(silent, {"action": str, "reason": str})["action"] != inputs["policy_action"]:
+            raise NativeHookDecisionError(_INVALID)
+
+    payload = _decide(
+        {"kind": "artifact_review_route", "inputs": dict(inputs)},
+        guard_home,
+        validate,
+        HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE,
+    )
+    return {key: payload[key] for key in _REVIEW_ROUTE_FIELDS}
+
+
 def native_artifact_directive(inputs: Mapping[str, object], *, guard_home: Path | None = None) -> dict[str, Any]:
     """The artifact hook's response directive: how its settled verdict renders."""
 
@@ -397,10 +462,12 @@ def native_copilot_settle(
 
 __all__ = [
     "HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE",
+    "HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE",
     "HOOK_DECISION_FEATURE",
     "HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE",
     "NativeHookDecisionError",
     "native_artifact_directive",
+    "native_artifact_review_route",
     "native_compose_current",
     "native_copilot_settle",
     "native_finalize",

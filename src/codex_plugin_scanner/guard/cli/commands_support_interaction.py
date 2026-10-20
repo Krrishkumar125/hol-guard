@@ -307,18 +307,6 @@ def _emit(command: str, payload: dict[str, object], as_json: bool) -> None:
 def _should_emit_copilot_hook_response(args: argparse.Namespace) -> bool:
     return args.harness == "copilot" and not getattr(args, "json", False)
 
-def _should_emit_claude_native_pretooluse_notice(
-    args: argparse.Namespace,
-    *,
-    event_name: str,
-    policy_action: str,
-) -> bool:
-    return (
-        _canonical_harness_name(args.harness) == "claude-code"
-        and event_name == "PreToolUse"
-        and policy_action in {"review", "require-reapproval"}
-    )
-
 def _codex_browser_approval_decision(
     *,
     args: argparse.Namespace,
@@ -771,5 +759,5 @@ __all__ = [
     "_open_guard_cloud_app", "_policy_write_needs_approval_gate", "_policy_write_requires_approval_gate",
     "_preferred_approval_review_url", "_primary_approval_lookup_kwargs", "_record_harness_usage_for_hook",
     "_resolve_cisco_scan_options", "_run_apps_command", "_run_consumer_scan_with_mode",
-    "_should_emit_claude_native_pretooluse_notice", "_should_emit_copilot_hook_response",
+    "_should_emit_copilot_hook_response",
 ]
