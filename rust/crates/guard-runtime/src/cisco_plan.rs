@@ -47,6 +47,7 @@ struct Plan {
     signals: Vec<GuardRiskSignalV3>,
     skill_roots: BTreeSet<PathBuf>,
     mcp_roots: BTreeSet<PathBuf>,
+    contained_action: BTreeSet<&'static str>,
 }
 
 impl Plan {
@@ -57,6 +58,17 @@ impl Plan {
             self.steps.push(CiscoStepV1::Signal {
                 signal: signal.to_value(),
             });
+        }
+    }
+
+    /// An approved root that cannot be proven contains the whole action, so
+    /// report it once. Each planned workspace reaches the same unprovable
+    /// directory under its own label -- the selected workspace in one plan and
+    /// an explicit root in the next -- and that label names the plan that
+    /// reached it, not a second containment to report.
+    fn contained_action(&mut self, error: &Contain) {
+        if self.contained_action.insert(error.reason) {
+            self.contained("approved-root", error);
         }
     }
 
@@ -165,7 +177,7 @@ fn plan_one(
     let roots = match contain::approved_roots(workspace, approved_roots, cwd, home) {
         Ok(roots) => roots,
         Err(error) => {
-            plan.contained("approved-root", &error);
+            plan.contained_action(&error);
             return;
         }
     };
