@@ -190,7 +190,9 @@ def render_generic_hook(
         if message == "claude_punctuated":
             system_message = _ensure_terminal_punctuation(reason)
         elif message == "codex_prompt":
-            system_message = _codex_prompt_block_system_message(policy_action=policy_action, native_reason=reason)
+            system_message = _codex_prompt_block_system_message(
+                policy_action=policy_action, native_reason=lambda: reason
+            )
         else:
             system_message = None
         _emit_adapter(

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -179,8 +181,15 @@ def test_request_key_set_is_exact(monkeypatch: pytest.MonkeyPatch, kind: str, fi
     assert error.value.code == "native_hook_artifact_compose_request_invalid"
 
 
-def _feature_recorder(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
-    """Record the feature each query requires of the resident."""
+def _feature_recorder(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, object] | None = None,
+) -> list[str | None]:
+    """Record the feature each query requires of the resident.
+
+    A kind that answers with its own payload passes one, so the recorded reply
+    is the answer that kind's result schema accepts.
+    """
 
     required: list[str | None] = []
     monkeypatch.setattr(compose, "_resolve_digest_home", lambda _home: Path("/tmp/hook-compose-home"))
@@ -188,7 +197,9 @@ def _feature_recorder(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
 
     def fake(*, request, required_feature=None, **_kwargs):
         required.append(required_feature)
-        return _good(request)
+        if payload is None:
+            return _good(request)
+        return _good(request, payload=payload)
 
     monkeypatch.setattr(compose, "_resident_request", fake)
     return required
@@ -205,10 +216,84 @@ def test_a_kind_added_after_the_op_requires_its_own_feature(monkeypatch: pytest.
     assert required == [compose.HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE]
 
 
+def test_a_second_kind_added_after_the_op_requires_its_own_feature(monkeypatch: pytest.MonkeyPatch) -> None:
+    required = _feature_recorder(monkeypatch, payload={"reason": None})
+    compose.native_hook_compose(
+        "remembered_rule_reason",
+        {"remembered_rules": "enabled", "integrity_message": None, "artifact_summary": "git push"},
+        guard_home=None,
+    )
+    assert required == [compose.HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE]
+
+
+def test_the_signal_composition_kind_requires_its_own_feature(monkeypatch: pytest.MonkeyPatch) -> None:
+    required = _feature_recorder(
+        monkeypatch,
+        payload={
+            "action": "block",
+            "reason": "bypass signal 'det' forces block",
+            "downgraded": False,
+            "upgraded": True,
+            "normalization_reason_code": None,
+            "original_action": None,
+        },
+    )
+    composed = compose.native_hook_compose(
+        "signal_composition",
+        {"signals": [], "base_action": "allow"},
+        guard_home=None,
+    )
+    assert composed["action"] == "block"
+    assert required == [compose.HOOK_ARTIFACT_COMPOSE_SIGNAL_COMPOSITION_FEATURE]
+
+
 def test_the_kinds_the_op_shipped_with_require_the_op_feature(monkeypatch: pytest.MonkeyPatch) -> None:
     required = _feature_recorder(monkeypatch)
     compose.native_hook_compose("tool_grant_apply", {}, guard_home=None)
     assert required == [compose.HOOK_ARTIFACT_COMPOSE_FEATURE]
+
+
+def test_every_reported_rule_state_is_put_to_the_resident() -> None:
+    """Which states earn a reason is the resident's rule, not a second copy here."""
+
+    from codex_plugin_scanner.guard.cli import commands_support_runtime_policy as policy
+
+    asked: list[object] = []
+
+    def compose_reason(_kind: str, fields: dict[str, object], **_kwargs: object) -> dict[str, object]:
+        asked.append(fields["remembered_rules"])
+        return {"reason": None}
+
+    artifact = SimpleNamespace(artifact_type="tool_action_request", name="git push", metadata={}, command="git push")
+    for state in ["enabled", "unknown", "disabled", None]:
+        reason = policy._remembered_rule_rejection_reason(
+            composer=compose_reason,
+            guard_home=None,
+            response_payload={"remembered_rule_rejection": {"trust_status": {"remembered_rules": state}}},
+            artifact=cast("Any", artifact),
+        )
+        assert reason is None, state
+    assert asked == ["enabled", "unknown", "disabled", "unknown"]
+
+
+def test_a_payload_without_a_rejection_asks_the_resident_nothing() -> None:
+    """Only an actual rejection is worth a round trip."""
+
+    from codex_plugin_scanner.guard.cli import commands_support_runtime_policy as policy
+
+    def refuse(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("the resident was asked about a rejection that never happened")
+
+    artifact = SimpleNamespace(artifact_type="tool_action_request", name="git push", metadata={}, command="git push")
+    assert (
+        policy._remembered_rule_rejection_reason(
+            composer=refuse,
+            guard_home=None,
+            response_payload={"remembered_rule_rejection": None},
+            artifact=cast("Any", artifact),
+        )
+        is None
+    )
 
 
 def test_a_claimed_saved_allow_is_read_back_when_the_resident_cannot_settle() -> None:

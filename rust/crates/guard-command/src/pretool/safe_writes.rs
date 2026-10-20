@@ -376,11 +376,13 @@ fn bounded_temporary_copy_target(value: &str, context: super::PathContext<'_>) -
 }
 
 /// Windows `mktemp -d` (Git Bash `/tmp`) creates its directory in the user's
-/// profile temp folder. Only a directory strictly below the exact
-/// `<home>\AppData\Local\Temp` is admitted, located from the canonical home
-/// rather than the caller-controlled `TEMP`/`TMP`. The profile ACL keeps other
-/// non-administrator users out of that tree, and the exact-spelling checks
-/// reject junctions, short names and case aliases on the way there.
+/// profile temp folder. A file in the exact `<home>\AppData\Local\Temp`, or
+/// in a directory below it, is admitted, located from the canonical home
+/// rather than the caller-controlled `TEMP`/`TMP`. A file directly in that
+/// folder is what Git Bash writes for `/tmp/name`, which the POSIX spelling
+/// already admits. The profile ACL keeps other non-administrator users out of
+/// that tree, and the exact-spelling checks reject junctions, short names and
+/// case aliases on the way there.
 #[cfg(windows)]
 fn bounded_temporary_copy_target(value: &str, context: super::PathContext<'_>) -> bool {
     use super::directory_targets::exact_drive_spelling;
@@ -420,7 +422,6 @@ fn bounded_temporary_copy_target(value: &str, context: super::PathContext<'_>) -
         return false;
     };
     if !exact_drive_spelling(parent_text, &parent)
-        || parent == temp_root
         || !parent.starts_with(&temp_root)
         || !parent.is_dir()
         || shared_library_part(&name.to_ascii_lowercase())

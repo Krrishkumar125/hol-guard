@@ -25,7 +25,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import qualify_setup
+from . import lane_preflight, qualify_setup
+from .extension_adapters import RELEASE_ASSETS_ENV
 from .fixtures import create_numbered_dir
 from .lane_coverage import lane_coverage
 from .parallel import terminate_as_exit
@@ -326,7 +327,7 @@ def main(args: Any) -> int:
         raise ValueError("--max-load must be a positive finite number")
     if not math.isfinite(args.max_load_wait) or args.max_load_wait < 0:
         raise ValueError("--max-load-wait must be a finite number >= 0")
-    for field in ("cache_root", "run_root", "work_parent", "wheel", "sdk_root"):
+    for field in ("cache_root", "run_root", "work_parent", "wheel", "wheel_release_assets", "sdk_root"):
         value = getattr(args, field)
         if value is not None:
             setattr(args, field, Path(value).resolve())
@@ -373,9 +374,26 @@ def main(args: Any) -> int:
                 with timings.measure("sdk"):
                     sdk_info = qualify_setup.ensure_sdk(args.cache_root, REPO, sha, run_root / "logs" / "setup.log")
             progress(f"sdk {sdk_info['omp_version']} {sdk_info['lock_sha256'][:12]}")
+            # One exchange before the expensive inputs: a dead lane fails here, not as
+            # a catalog of inference-error cases after the wheel build and a full retry.
+            # --prepare-only runs no case, so it needs no lane and must not want one.
+            if not args.prepare_only:
+                with timings.measure("lane"):
+                    lane = lane_preflight.check_lane(
+                        Path(sdk_info["root"]),
+                        effort=args.effort,
+                        backend=lane_preflight.backend_for(native_route),
+                    )
+                progress(f"lane {lane['identity']} total_tokens={lane['total_tokens']}")
             with timings.measure("wheel"):
                 wheel_info = qualify_setup.ensure_wheel(
-                    args.cache_root, REPO, sha, run_root, wheel=args.wheel, release_profile=args.release_profile_wheel
+                    args.cache_root,
+                    REPO,
+                    sha,
+                    run_root,
+                    wheel=args.wheel,
+                    release_assets=args.wheel_release_assets,
+                    release_profile=args.release_profile_wheel,
                 )
             progress(f"wheel {wheel_info['sha256'][:12]} cached={wheel_info['cached']} profile={wheel_info['profile']}")
             candidate = run_root / "candidate"
@@ -409,6 +427,8 @@ def main(args: Any) -> int:
                     sdk_root=Path(sdk_info["root"]),
                     gnu_sed=info["gnu_sed"],
                 )
+                if wheel_info.get("release_assets"):
+                    env[RELEASE_ASSETS_ENV] = wheel_info["release_assets"]
                 progress(f"attempt {k} starting")
                 t0 = time.monotonic()
                 with timings.measure("live_cases"):

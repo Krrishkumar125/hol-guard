@@ -9,6 +9,12 @@ mod platform;
 #[cfg(target_os = "macos")]
 pub(crate) use platform::CapturedBash;
 
+/// Upper bound on one analysis's wall-clock budget. Test builds run thousands
+/// of tests at once on small CI runners, so the same bounded work gets more
+/// time there; release builds keep one second.
+#[cfg(target_os = "macos")]
+const ANALYSIS_BUDGET_CAP_MS: u64 = if cfg!(test) { 10_000 } else { 1000 };
+
 #[cfg(target_os = "macos")]
 pub(crate) fn capture_for_launch(
     request: &NativeBashCaptureV1,
@@ -19,7 +25,8 @@ pub(crate) fn capture_for_launch(
         &captured.graph,
         request,
         snapshot,
-        std::time::Instant::now() + std::time::Duration::from_millis(request.budget_ms.min(1000)),
+        std::time::Instant::now()
+            + std::time::Duration::from_millis(request.budget_ms.min(ANALYSIS_BUDGET_CAP_MS)),
     )?;
     if assessment.has_hard_deny() {
         return Err("bash_current_policy_denied".into());

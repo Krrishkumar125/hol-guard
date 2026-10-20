@@ -26,6 +26,7 @@ mod approval_gate_op;
 mod approval_gate_settings;
 mod approval_gate_state;
 mod approval_gate_verify;
+mod approval_persist_select_op;
 mod approval_proof_op;
 mod approval_queue_identity_op;
 mod approval_resolution_plan_op;
@@ -411,11 +412,14 @@ mod hermes_yaml_resolve;
 mod hook_adapter_op;
 mod hook_approval_context;
 mod hook_artifact_compose_op;
+mod hook_artifact_compose_prompt;
 mod hook_artifact_compose_reuse;
 mod hook_authority_state_op;
 mod hook_bridge_daemon_start;
 mod hook_bridge_fallback;
 mod hook_cli_claude_text;
+#[cfg(test)]
+mod hook_decision_apply_patch_gate_tests;
 #[cfg(all(test, unix))]
 mod hook_decision_benign_tool_action_tests;
 mod hook_decision_compose;

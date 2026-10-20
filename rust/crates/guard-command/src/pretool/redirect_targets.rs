@@ -37,6 +37,18 @@ pub(super) fn plan_note_output_target(target: &str, context: PathContext<'_>) ->
 }
 
 pub(super) fn safe_output_target(target: &str, context: PathContext<'_>) -> bool {
+    // NTFS reads any later colon as a stream name, and `C:name` is relative
+    // to that drive's own directory. The only colon a Windows target may
+    // hold is the designator of a `C:/` drive path.
+    #[cfg(windows)]
+    if target.char_indices().any(|(index, value)| {
+        value == ':'
+            && !(index == 1
+                && target.as_bytes()[0].is_ascii_alphabetic()
+                && target.as_bytes().get(2) == Some(&b'/'))
+    }) {
+        return false;
+    }
     if plan_note_output_target(target, context) {
         return true;
     }
@@ -71,6 +83,10 @@ pub(super) fn safe_output_target(target: &str, context: PathContext<'_>) -> bool
                 None => return false,
             },
             std::path::Component::RootDir | std::path::Component::CurDir => {}
+            // `C:/...` is how Git Bash agents spell an absolute Windows path.
+            #[cfg(windows)]
+            std::path::Component::Prefix(prefix)
+                if matches!(prefix.kind(), std::path::Prefix::Disk(_)) => {}
             _ => return false,
         }
     }
@@ -101,6 +117,18 @@ pub(super) fn safe_output_target(target: &str, context: PathContext<'_>) -> bool
             return path
                 .strip_prefix(base)
                 .is_ok_and(|rest| no_symlink_components(base, rest));
+        }
+        // Git Bash's `/tmp` is the profile's `AppData\Local\Temp`, which an
+        // agent may also spell as a drive path. The temporary file proof
+        // locates that folder from the canonical home and refuses links,
+        // hidden parts and credential-shaped names.
+        #[cfg(windows)]
+        if crate::pretool::chain_temporary::temporary_file_target(
+            target,
+            context.home_dir,
+            context.cwd,
+        ) {
+            return true;
         }
         if let Some(cwd) = cwd.filter(|cwd| path.starts_with(cwd)) {
             return path != cwd
@@ -210,6 +238,17 @@ pub(super) fn bounded_write(target: &str, context: PathContext<'_>) -> bool {
     // Home is outside the workspace even when it sits below a temporary
     // directory, as it does for disposable and CI accounts.
     let path = std::path::Path::new(target);
+    // On Windows the profile's temporary folder lies below home, so prove it
+    // before the home rule below admits only a sibling repository.
+    #[cfg(windows)]
+    if path.is_absolute()
+        && bounded_native_temporary_write_target(target, context.home_dir, context.cwd)
+    {
+        return !crate::pretool::curl_reads::output_targets::existing_executable(
+            target,
+            context.cwd,
+        );
+    }
     let under = |base: Option<&str>| base.is_some_and(|base| path.starts_with(base));
     if path.is_absolute() && under(context.home_dir) && !under(context.cwd) {
         // Only a file in a repository beside the session's directory is a

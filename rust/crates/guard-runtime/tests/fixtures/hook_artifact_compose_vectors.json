@@ -27,7 +27,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -74,7 +73,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -118,7 +116,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -165,7 +162,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -218,7 +214,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -265,7 +260,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -309,7 +303,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -356,7 +349,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -400,7 +392,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -447,7 +438,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "block",
         "explicit_permission_allow": false,
@@ -500,7 +490,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -547,7 +536,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -591,7 +579,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -638,7 +625,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -682,7 +668,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -729,7 +714,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "???",
         "explicit_permission_allow": false,
@@ -773,7 +757,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "allow",
         "explicit_permission_allow": false,
@@ -827,7 +810,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -871,7 +853,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -918,7 +899,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -962,7 +942,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1011,7 +990,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1055,7 +1033,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1104,7 +1081,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1148,7 +1124,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1197,7 +1172,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "review",
         "explicit_permission_allow": false,
@@ -1243,7 +1217,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1298,7 +1271,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1343,7 +1315,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1392,7 +1363,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "block",
         "explicit_permission_allow": false,
@@ -1437,7 +1407,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1491,7 +1460,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1536,7 +1504,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1589,7 +1556,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "review",
         "explicit_permission_allow": false,
@@ -1635,7 +1601,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1682,7 +1647,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1730,7 +1694,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1777,7 +1740,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1824,7 +1786,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1871,7 +1832,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1918,7 +1878,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -1965,7 +1924,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -3896,7 +3854,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -3950,7 +3907,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -3999,7 +3955,6 @@
       "approval_context": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": false,
         "confidence_text": "",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -4046,7 +4001,6 @@
       "runtime": {
         "action_class": null,
         "command_action_floor": null,
-        "confidence_strong": true,
         "confidence_text": "strong",
         "configured_override": "warn",
         "explicit_permission_allow": false,
@@ -4062,6 +4016,33 @@
       },
       "scanner_action": null,
       "scanner_risk_signals": []
+    }
+  },
+  {
+    "expected": {
+      "reason": "HOL Guard stopped this Codex prompt before Codex could open a credential-looking local file. Codex does not expose native approval prompts for Read-tool file reads, so Guard blocks this request at prompt time."
+    },
+    "name": "prompt_request_reason_codex_secret_read",
+    "query": {
+      "harness": "codex",
+      "kind": "prompt_request_reason",
+      "policy_action": "block",
+      "prompt_classes": [
+        "secret_read"
+      ],
+      "prompt_summary": "Asks to read a credential-looking local file in the workspace"
+    }
+  },
+  {
+    "expected": {
+      "reason": null
+    },
+    "name": "remembered_rule_reason_not_degraded",
+    "query": {
+      "artifact_summary": "git push origin main",
+      "integrity_message": null,
+      "kind": "remembered_rule_reason",
+      "remembered_rules": "enabled"
     }
   },
   {
@@ -4087,6 +4068,33 @@
       "reasons": [],
       "stored_artifact_hash": null,
       "stored_policy_action": null
+    }
+  },
+  {
+    "expected": {
+      "reason": "HOL Guard blocked this prompt because it asks to bypass or disable Guard."
+    },
+    "name": "prompt_request_reason_bypass_intent",
+    "query": {
+      "harness": "claude-code",
+      "kind": "prompt_request_reason",
+      "policy_action": "block",
+      "prompt_classes": [
+        "guard_bypass_intent"
+      ],
+      "prompt_summary": null
+    }
+  },
+  {
+    "expected": {
+      "reason": "HOL Guard kept git push origin main in review because a remembered local rule was ignored while local trust is degraded. Local approval store integrity could not be verified. One-time approvals still work, but broader remembered rules stay limited until local trust is protected."
+    },
+    "name": "remembered_rule_reason_degraded_with_integrity_detail",
+    "query": {
+      "artifact_summary": "git push origin main",
+      "integrity_message": "Local approval store integrity could not be verified",
+      "kind": "remembered_rule_reason",
+      "remembered_rules": "disabled_degraded"
     }
   },
   {
@@ -4117,6 +4125,819 @@
       ],
       "stored_artifact_hash": null,
       "stored_policy_action": null
+    }
+  },
+  {
+    "expected": {
+      "action": "allow",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "allow",
+      "reason": "no detector signals; base policy action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_no_signals_allow",
+    "query": {
+      "base_action": "allow",
+      "kind": "signal_composition",
+      "signals": []
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "block",
+      "reason": "no detector signals; base policy action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_no_signals_block",
+    "query": {
+      "base_action": "block",
+      "kind": "signal_composition",
+      "signals": []
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": "guard_action_unknown",
+      "original_action": "future-action",
+      "reason": "no detector signals; base policy action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_no_signals_unknown_base",
+    "query": {
+      "base_action": "future-action",
+      "kind": "signal_composition",
+      "signals": []
+    }
+  },
+  {
+    "expected": {
+      "action": "review",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "ask",
+      "reason": "no detector signals; base policy action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_no_signals_ask_alias",
+    "query": {
+      "base_action": "ask",
+      "kind": "signal_composition",
+      "signals": []
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "allow",
+      "reason": "bypass signal 'det-bypass' forces block",
+      "upgraded": true
+    },
+    "name": "signal_composition_bypass_upgrades_allow_to_block",
+    "query": {
+      "base_action": "allow",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "bypass",
+          "confidence": "strong",
+          "detector": "det-bypass",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "critical",
+          "signal_id": "bypass:guard-uninstall",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "allow",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "allow",
+      "reason": "risk signal 'det-bypass' (low/weak); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_bypass_weak_does_not_upgrade",
+    "query": {
+      "base_action": "allow",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "bypass",
+          "confidence": "weak",
+          "detector": "det-bypass",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "low",
+          "signal_id": "bypass:guard-uninstall",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "review",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "allow",
+      "reason": "persistence signal 'det-persist' requires review",
+      "upgraded": true
+    },
+    "name": "signal_composition_persistence_upgrades_allow_to_review",
+    "query": {
+      "base_action": "allow",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "persistence",
+          "confidence": "strong",
+          "detector": "det-persist",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "high",
+          "signal_id": "persist:cron",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "allow",
+      "reason": "critical signal 'det-flow' forces block",
+      "upgraded": true
+    },
+    "name": "signal_composition_critical_upgrades_allow_to_block",
+    "query": {
+      "base_action": "allow",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "network",
+          "confidence": "likely",
+          "detector": "det-flow",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "critical",
+          "signal_id": "risk:critical",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "block",
+      "reason": "risk signal 'det-flow' (critical/likely); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_critical_at_block_base_is_not_an_upgrade",
+    "query": {
+      "base_action": "block",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "network",
+          "confidence": "likely",
+          "detector": "det-flow",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "critical",
+          "signal_id": "risk:critical",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "review",
+      "downgraded": true,
+      "normalization_reason_code": null,
+      "original_action": "block",
+      "reason": "strong false-positive signals with only low-severity risk; downgraded block \u2192 review",
+      "upgraded": false
+    },
+    "name": "signal_composition_strong_fp_downgrades_block_to_review",
+    "query": {
+      "base_action": "block",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:source-search:grep",
+          "technical_detail": null,
+          "title": "t"
+        },
+        {
+          "advisory_id": null,
+          "category": "filesystem",
+          "confidence": "likely",
+          "detector": "det-fs",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "low",
+          "signal_id": "risk:fs",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "review",
+      "downgraded": true,
+      "normalization_reason_code": null,
+      "original_action": "block",
+      "reason": "strong false-positive signals with only low-severity risk; downgraded block \u2192 review",
+      "upgraded": false
+    },
+    "name": "signal_composition_strong_fp_downgrades_block_to_review_alone",
+    "query": {
+      "base_action": "block",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:source-search:grep",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "warn",
+      "downgraded": true,
+      "normalization_reason_code": null,
+      "original_action": "review",
+      "reason": "strong read-only false-positive with no risk signals; downgraded review \u2192 warn",
+      "upgraded": false
+    },
+    "name": "signal_composition_readonly_fp_downgrades_review_to_warn",
+    "query": {
+      "base_action": "review",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:read-only-http-fetch:x",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "warn",
+      "downgraded": true,
+      "normalization_reason_code": null,
+      "original_action": "review",
+      "reason": "strong read-only false-positive with no risk signals; downgraded review \u2192 warn",
+      "upgraded": false
+    },
+    "name": "signal_composition_source_search_fp_downgrades_review_to_warn",
+    "query": {
+      "base_action": "review",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:source-search:grep",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "review",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "review",
+      "reason": "advisory false-positive signals only; base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_other_fp_does_not_downgrade_review",
+    "query": {
+      "base_action": "review",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:other:x",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "review",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "review",
+      "reason": "risk signal 'det-fs' (low/likely); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_fp_with_risk_does_not_downgrade_review",
+    "query": {
+      "base_action": "review",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:source-search:grep",
+          "technical_detail": null,
+          "title": "t"
+        },
+        {
+          "advisory_id": null,
+          "category": "filesystem",
+          "confidence": "likely",
+          "detector": "det-fs",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "low",
+          "signal_id": "risk:fs",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "block",
+      "reason": "advisory false-positive signals only; base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_weak_fp_does_not_downgrade",
+    "query": {
+      "base_action": "block",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "weak",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:source-search:grep",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "allow",
+      "reason": "bypass signal 'det-bypass' forces block",
+      "upgraded": true
+    },
+    "name": "signal_composition_bypass_beats_fp_downgrade",
+    "query": {
+      "base_action": "allow",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "bypass",
+          "confidence": "strong",
+          "detector": "det-bypass",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "critical",
+          "signal_id": "bypass:guard-uninstall",
+          "technical_detail": null,
+          "title": "t"
+        },
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:source-search:grep",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": "guard_action_unknown",
+      "original_action": "bogus",
+      "reason": "advisory false-positive signals only; base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_fp_does_not_downgrade_unrecognized_base",
+    "query": {
+      "base_action": "bogus",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:source-search:grep",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "block",
+      "reason": "risk signal 'det-bypass' (low/weak); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_fp_does_not_downgrade_protected_category",
+    "query": {
+      "base_action": "block",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:source-search:grep",
+          "technical_detail": null,
+          "title": "t"
+        },
+        {
+          "advisory_id": null,
+          "category": "bypass",
+          "confidence": "weak",
+          "detector": "det-bypass",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "low",
+          "signal_id": "bypass:guard-uninstall",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "block",
+      "reason": "risk signal 'det-fs' (high/weak); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_fp_does_not_downgrade_high_risk",
+    "query": {
+      "base_action": "block",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:source-search:grep",
+          "technical_detail": null,
+          "title": "t"
+        },
+        {
+          "advisory_id": null,
+          "category": "filesystem",
+          "confidence": "weak",
+          "detector": "det-fs",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "high",
+          "signal_id": "risk:fs-high",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "warn",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "warn",
+      "reason": "risk signal 'det-fs' (high/weak); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_plain_risk_reports_top_signal",
+    "query": {
+      "base_action": "warn",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "network",
+          "confidence": "likely",
+          "detector": "det-net",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "medium",
+          "signal_id": "risk:net",
+          "technical_detail": null,
+          "title": "t"
+        },
+        {
+          "advisory_id": null,
+          "category": "filesystem",
+          "confidence": "weak",
+          "detector": "det-fs",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "high",
+          "signal_id": "risk:fs-high",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "warn",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "warn",
+      "reason": "risk signal 'det-net' (medium/likely); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_plain_risk_single",
+    "query": {
+      "base_action": "warn",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "network",
+          "confidence": "likely",
+          "detector": "det-net",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "medium",
+          "signal_id": "risk:net",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "warn",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "warn",
+      "reason": "advisory false-positive signals only; base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_fp_advisory_only_reason",
+    "query": {
+      "base_action": "warn",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "false_positive",
+          "confidence": "strong",
+          "detector": "det-fp",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "info",
+          "signal_id": "fp:other:x",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "block",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "block",
+      "reason": "risk signal 'det-persist' (high/strong); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_persistence_at_block_base_keeps_block",
+    "query": {
+      "base_action": "block",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "persistence",
+          "confidence": "strong",
+          "detector": "det-persist",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "high",
+          "signal_id": "persist:cron",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "warn",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "warn",
+      "reason": "risk signal 'det-first' (medium/likely); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_tied_severity_names_the_first_detector",
+    "query": {
+      "base_action": "warn",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "network",
+          "confidence": "likely",
+          "detector": "det-first",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "medium",
+          "signal_id": "risk:first",
+          "technical_detail": null,
+          "title": "t"
+        },
+        {
+          "advisory_id": null,
+          "category": "network",
+          "confidence": "likely",
+          "detector": "det-second",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "medium",
+          "signal_id": "risk:second",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
     }
   }
 ]

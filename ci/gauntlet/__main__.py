@@ -9,6 +9,7 @@ import math
 import os
 import signal
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from .catalog import CATALOG, CONNECTOR_CATALOG, load_catalog
@@ -216,6 +217,11 @@ def main(argv: list[str] | None = None) -> int:
         "--wheel", type=Path, help="Prebuilt native wheel; required on hosts other than macOS and Linux x86_64"
     )
     qualify.add_argument(
+        "--wheel-release-assets",
+        type=Path,
+        help="Directory of command packs that --wheel's build exported, served to the extension-control cases",
+    )
+    qualify.add_argument(
         "--release-profile-wheel",
         action="store_true",
         help="Build the tested wheel with the production release profile (fat LTO) "
@@ -373,6 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         from .contained import run_contained_profile
         from .runner import run_suite
 
+        route_health: Callable[[], str | None] | None = None
         with contextlib.ExitStack() as stack:
             if args.native_luna_route:
                 from .luna_route import NativeLunaRoute
@@ -392,6 +399,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
                 provider = route.provider(max_rounds=args.max_inference_rounds, timeout=min(args.timeout, 120))
+                route_health = route.health
             else:
                 provider = {
                     "base_url": args.provider_url,
@@ -428,6 +436,7 @@ def main(argv: list[str] | None = None) -> int:
                     candidate_sha=args.candidate_sha,
                     jobs=args.jobs,
                     fail_fast=args.fail_fast,
+                    route_health=route_health,
                     host_slots=args.host_slots,
                     slot_dir=args.slot_dir,
                     max_load=args.max_load,

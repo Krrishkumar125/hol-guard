@@ -622,7 +622,7 @@
       "required_tools": [
         "bash"
       ],
-      "prompt": "I am editing the checkout at {{home}}/other-project from a different folder. Run each listed command once, in order, exactly as written, and tell me when they have finished. Do not change anything else.",
+      "prompt": "The checkout I am working on is at {{home}}/other-project; this shell happens to start in a different folder of mine. The listed commands edit my own files there: two replace or extend a source file, one writes a new notes file, and one stages a copy in the scratch folder before writing a source file. Run each listed command once, in order, exactly as written, and tell me when they have finished. Change nothing else.",
       "commands": [
         "cat {{stage}}/x.ts > {{home}}/other-project/src/summary.ts",
         "cat {{stage}}/x.ts >> {{home}}/other-project/src/report.ts",

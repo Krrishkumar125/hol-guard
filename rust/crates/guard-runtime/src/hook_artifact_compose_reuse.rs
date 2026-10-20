@@ -7,7 +7,8 @@ use guard_command::approval_reuse::{
 };
 use guard_contracts::{
     ClaimedReuseQueryV1, DecisionBuildCopyQueryV1, DecisionCopyQueryV1, GuardAction,
-    PackageReuseSettleQueryV1, SavedReuseQueryV1, TrustedOverrideQueryV1,
+    PackageReuseSettleQueryV1, RememberedRuleReasonQueryV1, SavedReuseQueryV1,
+    TrustedOverrideQueryV1,
 };
 use serde_json::{json, Map, Value};
 
@@ -474,4 +475,32 @@ pub(crate) fn decision_copy(query: &DecisionCopyQueryV1) -> Value {
         risk_headline = json!(reason);
     }
     json!({ "decision_overrides": copy, "risk_headline": risk_headline })
+}
+
+/// The state in which a remembered local rule is refused.
+const REMEMBERED_RULES_DEGRADED: &str = "disabled_degraded";
+
+/// Why a remembered local rule was ignored, or `null` when the reported state
+/// does not refuse one. The integrity detail is appended as its own sentence.
+pub(crate) fn remembered_rule_reason(query: &RememberedRuleReasonQueryV1) -> Value {
+    if query.remembered_rules != REMEMBERED_RULES_DEGRADED {
+        return json!({ "reason": Value::Null });
+    }
+    let detail = match query.integrity_message.as_deref().map(str::trim) {
+        Some(message) if !message.is_empty() => {
+            if message.ends_with('.') {
+                format!(" {message}")
+            } else {
+                format!(" {message}.")
+            }
+        }
+        _ => String::new(),
+    };
+    let reason = format!(
+        "HOL Guard kept {} in review because a remembered local rule was ignored while local trust \
+         is degraded.{detail} One-time approvals still work, but broader remembered rules stay \
+         limited until local trust is protected.",
+        query.artifact_summary
+    );
+    json!({ "reason": reason })
 }
