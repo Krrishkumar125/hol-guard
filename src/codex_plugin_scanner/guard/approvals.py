@@ -459,7 +459,7 @@ def apply_approval_resolution(
         raise ApprovalRequestNotFoundError(f"Unknown approval request: {request_id}")
     if request["status"] != "pending":
         raise ApprovalRequestAlreadyResolvedError(f"Approval request already resolved: {request_id}")
-    require_resolvable_approval_request(request)
+    require_resolvable_approval_request(request, guard_home=store.guard_home)
     from .native_bash_review_preflight import require_verified_bash_review
 
     require_verified_bash_review(store, request, require_execution=action == "allow" or persist_policy is True)

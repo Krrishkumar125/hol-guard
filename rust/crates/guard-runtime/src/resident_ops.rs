@@ -338,6 +338,11 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                     policy_store,
                 )
             }
+            ResidentOperationV1::ApprovalResolutionEligibility(request) => {
+                crate::approval_resolution_eligibility_op::evaluate_approval_resolution_eligibility_request(
+                    &request,
+                )
+            }
             ResidentOperationV1::ApprovalResolutionPlan(request) => {
                 crate::approval_resolution_plan_op::evaluate_approval_resolution_plan_request(
                     &request,
