@@ -80,7 +80,7 @@ pub(crate) fn canonical(path: &Path) -> Option<PathBuf> {
     })
 }
 
-fn trusted_executable(path: &Path) -> Result<PathBuf, RestrictedPytestError> {
+pub(crate) fn trusted_executable(path: &Path) -> Result<PathBuf, RestrictedPytestError> {
     let executable = canonical(path)
         .filter(|path| path.is_file())
         .ok_or_else(|| error(UNAVAILABLE, "The Python interpreter could not be resolved."))?;
@@ -305,6 +305,12 @@ struct Launch {
     /// A Node.js launch, which takes no Python settings.
     node: bool,
     build: Option<NodeBuild>,
+    /// A contained pytest launch: the workspace-relative virtual environment
+    /// the snapshot has to keep, and the path from the run's directory to its
+    /// executables. Both are relative because the snapshot root is created at
+    /// launch, after the plan was written.
+    environment: Option<PathBuf>,
+    environment_binaries: Option<PathBuf>,
 }
 
 /// The staged dependencies and published outputs of a node build launch.
@@ -345,11 +351,14 @@ fn parse(arguments: &[String]) -> Result<Launch, RestrictedPytestError> {
     // writable private snapshot. Only the build profile publishes anything
     // back from it, so only the build profile declares an output; a tool that
     // reports declares none and leaves the live workspace untouched.
-    let (build, node, publishes) = match profile {
-        None => (false, false, false),
-        Some(NODE_PROFILE) => (false, true, false),
-        Some(profile) if profile == crate::windows_node_build::PROFILE => (true, true, true),
-        Some(profile) if profile == crate::windows_node_build::TOOL_PROFILE => (true, true, false),
+    let (build, node, publishes, pytest) = match profile {
+        None => (false, false, false, false),
+        Some(NODE_PROFILE) => (false, true, false, false),
+        Some(profile) if profile == crate::windows_pytest::PROFILE => (false, false, false, true),
+        Some(profile) if profile == crate::windows_node_build::PROFILE => (true, true, true, false),
+        Some(profile) if profile == crate::windows_node_build::TOOL_PROFILE => {
+            (true, true, false, false)
+        }
         Some(_) => return Err(invalid()),
     };
     if publishes == outputs.is_empty() {
@@ -364,6 +373,29 @@ fn parse(arguments: &[String]) -> Result<Launch, RestrictedPytestError> {
         Path::new(cwd.ok_or_else(invalid)?),
     )?;
     let (executable, rest) = command.split_first().ok_or_else(invalid)?;
+    if pytest {
+        // The interpreter is the environment's own copy inside the snapshot,
+        // so the run keeps that environment's prefix, `site-packages` and
+        // `.pth` processing; the plan named it relative to the workspace.
+        let (environment, interpreter) =
+            crate::windows_pytest::staged_interpreter(Path::new(executable)).ok_or_else(invalid)?;
+        let relative_cwd = cwd.strip_prefix(&workspace).map_err(|_| invalid())?;
+        let binaries = crate::windows_pytest::relative_from(
+            relative_cwd,
+            interpreter.parent().ok_or_else(invalid)?,
+        );
+        return Ok(Launch {
+            workspace,
+            cwd,
+            timeout: Duration::from_secs(timeout),
+            executable: interpreter,
+            arguments: rest.iter().map(OsString::from).collect(),
+            node: false,
+            build: None,
+            environment: Some(environment),
+            environment_binaries: Some(binaries),
+        });
+    }
     if node && !build {
         // Node's JavaScript realpath lstats the drive root, which an LPAC
         // token cannot do; the snapshot holds no links to resolve.
@@ -380,6 +412,8 @@ fn parse(arguments: &[String]) -> Result<Launch, RestrictedPytestError> {
             arguments,
             node: true,
             build: None,
+            environment: None,
+            environment_binaries: None,
         });
     }
     if !build {
@@ -394,6 +428,8 @@ fn parse(arguments: &[String]) -> Result<Launch, RestrictedPytestError> {
             arguments: rest.iter().map(OsString::from).collect(),
             node: false,
             build: None,
+            environment: None,
+            environment_binaries: None,
         });
     }
     let executable = crate::windows_node_build::node_executable(Path::new(executable))?;
@@ -436,16 +472,28 @@ fn parse(arguments: &[String]) -> Result<Launch, RestrictedPytestError> {
             dependencies,
             outputs,
         }),
+        environment: None,
+        environment_binaries: None,
     })
 }
 
-fn environment(executable: &Path, node: bool) -> Vec<(OsString, OsString)> {
+fn environment(
+    executable: &Path,
+    node: bool,
+    binaries: Option<&Path>,
+) -> Vec<(OsString, OsString)> {
     let mut environment: Vec<(OsString, OsString)> = INHERITED_ENVIRONMENT
         .iter()
         .filter(|name| !node || !name.starts_with("PYTHON"))
         .filter_map(|name| std::env::var_os(name).map(|value| (OsString::from(name), value)))
         .collect();
-    let mut path = vec![executable.parent().unwrap_or(executable).to_path_buf()];
+    // A contained pytest run's interpreter lives inside the snapshot, whose
+    // root the plan could not name, so its `PATH` entry is relative to the
+    // run's own directory instead of to the executable.
+    let mut path = match binaries {
+        Some(binaries) => vec![binaries.to_path_buf()],
+        None => vec![executable.parent().unwrap_or(executable).to_path_buf()],
+    };
     if let Some(root) = std::env::var_os("SystemRoot") {
         let root = PathBuf::from(root);
         path.push(root.join("System32"));
@@ -458,17 +506,28 @@ fn environment(executable: &Path, node: bool) -> Vec<(OsString, OsString)> {
         environment.push(("PYTHONNOUSERSITE".into(), "1".into()));
         environment.push(("PYTHONDONTWRITEBYTECODE".into(), "1".into()));
     }
+    if binaries.is_some() {
+        // The snapshot is read-only and discarded, so pytest's own cache has
+        // nowhere to land; the plugin would fail the run writing it.
+        environment.push(("PYTEST_ADDOPTS".into(), "-p no:cacheprovider".into()));
+    }
     environment
 }
 
-fn withheld(patterns: &[Regex]) -> impl Fn(&Path) -> bool + '_ {
+/// `keep` is a virtual environment a contained pytest run reads from: it is
+/// copied although `.venv` is withheld from every other profile, while the
+/// bulky and credential-bearing directories inside it are withheld as usual.
+fn withheld<'a>(patterns: &'a [Regex], keep: Option<&'a Path>) -> impl Fn(&Path) -> bool + 'a {
     move |relative: &Path| {
         let text = relative
             .components()
             .map(|component| component.as_os_str().to_string_lossy())
             .collect::<Vec<_>>()
             .join("/");
-        relative.components().any(|component| {
+        let scanned = keep
+            .and_then(|keep| relative.strip_prefix(keep).ok())
+            .unwrap_or(relative);
+        scanned.components().any(|component| {
             WITHHELD_DIRECTORIES
                 .iter()
                 .any(|name| component.as_os_str().eq_ignore_ascii_case(name))
@@ -499,9 +558,19 @@ fn launch(arguments: &[String]) -> Result<i32, RestrictedPytestError> {
         .map(|pattern| Regex::new(pattern))
         .collect::<Result<_, _>>()
         .map_err(|_| error(UNAVAILABLE, "Credential patterns are unavailable."))?;
-    let withhold = withheld(&patterns);
+    let withhold = withheld(&patterns, launch.environment.as_deref());
     let withhold_dependency = dependency_withheld(&patterns);
-    let environment = environment(&launch.executable, launch.node);
+    let environment = environment(
+        &launch.executable,
+        launch.node,
+        launch.environment_binaries.as_deref(),
+    );
+    // A virtual environment is an installed tree, not a source checkout, so a
+    // run that copies one needs the budget a staged dependency gets.
+    let (max_entries, max_bytes) = match launch.environment {
+        Some(_) => (MAX_DEPENDENCY_ENTRIES, MAX_DEPENDENCY_BYTES),
+        None => (MAX_ENTRIES, MAX_BYTES),
+    };
     let cancel = AtomicBool::new(false);
     if let Some(build) = &launch.build {
         if build.outputs.iter().any(|output| withhold(output)) {
@@ -531,8 +600,8 @@ fn launch(arguments: &[String]) -> Result<i32, RestrictedPytestError> {
             arguments: &launch.arguments,
             environment: &environment,
             withhold: &withhold,
-            max_entries: MAX_ENTRIES,
-            max_bytes: MAX_BYTES,
+            max_entries,
+            max_bytes,
             output_cap: OUTPUT_CAP,
             deadline: Instant::now() + launch.timeout,
             cancel: &cancel,

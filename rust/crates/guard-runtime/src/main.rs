@@ -722,6 +722,8 @@ mod verified_read_decision_op;
 #[cfg(windows)]
 mod windows_node_build;
 #[cfg(windows)]
+mod windows_pytest;
+#[cfg(windows)]
 mod windows_readonly;
 mod workspace_inventory_files;
 mod workspace_inventory_op;
