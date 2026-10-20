@@ -18,6 +18,10 @@ pub const APPROVAL_REUSE_DIAGNOSTIC_RESULT_SCHEMA: &str =
     "guard-approval-reuse-diagnostic-result.v1";
 /// Capability advertised by the runtime when this operation is available.
 pub const APPROVAL_REUSE_DIAGNOSTIC_FEATURE: &str = "approval-reuse-diagnostic-v1";
+/// Capability advertised when the request may name a `current_action` and the
+/// reply carries the composed `reuse` decision. The request denies unknown
+/// fields, so a runtime that does not advertise this is never sent one.
+pub const APPROVAL_REUSE_DIAGNOSTIC_REUSE_FEATURE: &str = "approval-reuse-diagnostic-reuse-v1";
 
 /// Integrity evidence procured by the caller; each part is shipped only when
 /// the resident named it in a `need` reply.

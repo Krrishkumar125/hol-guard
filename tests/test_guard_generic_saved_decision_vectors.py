@@ -269,3 +269,59 @@ def test_a_diagnosed_miss_carries_the_residents_own_reuse_decision(monkeypatch, 
     assert reuse == _decision_from_native_payload(composed)
     # The recomputed action travels with the diagnosis, in one call.
     assert [entry["kwargs"] for entry in asked] == [{"current_action": "review"}]
+
+
+@pytest.mark.parametrize("supports_reuse", [False, True])
+def test_the_miss_names_the_current_action_only_to_a_resident_that_advertises_it(monkeypatch, tmp_path, supports_reuse):
+    """An older resident denies the unknown ``current_action`` field, so it gets
+    the two-field request and still diagnoses the miss; the caller composes."""
+
+    from types import SimpleNamespace
+
+    from codex_plugin_scanner.guard import native_store_policy
+    from codex_plugin_scanner.guard.native_context import _canonical_request_sha256
+
+    diagnostic = native_store_policy.APPROVAL_REUSE_DIAGNOSTIC_FEATURE
+    composed = native_store_policy.APPROVAL_REUSE_DIAGNOSTIC_REUSE_FEATURE
+    features = (diagnostic, composed) if supports_reuse else (diagnostic,)
+    sent: list[tuple[dict[str, object], str]] = []
+
+    def resident(*, request, required_feature, status, **_kwargs):
+        assert status.capabilities.features == features
+        sent.append((dict(request), required_feature))
+        payload: dict[str, object] = {"reason": "approval_reuse_content_changed", "stored_hash": "sha256:" + "a" * 64}
+        if "current_action" in request:
+            payload["reuse"] = {"action": "review"}
+        return {
+            "request_id": request["request_id"],
+            "request_sha256": "sha256:" + _canonical_request_sha256(request),
+            "status": "ok",
+            "code": "ok",
+            "payload": payload,
+        }
+
+    monkeypatch.setattr(
+        native_store_policy,
+        "native_runtime_status",
+        lambda: SimpleNamespace(identity=None, capabilities=SimpleNamespace(features=features)),
+    )
+    monkeypatch.setattr(native_store_policy, "_resident_request", resident)
+
+    reason, stored_hash, reuse = native_store_policy.native_approval_reuse_miss(
+        store_path=tmp_path / "guard.db",
+        guard_home=tmp_path,
+        harness="codex",
+        artifact_id="codex:artifact",
+        artifact_hash=None,
+        workspace=None,
+        publisher=None,
+        now="2026-10-20T00:00:00Z",
+        evidence_provider=lambda *_args: {},
+        current_action="review",
+    )
+
+    assert (reason, stored_hash) == ("approval_reuse_content_changed", "sha256:" + "a" * 64)
+    assert [("current_action" in request, feature) for request, feature in sent] == [
+        (supports_reuse, composed if supports_reuse else diagnostic)
+    ]
+    assert reuse == ({"action": "review"} if supports_reuse else None)
