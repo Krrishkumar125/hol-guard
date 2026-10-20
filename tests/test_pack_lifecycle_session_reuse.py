@@ -123,3 +123,32 @@ def test_runtime_fingerprint_tracks_the_installed_files(monkeypatch, tmp_path):
     first = lifecycle.runtime_fingerprint()
     (tmp_path / transport._COMPILER_NAME).write_bytes(b"three")
     assert lifecycle.runtime_fingerprint() != first
+
+
+def test_installed_answers_are_reused_until_an_installed_file_changes(monkeypatch, tmp_path):
+    from codex_plugin_scanner.guard.catalog_delivery import installed_bundle
+
+    native = tmp_path / "_native"
+    native.mkdir()
+    (native / "runtime-manifest.json").write_text("{}")
+    monkeypatch.setattr(installed_bundle, "_package", lambda: tmp_path)
+    monkeypatch.setattr(transport, "_NATIVE_PACKAGE", native)
+    answers = []
+
+    def presence():
+        answers.append("presence")
+        if len(answers) == 3:
+            raise ValueError("installed bundle metadata unavailable")
+        return True
+
+    monkeypatch.setattr(installed_bundle, "_advertised", presence)
+    assert installed_bundle.advertised() and installed_bundle.advertised()
+    assert answers == ["presence"]
+
+    (native / "runtime-manifest.json").write_text('{"changed": true}')
+    assert installed_bundle.advertised()
+    (native / "hol-guard-runtime").write_bytes(b"new")
+    with pytest.raises(ValueError, match="metadata unavailable"):
+        installed_bundle.advertised()
+    assert installed_bundle.advertised()
+    assert len(answers) == 4
