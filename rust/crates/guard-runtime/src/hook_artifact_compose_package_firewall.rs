@@ -15,6 +15,10 @@ use serde_json::{json, Value};
 const CONNECT_REQUIRED: &str = "guard_cloud_connect_required";
 const RECONNECT_REQUIRED: &str = "guard_cloud_reconnect_required";
 const PAID_REQUIRED: &str = "paid_guard_cloud_required";
+/// The entitlement a caller reports when the runtime could not resolve one.
+/// It is not an unpaid account and not a connect that has to happen, so its
+/// block says the runtime could not answer rather than asking for money.
+const RUNTIME_UNAVAILABLE: &str = "guard_runtime_unavailable";
 
 /// Operations that say what access there is rather than using it.
 const ALWAYS_OFFERED: [&str; 3] = ["status", "connect", "open-shell"];
@@ -90,6 +94,11 @@ fn available_actions(entitlement: &Value, has_installed_managers: bool) -> Value
 /// caller answers with.
 fn block(entitlement: &Value) -> Value {
     match reason(entitlement).as_str() {
+        RUNTIME_UNAVAILABLE => json!({
+            "code": RUNTIME_UNAVAILABLE,
+            "message": "The HOL Guard runtime could not report package firewall access on this machine.",
+            "status": 503,
+        }),
         CONNECT_REQUIRED => json!({
             "code": CONNECT_REQUIRED,
             "message": "Connect HOL Guard Cloud on this machine before running package firewall actions.",

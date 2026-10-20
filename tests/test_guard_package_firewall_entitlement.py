@@ -4,14 +4,20 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from codex_plugin_scanner.guard import package_firewall_entitlement as entitlement_module
-from codex_plugin_scanner.guard.native_hook_artifact_compose import NativeHookComposeError
+from codex_plugin_scanner.guard.native_hook_artifact_compose import (
+    NativeHookComposeError,
+    NativeHookComposeValidationError,
+)
 from codex_plugin_scanner.guard.package_firewall_entitlement import (
+    PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON,
     build_oauth_package_firewall_entitlement,
     package_firewall_access,
+    package_firewall_entitlement_or_denied,
     reconcile_connect_state_with_oauth_entitlement,
 )
 from codex_plugin_scanner.guard.store import GuardStore
@@ -298,3 +304,38 @@ def test_the_cli_block_payload_fails_closed_when_the_resident_cannot_compose(
     assert payload["error"] == "package_firewall_authority_unavailable"
     assert payload["operation"] == "install"
     assert payload["available_actions"] == []
+
+
+@pytest.mark.parametrize("error", [NativeHookComposeError("unavailable"), NativeHookComposeValidationError("bad")])
+def test_a_runtime_that_cannot_answer_entitles_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+) -> None:
+    """A gating caller reads a denial, never an allow it worked out itself."""
+
+    class _Rows:
+        """The rows the question is built from, with no runtime behind them."""
+
+        guard_home = str(tmp_path)
+
+        def get_sync_payload(self, name: str) -> None:
+            return None
+
+        def get_effective_guard_connect_state(self, *, now: str) -> None:
+            return None
+
+        def get_cloud_sync_profile(self) -> None:
+            return None
+
+        def get_oauth_local_credential_health(self) -> None:
+            return None
+
+    def refuse(*args: object, **kwargs: object) -> dict[str, object]:
+        raise error
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", refuse)
+    entitlement = package_firewall_entitlement_or_denied(cast("GuardStore", _Rows()))
+
+    assert entitlement["allowed"] is False
+    assert entitlement["reason"] == PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON

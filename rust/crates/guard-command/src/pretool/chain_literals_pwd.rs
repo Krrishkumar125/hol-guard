@@ -14,22 +14,61 @@ const MAX_DIRECTORY_CHARS: usize = 1024;
 /// Builtins that change the shell's directory or its idea of it.
 const DIRECTORY_COMMANDS: &str = "cd chdir dirs popd pushd";
 
+/// Builtins that take the variable they set as an option operand rather than
+/// as a bare word: `printf -v` in bash and zsh, and zsh's `print -v`.
+/// `names_variable` reads a bare name, so it sees `printf -v HOME`, but not a
+/// name the shell assembles from expansions, as
+/// `printf -v $prefix$suffix %s /other/home` does. Any `-v` on one of these
+/// keeps the chain opaque.
+const OPTION_SETTERS: &str = "print printf";
+
+/// Builtins that set a variable named by an operand: bash's `compgen -V`,
+/// and zsh's module builtins (`getln`, `sysread`, `strftime -s`, `zstat -A`,
+/// `zformat -f`, `pcre_match -v`, `zgetattr` and the rest). The ones that
+/// also run text as code are in `STATE_COMMANDS`. The substitution pass
+/// stops at any operand it cannot resolve, but this pass
+/// reads only command words, so a name the shell assembles from expansions
+/// (`p=HO s=ME; syserror -e $p$s`) would reach one unseen. zsh/stat's `stat`
+/// is left out: it shadows the external command only once a chain or the
+/// user's own startup files load that module, and a chain that does is
+/// already opaque through `zmodload`.
+const NAME_SETTERS: &str = "compadd compgen getln pcre_match strftime sysopen syserror sysread \
+    syswrite zcurses zformat zgetattr zlistattr zpty zselect zstat zsystem ztie";
+
 /// The command with each working-directory expansion replaced by `cwd`;
 /// `None` when nothing is replaced, the directory is not a plain absolute
 /// literal, or any step at or before a replaced use could change the directory.
 pub(super) fn project(command: &str, cwd: &str) -> Option<String> {
-    if !literal_directory(cwd)
+    project_uses(command, cwd, "PWD", use_width, |word| {
+        listed(DIRECTORY_COMMANDS, word)
+            // zsh's AUTO_CD runs a bare directory name as `cd`.
+            || std::path::Path::new(cwd).join(word).is_dir()
+    })
+}
+
+/// The command with each use `width` recognizes replaced by `value`, a
+/// directory the variable `name` is known to hold; `None` when nothing is
+/// replaced, the value is not a plain absolute literal, or any step at or
+/// before a replaced use could set the variable or is a word `changes` names.
+pub(super) fn project_uses(
+    command: &str,
+    value: &str,
+    name: &str,
+    width: fn(&[char]) -> Option<usize>,
+    changes: impl Fn(&str) -> bool,
+) -> Option<String> {
+    if !literal_directory(value)
         || !command.is_ascii()
         || command.len() > MAX_COMMAND_CHARS
         || command.bytes().any(|b| b.is_ascii_control() && b != b'\t')
         // A changed `IFS` splits an unquoted use where the literal is whole,
-        // and any other mention of `PWD` might set it.
-        || names_variable(command, |name| name == "IFS" || name == "PWD")
+        // and any other mention of the variable might set it.
+        || names_variable(command, |named| named == "IFS" || named == name)
     {
         return None;
     }
     let chars: Vec<char> = command.chars().collect();
-    let (projected, last_use) = replace_uses(&chars, cwd)?;
+    let (projected, last_use) = replace_uses(&chars, value, width)?;
     let projected_chars: Vec<char> = projected.chars().collect();
     let tokens = tokenize(&projected_chars)?;
     let list = items(&tokens)?;
@@ -65,12 +104,20 @@ pub(super) fn project(command: &str, cwd: &str) -> Option<String> {
                 .filter(|&&c| !matches!(c, '\'' | '"' | '\\'))
                 .collect();
             if word.contains('$')
-                || listed(DIRECTORY_COMMANDS, &word)
                 || listed(STATE_COMMANDS, &word)
                 || listed(KEYWORDS, &word)
                 || listed(PRECOMMANDS, &word)
-                // zsh's AUTO_CD runs a bare directory name as `cd`.
-                || std::path::Path::new(cwd).join(&word).is_dir()
+                || listed(NAME_SETTERS, &word)
+                || changes(word.as_str())
+            {
+                return None;
+            }
+            if listed(OPTION_SETTERS, &word)
+                && sets_a_variable(
+                    stage[leading + 1..]
+                        .iter()
+                        .map(|&(from, to)| &projected_chars[from..to]),
+                )
             {
                 return None;
             }
@@ -79,23 +126,54 @@ pub(super) fn project(command: &str, cwd: &str) -> Option<String> {
     Some(projected)
 }
 
+/// Whether an [`OPTION_SETTERS`] builtin may read one of its operands as the
+/// `-v` option, in the separate (`-v NAME`) or the attached (`-vNAME`) form.
+/// The builtin stops reading options at the first operand that is not one, so
+/// only the leading run is read. A word the shell still has to expand, brace
+/// out or glob, such as the `$o` of `o=-v; printf $o $p$s %s /etc` or the
+/// `-$x` of `x=v; printf -$x$p$s %s /etc`, can spell that option, and one
+/// starting with `-` can be it outright. The shell removes quotes and escapes
+/// before the builtin reads the word, so they are removed here too.
+fn sets_a_variable<'a>(operands: impl Iterator<Item = &'a [char]>) -> bool {
+    for word in operands {
+        let mut chars = word.iter().filter(|&&c| !matches!(c, '\'' | '"' | '\\'));
+        // Its text is unknown, so it may be the option wherever one could stand.
+        if chars
+            .clone()
+            .any(|&c| matches!(c, '$' | '`' | '{' | '[' | '*' | '?'))
+        {
+            return true;
+        }
+        match chars.next() {
+            Some('-') if chars.any(|&c| c == 'v') => return true,
+            Some('-') => {}
+            _ => return false,
+        }
+    }
+    false
+}
+
 /// An absolute path whose characters the shell never splits, globs, quotes
 /// or expands, and which still names a directory.
-fn literal_directory(cwd: &str) -> bool {
-    cwd.starts_with('/')
-        && cwd.len() <= MAX_DIRECTORY_CHARS
-        && !cwd.split('/').any(|part| part == "..")
-        && cwd.chars().all(|c| {
+fn literal_directory(directory: &str) -> bool {
+    directory.starts_with('/')
+        && directory.len() <= MAX_DIRECTORY_CHARS
+        && !directory.split('/').any(|part| part == "..")
+        && directory.chars().all(|c| {
             c.is_ascii_alphanumeric()
                 || matches!(c, '_' | '.' | '/' | '@' | '%' | '+' | ':' | ',' | '-')
         })
-        && std::fs::canonicalize(cwd).is_ok_and(|path| path.is_dir())
+        && std::fs::canonicalize(directory).is_ok_and(|path| path.is_dir())
 }
 
 /// The text with every use outside single quotes and escapes replaced, and
 /// the index in that text just after the last replacement.
-fn replace_uses(chars: &[char], cwd: &str) -> Option<(String, usize)> {
-    let mut out = String::with_capacity(chars.len() + cwd.len());
+fn replace_uses(
+    chars: &[char],
+    value: &str,
+    width: fn(&[char]) -> Option<usize>,
+) -> Option<(String, usize)> {
+    let mut out = String::with_capacity(chars.len() + value.len());
     let mut last_use = None;
     let mut single = false;
     let mut double = false;
@@ -122,7 +200,7 @@ fn replace_uses(chars: &[char], cwd: &str) -> Option<(String, usize)> {
                 index += 2;
                 continue;
             }
-            '$' | '`' => use_width(&chars[index..])?,
+            '$' | '`' => width(&chars[index..])?,
             _ => 0,
         };
         if width == 0 {
@@ -130,7 +208,7 @@ fn replace_uses(chars: &[char], cwd: &str) -> Option<(String, usize)> {
             index += 1;
             continue;
         }
-        out.push_str(cwd);
+        out.push_str(value);
         // Byte and character offsets agree: the text is ASCII.
         last_use = Some(out.len());
         index += width;

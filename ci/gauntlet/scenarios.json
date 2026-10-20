@@ -575,6 +575,20 @@
       ]
     },
     {
+      "id": "omp-native-shell-home-variable-toolchain",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "bash"
+      ],
+      "prompt": "List the Node versions installed in my toolchain three ways to compare the output: run each listed command once, in order, exactly as written, then tell me which versions are installed.",
+      "commands": [
+        "find ~/.nvm/versions/node -mindepth 1 -maxdepth 1 -type d -print",
+        "find \"$HOME/.nvm/versions/node\" -mindepth 1 -maxdepth 1 -type d -print",
+        "ls \"${HOME}/.nvm/versions/node\""
+      ]
+    },
+    {
       "id": "omp-native-glob-home-skill-docs",
       "expectation": "allow",
       "oracle": "native-tools",

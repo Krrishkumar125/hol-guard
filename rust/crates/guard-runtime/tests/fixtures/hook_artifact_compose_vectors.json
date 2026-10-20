@@ -4942,6 +4942,823 @@
   },
   {
     "expected": {
+      "allowed": true,
+      "reason": "paid_oauth_entitlement_active",
+      "tier": "pro",
+      "upgrade_cta": null
+    },
+    "name": "package_firewall_entitlement_a_paid_oauth_claim_is_allowed",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": {
+        "supply_chain_entitlement_expires_at": "2027-01-01T00:00:00+00:00",
+        "supply_chain_firewall": true,
+        "supply_chain_plan_id": "pro"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_reconnect_required",
+      "tier": "pro",
+      "upgrade_cta": "Reconnect HOL Guard Cloud to refresh package firewall access."
+    },
+    "name": "package_firewall_entitlement_an_expired_oauth_claim_asks_for_a_reconnect",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": {
+        "supply_chain_entitlement_expires_at": "2020-01-01T00:00:00+00:00",
+        "supply_chain_firewall": true,
+        "supply_chain_plan_id": "pro"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_reconnect_required",
+      "tier": "pro",
+      "upgrade_cta": "Reconnect HOL Guard Cloud to refresh package firewall access."
+    },
+    "name": "package_firewall_entitlement_an_oauth_claim_without_an_expiry_asks_for_a_reconnect",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": {
+        "supply_chain_firewall": true,
+        "supply_chain_plan_id": "pro"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "paid_guard_cloud_required",
+      "tier": "free",
+      "upgrade_cta": "Upgrade to HOL Guard Cloud to run package firewall actions."
+    },
+    "name": "package_firewall_entitlement_a_free_plan_needs_an_upgrade",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": {
+        "supply_chain_firewall": false,
+        "supply_chain_plan_id": "free"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": true,
+      "reason": "paid_entitlement_active",
+      "tier": "team",
+      "upgrade_cta": null
+    },
+    "name": "package_firewall_entitlement_a_paid_bundle_is_allowed",
+    "query": {
+      "bundle_payload": {
+        "tier": "team"
+      },
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": null
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "paid_guard_cloud_required",
+      "tier": "free",
+      "upgrade_cta": "Upgrade to HOL Guard Cloud to run package firewall actions."
+    },
+    "name": "package_firewall_entitlement_an_unpaid_bundle_needs_an_upgrade",
+    "query": {
+      "bundle_payload": {
+        "tier": "free"
+      },
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": null
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_connect_required",
+      "tier": "unknown",
+      "upgrade_cta": "Connect HOL Guard Cloud to check package firewall access and run package firewall actions."
+    },
+    "name": "package_firewall_entitlement_nothing_stored_needs_a_connect",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": null,
+      "has_cloud_sync_profile": false,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": null,
+      "oauth_payload": null
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_connect_required",
+      "tier": "pro",
+      "upgrade_cta": "Connect HOL Guard Cloud to check package firewall access and run package firewall actions."
+    },
+    "name": "package_firewall_entitlement_a_degraded_credential_does_not_read_a_paid_claim",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": null,
+      "has_cloud_sync_profile": false,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "degraded"
+      },
+      "oauth_payload": {
+        "supply_chain_entitlement_expires_at": "2027-01-01T00:00:00+00:00",
+        "supply_chain_firewall": true,
+        "supply_chain_plan_id": "pro"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_reconnect_required",
+      "tier": "pro",
+      "upgrade_cta": "Reconnect HOL Guard Cloud to refresh package firewall access."
+    },
+    "name": "package_firewall_entitlement_a_retry_required_connect_state_asks_for_a_reconnect",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": {
+        "milestone": "first_sync_failed",
+        "status": "retry_required"
+      },
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": {
+        "supply_chain_entitlement_expires_at": "2027-01-01T00:00:00+00:00",
+        "supply_chain_firewall": true,
+        "supply_chain_plan_id": "pro"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_reconnect_required",
+      "tier": "pro",
+      "upgrade_cta": "Reconnect HOL Guard Cloud to refresh package firewall access."
+    },
+    "name": "package_firewall_entitlement_a_sync_not_available_milestone_asks_for_a_reconnect",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": {
+        "milestone": "sync_not_available",
+        "status": "connected"
+      },
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": {
+        "supply_chain_entitlement_expires_at": "2027-01-01T00:00:00+00:00",
+        "supply_chain_firewall": true,
+        "supply_chain_plan_id": "pro"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_reconnect_required",
+      "tier": "unknown",
+      "upgrade_cta": "Reconnect HOL Guard Cloud to refresh package firewall access."
+    },
+    "name": "package_firewall_entitlement_a_connected_state_without_oauth_asks_for_a_reconnect",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": {
+        "milestone": "first_sync_succeeded",
+        "status": "connected"
+      },
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": null,
+      "oauth_payload": null
+    }
+  },
+  {
+    "expected": {
+      "allowed": true,
+      "reason": "paid_oauth_entitlement_active",
+      "tier": "pro",
+      "upgrade_cta": null
+    },
+    "name": "package_firewall_entitlement_a_healthy_connected_state_leaves_the_claim_alone",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": {
+        "milestone": "first_sync_succeeded",
+        "status": "connected"
+      },
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": {
+        "supply_chain_entitlement_expires_at": "2027-01-01T00:00:00+00:00",
+        "supply_chain_firewall": true,
+        "supply_chain_plan_id": "pro"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": true,
+      "reason": "paid_entitlement_active",
+      "tier": "team",
+      "upgrade_cta": null
+    },
+    "name": "package_firewall_entitlement_a_paid_bundle_stands_without_a_credential",
+    "query": {
+      "bundle_payload": {
+        "tier": "team"
+      },
+      "connect_state": null,
+      "has_cloud_sync_profile": false,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": null,
+      "oauth_payload": null
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_connect_required",
+      "tier": "unknown",
+      "upgrade_cta": "Connect HOL Guard Cloud to check package firewall access and run package firewall actions."
+    },
+    "name": "package_firewall_entitlement_a_configured_but_unhealthy_credential_needs_a_connect",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": null,
+      "has_cloud_sync_profile": false,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "expired"
+      },
+      "oauth_payload": null
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_reconnect_required",
+      "tier": "free",
+      "upgrade_cta": "Reconnect HOL Guard Cloud to refresh package firewall access."
+    },
+    "name": "package_firewall_entitlement_a_paid_oauth_record_contradicting_an_unpaid_bundle_asks_for_a_reconnect",
+    "query": {
+      "bundle_payload": {
+        "tier": "free"
+      },
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": null,
+      "oauth_payload": {
+        "supply_chain_plan_id": "pro"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "paid_guard_cloud_required",
+      "tier": "free",
+      "upgrade_cta": "Upgrade to HOL Guard Cloud to run package firewall actions."
+    },
+    "name": "package_firewall_entitlement_a_cloud_profile_alone_keeps_the_unpaid_bundle",
+    "query": {
+      "bundle_payload": {
+        "tier": "free"
+      },
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": null,
+      "oauth_payload": null
+    }
+  },
+  {
+    "expected": {
+      "allowed": false,
+      "reason": "guard_cloud_reconnect_required",
+      "tier": "enterprise",
+      "upgrade_cta": "Reconnect HOL Guard Cloud to refresh package firewall access."
+    },
+    "name": "package_firewall_entitlement_a_stale_paid_plan_without_a_firewall_claim_asks_for_a_reconnect",
+    "query": {
+      "bundle_payload": null,
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": {
+        "supply_chain_plan_id": "enterprise"
+      }
+    }
+  },
+  {
+    "expected": {
+      "allowed": true,
+      "reason": "paid_entitlement_active",
+      "tier": "pro",
+      "upgrade_cta": null
+    },
+    "name": "package_firewall_entitlement_a_tier_is_read_case_insensitively",
+    "query": {
+      "bundle_payload": {
+        "tier": "PRO"
+      },
+      "connect_state": null,
+      "has_cloud_sync_profile": true,
+      "kind": "package_firewall_entitlement",
+      "now": "2026-10-20T12:00:00+00:00",
+      "oauth_health": {
+        "configured": true,
+        "state": "healthy"
+      },
+      "oauth_payload": null
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "allow",
+        "approval_id": null,
+        "artifact_id": "direct"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_direct_only",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "block",
+        "approval_id": null,
+        "artifact_id": "memory"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_later_block_wins",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "block",
+            "approval_id": null,
+            "artifact_id": "memory"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "warn",
+        "approval_id": null,
+        "artifact_id": "direct"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_keeps_the_first_of_equal_severity",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "warn",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "warn",
+            "approval_id": null,
+            "artifact_id": "exact"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "block",
+        "approval_id": null,
+        "artifact_id": "memory"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_never_weakens_the_first",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "block",
+            "approval_id": null,
+            "artifact_id": "memory"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": 3,
+        "approval_id": null,
+        "artifact_id": "memory"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_unreadable_action_is_read_as_a_block",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": 3,
+            "approval_id": null,
+            "artifact_id": "memory"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "allow",
+        "approval_id": null,
+        "artifact_id": "direct"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_skips_the_undecided",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": {
+        "_approval_authority_revision": 7,
+        "action": "block",
+        "approval_id": null,
+        "artifact_id": "memory"
+      },
+      "ignored_local_integrity": {
+        "reason": "integrity drifted"
+      },
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_holds_the_first_ignored_integrity",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "exact"
+          },
+          "ignored_local_integrity": {
+            "reason": "integrity drifted"
+          },
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "block",
+            "approval_id": null,
+            "artifact_id": "memory"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": -1,
+      "decision": {
+        "_approval_authority_revision": -1,
+        "action": "allow",
+        "approval_id": null,
+        "artifact_id": "direct"
+      },
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_disagreed_revisions_carry_none",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "direct"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 8,
+          "decision": {
+            "action": "allow",
+            "approval_id": null,
+            "artifact_id": "exact"
+          },
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "authority_revision": 7,
+      "decision": null,
+      "ignored_local_integrity": null,
+      "trust_status": {
+        "status": "verified"
+      }
+    },
+    "name": "policy_lookup_select_undecided_lookups_select_the_first",
+    "query": {
+      "kind": "policy_lookup_select",
+      "lookups": [
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        },
+        {
+          "authority_revision": 7,
+          "decision": null,
+          "ignored_local_integrity": null,
+          "trust_status": {
+            "status": "verified"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
       "action_states": {
         "audit": "available",
         "install": "available",
@@ -5568,398 +6385,35 @@
   },
   {
     "expected": {
-      "authority_revision": 7,
-      "decision": {
-        "_approval_authority_revision": 7,
-        "action": "allow",
-        "approval_id": null,
-        "artifact_id": "direct"
+      "action_states": {
+        "audit": "paid_required",
+        "install": "paid_required",
+        "remove": "disabled",
+        "repair": "paid_required",
+        "sync": "paid_required",
+        "test": "paid_required"
       },
-      "ignored_local_integrity": null,
-      "trust_status": {
-        "status": "verified"
-      }
-    },
-    "name": "policy_lookup_select_direct_only",
-    "query": {
-      "kind": "policy_lookup_select",
-      "lookups": [
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "allow",
-            "approval_id": null,
-            "artifact_id": "direct"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        }
-      ]
-    }
-  },
-  {
-    "expected": {
-      "authority_revision": 7,
-      "decision": {
-        "_approval_authority_revision": 7,
-        "action": "block",
-        "approval_id": null,
-        "artifact_id": "memory"
+      "available_actions": [
+        "status",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_runtime_unavailable",
+        "message": "The HOL Guard runtime could not report package firewall access on this machine.",
+        "status": 503
       },
-      "ignored_local_integrity": null,
-      "trust_status": {
-        "status": "verified"
-      }
+      "operation_allowed": false
     },
-    "name": "policy_lookup_select_later_block_wins",
+    "name": "package_firewall_access_an_unanswerable_runtime_is_not_an_unpaid_account",
     "query": {
-      "kind": "policy_lookup_select",
-      "lookups": [
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "allow",
-            "approval_id": null,
-            "artifact_id": "direct"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "block",
-            "approval_id": null,
-            "artifact_id": "memory"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        }
-      ]
-    }
-  },
-  {
-    "expected": {
-      "authority_revision": 7,
-      "decision": {
-        "_approval_authority_revision": 7,
-        "action": "warn",
-        "approval_id": null,
-        "artifact_id": "direct"
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_runtime_unavailable"
       },
-      "ignored_local_integrity": null,
-      "trust_status": {
-        "status": "verified"
-      }
-    },
-    "name": "policy_lookup_select_keeps_the_first_of_equal_severity",
-    "query": {
-      "kind": "policy_lookup_select",
-      "lookups": [
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "warn",
-            "approval_id": null,
-            "artifact_id": "direct"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "warn",
-            "approval_id": null,
-            "artifact_id": "exact"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        }
-      ]
-    }
-  },
-  {
-    "expected": {
-      "authority_revision": 7,
-      "decision": {
-        "_approval_authority_revision": 7,
-        "action": "block",
-        "approval_id": null,
-        "artifact_id": "memory"
-      },
-      "ignored_local_integrity": null,
-      "trust_status": {
-        "status": "verified"
-      }
-    },
-    "name": "policy_lookup_select_never_weakens_the_first",
-    "query": {
-      "kind": "policy_lookup_select",
-      "lookups": [
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "block",
-            "approval_id": null,
-            "artifact_id": "memory"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "allow",
-            "approval_id": null,
-            "artifact_id": "direct"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        }
-      ]
-    }
-  },
-  {
-    "expected": {
-      "authority_revision": 7,
-      "decision": {
-        "_approval_authority_revision": 7,
-        "action": 3,
-        "approval_id": null,
-        "artifact_id": "memory"
-      },
-      "ignored_local_integrity": null,
-      "trust_status": {
-        "status": "verified"
-      }
-    },
-    "name": "policy_lookup_select_unreadable_action_is_read_as_a_block",
-    "query": {
-      "kind": "policy_lookup_select",
-      "lookups": [
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "allow",
-            "approval_id": null,
-            "artifact_id": "direct"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": 3,
-            "approval_id": null,
-            "artifact_id": "memory"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        }
-      ]
-    }
-  },
-  {
-    "expected": {
-      "authority_revision": 7,
-      "decision": {
-        "_approval_authority_revision": 7,
-        "action": "allow",
-        "approval_id": null,
-        "artifact_id": "direct"
-      },
-      "ignored_local_integrity": null,
-      "trust_status": {
-        "status": "verified"
-      }
-    },
-    "name": "policy_lookup_select_skips_the_undecided",
-    "query": {
-      "kind": "policy_lookup_select",
-      "lookups": [
-        {
-          "authority_revision": 7,
-          "decision": null,
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 7,
-          "decision": null,
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "allow",
-            "approval_id": null,
-            "artifact_id": "direct"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        }
-      ]
-    }
-  },
-  {
-    "expected": {
-      "authority_revision": 7,
-      "decision": {
-        "_approval_authority_revision": 7,
-        "action": "block",
-        "approval_id": null,
-        "artifact_id": "memory"
-      },
-      "ignored_local_integrity": {
-        "reason": "integrity drifted"
-      },
-      "trust_status": {
-        "status": "verified"
-      }
-    },
-    "name": "policy_lookup_select_holds_the_first_ignored_integrity",
-    "query": {
-      "kind": "policy_lookup_select",
-      "lookups": [
-        {
-          "authority_revision": 7,
-          "decision": null,
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "allow",
-            "approval_id": null,
-            "artifact_id": "exact"
-          },
-          "ignored_local_integrity": {
-            "reason": "integrity drifted"
-          },
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "block",
-            "approval_id": null,
-            "artifact_id": "memory"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        }
-      ]
-    }
-  },
-  {
-    "expected": {
-      "authority_revision": -1,
-      "decision": {
-        "_approval_authority_revision": -1,
-        "action": "allow",
-        "approval_id": null,
-        "artifact_id": "direct"
-      },
-      "ignored_local_integrity": null,
-      "trust_status": {
-        "status": "verified"
-      }
-    },
-    "name": "policy_lookup_select_disagreed_revisions_carry_none",
-    "query": {
-      "kind": "policy_lookup_select",
-      "lookups": [
-        {
-          "authority_revision": 7,
-          "decision": {
-            "action": "allow",
-            "approval_id": null,
-            "artifact_id": "direct"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 8,
-          "decision": {
-            "action": "allow",
-            "approval_id": null,
-            "artifact_id": "exact"
-          },
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        }
-      ]
-    }
-  },
-  {
-    "expected": {
-      "authority_revision": 7,
-      "decision": null,
-      "ignored_local_integrity": null,
-      "trust_status": {
-        "status": "verified"
-      }
-    },
-    "name": "policy_lookup_select_undecided_lookups_select_the_first",
-    "query": {
-      "kind": "policy_lookup_select",
-      "lookups": [
-        {
-          "authority_revision": 7,
-          "decision": null,
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        },
-        {
-          "authority_revision": 7,
-          "decision": null,
-          "ignored_local_integrity": null,
-          "trust_status": {
-            "status": "verified"
-          }
-        }
-      ]
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "audit"
     }
   }
 ]

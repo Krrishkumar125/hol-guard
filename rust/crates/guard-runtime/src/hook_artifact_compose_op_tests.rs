@@ -636,6 +636,35 @@ fn a_stored_block_beside_package_reuse_keeps_the_package_source_and_adds_no_seco
     assert_eq!(answer["settled_evidence_appends"], json!([]));
 }
 
+fn entitlement_query(now: Value, oauth_health: Value) -> HookArtifactComposeQueryV1 {
+    serde_json::from_value(json!({
+        "kind": "package_firewall_entitlement",
+        "bundle_payload": null,
+        "oauth_payload": null,
+        "oauth_health": oauth_health,
+        "connect_state": null,
+        "has_cloud_sync_profile": false,
+        "now": now,
+    }))
+    .unwrap()
+}
+
+#[test]
+fn an_entitlement_clock_that_is_not_an_instant_is_refused() {
+    assert_eq!(
+        compose(&entitlement_query(json!("whenever"), Value::Null)).unwrap_err(),
+        "now must be an ISO-8601 instant"
+    );
+}
+
+#[test]
+fn an_entitlement_row_of_the_wrong_shape_is_refused() {
+    assert_eq!(
+        compose(&entitlement_query(Value::Null, json!("healthy"))).unwrap_err(),
+        "oauth_health must be an object or null"
+    );
+}
+
 #[test]
 fn a_policy_lookup_selection_with_nothing_to_select_is_refused() {
     let query: HookArtifactComposeQueryV1 =

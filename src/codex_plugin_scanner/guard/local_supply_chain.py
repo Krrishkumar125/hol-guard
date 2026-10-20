@@ -317,7 +317,7 @@ def resolve_package_firewall_entitlement_with_refresh(store: Any) -> dict[str, o
     entitlement_module = _package_firewall_entitlement_module()
     runner = _runtime_runner_module()
 
-    entitlement = entitlement_module.resolve_package_firewall_entitlement(store)
+    entitlement = entitlement_module.package_firewall_entitlement_or_denied(store)
     if bool(entitlement.get("allowed")):
         return entitlement
     if store.get_cloud_sync_profile() is None:
@@ -367,7 +367,7 @@ def resolve_package_firewall_entitlement_with_refresh(store: Any) -> dict[str, o
             break
         except (runner.GuardSyncNotAvailableError, runner.GuardSyncNotConfiguredError, OSError, RuntimeError):
             continue
-    return entitlement_module.resolve_package_firewall_entitlement(store)
+    return entitlement_module.package_firewall_entitlement_or_denied(store)
 
 
 def _workspace_has_project_markers(workspace_dir: Path) -> bool:
