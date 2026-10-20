@@ -387,6 +387,23 @@ mod envelope {
     }
 
     #[test]
+    fn a_parent_substitution_is_judged_as_the_parent_it_prints() {
+        let ws = workspace("parent", true);
+        let parent = ws.parent().unwrap().display().to_string();
+        let raw = "printf 'parent=%s\\n' \"$(dirname \"$PWD\")\"";
+        let literal = format!("printf 'parent=%s\\n' \"{parent}\"");
+        let producer = verdict(&format!("dirname {}", ws.display()), &ws);
+        let (literal_action, _) = verdict(&literal, &ws);
+        assert_eq!(literal_action, "allow", "{literal}");
+        // Allowed, or contained by the sandbox because no read rule names it.
+        if producer.0 == "allow" || (producer.0 == "sandbox-required" && producer.1 == CONTAINED) {
+            assert_eq!(verdict(raw, &ws), verdict(&literal, &ws), "{producer:?}");
+        } else {
+            assert_ne!(verdict(raw, &ws).0, "allow", "{producer:?}");
+        }
+    }
+
+    #[test]
     fn the_launcher_runs_only_the_raw_text_it_judged() {
         let ws = workspace("launcher", true);
         let raw = "export F=a.txt && touch $F && cat $F";

@@ -198,8 +198,7 @@ fn sibling_repository_root(
 ) -> Option<std::path::PathBuf> {
     let home = std::fs::canonicalize(context.home_dir?).ok()?;
     let canonical = crate::pretool::worktree_writes::canonical_write_target(path)?;
-    let root =
-        crate::pretool::contained_wrapper::sibling_project_root(&canonical, context.home_dir?)?;
+    let root = repository_below_home(&canonical, context.home_dir?, &home)?;
     // The repository must sit below the home itself, not merely below a
     // temporary directory the helper also accepts, and must be spelled the
     // way the filesystem resolves it, so no alias redirects the write. The
@@ -209,6 +208,7 @@ fn sibling_repository_root(
     // below the home keeps a symlink inside the home refused.
     (root != home
         && root.starts_with(&home)
+        && spelling_survives_the_filesystem(path)
         && crate::pretool::safe_writes::home_spelling_matches_target(
             path,
             &canonical,
@@ -217,6 +217,70 @@ fn sibling_repository_root(
         )
         && validated_git_marker(&root))
     .then_some(root)
+}
+
+/// Whether every component of `path` names the file the filesystem will open.
+/// On Windows a trailing dot or space is dropped when the file is created, so
+/// `AGENTS.md.` lands on the protected name that `instruction_file` and
+/// `write_target_protected` spell literally and would otherwise miss. Such a
+/// target keeps its review rather than taking the sibling-repository route.
+#[cfg(not(unix))]
+fn spelling_survives_the_filesystem(path: &std::path::Path) -> bool {
+    path.components().all(|component| match component {
+        std::path::Component::Normal(name) => name
+            .to_str()
+            .is_some_and(|name| !name.ends_with('.') && !name.ends_with(' ')),
+        _ => true,
+    })
+}
+
+/// [`spelling_survives_the_filesystem`] on Unix, where a trailing dot or space
+/// is part of the name and a screen that spells the protected name literally
+/// already sees a different file.
+#[cfg(unix)]
+fn spelling_survives_the_filesystem(_path: &std::path::Path) -> bool {
+    true
+}
+
+/// The nearest ancestor of the resolved `canonical` target that holds a `.git`
+/// entry. On Unix this is the repository a `cd` into a sibling checkout is
+/// contained to, which also requires the agent's user to own it.
+#[cfg(unix)]
+fn repository_below_home(
+    canonical: &std::path::Path,
+    home_dir: &str,
+    _home: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    crate::pretool::contained_wrapper::sibling_project_root(canonical, home_dir)
+}
+
+/// Windows has no execution sink to contain a `cd` into a sibling checkout,
+/// so that route stays closed, but a redirect writes one file the same way a
+/// file-edit tool does. The resolved home must be a local disk path, so a
+/// profile on a network share stays reviewed (a mapped drive or a link onto a
+/// share resolves to its `\\?\UNC\` form), and the repository must be owned
+/// by the agent's user, as on Unix. The caller still validates the marker and
+/// screens the target.
+#[cfg(not(unix))]
+fn repository_below_home(
+    canonical: &std::path::Path,
+    _home_dir: &str,
+    home: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    use std::path::{Component, Prefix};
+    let local = matches!(
+        home.components().next(),
+        Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::VerbatimDisk(_))
+    );
+    if !local || !canonical.starts_with(home) {
+        return None;
+    }
+    canonical
+        .ancestors()
+        .take_while(|directory| *directory != home)
+        .find(|directory| directory.join(".git").symlink_metadata().is_ok())
+        .filter(|root| guard_runtime_windows_process::owned_by_current_user(root))
+        .map(std::path::Path::to_path_buf)
 }
 
 /// An empty `.git` marker is not a repository. Bound this check to Git's

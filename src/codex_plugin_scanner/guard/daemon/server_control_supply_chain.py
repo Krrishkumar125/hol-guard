@@ -29,8 +29,8 @@ from ..package_firewall_entitlement import (
     package_firewall_action_states,
     package_firewall_available_actions,
     package_firewall_block_details,
+    package_firewall_entitlement_or_denied,
     package_firewall_operation_allowed,
-    resolve_package_firewall_entitlement,
 )
 from ..package_firewall_receipts import package_firewall_receipt_metadata
 from ..package_shim_status import record_package_shim_audit_result
@@ -446,7 +446,7 @@ class _SupplyChainRoutes:
             if _guard_cloud_connect_state_is_in_flight(cloud_connect) or _guard_cloud_connect_state_is_in_flight(
                 package_connect
             ):
-                return resolve_package_firewall_entitlement(server.store)
+                return package_firewall_entitlement_or_denied(server.store)
             return resolve_package_firewall_entitlement_with_refresh(server.store)
 
     def _handle_get_supply_chain_bundle(self) -> None:

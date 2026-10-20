@@ -4,12 +4,22 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from codex_plugin_scanner.guard import package_firewall_entitlement as entitlement_module
+from codex_plugin_scanner.guard.native_hook_artifact_compose import (
+    NativeHookComposeError,
+    NativeHookComposeValidationError,
+)
 from codex_plugin_scanner.guard.package_firewall_entitlement import (
+    PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON,
     build_oauth_package_firewall_entitlement,
     package_firewall_action_states,
+    package_firewall_available_actions,
+    package_firewall_block_details,
+    package_firewall_entitlement_or_denied,
     package_firewall_operation_allowed,
     reconcile_connect_state_with_oauth_entitlement,
 )
@@ -199,3 +209,53 @@ def test_reconcile_connect_state_ignores_free_oauth_plan(tmp_path: Path) -> None
     )
 
     assert reconcile_connect_state_with_oauth_entitlement(store, now=now) is None
+
+
+@pytest.mark.parametrize("error", [NativeHookComposeError("unavailable"), NativeHookComposeValidationError("bad")])
+def test_a_runtime_that_cannot_answer_entitles_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+) -> None:
+    """A gating caller reads a denial, never an allow it worked out itself."""
+
+    class _Rows:
+        """The rows the question is built from, with no runtime behind them."""
+
+        guard_home = str(tmp_path)
+
+        def get_sync_payload(self, name: str) -> None:
+            return None
+
+        def get_effective_guard_connect_state(self, *, now: str) -> None:
+            return None
+
+        def get_cloud_sync_profile(self) -> None:
+            return None
+
+        def get_oauth_local_credential_health(self) -> None:
+            return None
+
+    def refuse(*args: object, **kwargs: object) -> dict[str, object]:
+        raise error
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", refuse)
+    entitlement = package_firewall_entitlement_or_denied(cast("GuardStore", _Rows()))
+
+    assert entitlement["allowed"] is False
+    assert entitlement["reason"] == PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON
+    assert package_firewall_operation_allowed(entitlement, "install", has_installed_managers=True) is False
+    assert package_firewall_action_states(entitlement, has_installed_managers=False)["install"] != "available"
+    assert "connect" not in package_firewall_available_actions(entitlement, has_installed_managers=False)
+
+
+def test_an_unanswerable_runtime_is_not_reported_as_an_unpaid_account() -> None:
+    """The block says the runtime could not answer rather than naming a plan."""
+
+    status, code, message = package_firewall_block_details(
+        {"allowed": False, "reason": PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON}
+    )
+
+    assert status == 503
+    assert code == PACKAGE_FIREWALL_RUNTIME_UNAVAILABLE_REASON
+    assert "paid" not in message.lower()

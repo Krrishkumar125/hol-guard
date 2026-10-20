@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 from ..action_lattice import coerce_guard_action
 from ..blocked_request_mode import is_unlinked_connector_setup_reason
-from ..package_firewall_entitlement import resolve_package_firewall_entitlement
+from ..package_firewall_entitlement import package_firewall_entitlement_or_denied
 from ._commands_shared import *
 from .commands_parser_helpers import *
 
@@ -149,7 +149,7 @@ def _update_guard_cli_settings(*, args: argparse.Namespace, config: GuardConfig,
     )
 
     def persist_settings(payload: dict[str, object]) -> GuardConfig:
-        entitlement = resolve_package_firewall_entitlement(GuardStore(guard_home))
+        entitlement = package_firewall_entitlement_or_denied(GuardStore(guard_home))
         return update_guard_settings(
             guard_home,
             payload,
