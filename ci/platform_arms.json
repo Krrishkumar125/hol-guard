@@ -408,7 +408,7 @@
    "cfg": "any(not(unix), test)",
    "verdict": "windows-equivalent",
    "note": "Case-insensitive extension lookup behind the non-Unix `executable`. Compiled into test builds everywhere, so the Unix suite proves it too.",
-   "body": "a40368440e67"
+   "body": "262b56d8df28"
   },
   {
    "file": "rust/crates/guard-command/src/pretool/trusted_location.rs",
