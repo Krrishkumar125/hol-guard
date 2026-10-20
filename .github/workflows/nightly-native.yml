@@ -385,7 +385,8 @@ jobs:
   linux-containment:
     name: Linux contained runners
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Usually 12-17 minutes; a cold Rust cache pushes it past 20.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -681,7 +682,7 @@ jobs:
         # The pull-request base comparison does not apply to a scheduled run.
         run: python scripts/refresh_extension_artifacts.py --trust-only
       - name: Install the locked development environment
-        run: uv sync --frozen --extra dev --python "${{ matrix.python }}"
+        run: uv sync --frozen --extra dev --group ci-test --python "${{ matrix.python }}"
       - uses: ./.github/actions/setup-rust
       - name: Build native command evaluators
         env:
