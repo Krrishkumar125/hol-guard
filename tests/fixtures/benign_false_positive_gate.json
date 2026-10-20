@@ -8994,6 +8994,39 @@
       "expect": "allow"
     },
     {
+      "id": "session-git-worktree-add-missing-parent",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": ["claude-code", "codex", "omp", "zcode", "cursor"],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add .worktrees/fresh-parent/review -b fix/nested-review origin/main"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "session-git-worktree-add-missing-parent-dash-C",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": ["claude-code", "codex", "omp", "zcode", "cursor"],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/app-portal worktree add -b fix/nested-review ${ORG}/reviews/pending/report origin/main"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-git-worktree-add-missing-protected-parent",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": ["claude-code", "codex", "omp", "zcode", "cursor"],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add .github/workflows/fresh-parent/review -b fix/nested-review origin/main"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
       "id": "session-git-worktree-add-origin-main",
       "fix_area": "git-sibling-worktree",
       "harnesses": [
