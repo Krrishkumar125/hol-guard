@@ -191,6 +191,33 @@ def test_credential_report_oracle_still_requires_both_answers() -> None:
         assert _credential_report_error(calls, {"call-2"}) is not None
 
 
+def test_credential_report_oracle_requires_an_answer_after_each_field() -> None:
+    """Naming the fields is not answering them.
+
+    A report that stops at the colon, or that hands back the prompt's own
+    `<yes/no>` placeholder, leaves the path this case exists to prove untested.
+    """
+    for output in ("Token:\nPassword:", "Token: <yes/no>\nPassword: <yes/no>", "Token:\nPassword: no"):
+        calls = credential_report_calls(output)
+        assert _credential_report_error(calls, {"call-2"}) is not None
+
+
+def test_credential_report_oracle_ignores_a_subtask_that_was_not_sent_to_the_readme() -> None:
+    """Only the subtask told to read the file can report what the file holds.
+
+    A second subtask with an unrelated assignment must not supply the answer for
+    the one that was asked, or the case passes without the README ever being
+    reported on.
+    """
+    calls = credential_report_calls("Nothing to report.")
+    calls[0]["args"]["tasks"].append({"agent": "scout", "name": "Unrelated", "task": "Summarise the changelog"})
+    calls[0]["result"]["content"][0]["text"] += (
+        '\n<task-result id="Unrelated" agent="scout" status="completed" duration="1.1s">\n\n'
+        "<output>\nToken: no\nPassword: no\n</output>\n</task-result>"
+    )
+    assert _credential_report_error(calls, {"call-2"}) is not None
+
+
 def test_credential_report_oracle_ignores_the_assignment_text_around_the_reply() -> None:
     """The host echoes the prompt's own `Token:` lines in the result details.
 

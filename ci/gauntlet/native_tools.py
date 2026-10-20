@@ -53,8 +53,11 @@ TASK_SCHEMA_CASE = "omp-native-task-result-schema-token-fields"
 CREDENTIAL_REPORT_CASE = "omp-native-task-credential-absence-report"
 # The three string fields the scenario's prompt asks the result schema to carry.
 TASK_SCHEMA_FIELDS = ("tokenMentions", "apiKeyMentions", "firstSentence")
-# The subtask's own reply inside the task tool's result, apart from the assignment
-# text and the status attributes the host renders around it.
+# One subtask's section of the task tool's result, keyed by the name the call
+# assigned it, so a reply can be matched to the assignment it answers.
+TASK_RESULT_SECTION = re.compile(r'<task-result\b[^>]*\bid="([^"]*)"[^>]*>(.*?)</task-result>', re.DOTALL)
+# The subtask's own reply inside its section, apart from the assignment text and
+# the status attributes the host renders around it.
 TASK_OUTPUT_SECTION = re.compile(r"<output>(.*?)</output>", re.DOTALL)
 CREDENTIAL_MARKERS = (
     "password",
@@ -438,9 +441,36 @@ def _background_read_error(calls: list[dict[str, Any]], *, require_steps: bool =
 
 
 def _reported_credential_answers(text: str) -> bool:
-    """True when a report spells both fields out as `field: answer`."""
+    """True when a report spells both fields out as `field: answer` on one line.
+
+    The answer has to be on the field's own line and start with something other
+    than `<`, so a bare `Token:` and the prompt's own `Token: <yes/no>` placeholder
+    are both read as the answer still missing rather than as the report this case
+    waits for. The two field names are literals, not run-time input.
+    """
     lowered = text.lower()
-    return all(re.search(rf"\b{field}\b\s*:", lowered) for field in ("token", "password"))
+    return all(re.search(rf"\b{field}\b[^\S\n]*:[^\S\n]*(?!<)\S", lowered) for field in ("token", "password"))
+
+
+def _credential_reports(call: dict[str, Any]) -> list[str]:
+    """The replies from this task call's subtasks that were sent to read the README.
+
+    Pairing each `<task-result>` with the assignment of the same name keeps an
+    unrelated subtask's output from standing in for the answer: only the subtask
+    that was told to read the file can report what the file holds.
+    """
+    text = _text(call)
+    if text is None:
+        return []
+    assignments = {
+        entry.get("name"): entry.get("task") for entry in call["args"].get("tasks", []) if isinstance(entry, dict)
+    }
+    reports: list[str] = []
+    for name, section in TASK_RESULT_SECTION.findall(text):
+        assignment = assignments.get(name)
+        if isinstance(assignment, str) and "readme" in assignment.lower():
+            reports.extend(TASK_OUTPUT_SECTION.findall(section))
+    return reports
 
 
 def _credential_report_error(calls: list[dict[str, Any]], delegated: set[str]) -> str | None:
@@ -452,9 +482,10 @@ def _credential_report_error(calls: list[dict[str, Any]], delegated: set[str]) -
 
     This case asks for plain prose rather than a result schema, so the subtask has
     nothing to `yield` and answers through the parent `task` call's own result. Read
-    the `<output>` section of that result, which carries the subtask's reply and not
-    the assignment text the host echoes around it. A delegated `yield` still counts,
-    so a lane whose task tool reports that way is held to the same answer.
+    the `<output>` section of the subtask that was assigned the README, which carries
+    that subtask's reply and not the assignment text the host echoes around it. A
+    delegated `yield` still counts, so a lane whose task tool reports that way is held
+    to the same answer.
     """
     for call in calls:
         if call["id"] in delegated:
@@ -468,10 +499,7 @@ def _credential_report_error(calls: list[dict[str, Any]], delegated: set[str]) -
             else:
                 continue
         elif call["name"] == "task":
-            text = _text(call)
-            if text is None:
-                continue
-            reports = TASK_OUTPUT_SECTION.findall(text)
+            reports = _credential_reports(call)
         else:
             continue
         if any(_reported_credential_answers(report) for report in reports):
