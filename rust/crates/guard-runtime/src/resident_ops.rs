@@ -343,6 +343,12 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                     &request,
                 )
             }
+            ResidentOperationV1::ApprovalPersistSelect(request) => {
+                crate::approval_persist_select_op::evaluate_approval_persist_select_request(
+                    &request,
+                    policy_store,
+                )
+            }
             ResidentOperationV1::ApprovalResolutionPlan(request) => {
                 crate::approval_resolution_plan_op::evaluate_approval_resolution_plan_request(
                     &request,

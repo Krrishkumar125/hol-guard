@@ -25,7 +25,9 @@ HOOK_ARTIFACT_COMPOSE_FEATURE = "hook-artifact-compose-v1"
 # kind, so each kind added after the op requires its own feature and only
 # for its own call.
 HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE = "hook-artifact-compose-package-reuse-v1"
+HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE = "hook-artifact-compose-prompt-reason-v1"
 HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE = "hook-artifact-compose-remembered-rule-v1"
+HOOK_ARTIFACT_COMPOSE_SIGNAL_COMPOSITION_FEATURE = "hook-artifact-compose-signal-composition-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-compose-request.v1"
 _RESULT_SCHEMA = "guard-hook-artifact-compose-result.v1"
 _RESIDENT_CODE = re.compile(r"^native_hook_artifact_compose_[a-z_]{1,64}$")
@@ -151,14 +153,18 @@ _FIELDS: dict[str, frozenset[str]] = {
             "approval_reuse_source",
         }
     ),
+    "prompt_request_reason": frozenset({"harness", "prompt_classes", "prompt_summary", "policy_action"}),
     "remembered_rule_reason": frozenset({"remembered_rules", "integrity_message", "artifact_summary"}),
+    "signal_composition": frozenset({"signals", "base_action"}),
 }
 
 # The feature a kind needs beyond the op itself. A runtime that predates the
 # kind rejects it as an unknown kind, so the gate is per kind, not per op.
 _KIND_FEATURES: dict[str, str] = {
     "package_reuse_settle": HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE,
+    "prompt_request_reason": HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE,
     "remembered_rule_reason": HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE,
+    "signal_composition": HOOK_ARTIFACT_COMPOSE_SIGNAL_COMPOSITION_FEATURE,
 }
 
 # The exact answer shape of each query kind. Spec letters: a action,
@@ -214,7 +220,16 @@ _ANSWERS: dict[str, dict[str, str]] = {
         "saved_allow_applied": "b",
         "settled_evidence_appends": "l",
     },
+    "prompt_request_reason": {"reason": "s"},
     "remembered_rule_reason": {"reason": "S"},
+    "signal_composition": {
+        "action": "a",
+        "reason": "s",
+        "downgraded": "b",
+        "upgraded": "b",
+        "normalization_reason_code": "S",
+        "original_action": "S",
+    },
 }
 
 
@@ -312,7 +327,9 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
 __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_SIGNAL_COMPOSITION_FEATURE",
     "NativeHookComposeError",
     "NativeHookComposeValidationError",
     "native_hook_compose",
