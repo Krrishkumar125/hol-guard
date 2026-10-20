@@ -75,3 +75,32 @@ def test_nothing_to_select_is_refused_before_the_resident(monkeypatch: pytest.Mo
         store_policy._most_restrictive_policy_lookup([], guard_home=None)
 
     assert asked == []
+
+
+def test_a_single_unmatched_lookup_is_answered_without_the_resident(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = _answering(monkeypatch, {"decision": {"action": "block"}})
+    lookup = _lookup(None)
+
+    assert store_policy._most_restrictive_policy_lookup([lookup], guard_home=None) == lookup
+    # The common hook outcome — one lookup, no saved decision — must not spend
+    # a round trip to be told the row it already holds is the answer.
+    assert asked == []
+
+
+def test_a_single_matched_lookup_is_still_selected_by_the_resident(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    composed = {
+        "decision": {"action": "allow", "_approval_authority_revision": 7},
+        "ignored_local_integrity": None,
+        "trust_status": {"status": "verified"},
+        "authority_revision": 7,
+    }
+    asked = _answering(monkeypatch, composed)
+
+    result = store_policy._most_restrictive_policy_lookup([_lookup({"action": "allow"})], guard_home=None)
+
+    assert result == composed
+    assert len(asked) == 1

@@ -181,6 +181,13 @@ def _most_restrictive_policy_lookup(
 
     if not lookups:
         raise ValueError("at least one policy lookup is required")
+    if len(lookups) == 1 and lookups[0]["decision"] is None:
+        # One lookup that matched nothing is already the answer: there is no
+        # saved decision to rank, no second revision to reconcile, and the
+        # selector would hand back the same row.  The hook path reaches this
+        # on every request without a saved approval, so it must not spend a
+        # resident round trip to be told so.
+        return lookups[0]
     composed = native_hook_compose(
         "policy_lookup_select",
         {"lookups": [dict(lookup) for lookup in lookups]},
