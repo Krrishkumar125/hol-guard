@@ -14,7 +14,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{CodexToolOutputFactsV1, NativeExtensionControlLayerV1};
+use crate::{
+    CodexToolOutputFactsV1, NativeExtensionControlLayerV1, NativePermissionPersistInputsV1,
+    NativePermissionPersistPlanV1,
+};
 
 /// Schema discriminator for the request.
 pub const HOOK_DECISION_REQUEST_SCHEMA: &str = "guard-hook-decision-request.v1";
@@ -61,6 +64,11 @@ pub enum HookDecisionQueryV1 {
     /// settled verdict, with which emitter, reason, message and exit code.
     ArtifactDirective {
         inputs: Box<ArtifactDirectiveInputsV1>,
+    },
+    /// What to save for a Claude-native approval: the stored hash, the policy
+    /// action, the audit events and the inventory disposition.
+    NativePermissionPersistPlan {
+        inputs: Box<NativePermissionPersistInputsV1>,
     },
 }
 
@@ -356,6 +364,7 @@ pub enum HookDecisionPayloadV1 {
     },
     Finalize(Box<HookFinalV1>),
     ArtifactDirective(Box<HookResponseDirectiveV1>),
+    NativePermissionPersistPlan(Box<NativePermissionPersistPlanV1>),
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.
         needs_facts: Vec<String>,

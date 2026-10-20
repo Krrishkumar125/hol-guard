@@ -146,7 +146,20 @@ def run_native_hook_pipeline(
         if pending_pair is not None:
             verdict = _claude_guard_question_verdict(payload, pending_pair[1])
             if verdict.is_question:
-                _persist_claude_guard_question_decision(store, payload, pending_pair=pending_pair, verdict=verdict)
+                try:
+                    _persist_claude_guard_question_decision(store, payload, pending_pair=pending_pair, verdict=verdict)
+                except NativeHookDecisionError as error:
+                    # The resident decides what is saved; without its answer nothing is
+                    # persisted and the host gets the same outage shape as everywhere else.
+                    return _emit_native_unavailable(
+                        args,
+                        payload=payload,
+                        workspace=runtime_workspace,
+                        context=context,
+                        event_name="PostToolUse",
+                        reason_code=error.code,
+                        worker=worker,
+                    )
                 return 0
 
     edge = worker.review_native_edge_decision(

@@ -446,6 +446,7 @@ mod hook_decision_finalize;
 mod hook_decision_native_facts;
 #[cfg(all(test, unix))]
 mod hook_decision_native_facts_tests;
+mod hook_decision_native_permission_persist;
 mod hook_decision_op;
 mod hook_decision_settle;
 mod hook_direct;
