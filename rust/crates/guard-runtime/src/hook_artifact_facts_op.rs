@@ -25,6 +25,7 @@ use guard_contracts::{
 };
 use serde_json::{Map, Value};
 
+use crate::context_digest::{is_python_space, python_strip};
 use crate::package_authority_op::request_digest_with_limit;
 
 pub(crate) fn evaluate_hook_artifact_facts_request(
@@ -88,15 +89,6 @@ pub(crate) fn evaluate(artifact: &HookArtifactV1) -> Value {
         skill_is_known_bad: skill_is_known_bad(metadata),
     };
     serde_json::to_value(facts).unwrap_or(Value::Null)
-}
-
-/// `str.strip()`: Python treats the information separators U+001C-U+001F as
-/// whitespace and Rust's `str::trim` does not, so a padded risk label would
-/// survive here as an unrecognized class the composer cannot act on.
-fn python_strip(text: &str) -> &str {
-    text.trim_matches(|character: char| {
-        character.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&character)
-    })
 }
 
 /// `_typed_text`: a present non-string setting normalizes to the unknown
@@ -320,11 +312,6 @@ fn python_str_or_empty(value: &Value) -> String {
         Value::Object(fields) if fields.is_empty() => String::new(),
         other => other.to_string(),
     }
-}
-
-/// `str.strip()` strips Python whitespace, which `char::is_whitespace` matches.
-fn is_python_space(ch: char) -> bool {
-    ch.is_whitespace()
 }
 
 /// `_artifact_skill_is_known_bad`.

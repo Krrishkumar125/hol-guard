@@ -38,6 +38,8 @@ _MAX_REQUEST_BYTES = 4 * 1024 * 1024
 class HookArtifactFactsUnavailableError(RuntimeError):
     """The resident could not derive the artifact facts."""
 
+    code = "native_hook_artifact_facts_unavailable"
+
 
 def native_hook_artifact_facts(
     artifacts: Sequence[Mapping[str, object]],
@@ -57,7 +59,10 @@ def native_hook_artifact_facts(
 
     if not artifacts:
         return []
-    home = Path(_resolve_digest_home(guard_home))
+    try:
+        home = Path(_resolve_digest_home(guard_home))
+    except (OSError, RuntimeError, ValueError):
+        raise HookArtifactFactsUnavailableError from None
     if not ensure_resident_prerequisite(home):
         raise HookArtifactFactsUnavailableError
     answers: list[dict[str, object]] = []

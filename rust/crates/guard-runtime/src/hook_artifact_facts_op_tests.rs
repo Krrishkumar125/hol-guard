@@ -428,6 +428,22 @@ fn more_artifacts_than_the_contract_admits_are_refused() {
 }
 
 #[test]
+fn a_separator_padded_confidence_falls_through_to_the_signals() {
+    // `str.strip()` removes U+001C-U+001F, so a confidence made only of them
+    // is empty in Python and the signals decide the evidence strength.
+    assert_eq!(
+        facts(
+            "tool_action_request",
+            json!({
+                "risk_confidence": "\u{1c}\u{1f}",
+                "risk_signals": [{"confidence": "strong"}],
+            }),
+        )["confidence_text"],
+        json!("strong")
+    );
+}
+
+#[test]
 fn a_separator_padded_risk_label_is_still_recognized() {
     // `str.strip()` removes U+001C-U+001F, so a label padded with them read as
     // its own class in Python and must not reach composition unrecognized.
