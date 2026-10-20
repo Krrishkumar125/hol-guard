@@ -20,6 +20,7 @@ from typing import Any
 
 from .native_execution import _resident_request
 from .native_resident_decision import ResidentOperation, resident_decide, shape_fields
+from .runtime.approval_reuse import ApprovalReuseMalformedResultError, _decision_from_native_payload
 
 HOOK_DECISION_FEATURE = "hook-decision-v1"
 # The composed post-claim request names the claimed approval's context token
@@ -237,8 +238,11 @@ def native_post_claim_decision(
         reason = payload["validation_reason"]
         if reason is not None and not isinstance(reason, str):
             raise NativeHookDecisionError(_INVALID)
-        if composed and not isinstance(payload["reuse"], dict):
-            raise NativeHookDecisionError(_INVALID)
+        if composed:
+            try:
+                _decision_from_native_payload(payload["reuse"])
+            except ApprovalReuseMalformedResultError:
+                raise NativeHookDecisionError(_INVALID) from None
         _action(payload["current_action"])
 
     payload = _decide(

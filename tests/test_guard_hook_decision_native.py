@@ -409,7 +409,25 @@ def test_a_claim_that_settles_the_context_neither_way_is_refused() -> None:
     assert error.value.code == "native_hook_decision_facts_missing"
 
 
-@pytest.mark.parametrize("reuse", [None, "allow", []])
+@pytest.mark.parametrize(
+    "reuse",
+    [
+        None,
+        "allow",
+        [],
+        {},
+        {"action": "allow"},
+        {
+            "action": "allow",
+            "current_action": "allow",
+            "status": "accepted",
+            "reason_code": "ok",
+            "should_claim": "yes",
+        },
+        {"action": "bogus", "current_action": "allow", "status": "accepted", "reason_code": "ok", "should_claim": True},
+        {"action": "allow", "current_action": "allow", "status": "maybe", "reason_code": "ok", "should_claim": True},
+    ],
+)
 def test_a_composed_request_answered_without_a_decision_raises(monkeypatch: pytest.MonkeyPatch, reuse: object) -> None:
     payload: dict[str, Any] = {"kind": "post_claim_reuse", "current_action": "allow", "validation_reason": None}
     if reuse is not None:
@@ -443,7 +461,14 @@ def test_a_composed_request_demands_the_compose_capability(monkeypatch: pytest.M
         asked.append(required_feature)
         payload: dict[str, Any] = {"kind": "post_claim_reuse", "current_action": "allow", "validation_reason": None}
         if "claimed_context_token" in request["query"]["inputs"]:
-            payload["reuse"] = {"action": "allow", "saved_artifact_hash_is_context_token": False}
+            payload["reuse"] = {
+                "action": "allow",
+                "current_action": "allow",
+                "status": "accepted",
+                "reason_code": "approval_reuse_accepted",
+                "should_claim": True,
+                "saved_artifact_hash_is_context_token": False,
+            }
         return _good(request, payload=payload)
 
     # The surrounding patches come from the shared helper; only the transport
