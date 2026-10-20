@@ -114,22 +114,24 @@ pub(super) fn project_uses(
 /// Whether an [`OPTION_SETTERS`] builtin may read one of its operands as the
 /// `-v` option, in the separate (`-v NAME`) or the attached (`-vNAME`) form.
 /// The builtin stops reading options at the first operand that is not one, so
-/// only the leading run is read. A word the shell still has to expand, such as
-/// the `$o` of `o=-v; printf $o $p$s %s /etc`, can spell that option, and one
+/// only the leading run is read. A word the shell still has to expand, brace
+/// out or glob, such as the `$o` of `o=-v; printf $o $p$s %s /etc` or the
+/// `-$x` of `x=v; printf -$x$p$s %s /etc`, can spell that option, and one
 /// starting with `-` can be it outright. The shell removes quotes and escapes
 /// before the builtin reads the word, so they are removed here too.
 fn sets_a_variable<'a>(operands: impl Iterator<Item = &'a [char]>) -> bool {
     for word in operands {
         let mut chars = word.iter().filter(|&&c| !matches!(c, '\'' | '"' | '\\'));
+        // Its text is unknown, so it may be the option wherever one could stand.
+        if chars
+            .clone()
+            .any(|&c| matches!(c, '$' | '`' | '{' | '[' | '*' | '?'))
+        {
+            return true;
+        }
         match chars.next() {
-            Some('-') => {
-                if chars.any(|&c| c == 'v') {
-                    return true;
-                }
-            }
-            // An expansion is read as an option only where one could stand,
-            // and its text is unknown, so it keeps the chain opaque.
-            Some('$') => return true,
+            Some('-') if chars.any(|&c| c == 'v') => return true,
+            Some('-') => {}
             _ => return false,
         }
     }

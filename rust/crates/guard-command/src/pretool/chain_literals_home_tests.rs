@@ -82,6 +82,12 @@ fn a_possible_home_change_before_a_use_keeps_it_opaque() {
         "printf \"-v\" $p$s %s /etc && cat $HOME/passwd",
         // The option word itself can come from an expansion.
         "o=-v p=HO s=ME; printf $o $p$s %s /etc; cat $HOME/passwd",
+        // So can an expansion after the dash, a substitution, a brace
+        // expansion or a glob.
+        "x=v p=HO s=ME; printf -$x$p$s %s /etc; cat $HOME/passwd",
+        "printf `echo -vHOME` %s /etc; cat $HOME/passwd",
+        "printf {-vHO,}ME %s /etc; cat $HOME/passwd",
+        "printf -[v]HOME %s /etc; cat $HOME/passwd",
     ] {
         assert_eq!(project(command, h), None, "{command}");
     }
