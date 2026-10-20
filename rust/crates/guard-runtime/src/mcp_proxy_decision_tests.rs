@@ -245,7 +245,9 @@ fn an_evaluation_that_resolved_a_tarball_demands_its_binding() {
 fn a_source_hash_is_measured_in_characters() {
     // Python counts characters, so a 64-character hash stays one here however
     // many bytes it encodes to, and a 64-byte string that is shorter than 64
-    // characters is not the digest this looks for.
+    // characters is not one. The second case is where counting bytes used to
+    // demand a binding Python never demanded; these assertions pin the lane to
+    // Python's answer in both directions rather than to a stricter rule.
     assert_eq!(
         binding_required(json!({"external_archive_source_hashes": ["é".repeat(64)]})),
         json!(true)
