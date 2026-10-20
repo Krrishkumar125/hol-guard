@@ -455,6 +455,12 @@ def _remembered_rule_rejection_reason(
     remembered_rules = (
         str(trust_status.get("remembered_rules") or "unknown") if isinstance(trust_status, Mapping) else "unknown"
     )
+    if remembered_rules != "disabled_degraded":
+        # The resident names no reason for any other reported state, so asking
+        # it would spend a round trip on an answer that is already known to be
+        # empty, and would fail the hook when the resident cannot be reached
+        # over a rejection that never had a reason to report.
+        return None
     answer = composer(
         "remembered_rule_reason",
         {

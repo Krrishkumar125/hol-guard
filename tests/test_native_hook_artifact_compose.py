@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -214,3 +216,22 @@ def test_the_kinds_the_op_shipped_with_require_the_op_feature(monkeypatch: pytes
     monkeypatch.setattr(compose, "_resident_request", fake)
     compose.native_hook_compose("tool_grant_apply", {}, guard_home=None)
     assert required == [compose.HOOK_ARTIFACT_COMPOSE_FEATURE]
+
+
+def test_a_rule_state_the_resident_names_no_reason_for_asks_it_nothing() -> None:
+    """Only a degraded rule state is worth a round trip."""
+
+    from codex_plugin_scanner.guard.cli import commands_support_runtime_policy as policy
+
+    def refuse(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("the resident was asked for a reason it never names")
+
+    artifact = SimpleNamespace(artifact_type="tool_action_request", name="git push", metadata={}, command="git push")
+    for state in ["enabled", "unknown", "disabled", None]:
+        reason = policy._remembered_rule_rejection_reason(
+            composer=refuse,
+            guard_home=None,
+            response_payload={"remembered_rule_rejection": {"trust_status": {"remembered_rules": state}}},
+            artifact=cast("Any", artifact),
+        )
+        assert reason is None, state
