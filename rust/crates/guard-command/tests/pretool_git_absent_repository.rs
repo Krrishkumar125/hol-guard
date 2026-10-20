@@ -129,3 +129,74 @@ fn git_read_routed_outside_the_read_screens_stays_reviewed() {
         assert_decision(&workspace, &home, &command, false);
     }
 }
+
+/// Git discovers a bare repository implicitly: a directory holding `HEAD`,
+/// `objects` and `refs` is a repository with no `.git` entry anywhere above
+/// it. A route into one, or into any directory inside it, keeps the
+/// repository route's proofs rather than passing as a plain directory.
+#[test]
+fn git_read_routed_into_a_bare_repository_is_still_reviewed() {
+    let scratch = scratch("bare");
+    let home = directory(&scratch.root, "home");
+    let workspace = directory(&scratch.root, "home/Code/app-portal");
+    repository(&workspace);
+    let bare = scratch.root.join("home/Code/mirror.git");
+    let status = std::process::Command::new("git")
+        .args(["init", "--bare", "--quiet"])
+        .arg(&bare)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    for command in [
+        format!("git -C {} log -p", fixture::shell_word(&bare)),
+        "git -C ~/Code/mirror.git show HEAD".to_owned(),
+        format!("git -C {}/refs log -1", fixture::shell_word(&bare)),
+    ] {
+        assert_decision(&workspace, &home, &command, false);
+    }
+}
+
+/// A symlinked spelling clears the literal screen: `docs/.` names nothing
+/// sensitive, but Git enters the directory the link points at.
+#[test]
+fn git_read_routed_through_a_link_to_a_sensitive_directory_is_reviewed() {
+    let scratch = scratch("linked");
+    let home = directory(&scratch.root, "home");
+    let workspace = directory(&scratch.root, "home/Code/app-portal");
+    repository(&workspace);
+    let ssh = directory(&scratch.root, "home/.ssh");
+    std::fs::write(ssh.join("config"), "Host fixture\n").unwrap();
+    std::os::unix::fs::symlink(&ssh, workspace.join("docs")).unwrap();
+    for command in [
+        "git -C docs status --short",
+        "git -C docs/. status --short",
+        "git -C docs/. diff --no-index config /dev/null",
+    ] {
+        assert_decision(&workspace, &home, command, false);
+    }
+}
+
+/// Outside a repository a few read subcommands still open files: `diff`
+/// compares two paths, `grep` searches under `grep.fallbackToNoIndex`, and
+/// `apply` and `hash-object` read their operands. Those operands resolve
+/// against the `-C` directory, which no repository proof has screened.
+#[test]
+fn git_read_that_opens_files_without_a_repository_is_reviewed() {
+    let scratch = scratch("reads");
+    let home = directory(&scratch.root, "home");
+    let workspace = directory(&scratch.root, "home/Code/app-portal");
+    repository(&workspace);
+    let plain = directory(&scratch.root, "home/Code/scratch-notes");
+    std::fs::write(plain.join("notes.txt"), "fixture\n").unwrap();
+    let route = fixture::shell_word(&plain);
+    for command in [
+        format!("git -C {route} diff notes.txt /dev/null"),
+        format!("git -C {route} diff --no-index notes.txt /dev/null"),
+        format!("git -C {route} diff --stat -- notes.txt /dev/null"),
+        format!("git -C {route} grep -n fixture"),
+        format!("git -C {route} hash-object notes.txt"),
+        format!("git -C {route} apply --check notes.txt"),
+    ] {
+        assert_decision(&workspace, &home, &command, false);
+    }
+}

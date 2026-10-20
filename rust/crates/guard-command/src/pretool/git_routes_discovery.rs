@@ -18,6 +18,18 @@
 //! that root is an ordinary visible one, so a home dot-directory keeps its own
 //! answer. A `..` spelling names no directory of its own and is left to the
 //! route proofs unchanged.
+//!
+//! Git's discovery walk finds more than a `.git` entry: a directory that is
+//! itself shaped like a bare repository (`HEAD`, `objects` or `refs`) is
+//! found implicitly, so either one above the target leaves the route to the
+//! repository proofs.
+//!
+//! "Only prints an error" holds for most read subcommands, but not all of
+//! them: outside a repository `git diff <a> <b>` falls back to comparing two
+//! files, `git grep` does too under `grep.fallbackToNoIndex`, and `apply` and
+//! `hash-object` read their file operands directly. Those operands resolve
+//! against the `-C` directory, which no repository proof has screened, so
+//! [`reads_without_repository`] keeps them out of this route.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -68,9 +80,26 @@ pub(crate) fn git_route_without_repository(
     if !std::fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_dir()) {
         return false;
     }
-    !anchor
-        .ancestors()
-        .any(|ancestor| std::fs::symlink_metadata(ancestor.join(".git")).is_ok())
+    !anchor.ancestors().any(|ancestor| {
+        [".git", "HEAD", "objects", "refs"]
+            .iter()
+            .any(|entry| std::fs::symlink_metadata(ancestor.join(entry)).is_ok())
+    })
+}
+
+/// Whether the subcommand after a `-C` route can still read a file when Git
+/// finds no repository: `diff` given any operand (two paths fall back to a
+/// file comparison), `grep` (which falls back under `grep.fallbackToNoIndex`),
+/// and `apply` and `hash-object`, which read their operands with or without a
+/// repository. Only option-only `diff` spellings stay on the error path.
+pub(crate) fn reads_without_repository(rest: &[String]) -> bool {
+    match rest.first().map(String::as_str) {
+        Some("diff") => rest[1..].iter().any(|argument| {
+            !argument.starts_with('-') || argument == "--" || argument == "--no-index"
+        }),
+        Some("grep" | "apply" | "hash-object") => true,
+        _ => false,
+    }
 }
 
 /// The deepest ancestor of `path` that is there, and the names below it that

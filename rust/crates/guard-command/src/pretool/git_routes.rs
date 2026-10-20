@@ -3,7 +3,7 @@ mod discovery;
 #[path = "git_routes_temporary.rs"]
 mod temporary;
 
-pub(crate) use discovery::git_route_without_repository;
+pub(crate) use discovery::{git_route_without_repository, reads_without_repository};
 
 use temporary::owned_below;
 pub(in crate::pretool) use temporary::owned_temporary_directory;
