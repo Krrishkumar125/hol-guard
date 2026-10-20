@@ -472,10 +472,18 @@ pub fn compose_action_from_signals(
     }
 
     if !risk.is_empty() {
+        // Ties keep the first signal the detector registry emitted, so the
+        // reason names the same detector the retired Python composer named.
         let top = risk
             .iter()
-            .max_by_key(|s| severity_rank(s.severity))
             .copied()
+            .reduce(|best, s| {
+                if severity_rank(s.severity) > severity_rank(best.severity) {
+                    s
+                } else {
+                    best
+                }
+            })
             .unwrap();
         return CompositionResult {
             action: final_action,

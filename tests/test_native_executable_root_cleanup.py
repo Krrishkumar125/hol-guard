@@ -1,4 +1,4 @@
-"""A compiler directory Windows still holds after the compiler exits is removed, not leaked."""
+"""A compiler directory Windows still holds at exit is removed, not leaked."""
 
 from __future__ import annotations
 
@@ -40,6 +40,7 @@ def test_a_directory_held_briefly_after_the_compiler_exits_is_still_removed(monk
     sleeps = _hold_the_image(monkeypatch, attempts=3)
     with root_module.verified_executable(_SCRIPT) as path:
         assert path.exists()
+    root_module.release_copies()
     assert not path.parent.exists()
     assert sleeps == [0.05, 0.1]
 
@@ -51,6 +52,7 @@ def test_a_directory_that_stays_held_is_given_up_after_a_bounded_wait_and_report
     sleeps = _hold_the_image(monkeypatch, attempts=100)
     with root_module.verified_executable(_SCRIPT) as path:
         pass
+    root_module.release_copies()
     leaked = Path(path.parent)
     assert leaked.exists()
     assert sleeps == list(root_module._REMOVAL_BACKOFF)

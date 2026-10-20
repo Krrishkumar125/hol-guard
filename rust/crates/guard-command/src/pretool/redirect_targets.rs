@@ -37,6 +37,18 @@ pub(super) fn plan_note_output_target(target: &str, context: PathContext<'_>) ->
 }
 
 pub(super) fn safe_output_target(target: &str, context: PathContext<'_>) -> bool {
+    // NTFS reads any later colon as a stream name, and `C:name` is relative
+    // to that drive's own directory. The only colon a Windows target may
+    // hold is the designator of a `C:/` drive path.
+    #[cfg(windows)]
+    if target.char_indices().any(|(index, value)| {
+        value == ':'
+            && !(index == 1
+                && target.as_bytes()[0].is_ascii_alphabetic()
+                && target.as_bytes().get(2) == Some(&b'/'))
+    }) {
+        return false;
+    }
     if plan_note_output_target(target, context) {
         return true;
     }
@@ -71,6 +83,10 @@ pub(super) fn safe_output_target(target: &str, context: PathContext<'_>) -> bool
                 None => return false,
             },
             std::path::Component::RootDir | std::path::Component::CurDir => {}
+            // `C:/...` is how Git Bash agents spell an absolute Windows path.
+            #[cfg(windows)]
+            std::path::Component::Prefix(prefix)
+                if matches!(prefix.kind(), std::path::Prefix::Disk(_)) => {}
             _ => return false,
         }
     }
@@ -102,6 +118,18 @@ pub(super) fn safe_output_target(target: &str, context: PathContext<'_>) -> bool
                 .strip_prefix(base)
                 .is_ok_and(|rest| no_symlink_components(base, rest));
         }
+        // Git Bash's `/tmp` is the profile's `AppData\Local\Temp`, which an
+        // agent may also spell as a drive path. The temporary file proof
+        // locates that folder from the canonical home and refuses links,
+        // hidden parts and credential-shaped names.
+        #[cfg(windows)]
+        if crate::pretool::chain_temporary::temporary_file_target(
+            target,
+            context.home_dir,
+            context.cwd,
+        ) {
+            return true;
+        }
         if let Some(cwd) = cwd.filter(|cwd| path.starts_with(cwd)) {
             return path != cwd
                 && path
@@ -111,10 +139,19 @@ pub(super) fn safe_output_target(target: &str, context: PathContext<'_>) -> bool
         // A session started in a directory above its checkouts, or in a
         // sibling one, still writes the repository it works on. Instruction
         // files were refused above.
+        // The root is resolved, and the home may be spelled through a
+        // symlinked parent, so take the part below the root from the resolved
+        // target. `sibling_repository_root` already required that part to be
+        // spelled exactly as the hook spelled it below the home.
         return bounded_write(target, context)
             && sibling_repository_root(path, context).is_some_and(|root| {
-                path.strip_prefix(&root)
-                    .is_ok_and(|rest| no_symlink_components(&root, rest))
+                crate::pretool::worktree_writes::canonical_write_target(path).is_some_and(
+                    |canonical| {
+                        canonical
+                            .strip_prefix(&root)
+                            .is_ok_and(|rest| no_symlink_components(&root, rest))
+                    },
+                )
             });
     }
     cwd.is_some_and(|cwd| no_symlink_components(cwd, path))
@@ -165,10 +202,19 @@ fn sibling_repository_root(
         crate::pretool::contained_wrapper::sibling_project_root(&canonical, context.home_dir?)?;
     // The repository must sit below the home itself, not merely below a
     // temporary directory the helper also accepts, and must be spelled the
-    // way the filesystem resolves it, so no alias redirects the write.
+    // way the filesystem resolves it, so no alias redirects the write. The
+    // home's own spelling is not such an alias: a home reached through a
+    // symlinked parent, as `/var/folders/...` is on macOS, resolves to a
+    // different prefix than the one the hook was handed. Comparing the path
+    // below the home keeps a symlink inside the home refused.
     (root != home
         && root.starts_with(&home)
-        && canonical.as_path() == path
+        && crate::pretool::safe_writes::home_spelling_matches_target(
+            path,
+            &canonical,
+            context.home_dir,
+            &home,
+        )
         && validated_git_marker(&root))
     .then_some(root)
 }
@@ -210,6 +256,17 @@ pub(super) fn bounded_write(target: &str, context: PathContext<'_>) -> bool {
     // Home is outside the workspace even when it sits below a temporary
     // directory, as it does for disposable and CI accounts.
     let path = std::path::Path::new(target);
+    // On Windows the profile's temporary folder lies below home, so prove it
+    // before the home rule below admits only a sibling repository.
+    #[cfg(windows)]
+    if path.is_absolute()
+        && bounded_native_temporary_write_target(target, context.home_dir, context.cwd)
+    {
+        return !crate::pretool::curl_reads::output_targets::existing_executable(
+            target,
+            context.cwd,
+        );
+    }
     let under = |base: Option<&str>| base.is_some_and(|base| path.starts_with(base));
     if path.is_absolute() && under(context.home_dir) && !under(context.cwd) {
         // Only a file in a repository beside the session's directory is a
