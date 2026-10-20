@@ -438,6 +438,17 @@ def _claude_prompt_additional_context(
         "action automatically. Instead, tell the user approval is required in Claude to continue."
     )
 
+
+def _claude_prompt_intercept_message(*, secret: bool) -> str:
+    """Why Claude paused a sensitive prompt it may still approve."""
+
+    cause = "asks Claude to access local secrets" if secret else "leads to a sensitive action"
+    return (
+        f"HOL Guard intercepted this prompt because it {cause}. "
+        "If Claude asks to continue, HOL Guard will route the decision through a branded approval prompt."
+    )
+
+
 def _claude_prompt_system_message(
     *,
     event_name: str,
@@ -453,15 +464,7 @@ def _claude_prompt_system_message(
 
     if event_name == "UserPromptSubmit":
         if policy_action == "require-reapproval" and not _prompt_requires_hard_block(artifact):
-            if "secret_read" in _prompt_request_classes(artifact):
-                return (
-                    "HOL Guard intercepted this prompt because it asks Claude to access local secrets. "
-                    "If Claude asks to continue, HOL Guard will route the decision through a branded approval prompt."
-                )
-            return (
-                "HOL Guard intercepted this prompt because it leads to a sensitive action. "
-                "If Claude asks to continue, HOL Guard will route the decision through a branded approval prompt."
-            )
+            return _claude_prompt_intercept_message(secret="secret_read" in _prompt_request_classes(artifact))
         if policy_action in {"block", "sandbox-required"}:
             return _ensure_terminal_punctuation(native_reason())
         return None
@@ -591,6 +594,7 @@ def _emit_copilot_permission_request_response(
 __all__ = [
     "_append_guard_context_args",
     "_claude_prompt_additional_context",
+    "_claude_prompt_intercept_message",
     "_claude_prompt_system_message",
     "_codex_prompt_block_system_message",
     "_copilot_hook_reason",

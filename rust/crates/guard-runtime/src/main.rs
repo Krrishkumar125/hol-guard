@@ -437,6 +437,7 @@ mod hook_bridge_fallback;
 mod hook_cli_claude_text;
 #[cfg(test)]
 mod hook_decision_apply_patch_gate_tests;
+mod hook_decision_artifact_directive;
 #[cfg(all(test, unix))]
 mod hook_decision_benign_tool_action_tests;
 mod hook_decision_compose;

@@ -5,7 +5,8 @@ verdicts) and renders host output. The resident decides everything between:
 event and action normalization, composition of the current action, which
 grant lookups are permitted, the final action after approval reuse and Watch
 mode, receipt and activity dispositions, and the response directive. It also
-settles Copilot tool calls and names the effects the transport runs. There is
+settles Copilot tool calls and names the effects the transport runs, and picks
+how the artifact hook renders its settled verdict. There is
 no Python evaluator: a reply that is not a bound, strictly decoded ``ok``
 raises ``NativeHookDecisionError`` and callers fail closed.
 """
@@ -28,6 +29,9 @@ HOOK_DECISION_FEATURE = "hook-decision-v1"
 # those fields as unknown, and the claim it would have re-evaluated is already
 # consumed by then, so the capability is demanded before the request is sent.
 HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE = "hook-decision-post-claim-compose-v1"
+# The artifact hook's response directive; a resident that predates it rejects
+# the query, so the capability is demanded first.
+HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE = "hook-decision-artifact-directive-v1"
 _UNAVAILABLE = "native_hook_decision_unavailable"
 _INVALID = "native_hook_decision_payload_invalid"
 _TIMEOUT_SECONDS = 5.0
@@ -86,6 +90,37 @@ _DIRECTIVE_FIELDS: dict[str, Any] = {
     "after_json": str,
     "envelope_decision": str,
 }
+_ARTIFACT_DIRECTIVE_FIELDS: dict[str, Any] = {
+    **_DIRECTIVE_FIELDS,
+    "exit_block_stderr": bool,
+    "json_reason": str,
+}
+# Values the artifact renderer dispatches on; anything else is malformed.
+_ARTIFACT_DIRECTIVE_VALUES: dict[str, frozenset[str]] = {
+    "route": frozenset({"exit_block", "render"}),
+    "emitter": frozenset({"default", "grok", "pi", "zcode", "devin"}),
+    "codex_native_reason": frozenset({"artifact_codex", "never"}),
+    "system_message": frozenset(
+        {"none", "claude_punctuated", "claude_prompt_secret", "claude_prompt_sensitive", "codex_prompt"}
+    ),
+    "after_json": frozenset({"native_response", "post_tool_envelope", "fallback_envelope"}),
+    "envelope_decision": frozenset({"allow", "block"}),
+    "json_reason": frozenset({"copilot", "harness"}),
+}
+_ARTIFACT_INPUT_FIELDS = frozenset(
+    {
+        "harness",
+        "canonical_harness",
+        "event",
+        "policy_action",
+        "json",
+        "output_stream_present",
+        "replayed",
+        "approval_context_present",
+        "prompt_hard_block",
+        "prompt_secret_read",
+    }
+)
 _PLAN_FIELDS: dict[str, Any] = {
     "policy_action": str,
     "approval_reuse": (dict, type(None)),
@@ -283,6 +318,31 @@ def native_finalize(
     return {key: payload[key] for key in _FINAL_FIELDS}
 
 
+def native_artifact_directive(inputs: Mapping[str, object], *, guard_home: Path | None = None) -> dict[str, Any]:
+    """The artifact hook's response directive: how its settled verdict renders."""
+
+    if set(inputs) != _ARTIFACT_INPUT_FIELDS:
+        raise NativeHookDecisionError(_INVALID)
+
+    def validate(payload: dict[str, Any]) -> None:
+        if set(payload) != {"kind", *_ARTIFACT_DIRECTIVE_FIELDS}:
+            raise NativeHookDecisionError(_INVALID)
+        directive = _shape({key: payload[key] for key in _ARTIFACT_DIRECTIVE_FIELDS}, _ARTIFACT_DIRECTIVE_FIELDS)
+        for key, allowed in _ARTIFACT_DIRECTIVE_VALUES.items():
+            if directive[key] not in allowed:
+                raise NativeHookDecisionError(_INVALID)
+        if directive["queue_observe_request"] or directive["queue_approval_request"]:
+            raise NativeHookDecisionError(_INVALID)
+
+    payload = _decide(
+        {"kind": "artifact_directive", "inputs": dict(inputs)},
+        guard_home,
+        validate,
+        HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE,
+    )
+    return {key: payload[key] for key in _ARTIFACT_DIRECTIVE_FIELDS}
+
+
 def native_copilot_settle(
     inputs: Mapping[str, object],
     acked_recording_only: Callable[[], bool],
@@ -336,9 +396,11 @@ def native_copilot_settle(
 
 
 __all__ = [
+    "HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE",
     "HOOK_DECISION_FEATURE",
     "HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE",
     "NativeHookDecisionError",
+    "native_artifact_directive",
     "native_compose_current",
     "native_copilot_settle",
     "native_finalize",

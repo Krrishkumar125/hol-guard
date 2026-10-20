@@ -4,7 +4,8 @@
 //! owns event and action normalization, composition of the current action,
 //! the lookups it permits, the final action, receipt/activity dispositions and
 //! the response directive. It also settles Copilot tool calls
-//! (`copilot_settle`). Every query is pure and fails closed: a malformed
+//! (`copilot_settle`) and picks the artifact hook's response
+//! (`artifact_directive`). Every query is pure and fails closed: a malformed
 //! request yields a `native_hook_decision_*` error, never a default verdict.
 
 use guard_contracts::{
@@ -13,6 +14,7 @@ use guard_contracts::{
     HOOK_DECISION_RESULT_SCHEMA,
 };
 
+use crate::hook_decision_artifact_directive::artifact_directive;
 use crate::hook_decision_compose::{compose, Composed};
 use crate::hook_decision_finalize::{finalize, post_claim, post_claim_reuse};
 use crate::hook_decision_native_facts::{verdict_handoff, VerdictHandoff};
@@ -100,6 +102,9 @@ pub(crate) fn decide(query: &HookDecisionQueryV1) -> Result<HookDecisionPayloadV
                 plan: None,
             },
         }),
+        HookDecisionQueryV1::ArtifactDirective { inputs } => Ok(
+            HookDecisionPayloadV1::ArtifactDirective(Box::new(artifact_directive(inputs)?)),
+        ),
     }
 }
 
