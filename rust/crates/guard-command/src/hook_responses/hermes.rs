@@ -10,7 +10,9 @@
 use super::Object;
 use serde_json::{json, Value};
 
-const BLOCK_REASON: &str = "HOL Guard blocked this action.";
+// The text the Python Hermes bridge emitted and the resident renderer still
+// emits, without a trailing period, so both paths print the same document.
+const BLOCK_REASON: &str = "HOL Guard blocked this action";
 
 /// Whether a policy action stops the Hermes call.
 ///

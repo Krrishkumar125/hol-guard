@@ -9,8 +9,9 @@ use crate::bounded_hook_bridge_render::{member, rendered, Rendered};
 use crate::claude_hook_bridge_render::py_strip;
 use crate::pyjson::PyVal;
 
-// Matches the installed Hermes bridge byte for byte, trailing period included.
-const DEFAULT_REASON: &str = "HOL Guard blocked this action.";
+// The text `hermes_runtime_hooks.py` recorded in the render vectors, without
+// a trailing period; the CLI hook's `BLOCK_REASON` uses the same text.
+const DEFAULT_REASON: &str = "HOL Guard blocked this action";
 
 fn text_of(value: Option<&PyVal>) -> Option<&str> {
     match value {

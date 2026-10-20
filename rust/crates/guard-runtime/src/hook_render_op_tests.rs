@@ -325,7 +325,7 @@ fn hermes_bridge_names_the_document_and_the_exit_status() {
 }
 
 #[test]
-fn hermes_bridge_uses_the_installed_bridge_text_when_a_block_has_no_reason() {
+fn hermes_bridge_uses_the_recorded_text_when_a_block_has_no_reason() {
     let mut req = request("hermes_bridge");
     req.harness = "hermes".to_owned();
     req.cli = Some(json!({"response": {"decision": "block"}}));
@@ -333,7 +333,7 @@ fn hermes_bridge_uses_the_installed_bridge_text_when_a_block_has_no_reason() {
     let payload = result.payload.expect("payload");
     assert_eq!(
         payload["response"]["document"],
-        json!({"decision": "block", "reason": "HOL Guard blocked this action."})
+        json!({"decision": "block", "reason": "HOL Guard blocked this action"})
     );
     assert_eq!(payload["response"]["exit_code"], json!(2));
 }
