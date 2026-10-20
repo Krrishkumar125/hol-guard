@@ -4270,7 +4270,7 @@
       "signals": [
         {
           "advisory_id": null,
-          "category": "data_flow",
+          "category": "network",
           "confidence": "likely",
           "detector": "det-flow",
           "evidence_ref": null,
@@ -4301,7 +4301,7 @@
       "signals": [
         {
           "advisory_id": null,
-          "category": "data_flow",
+          "category": "network",
           "confidence": "likely",
           "detector": "det-flow",
           "evidence_ref": null,
@@ -4859,6 +4859,51 @@
           "redaction_level": "summary",
           "severity": "high",
           "signal_id": "persist:cron",
+          "technical_detail": null,
+          "title": "t"
+        }
+      ]
+    }
+  },
+  {
+    "expected": {
+      "action": "warn",
+      "downgraded": false,
+      "normalization_reason_code": null,
+      "original_action": "warn",
+      "reason": "risk signal 'det-first' (medium/likely); base action applies",
+      "upgraded": false
+    },
+    "name": "signal_composition_tied_severity_names_the_first_detector",
+    "query": {
+      "base_action": "warn",
+      "kind": "signal_composition",
+      "signals": [
+        {
+          "advisory_id": null,
+          "category": "network",
+          "confidence": "likely",
+          "detector": "det-first",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "medium",
+          "signal_id": "risk:first",
+          "technical_detail": null,
+          "title": "t"
+        },
+        {
+          "advisory_id": null,
+          "category": "network",
+          "confidence": "likely",
+          "detector": "det-second",
+          "evidence_ref": null,
+          "false_positive_hint": null,
+          "plain_reason": "p",
+          "redaction_level": "summary",
+          "severity": "medium",
+          "signal_id": "risk:second",
           "technical_detail": null,
           "title": "t"
         }
