@@ -40,7 +40,7 @@ def test_only_known_families_are_prunable() -> None:
     )
     assert cache_family(
         f"native-offline-previous-v1-X64-ubuntu24-{'a' * 64}-lto-false-cgu-16-{'c' * 40}-{'b' * 64}"
-    ) == (f"native-offline-previous-v1-X64-ubuntu24-{'a' * 64}-lto-false-cgu-16-{'c' * 40}")
+    ) == (f"native-offline-previous-v1-X64-ubuntu24-{'a' * 64}-lto-false-cgu-16")
     assert cache_family(f"shipped-runtime-v2-Linux-X64-ubuntu24-20261012.334.1-{'a' * 64}-{'b' * 64}") == (
         f"shipped-runtime-v2-Linux-X64-ubuntu24-20261012.334.1-{'a' * 64}"
     )
@@ -83,8 +83,18 @@ def test_keeps_newest_entry_per_family_on_main() -> None:
         _entry(
             8, "release-native-v1-release-x86_64-unknown-linux-musl-Linux-x64-8e2866fd-7a487ddb", "2026-10-10T14:50:00Z"
         ),
+        _entry(
+            9,
+            f"native-offline-previous-v1-X64-ubuntu24-{'a' * 64}-lto-false-cgu-16-{'1' * 40}-{'b' * 64}",
+            "2026-10-10T12:00:00Z",
+        ),
+        _entry(
+            10,
+            f"native-offline-previous-v1-X64-ubuntu24-{'a' * 64}-lto-false-cgu-16-{'2' * 40}-{'c' * 64}",
+            "2026-10-10T15:00:00Z",
+        ),
     ]
-    assert superseded(entries) == [1, 4, 5, 7]
+    assert superseded(entries) == [1, 4, 5, 7, 9]
 
 
 def test_drops_compiler_generations_older_than_the_two_newest_saves() -> None:
