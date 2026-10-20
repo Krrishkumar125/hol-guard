@@ -37,11 +37,13 @@ mod approval_reuse_diagnostic_vectors_tests;
 mod approval_scope_contract;
 mod approval_scope_material;
 mod approval_scope_op;
+mod approval_scope_select_op;
 mod archive_acquisition_op;
 mod archive_inspect;
 mod archive_inspect_containment;
 mod archive_verdict_seam;
 mod artifact_risk_op;
+mod bash_post_delivery;
 #[cfg(unix)]
 mod binding_capture_capture;
 #[cfg(unix)]
@@ -530,6 +532,11 @@ mod mcp_tool_policy_lookup;
 mod mcp_tool_policy_proxy;
 mod mcp_tool_policy_revalidate;
 mod memory_pattern;
+#[cfg(target_os = "macos")]
+mod native_bash_client;
+mod native_bash_reply_validation;
+mod native_bash_review_descriptor;
+mod native_bash_review_scope;
 mod native_decision_receipt;
 mod native_exact_action_op;
 mod native_hook_receipt;
@@ -645,6 +652,7 @@ mod runner_authority_signature;
 mod runner_sync_policy;
 mod runner_sync_signals;
 mod runner_sync_url;
+mod runtime_artifact_identity_op;
 mod runtime_cli;
 mod runtime_detector_run_op;
 mod secrets_cli;
@@ -682,7 +690,9 @@ mod supply_chain_eval_caller;
 mod supply_chain_eval_rounds;
 mod supply_chain_eval_seams;
 mod supply_chain_eval_transport;
+mod tool_action_identity_op;
 mod totp;
+mod verified_read_decision_op;
 #[cfg(windows)]
 mod windows_node_build;
 #[cfg(windows)]

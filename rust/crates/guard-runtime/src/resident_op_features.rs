@@ -7,6 +7,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::ARCHIVE_INSPECTION_FEATURE,
     guard_contracts::ARCHIVE_ACQUISITION_FEATURE,
     guard_contracts::CONTEXT_DIGEST_FEATURE,
+    guard_contracts::NATIVE_BASH_REPLY_VALIDATION_FEATURE,
     guard_contracts::COMMAND_EFFECT_FEATURE,
     guard_contracts::COMMAND_EFFECT_BATCH_FEATURE,
     guard_contracts::APPROVAL_REUSE_FEATURE,
@@ -15,11 +16,13 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::PROTECT_REQUEST_FEATURE,
     guard_contracts::CLAIM_APPROVAL_REUSE_FEATURE,
     guard_contracts::APPROVAL_REUSE_DIAGNOSTIC_FEATURE,
+    guard_contracts::APPROVAL_REUSE_DIAGNOSTIC_REUSE_FEATURE,
     guard_contracts::APPROVAL_BULK_ELIGIBILITY_FEATURE,
     guard_contracts::CODEX_REQUEST_RESUME_FEATURE,
     guard_contracts::APPROVAL_QUEUE_IDENTITY_FEATURE,
     guard_contracts::APPROVAL_RESOLUTION_PLAN_FEATURE,
     guard_contracts::APPROVAL_SCOPE_FEATURE,
+    guard_contracts::APPROVAL_SCOPE_SELECT_FEATURE,
     guard_contracts::POLICY_DOCUMENT_DECISION_FEATURE,
     guard_contracts::COMMAND_POLICY_DECISION_FEATURE,
     guard_contracts::COMMAND_EXPRESSION_VALIDATION_FEATURE,
@@ -42,6 +45,9 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::MCP_CLASSIFICATION_FEATURE,
     guard_contracts::PROMPT_ANALYZE_FEATURE,
     guard_contracts::DATA_FLOW_ANALYZE_FEATURE,
+    guard_contracts::TOOL_ACTION_REQUEST_IDENTITY_FEATURE,
+    guard_contracts::RUNTIME_ARTIFACT_IDENTITY_FEATURE,
+    guard_contracts::VERIFIED_READ_DECISION_FEATURE,
     guard_contracts::POLICY_DECISION_LOOKUP_FEATURE,
     guard_contracts::RUNTIME_SAVED_REUSE_FEATURE,
     guard_contracts::POLICY_LOOKUP_MEMORY_FEATURE,
@@ -90,6 +96,25 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::MCP_TOOL_CALL_IDENTITY_FEATURE,
     guard_contracts::GITHUB_WORKFLOW_PREPARE_FEATURE,
     guard_contracts::NATIVE_EXACT_ACTION_FEATURE,
+    guard_contracts::NATIVE_EXACT_ACTION_V3_FEATURE,
+    guard_contracts::NATIVE_EXACT_ACTION_PREVIOUS_FEATURE,
+    guard_contracts::NATIVE_EXACT_ACTION_LEGACY_FEATURE,
     guard_contracts::NATIVE_BASH_SUBJECT_INSPECTION_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_OWNER_PROTOCOL_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_PACKAGE_EVIDENCE_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_REVIEW_LINEAGE_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_REVIEW_DESCRIPTOR_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_ACTIVITY_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_HOST_LIVENESS_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_INVOCATION_FEATURE,
+    #[cfg(target_os = "macos")]
+    guard_contracts::NATIVE_BASH_RESULT_POLICY_FEATURE,
     guard_contracts::SKILL_WORKFLOW_PREFLIGHT_FEATURE,
 ];

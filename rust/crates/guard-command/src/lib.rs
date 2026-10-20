@@ -181,6 +181,9 @@ use parser_segments::*;
 pub mod developer_inspection_authority;
 pub mod environment_secret_dump;
 pub mod pretool;
+pub mod runtime_artifact_identity;
+#[cfg(test)]
+mod runtime_artifact_identity_tests;
 mod runtime_read_paths;
 pub mod secret_path_probe;
 pub mod sensitive_request;
@@ -342,6 +345,9 @@ mod shell_secret_read_support;
 pub mod shell_secret_reads;
 mod shell_structure;
 pub mod source_cli;
+pub mod tool_action_identity;
+#[cfg(test)]
+mod tool_action_identity_tests;
 pub mod typescript_launch_evidence;
 mod unmodeled_shell_artifact;
 
@@ -870,3 +876,6 @@ pub mod supply_chain_bundle;
 pub mod supply_chain_package_identity;
 pub mod supply_chain_risk;
 pub mod supply_chain_support;
+pub mod verified_read_decision;
+#[cfg(test)]
+mod verified_read_decision_tests;

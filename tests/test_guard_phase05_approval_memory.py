@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.cli import main
+from codex_plugin_scanner.guard import approvals as approvals_module
+from codex_plugin_scanner.guard.approval_scope_support import ApprovalScopeSelection
 from codex_plugin_scanner.guard.approvals import apply_approval_resolution, queue_blocked_approvals
 from codex_plugin_scanner.guard.cli.commands_support_codex_paths import _codex_prompt_credential_file_artifact
 from codex_plugin_scanner.guard.config import GuardConfig
@@ -1092,6 +1094,14 @@ def test_resolution_without_any_integrity_backend_names_the_missing_key(
         connection.execute("attach database ? as writer", (str(writer.path),))
         connection.execute("insert into approval_requests select * from writer.approval_requests")
     monkeypatch.setattr(store, "get_approval_request", lambda *_args, **_kwargs: queued)
+    # The resident's scope selection is an RPC against this home, and its
+    # transport provisions the verifier key first. Answer the selection here so
+    # the home still has no key when the resolution plan is requested.
+    monkeypatch.setattr(
+        approvals_module,
+        "resolve_request_scope_selection",
+        lambda *_args, **_kwargs: ApprovalScopeSelection("artifact", "artifact"),
+    )
 
     with pytest.raises(ApprovalResolutionPlanUnavailableError, match="integrity_unavailable"):
         apply_approval_resolution(

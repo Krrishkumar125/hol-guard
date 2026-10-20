@@ -209,10 +209,13 @@ def _resident_request(
             "command_policy_decide",
             "command_expression_validate",
             "reviewed_invocation_bindings_validate",
+            "tool_action_request_identity",
         }:
             accepted = frozenset({"ok", "error"})
         elif operation == "mcp_tool_policy_decide":
             accepted = frozenset({"ok", "need", "error"})
+        elif operation == "native_bash_prepare":
+            accepted = frozenset({"ok", "error", "denied", "unavailable"})
         accepted_statuses = accepted if accepted is not None else frozenset({"ok"})
         if decoded.get("status") not in accepted_statuses:
             if record_resilience and not record_success:

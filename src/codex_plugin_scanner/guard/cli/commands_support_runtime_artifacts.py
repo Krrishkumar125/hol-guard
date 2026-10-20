@@ -12,11 +12,13 @@ from ..native_data_flow import DataFlowArtifactNaming
 from ..native_path_anchor import anchor_to_process_directory
 from ..native_prompt import merge_prompt_artifacts
 from ..native_rich_command_model import NativeCommandModelError
+from ..native_runtime_artifact_identity import NativeRuntimeArtifactIdentityError
 from ..native_sensitive_request import (
     NativeSensitiveRequestError,
     native_compound_artifact,
     native_unmodeled_shell_artifact,
 )
+from ..native_tool_action_identity import NativeToolActionIdentityError
 from ..runtime.command_decision_adapter import effect_decision_to_dict
 from ..runtime.direct_vitest import direct_local_typescript_execution_context
 from ..runtime.extension_allow_hint import compute_extension_allow_hint
@@ -166,7 +168,12 @@ def _hook_runtime_artifact(**kwargs: Any) -> GuardArtifact | None:
     try:
         with bound_context_digest_home(kwargs.get("guard_home")):
             return _hook_runtime_artifact_with_native(**kwargs)
-    except (NativeCommandModelError, NativeSensitiveRequestError):
+    except (
+        NativeCommandModelError,
+        NativeRuntimeArtifactIdentityError,
+        NativeSensitiveRequestError,
+        NativeToolActionIdentityError,
+    ):
         harness = _canonical_harness_name(kwargs["harness"])
         return GuardArtifact(
             artifact_id=f"{harness}:native-command-unavailable",

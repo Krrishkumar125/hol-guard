@@ -248,11 +248,21 @@ def _generic_hook_saved_decision(
     )
     if saved is None:
         # No saved authority to read: a near match can still explain the miss.
+        # Naming the recomputed action lets the resident compose what the miss
+        # means in the same call, so the miss path costs one round trip rather
+        # than three and nothing here has to name a saved action for a row the
+        # resident just rejected.
         artifact_hash = native_hook_approval_context_token("generic_hook_approval_context", approval_context_inputs)
-        diagnosed_reason, diagnosed_stored_hash = store.approval_reuse_diagnostic(
-            harness, artifact_id, artifact_hash, workspace, publisher
+        diagnosed_reason, diagnosed_stored_hash, diagnosed_reuse = store.approval_reuse_miss(
+            harness, artifact_id, artifact_hash, workspace, publisher, current_action=current_action
         )
         saved_present = diagnosed_reason is not None
+        if diagnosed_reuse is not None:
+            return artifact_hash, None, None, _decision_from_native_payload(diagnosed_reuse), saved_present
+        # The resident composed nothing: either there were no saved rows to
+        # diagnose, or it could not answer at all. Ask the sole authority for
+        # the composition; an unreachable one preserves the recomputed action
+        # unchanged and claims no saved decision.
         verdict = evaluate_approval_reuse(
             current_action,
             "allow" if saved_present else None,
@@ -260,8 +270,6 @@ def _generic_hook_saved_decision(
             validation_reason=cast(ApprovalReuseValidationFailure | None, diagnosed_reason),
         )
         reuse = with_saved_artifact_hash_provenance(
-            # Resident unreachable: preserve the recomputed action unchanged;
-            # the saved decision is not claimed.
             verdict if verdict is not None else approval_reuse_authority_unavailable(current_action),
             diagnosed_stored_hash,
         )
