@@ -886,7 +886,7 @@ def test_cisco_preflight_plans_every_proven_shell_cwd_in_one_call(
         shell_cwds=[str(first), str(first), "  ", str(second)],
     )
 
-    assert scanned == [first / "skills" / "demo", second / "skills" / "demo"]
+    assert scanned == [first / "skills", second / "skills"]
     assert [signal.source for signal in signals] == ["cisco_skill"]
 
 

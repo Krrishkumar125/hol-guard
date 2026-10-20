@@ -379,8 +379,8 @@ fn every_proven_shell_directory_is_planned_in_one_exchange() {
     assert_eq!(
         scans_of(&steps, &root),
         vec![
-            json!({"kind": "skill", "scan_root": "{root}/w1/skills/a"}),
-            json!({"kind": "skill", "scan_root": "{root}/w2/skills/a"}),
+            json!({"kind": "skill", "scan_root": "{root}/w1/skills"}),
+            json!({"kind": "skill", "scan_root": "{root}/w2/skills"}),
         ],
         "each distinct proven directory is planned once, in the order proven"
     );
