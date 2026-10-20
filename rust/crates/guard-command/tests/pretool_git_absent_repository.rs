@@ -4,6 +4,12 @@
 //! and must not ask. Agents reach this shape while probing for a checkout
 //! that a scratch or sibling directory may or may not hold.
 //!
+//! The target still has to land where the read screens already reach, because
+//! the answer stays `fatal:` only while nobody else can turn that directory
+//! into a repository first. A `..` spelling, a path outside home and the
+//! owned temporary root, a hidden name and a symlink therefore keep the
+//! review the route proofs give them.
+//!
 //! The fixture roots live below the shared temporary directory because
 //! `CARGO_TARGET_TMPDIR` sits inside this repository, where the discovery
 //! walk would find the repository's own `.git` and answer a different
@@ -49,10 +55,14 @@ fn git_read_routed_to_a_directory_without_a_repository_is_allowed() {
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let plain = directory(&scratch.root, "home/Code/scratch-notes");
+    // A plain directory below the shared temporary root, where agents leave
+    // scratch work: owned by the home owner and writable by no one else.
+    let temporary = directory(&scratch.root, "probe-notes");
     for command in [
         format!("git -C {} status --short", fixture::shell_word(&plain)),
         format!("git -C {} status", fixture::shell_word(&plain)),
-        "git -C ../scratch-notes log --oneline -3".to_owned(),
+        format!("git -C {} log --oneline -3", fixture::shell_word(&plain)),
+        format!("git -C {} status --short", fixture::shell_word(&temporary)),
         "git -C ~/Code/scratch-notes diff --stat".to_owned(),
     ] {
         assert_decision(&workspace, &home, &command, true);
@@ -68,7 +78,8 @@ fn git_read_routed_to_a_missing_directory_is_allowed() {
     let missing = scratch.root.join("home/Code/not-cloned-yet");
     for command in [
         format!("git -C {} log --oneline -3", fixture::shell_word(&missing)),
-        "git -C ../not-cloned-yet status --short".to_owned(),
+        "git -C ~/Code/not-cloned-yet status --short".to_owned(),
+        "git -C ~/not-cloned-yet/web status --short".to_owned(),
     ] {
         assert_decision(&workspace, &home, &command, true);
     }
@@ -89,6 +100,31 @@ fn git_read_routed_below_a_reviewed_repository_is_still_reviewed() {
     for command in [
         format!("git -C {} status --short", fixture::shell_word(&hidden)),
         format!("git -C {} log --oneline -1", fixture::shell_word(&below)),
+    ] {
+        assert_decision(&workspace, &home, &command, false);
+    }
+}
+
+/// A directory that holds no repository is still only read where the read
+/// screens reach: not through `..`, not outside home and the owned temporary
+/// root, not under a hidden name, and not through a symlink.
+#[test]
+fn git_read_routed_outside_the_read_screens_stays_reviewed() {
+    let scratch = scratch("screened");
+    let home = directory(&scratch.root, "home");
+    let workspace = directory(&scratch.root, "home/Code/app-portal");
+    repository(&workspace);
+    let hidden = directory(&scratch.root, "home/.scratch-notes");
+    let plain = directory(&scratch.root, "home/Code/scratch-notes");
+    let link = scratch.root.join("home/Code/linked-notes");
+    std::os::unix::fs::symlink(&plain, &link).unwrap();
+    for command in [
+        "git -C .. status --short".to_owned(),
+        "git -C ../scratch-notes log --oneline -1".to_owned(),
+        format!("git -C {} status --short", fixture::shell_word(&hidden)),
+        format!("git -C {} status --short", fixture::shell_word(&link)),
+        "git -C /usr/share status --short".to_owned(),
+        "git -C ~/.scratch-notes/draft status --short".to_owned(),
     ] {
         assert_decision(&workspace, &home, &command, false);
     }

@@ -919,7 +919,7 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "git -C ${WORKTREE}/not-cloned-yet status --short"
+        "command": "git -C ${HOME}/not-cloned-yet status --short"
       },
       "cwd": "worktree",
       "expect": "allow"
