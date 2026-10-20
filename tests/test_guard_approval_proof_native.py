@@ -94,7 +94,7 @@ def test_revalidation_ignores_only_the_counters_unrelated_writes_advance() -> No
     assert not proof.claimed_row_is_still_the_authority(claimed_decision=_RETAINED_CLAIM, current_decision=None)
     assert not proof.claimed_row_is_still_the_authority(claimed_decision=None, current_decision=None)
     # A claim that consumes its row expects the fresh lookup to find nothing.
-    consumed = {"action": "allow", "approval_id": "a1", "source": "approval-gate", "expires_at": "2030-01-01T00:00:00Z"}
+    consumed = {"action": "allow", "decision_id": 1, "source": "approval-gate", "expires_at": "2030-01-01T00:00:00Z"}
     assert proof.claimed_row_is_still_the_authority(claimed_decision=consumed, current_decision=None)
 
 

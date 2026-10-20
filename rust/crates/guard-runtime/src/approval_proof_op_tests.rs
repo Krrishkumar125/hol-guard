@@ -176,7 +176,7 @@ fn claim_row_revalidation_reads_the_row_the_launch_was_granted_under() {
 
     // A consumed claim deletes its own row, so the lookup finding nothing is
     // the expected outcome rather than evidence that the grant changed.
-    let consumed = json!({"action": "allow", "approval_id": "a1", "source": "approval-gate", "expires_at": "2030-01-01T00:00:00Z"});
+    let consumed = json!({"action": "allow", "decision_id": 1, "source": "approval-gate", "expires_at": "2030-01-01T00:00:00Z"});
     assert_eq!(
         super::claim_disposition(consumed.as_object().unwrap()).map(|d| d.as_str()),
         Some("consumed")
