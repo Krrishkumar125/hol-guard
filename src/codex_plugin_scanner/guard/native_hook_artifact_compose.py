@@ -24,6 +24,7 @@ HOOK_ARTIFACT_COMPOSE_FEATURE = "hook-artifact-compose-v1"
 # A query kind an older resident does not know is rejected as an unknown
 # kind, so each kind added after the op requires its own feature and only
 # for its own call.
+HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ENTITLEMENT_FEATURE = "hook-artifact-compose-package-firewall-entitlement-v1"
 HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE = "hook-artifact-compose-package-reuse-v1"
 HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE = "hook-artifact-compose-remembered-rule-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-compose-request.v1"
@@ -34,6 +35,16 @@ _TIMEOUT_SECONDS = 5.0
 # Every field is sent explicitly (nulls included) so the digest bound here
 # equals the resident's digest of its decoded request.
 _FIELDS: dict[str, frozenset[str]] = {
+    "package_firewall_entitlement": frozenset(
+        {
+            "bundle_payload",
+            "connect_state",
+            "has_cloud_sync_profile",
+            "now",
+            "oauth_health",
+            "oauth_payload",
+        }
+    ),
     "policy_stack": frozenset(
         {
             "policy_config",
@@ -157,6 +168,7 @@ _FIELDS: dict[str, frozenset[str]] = {
 # The feature a kind needs beyond the op itself. A runtime that predates the
 # kind rejects it as an unknown kind, so the gate is per kind, not per op.
 _KIND_FEATURES: dict[str, str] = {
+    "package_firewall_entitlement": HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ENTITLEMENT_FEATURE,
     "package_reuse_settle": HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE,
     "remembered_rule_reason": HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE,
 }
@@ -165,6 +177,12 @@ _KIND_FEATURES: dict[str, str] = {
 # A action or null, b bool, s string, S string or null, d dict, D dict or null,
 # l list.
 _ANSWERS: dict[str, dict[str, str]] = {
+    "package_firewall_entitlement": {
+        "allowed": "b",
+        "reason": "s",
+        "tier": "s",
+        "upgrade_cta": "S",
+    },
     "policy_stack": {
         "approval_context_config_action": "a",
         "auto_stop_events": "l",
@@ -311,6 +329,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
 
 __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ENTITLEMENT_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE",
     "NativeHookComposeError",

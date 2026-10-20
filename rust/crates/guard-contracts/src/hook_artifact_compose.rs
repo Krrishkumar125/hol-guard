@@ -28,6 +28,11 @@ pub const HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE: &str =
 /// caller requires this feature for that query alone.
 pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE: &str =
     "hook-artifact-compose-package-reuse-v1";
+/// Capability advertised when the `package_firewall_entitlement` query is
+/// served. A runtime that predates the query rejects it as an unknown kind, so
+/// the caller requires this feature for that query alone.
+pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ENTITLEMENT_FEATURE: &str =
+    "hook-artifact-compose-package-firewall-entitlement-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -71,6 +76,30 @@ pub enum HookArtifactComposeQueryV1 {
     /// Settle a package request's saved-approval reuse from the reasons the
     /// evaluation carries, folding the saved-block reuse of the same request.
     PackageReuseSettle(Box<PackageReuseSettleQueryV1>),
+    /// Resolve what package-firewall access this home is entitled to.
+    PackageFirewallEntitlement(Box<PackageFirewallEntitlementQueryV1>),
+}
+
+/// The store rows the package-firewall entitlement is resolved from.
+///
+/// Every field is read as the store returned it; the resident re-derives the
+/// entitlement from them, so nothing here is a verdict the caller composed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PackageFirewallEntitlementQueryV1 {
+    /// The `supply_chain_bundle_entitlement` sync payload, `null` when unset.
+    pub bundle_payload: Value,
+    /// The `oauth_local_credentials` sync payload, `null` when unset.
+    pub oauth_payload: Value,
+    /// The OAuth local-credential health record, `null` when unavailable.
+    pub oauth_health: Value,
+    /// The effective Guard connect state at `now`, `null` when there is none.
+    pub connect_state: Value,
+    /// A cloud sync profile exists for this home.
+    pub has_cloud_sync_profile: bool,
+    /// The instant to resolve against as an ISO-8601 UTC string, `null` for
+    /// the resident's own clock.
+    pub now: Option<String>,
 }
 
 /// The package-request facts the reuse settlement reads. `reasons` is the
