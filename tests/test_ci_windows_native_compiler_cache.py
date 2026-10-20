@@ -24,8 +24,7 @@ def test_windows_runtime_cache_miss_still_builds_the_exact_release_binary() -> N
     assert cache["with"]["version"] == "v0.18.0"
     assert not any(step.get("continue-on-error", False) for step in (cache, build, upload))
     assert (
-        "cargo build --manifest-path rust/Cargo.toml --locked --release "
-        "-p hol-guard-runtime --bin hol-guard-runtime"
+        "cargo build --manifest-path rust/Cargo.toml --locked --release -p hol-guard-runtime --bin hol-guard-runtime"
     ) in build["run"]
     assert upload["with"]["path"] == "rust/target/release/hol-guard-runtime.exe"
     assert upload["with"]["if-no-files-found"] == "error"
@@ -33,9 +32,13 @@ def test_windows_runtime_cache_miss_still_builds_the_exact_release_binary() -> N
 
 def test_only_trusted_main_pushes_write_windows_compiler_cache() -> None:
     steps = _steps()
+    rust = next(step for step in steps if step.get("uses") == "./.github/actions/setup-rust")
+    assert rust["with"]["cache-key"] == "windows-native-runtime"
+    assert rust["with"]["cache-fallback-key"] == "native-wheel"
     build = next(step for step in steps if step.get("name") == "Build the Windows native runtime")
     env = build["env"]
-    assert env["RUSTC_WRAPPER"] == "sccache"
+    assert env["RUSTC_WORKSPACE_WRAPPER"] == "sccache"
+    assert "RUSTC_WRAPPER" not in env
     assert env["SCCACHE_GHA_ENABLED"] == "on"
     assert env["SCCACHE_GHA_VERSION"] == "windows-ci-runtime-fast-v1"
     assert env["SCCACHE_GHA_RW_MODE"] == (

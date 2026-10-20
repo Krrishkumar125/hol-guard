@@ -45,7 +45,7 @@ MAIN_REF = "refs/heads/main"
 CODEQL_KEY = re.compile(r"^(codeql-overlay-base-database-.+)-[0-9a-f]{40}-[0-9]+-[0-9]+$")
 CODEQL_STATUS_PREFIX = "codeql-overlay-status-"
 RUNTIME_ARCHIVE_KEY = re.compile(
-    r"^((?:runtime-test-archive-v[12]|linux-native-evaluators-v1|macos-hol-guard-runtime-v2|windows-hol-guard-runtime-v2|shipped-runtime-v[12])-.+)-[0-9a-f]{64}$"
+    r"^((?:runtime-test-archive-v[12]|linux-native-evaluators-v1|native-offline-previous-v1|macos-hol-guard-runtime-v2|windows-hol-guard-runtime-v2|shipped-runtime-v[12])-.+)-[0-9a-f]{64}$"
 )
 RUST_PREFIXES = ("v0-rust-", "release-native-")
 RUST_GENERATION = re.compile(r"^(?P<job>.+)-[0-9a-f]{8}-[0-9a-f]{8}$")
@@ -130,9 +130,7 @@ def superseded_compiler_generations(entries: Iterable[Mapping[str, Any]]) -> lis
             by_environment.setdefault(environment, []).append(item)
         ranked = sorted(
             by_environment,
-            key=lambda environment: max(
-                (item["createdAt"], item["id"]) for item in by_environment[environment]
-            ),
+            key=lambda environment: max((item["createdAt"], item["id"]) for item in by_environment[environment]),
             reverse=True,
         )
         for environment in ranked[2:]:

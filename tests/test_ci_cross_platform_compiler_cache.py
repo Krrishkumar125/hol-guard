@@ -7,11 +7,15 @@ from tests.support.ci_workflow import composite_action_steps, load_ci_workflow, 
 
 def test_runtime_builds_run_after_the_compiler_cache_is_routed() -> None:
     steps = composite_action_steps("ci-job-macos-native-runtime")
+    setup = next(step for step in steps if step.get("uses") == "./.github/actions/setup-rust")
+    assert setup["with"]["cache-key"] == "macos-native-runtime"
+    assert setup["with"]["cache-fallback-key"] == "native-wheel"
     routed = step_index(steps, "Route the runtime build through the compiler cache")
     assert step_index(steps, "Install content-addressed compiler cache") < routed
     assert routed < step_index(steps, "Build the macOS native runtime")
     script = steps[routed]["run"]
-    assert "RUSTC_WRAPPER=sccache" in script
+    assert "RUSTC_WORKSPACE_WRAPPER=sccache" in script
+    assert "RUSTC_WRAPPER=" not in script
     assert "SCCACHE_GHA_VERSION=cross-platform-runtime" in script
 
 
@@ -47,20 +51,29 @@ def test_macos_runtime_cache_requires_all_inputs_and_only_main_can_save() -> Non
     assert "scripts.ci.native_cache_environment" in platform["run"]
     assert "restore-keys" not in restore["with"]
     for token in (
-        "runner.arch", "steps.runtime-platform.outputs.image", "steps.runtime-platform.outputs.compiler-env",
-        "env.CARGO_PROFILE_RELEASE_LTO", "env.CARGO_PROFILE_RELEASE_CODEGEN_UNITS",
-        "'rust/**'", "'contributions/**'", "'contracts/**'", "'spec/**'",
+        "runner.arch",
+        "steps.runtime-platform.outputs.image",
+        "steps.runtime-platform.outputs.compiler-env",
+        "env.CARGO_PROFILE_RELEASE_LTO",
+        "env.CARGO_PROFILE_RELEASE_CODEGEN_UNITS",
+        "'rust/**'",
+        "'contributions/**'",
+        "'contracts/**'",
+        "'spec/**'",
         "'src/codex_plugin_scanner/guard/contracts/**'",
         "'.github/actions/setup-rust/action.yml'",
-        "'.github/actions/ci-job-macos-native-runtime/action.yml'", "'.cargo/**'",
-        "'scripts/ci/native_cache_environment.py'", "'scripts/refresh_extension_artifacts.py'",
+        "'.github/actions/ci-job-macos-native-runtime/action.yml'",
+        "'.cargo/**'",
+        "'scripts/ci/native_cache_environment.py'",
+        "'scripts/refresh_extension_artifacts.py'",
     ):
         assert token in restore["with"]["key"]
     assert "'.github/workflows/ci.yml'" not in restore["with"]["key"]
     miss = "steps.runtime-cache.outputs.cache-hit != 'true'"
     assert setup["if"] == miss
     for name in (
-        "Install content-addressed compiler cache", "Route the runtime build through the compiler cache",
+        "Install content-addressed compiler cache",
+        "Route the runtime build through the compiler cache",
         "Build the macOS native runtime",
     ):
         assert next(step for step in steps if step.get("name") == name)["if"] == miss
