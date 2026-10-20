@@ -330,9 +330,10 @@ impl CompiledNativeCommandControls {
     }
 
     /// An active extension that is not required lists a program in
-    /// `programs`, or has rules that can match without naming a known
-    /// program. Such rules may judge the words a substitution prints, so the
-    /// unknown set fails closed. An empty set names no program here.
+    /// `programs`. When some of its rules can match without naming a known
+    /// program, the programs it declares and its other rules name still
+    /// count, so `agi-memory sync $(echo dedupe)` keeps the failure. An
+    /// extension that names none of them is not an owner here.
     fn contributed_owner_names_a_program(&self, programs: &BTreeSet<String>) -> bool {
         self.candidate_index
             .extension_indices()
@@ -346,9 +347,10 @@ impl CompiledNativeCommandControls {
                     .iter()
                     .find(|(id, _)| *id == extension.extension_id)
                     .map(|(_, executables)| *executables);
-                self.program
-                    .extension_names(index, compatibility)
-                    .is_none_or(|names| !names.is_empty() && !names.is_disjoint(programs))
+                !self
+                    .program
+                    .extension_known_names(index, compatibility)
+                    .is_disjoint(programs)
             })
     }
 

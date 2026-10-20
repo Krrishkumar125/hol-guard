@@ -47,6 +47,12 @@ fn a_substitution_that_could_run_or_write_anything_is_not_bounded() {
         "time $(echo rm) -rf build",
         "env SERVICE_TOKEN=$(echo x) echo done",
         "make VERSION=$(cat VERSION) build",
+        // A launcher, `find -exec` or an option before the program.
+        "timeout 30 gh pr view \"$(cat id)\"",
+        "command -p $(printf r)m -rf build",
+        "find . -exec $(echo r)m {} \\;",
+        "pkexec $(printf r)m -rf /",
+        "nice -n 5 $(echo r)m -rf build",
         // A redirect target the floor cannot read.
         "git status > \"$(cat target)\"",
         "git status >$(cat target)",
@@ -115,6 +121,11 @@ fn a_substitution_that_runs_an_unnamed_program_keeps_the_evaluation_failure() {
         // command, or the arguments one supplies to its program.
         "echo $(gh pr list); git status",
         "gh pr view \"$(cat id)\"; git status",
+        // A launcher or option hides the program the output reaches.
+        "timeout 30 gh pr view \"$(cat id)\"; git status",
+        "command -p $(printf r)m -rf build",
+        "find . -exec $(echo r)m {} \\;",
+        "pkexec $(printf r)m -rf /",
     ] {
         assert_eq!(decision(&controls, command).1, FAILED, "{command}");
     }

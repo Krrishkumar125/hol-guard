@@ -10,7 +10,8 @@
 //! cannot read: in command position, in an assignment, as a redirect target,
 //! or holding a nested substitution, a backtick, a redirect, a subshell, a
 //! background job, an expansion that builds a program name, an interpreter or
-//! a lookup the lookup reader did not prove.
+//! a lookup the lookup reader did not prove, or fed to a launcher, a
+//! `find -exec` or an option that can stand before the program.
 
 use std::collections::BTreeSet;
 
@@ -22,6 +23,17 @@ const OUTPUT: &str = "guard_substituted_output";
 /// Lookups the lookup reader proves on its own. One it left in place names a
 /// word it could not prove is an operand.
 const LOOKUPS: &[&str] = &["command", "which", "type", "whence", "where", "hash"];
+
+/// Launchers the unmodeled reader does not list as interpreters. Each runs
+/// the program named by a later word.
+const LAUNCHERS: &[&str] = &[
+    "pkexec",
+    "runuser",
+    "unshare",
+    "nsenter",
+    "firejail",
+    "systemd-run",
+];
 
 pub(super) struct BoundedSubstitutions {
     /// The text with each bounded substitution replaced by an inert word.
@@ -74,6 +86,21 @@ pub(super) fn bounded_substitutions(text: &str) -> Option<BoundedSubstitutions> 
                 .iter()
                 .skip_while(|word| SHELL_PREFIXES.contains(&word.as_str()))
                 .find(|word| !is_assignment(word))?;
+            // A launcher such as `timeout` or `sudo`, or a `find -exec`, runs
+            // a program named by a later word, and an option in command
+            // position, such as the `-p` of `command -p`, can be followed by
+            // the program itself. The program this output reaches is not
+            // named here.
+            let name = program_name(receiver);
+            if receiver.starts_with('-')
+                || INTERPRETERS.contains(&name.as_str())
+                || LAUNCHERS.contains(&name.as_str())
+                || words
+                    .iter()
+                    .any(|word| matches!(word.as_str(), "-exec" | "-execdir" | "-ok" | "-okdir"))
+            {
+                return None;
+            }
             // `env NAME=$(...)` and `make NAME=$(...)` set a variable the
             // program reads. A word shaped like a setting is never read as
             // printed output, whatever program receives it.
