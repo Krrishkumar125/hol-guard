@@ -9,6 +9,7 @@ from typing import Any
 from ..native_codex_tool_output import codex_tool_output_native
 from ..native_context import bound_context_digest_home
 from ..native_path_anchor import anchor_to_process_directory
+from ..native_prompt import merge_prompt_artifacts
 from ..native_rich_command_model import NativeCommandModelError
 from ..native_sensitive_request import (
     NativeSensitiveRequestError,
@@ -99,50 +100,18 @@ def _runtime_hook_raw_command_text(
     return action_envelope.command if action_envelope is not None else None
 
 
-def _merged_prompt_runtime_artifact(harness: str, artifacts: list[GuardArtifact]) -> GuardArtifact:
+def _merged_prompt_runtime_artifact(
+    harness: str, artifacts: list[GuardArtifact], *, guard_home: Path | None = None
+) -> GuardArtifact:
+    """The one review a prompt's guarded requests are held under.
+
+    A single request is its own review and needs no identity derived for it.
+    Two or more are folded by the resident, which owns the merged artifact id
+    the saved approval is keyed by.
+    """
     if len(artifacts) == 1:
         return artifacts[0]
-    prompt_signals: list[str] = []
-    prompt_matched_texts: list[str] = []
-    prompt_request_classes: list[str] = []
-    prompt_display_texts: list[str] = []
-    request_identity = "|".join(sorted(artifact.artifact_id for artifact in artifacts))
-    for artifact in artifacts:
-        metadata = artifact.metadata
-        prompt_signals.extend(_string_list(metadata.get("prompt_signals")))
-        matched_text = metadata.get("prompt_matched_text")
-        if isinstance(matched_text, str) and matched_text.strip():
-            prompt_matched_texts.append(matched_text.strip())
-        display_text = metadata.get("prompt_display_text")
-        if isinstance(display_text, str) and display_text.strip():
-            prompt_display_texts.append(display_text.strip())
-        request_class = metadata.get("prompt_request_class")
-        if isinstance(request_class, str) and request_class.strip():
-            prompt_request_classes.append(request_class.strip())
-    deduped_signals = list(dict.fromkeys(prompt_signals))
-    deduped_matches = list(dict.fromkeys(prompt_matched_texts))
-    deduped_classes = list(dict.fromkeys(prompt_request_classes))
-    deduped_display = list(dict.fromkeys(prompt_display_texts))
-    request_summary = (
-        deduped_display[0] if len(deduped_display) == 1 else "Prompt matches multiple guarded request classes."
-    )
-    return GuardArtifact(
-        artifact_id=f"{harness}:session:prompt:multi:{hashlib.sha256(request_identity.encode('utf-8')).hexdigest()[:24]}",
-        name="prompt multi-signal request",
-        harness=harness,
-        artifact_type="prompt_request",
-        source_scope=artifacts[0].source_scope,
-        config_path=artifacts[0].config_path,
-        metadata={
-            "prompt_signals": deduped_signals,
-            "prompt_summary": "Prompt matches multiple guarded request classes.",
-            "prompt_matched_texts": deduped_matches,
-            "prompt_display_text": request_summary,
-            "prompt_request_classes": deduped_classes,
-            "request_summary": request_summary,
-            "runtime_request_summary": request_summary,
-        },
-    )
+    return merge_prompt_artifacts(harness, artifacts, guard_home=guard_home)
 
 
 def _unmodeled_shell_runtime_artifact(
@@ -271,7 +240,7 @@ def _hook_runtime_artifact_with_native(
                             _with_codex_prompt_display_metadata(artifact, prompt_text=prompt_text)
                             for artifact in prompt_artifacts
                         ]
-                    return _merged_prompt_runtime_artifact(harness, prompt_artifacts)
+                    return _merged_prompt_runtime_artifact(harness, prompt_artifacts, guard_home=guard_home)
             prompt_file_artifact = _codex_prompt_credential_file_artifact(
                 prompt_text=prompt_text,
                 cwd=workspace,
@@ -290,28 +259,26 @@ def _hook_runtime_artifact_with_native(
     tool_name = _runtime_hook_tool_name(payload)
     tool_arguments = _runtime_hook_tool_arguments(payload)
     raw_command_text = _runtime_hook_raw_command_text(payload, action_envelope)
-    request = extract_sensitive_file_read_request(
+    source_scope = _coalesce_string(payload.get("source_scope"), "project")
+    config_path = str(_runtime_policy_path(harness, home_dir, workspace, payload=payload))
+    naming = {"harness": harness, "config_path": config_path, "source_scope": source_scope}
+    _read_request, read_artifact = extract_sensitive_file_read_request_artifact(
         tool_name,
         tool_arguments,
         cwd=workspace,
         home_dir=home_dir,
+        **naming,
     )
-    if request is None:
-        request = (
-            extract_sensitive_file_read_request_from_action(action_envelope, cwd=workspace, home_dir=home_dir)
-            if action_envelope is not None
-            else None
+    if read_artifact is None and action_envelope is not None:
+        _read_request, read_artifact = extract_sensitive_file_read_request_artifact_from_action(
+            action_envelope,
+            cwd=workspace,
+            home_dir=home_dir,
+            **naming,
         )
-    source_scope = _coalesce_string(payload.get("source_scope"), "project")
-    config_path = str(_runtime_policy_path(harness, home_dir, workspace, payload=payload))
-    if request is not None:
-        return build_file_read_request_artifact(
-            harness=harness,
-            request=request,
-            config_path=config_path,
-            source_scope=source_scope,
-        )
-    file_write_request = extract_sensitive_file_write_request(
+    if read_artifact is not None:
+        return read_artifact
+    _write_request, write_artifact = extract_sensitive_file_write_request_artifact(
         tool_name,
         tool_arguments,
         cwd=workspace,
@@ -321,14 +288,10 @@ def _hook_runtime_artifact_with_native(
             home_dir=home_dir,
             workspace=workspace,
         ),
+        **naming,
     )
-    if file_write_request is not None:
-        return build_file_write_request_artifact(
-            harness=harness,
-            request=file_write_request,
-            config_path=config_path,
-            source_scope=source_scope,
-        )
+    if write_artifact is not None:
+        return write_artifact
     package_intent = None
     if not _post_tool_package_request_was_already_evaluated(payload=payload, action_envelope=action_envelope):
         package_intent = extract_package_intent_request(
