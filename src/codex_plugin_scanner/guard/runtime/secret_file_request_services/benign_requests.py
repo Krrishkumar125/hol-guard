@@ -12,11 +12,34 @@ from ..command_evaluation import CompositeCommandEvaluation, evaluate_command
 from ..command_extensions import risk_classes_for_command_action
 from ..command_model import parse_shell_command
 from ..effect_contract import UncertaintyKind
-from ..effect_decision import EffectDecisionRequest, evaluate_effect_decision
+from ..effect_decision import DecisionFactorSource, DecisionReason, EffectDecision, FinalDisposition
 from ..extension_control_contract import ExtensionControlLayer
 from ..extension_control_runtime import ExtensionControlRuntimeSnapshot
 from .constants_core import _PATH_KEYS, _PATH_LIST_KEYS
 from .request_models import ToolActionRequestMatch, _normalize_tool_name, tool_action_risk_summary
+
+# Artifact discovery can run before an authenticated native result exists, and
+# the sensitive request still has to be preserved at a review floor. The
+# resident cannot be asked for that floor: this branch exists precisely because
+# the native side produced nothing. Running the Python evaluator here would be
+# a second place a floor is decided, so the decision is pinned instead. It is
+# exactly what the Rust evaluator returns for an empty request carrying
+# `unsupported-input`, and `pinned_unavailable_evidence_floor` in `guard-command`
+# fails if the two ever drift.
+_UNSUPPORTED_INPUT_REASON = DecisionReason(
+    source=DecisionFactorSource.POLICY,
+    reason_code=f"uncertainty.{UncertaintyKind.UNSUPPORTED_INPUT.value}",
+    action_floor="review",
+    segment_ref=None,
+    operation_ref=None,
+)
+_NATIVE_EVIDENCE_UNAVAILABLE_DECISION = EffectDecision(
+    action="review",
+    disposition=FinalDisposition.REVIEW,
+    controlling_reasons=(_UNSUPPORTED_INPUT_REASON,),
+    reasons=(_UNSUPPORTED_INPUT_REASON,),
+    proof_routes=frozenset(),
+)
 
 
 def is_explicitly_benign_native_file_read_request(
@@ -106,12 +129,7 @@ def build_tool_action_request_artifact(
             if request.raw_command_text is None and request.canonical_command is not None
             else parse_shell_command(policy_command)
         )
-        decision_plane = evaluate_effect_decision(
-            EffectDecisionRequest(
-                factors=(),
-                uncertainties=(UncertaintyKind.UNSUPPORTED_INPUT,),
-            )
-        )
+        decision_plane = _NATIVE_EVIDENCE_UNAVAILABLE_DECISION
         control_resolution = {"blocked": True, "failures": ["native-evidence-unavailable"]}
         command_rule_matches = []
         risk_classes = list(risk_classes_for_command_action(request.action_class))

@@ -288,6 +288,7 @@ pub(crate) enum ResidentOperationV1 {
     DataFlowAnalyze(DataFlowAnalyzeRequestV1),
     ToolActionRequestIdentity(guard_contracts::ToolActionRequestIdentityRequestV1),
     RuntimeArtifactIdentity(guard_contracts::RuntimeArtifactIdentityRequestV1),
+    VerifiedReadDecision(guard_contracts::VerifiedReadDecisionRequestV1),
     Health(Value),
     Shutdown(Value),
 }

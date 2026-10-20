@@ -583,6 +583,9 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::RuntimeArtifactIdentity(request) => {
                 crate::runtime_artifact_identity_op::evaluate_runtime_artifact_identity(&request)
             }
+            ResidentOperationV1::VerifiedReadDecision(request) => {
+                crate::verified_read_decision_op::evaluate_verified_read_decision(&request)
+            }
             #[cfg(not(unix))]
             ResidentOperationV1::ContainedNodeExecute(_)
             | ResidentOperationV1::ContainedTypescriptExecute(_)
