@@ -79,6 +79,25 @@ def native_render_cli(
     return str(outcome), dict(document) if isinstance(document, dict) else None
 
 
+def native_hermes_bridge(
+    response: Mapping[str, object], *, guard_home: Path | None = None
+) -> tuple[dict[str, object], int] | None:
+    """Read a Hermes daemon reply into its stdout document and exit status.
+
+    ``None`` when the resident cannot answer; the caller fails closed rather
+    than deciding here what the reply meant.
+    """
+
+    rendered = native_render_cli("hermes_bridge", "hermes", {"response": dict(response)}, guard_home=guard_home)
+    if rendered is None or rendered[1] is None:
+        return None
+    document = rendered[1].get("document")
+    exit_code = rendered[1].get("exit_code")
+    if not isinstance(document, dict) or not isinstance(exit_code, int) or isinstance(exit_code, bool):
+        return None
+    return dict(document), exit_code
+
+
 # The payload fields ``claude_approval_copy`` reads to name the tool.
 _CLAUDE_COPY_PAYLOAD_FIELDS = ("tool_name", "message", "title")
 

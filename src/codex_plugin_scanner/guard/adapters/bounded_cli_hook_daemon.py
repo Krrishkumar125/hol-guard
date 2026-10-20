@@ -432,7 +432,7 @@ def try_daemon_hook(
     if harness.strip().lower().replace("_", "-") == "hermes":
         from .hermes_runtime_hooks import hermes_bridge_response
 
-        return hermes_bridge_response(parsed, event_name=event_name)
+        return hermes_bridge_response(parsed, event_name=event_name, guard_home=guard_home)
     return _daemon_response_to_native(parsed, harness=harness, event_name=event_name)
 
 

@@ -18,7 +18,6 @@ from codex_plugin_scanner.guard.adapters.hermes_runtime_hooks import (
     apply_hermes_doctor_protection_label,
     guard_pretool_hook_registered,
     hermes_bridge_response,
-    hermes_native_decision,
 )
 from codex_plugin_scanner.guard.runtime.actions import normalize_hermes_payload
 from codex_plugin_scanner.guard.store import GuardStore
@@ -174,28 +173,15 @@ def test_event_name_maps_pre_tool_call() -> None:
     assert _event_name('{"hook_event_name":"pre_tool_call"}') == "PreToolUse"
 
 
-def test_hermes_bridge_maps_review_to_block() -> None:
+def test_hermes_bridge_fails_closed_without_resident(tmp_path: Path) -> None:
     stdout, stderr, code = hermes_bridge_response(
-        {"policy_action": "review", "reason": "recursive delete"},
-        event_name="PreToolUse",
-    )
-    payload = json.loads(stdout)
-    assert payload == {"decision": "block", "reason": "recursive delete"}
-    assert stderr == ""
-    assert code == 2
-    native_stdout, native_stderr, native_code = hermes_bridge_response(
         {"policy_action": "allow", "reason": "ok"},
         event_name="PreToolUse",
+        guard_home=tmp_path / "guard-home",
     )
-    assert json.loads(native_stdout)["decision"] == "allow"
-    assert native_stderr == ""
-    assert native_code == 0
-
-
-def test_hermes_native_decision_never_emits_deny() -> None:
-    assert hermes_native_decision(policy_action="block", reason="no")["decision"] == "block"
-    assert hermes_native_decision(policy_action="review", reason="ask")["decision"] == "block"
-    assert hermes_native_decision(policy_action="allow", reason="ok")["decision"] == "allow"
+    assert json.loads(stdout) == {"decision": "block", "reason": "HOL Guard blocked this action."}
+    assert stderr == ""
+    assert code == 2
 
 
 def test_guard_pretool_hook_registered_requires_fail_closed() -> None:
