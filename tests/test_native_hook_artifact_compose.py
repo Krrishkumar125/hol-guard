@@ -177,3 +177,40 @@ def test_request_key_set_is_exact(monkeypatch: pytest.MonkeyPatch, kind: str, fi
     with pytest.raises(compose.NativeHookComposeError) as error:
         compose.native_hook_compose(kind, fields, guard_home=None)
     assert error.value.code == "native_hook_artifact_compose_request_invalid"
+
+
+def _feature_recorder(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
+    """Record the capability each request requires of the resident."""
+
+    required: list[str | None] = []
+    monkeypatch.setattr(compose, "_resolve_digest_home", lambda _home: Path("/tmp/hook-compose-home"))
+    monkeypatch.setattr(compose, "ensure_resident_prerequisite", lambda _home: True)
+
+    def fake(*, request, required_feature=None, **_kwargs):
+        required.append(required_feature)
+        return _good(request, payload={"reason": None})
+
+    monkeypatch.setattr(compose, "_resident_request", fake)
+    return required
+
+
+def test_a_kind_added_after_the_op_requires_its_own_feature(monkeypatch: pytest.MonkeyPatch) -> None:
+    required = _feature_recorder(monkeypatch)
+    compose.native_hook_compose(
+        "remembered_rule_reason",
+        {"remembered_rules": "enabled", "integrity_message": None, "artifact_summary": "git push"},
+        guard_home=None,
+    )
+    assert required == [compose.HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE]
+
+
+def test_the_kinds_the_op_shipped_with_require_the_op_feature(monkeypatch: pytest.MonkeyPatch) -> None:
+    required = _feature_recorder(monkeypatch)
+
+    def fake(*, request, required_feature=None, **_kwargs):
+        required.append(required_feature)
+        return _good(request)
+
+    monkeypatch.setattr(compose, "_resident_request", fake)
+    compose.native_hook_compose("tool_grant_apply", {}, guard_home=None)
+    assert required == [compose.HOOK_ARTIFACT_COMPOSE_FEATURE]

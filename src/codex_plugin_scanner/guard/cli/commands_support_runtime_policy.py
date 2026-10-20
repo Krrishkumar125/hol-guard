@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import importlib
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 from ..runtime.data_flow_sink import data_flow_sink_type
@@ -437,9 +437,17 @@ def _runtime_hook_effective_policy_config(config: GuardConfig) -> dict[str, obje
 
 def _remembered_rule_rejection_reason(
     *,
+    composer: Callable[..., dict[str, object]],
+    guard_home: Path | None,
     response_payload: dict[str, object],
     artifact: GuardArtifact,
 ) -> str | None:
+    """Why the resident refused a remembered local rule, or ``None``.
+
+    The reported rule state and the reason it produces are the resident's; this
+    only names the request and hands over the facts it reads them from.
+    """
+
     rejection = response_payload.get("remembered_rule_rejection")
     if not isinstance(rejection, Mapping):
         return None
@@ -447,20 +455,17 @@ def _remembered_rule_rejection_reason(
     remembered_rules = (
         str(trust_status.get("remembered_rules") or "unknown") if isinstance(trust_status, Mapping) else "unknown"
     )
-    if remembered_rules != "disabled_degraded":
-        return None
-    integrity_message = _optional_string(rejection.get("integrity_message"))
-    artifact_summary = _runtime_request_summary(artifact) or artifact.name
-    if isinstance(integrity_message, str) and integrity_message.strip():
-        message = integrity_message.strip()
-        detail = f" {message if message.endswith('.') else message + '.'}"
-    else:
-        detail = ""
-    return (
-        f"HOL Guard kept {artifact_summary} in review because a remembered local rule was ignored while local trust "
-        f"is degraded.{detail} One-time approvals still work, but broader remembered rules stay limited until local "
-        f"trust is protected."
+    answer = composer(
+        "remembered_rule_reason",
+        {
+            "remembered_rules": remembered_rules,
+            "integrity_message": _optional_string(rejection.get("integrity_message")),
+            "artifact_summary": _runtime_request_summary(artifact) or artifact.name,
+        },
+        guard_home=guard_home,
     )
+    reason = answer["reason"]
+    return reason if isinstance(reason, str) else None
 
 
 def _runtime_artifact_exact_match_context(artifact: GuardArtifact) -> str | None:

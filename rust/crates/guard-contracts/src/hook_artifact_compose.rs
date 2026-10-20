@@ -18,6 +18,11 @@ pub const HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA: &str = "guard-hook-artifact-comp
 pub const HOOK_ARTIFACT_COMPOSE_RESULT_SCHEMA: &str = "guard-hook-artifact-compose-result.v1";
 /// Capability advertised by the runtime when this operation is available.
 pub const HOOK_ARTIFACT_COMPOSE_FEATURE: &str = "hook-artifact-compose-v1";
+/// Capability advertised when the `remembered_rule_reason` query is served.
+/// A runtime that predates the query rejects it as an unknown kind, so the
+/// caller requires this feature for that query alone.
+pub const HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE: &str =
+    "hook-artifact-compose-remembered-rule-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -56,6 +61,8 @@ pub enum HookArtifactComposeQueryV1 {
     DecisionCopy(Box<DecisionCopyQueryV1>),
     /// Build the canonical decision and its copy in the same resident request.
     DecisionBuildCopy(Box<DecisionBuildCopyQueryV1>),
+    /// Why a remembered local rule was refused while local trust is degraded.
+    RememberedRuleReason(RememberedRuleReasonQueryV1),
 }
 
 /// Guard configuration facts the native policy-config action reads.
@@ -271,6 +278,17 @@ pub struct DecisionCopyQueryV1 {
     pub base_harness_message: Value,
     pub base_dashboard_primary_detail: Value,
     pub remembered_rule_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RememberedRuleReasonQueryV1 {
+    /// Reported state of remembered local rules, `unknown` when absent.
+    pub remembered_rules: String,
+    /// Integrity detail to append to the reason, when one was reported.
+    pub integrity_message: Option<String>,
+    /// How the request is named in the reason.
+    pub artifact_summary: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

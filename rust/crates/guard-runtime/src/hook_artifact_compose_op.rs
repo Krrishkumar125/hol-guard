@@ -83,6 +83,9 @@ pub(crate) fn compose(query: &HookArtifactComposeQueryV1) -> Result<Value, Strin
         HookArtifactComposeQueryV1::ClaimedReuse(query) => reuse::claimed_reuse(query),
         HookArtifactComposeQueryV1::DecisionCopy(query) => reuse::decision_copy(query),
         HookArtifactComposeQueryV1::DecisionBuildCopy(query) => reuse::decision_build_copy(query)?,
+        HookArtifactComposeQueryV1::RememberedRuleReason(query) => {
+            reuse::remembered_rule_reason(query)
+        }
     })
 }
 

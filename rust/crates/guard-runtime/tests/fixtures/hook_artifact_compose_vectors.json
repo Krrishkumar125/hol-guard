@@ -4063,5 +4063,29 @@
       "scanner_action": null,
       "scanner_risk_signals": []
     }
+  },
+  {
+    "expected": {
+      "reason": null
+    },
+    "name": "remembered_rule_reason_not_degraded",
+    "query": {
+      "artifact_summary": "git push origin main",
+      "integrity_message": null,
+      "kind": "remembered_rule_reason",
+      "remembered_rules": "enabled"
+    }
+  },
+  {
+    "expected": {
+      "reason": "HOL Guard kept git push origin main in review because a remembered local rule was ignored while local trust is degraded. Local approval store integrity could not be verified. One-time approvals still work, but broader remembered rules stay limited until local trust is protected."
+    },
+    "name": "remembered_rule_reason_degraded_with_integrity_detail",
+    "query": {
+      "artifact_summary": "git push origin main",
+      "integrity_message": "Local approval store integrity could not be verified",
+      "kind": "remembered_rule_reason",
+      "remembered_rules": "disabled_degraded"
+    }
   }
 ]
