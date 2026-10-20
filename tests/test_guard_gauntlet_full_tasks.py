@@ -202,6 +202,17 @@ def test_watch_rows_are_harvested_with_the_enforce_verdict() -> None:
     assert [row["command"] for row in report["would_contain"]] == ["python3 -m unittest"]
 
 
+def test_output_scan_after_a_stopped_call_is_not_a_second_stop() -> None:
+    stopped = {**WATCH_ROW, "tool_call_id": "call-1"}
+    echoed = {**OUTPUT_SCAN_ROW, "tool_call_id": "call-1", "policy_action": "review"}
+    other = {**OUTPUT_SCAN_ROW, "tool_call_id": "call-2", "policy_action": "review"}
+    rows = would_have_stopped([stopped, echoed, other], "discover")
+    assert [(row["event"], row["reason_code"]) for row in rows] == [
+        ("PreToolUse", "native_command_review_required"),
+        ("PostToolUse", "output_scan_allow"),
+    ]
+
+
 def _case(mode: str, filesystem: dict[str, bool], **extra) -> dict:
     return {
         "full_task_mode": mode,
