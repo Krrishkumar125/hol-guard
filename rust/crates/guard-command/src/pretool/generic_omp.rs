@@ -835,8 +835,7 @@ fn grep_scope(
     // A `file:N-M` entry searches only those lines of one file, so it carries
     // the proof `read` gives the same selector.
     let list = targets.len() > 1;
-    // A `glob` or `type` override can re-include a gitignored file, so with
-    // either one no ignore file narrows the proof.
+    // A `glob` or `type` override can re-include a gitignored file: no ignore file narrows it.
     let gitignore = input.get("gitignore").and_then(Value::as_bool) != Some(false)
         && !input.contains_key("glob")
         && !input.contains_key("type");
@@ -844,6 +843,7 @@ fn grep_scope(
     // A plain pattern that no reachable sensitive file contains cannot print
     // a line from one, so those files need not hold the search.
     let clearance = super::super::search_pattern_clearance::PatternClearance::new(pattern);
+    let globs = grep_glob::EntryProofs::default();
     let proven = |target: &str| {
         super::super::search_scope::omp_grep_scope_proven(
             target,
@@ -853,7 +853,7 @@ fn grep_scope(
             clearance.as_ref(),
         ) || (list && super::super::read_paths::existing_regular_read_target(target, home, cwd))
             || super::super::read_paths::bounded_omp_file_selector_target(target, home, cwd)
-            || grep_glob::entry_proven(target, home, cwd, clearance.as_ref())
+            || globs.proven(target, home, cwd, clearance.as_ref())
     };
     if targets.iter().all(|target| proven(target)) {
         return Some(directory_allow(

@@ -131,6 +131,17 @@ fn a_link_out_of_the_folder_keeps_review() {
 }
 
 #[test]
+fn a_git_link_out_of_the_folder_keeps_review() {
+    let f = fixture("git-link");
+    // A `.git` link is still a link: the names walk skips only a real one.
+    std::os::unix::fs::symlink(f.home.join("clean"), f.project.join("src/.git")).unwrap();
+    for path in ["src/**/*.ts", "src/*.ts", "**/*.ts"] {
+        assert!(!allowed(&grep(&f, path)), "{path}");
+    }
+    assert!(allowed(&grep(&f, "docs/*.md")));
+}
+
+#[test]
 fn a_selector_that_could_leave_the_folder_keeps_review() {
     let f = fixture("escape");
     for path in [

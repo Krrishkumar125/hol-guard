@@ -5,6 +5,7 @@
 use super::contained_selector;
 use crate::pretool::search_pattern_clearance::PatternClearance;
 use crate::pretool::search_scope::{omp_glob_scope_proven, omp_grep_scope_proven};
+use std::cell::RefCell;
 
 /// The fixed folder a simple glob walks below; `None` for a selector whose
 /// alternatives, classes or escapes could name a path outside it.
@@ -57,24 +58,44 @@ pub(super) fn glob_directory(target: &str) -> Option<&str> {
     }
 }
 
-/// A `grep` path entry with a glob searches a subset of the files below its
-/// fixed folder. It is proven when a search of that whole folder would be,
-/// with no ignore file narrowing it, and no link below the folder leads to
-/// anything that walk did not prove. The glob itself only narrows the search
-/// further, so whatever files it selects are covered.
-pub(super) fn entry_proven(
-    entry: &str,
-    home_dir: Option<&str>,
-    cwd: Option<&str>,
-    clearance: Option<&PatternClearance>,
-) -> bool {
-    if !entry.contains(['*', '?', '[', '{']) {
-        return false;
+/// The proof of each glob entry's fixed folder within one `grep` call, so
+/// entries that share a folder, and the missing-path pass after the first,
+/// walk it once.
+#[derive(Default)]
+pub(super) struct EntryProofs(RefCell<Vec<(String, bool)>>);
+
+impl EntryProofs {
+    /// A `grep` path entry with a glob searches a subset of the files below
+    /// its fixed folder. It is proven when a search of that whole folder
+    /// would be, with no ignore file narrowing it, and no link below the
+    /// folder leads to anything that walk did not prove. The glob itself only
+    /// narrows the search further, so whatever files it selects are covered.
+    pub(super) fn proven(
+        &self,
+        entry: &str,
+        home_dir: Option<&str>,
+        cwd: Option<&str>,
+        clearance: Option<&PatternClearance>,
+    ) -> bool {
+        if !entry.contains(['*', '?', '[', '{']) {
+            return false;
+        }
+        let Some(directory) = glob_directory(entry) else {
+            return false;
+        };
+        let known = self
+            .0
+            .borrow()
+            .iter()
+            .find(|(folder, _)| folder == directory)
+            .map(|(_, proven)| *proven);
+        known.unwrap_or_else(|| {
+            let proven = omp_grep_scope_proven(directory, home_dir, cwd, false, clearance)
+                && omp_glob_scope_proven(directory, home_dir, cwd, false);
+            self.0.borrow_mut().push((directory.to_owned(), proven));
+            proven
+        })
     }
-    glob_directory(entry).is_some_and(|directory| {
-        omp_grep_scope_proven(directory, home_dir, cwd, false, clearance)
-            && omp_glob_scope_proven(directory, home_dir, cwd, false)
-    })
 }
 
 #[cfg(test)]
