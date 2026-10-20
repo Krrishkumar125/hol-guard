@@ -53,7 +53,7 @@ pub(super) fn child_failed(report: &[u8]) -> io::Error {
         .chunks_exact(4)
         .map(|bytes| i32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
         .filter(|code| *code != 0)
-        .last()
+        .next_back()
         .unwrap_or(-1);
     io::Error::new(
         io::ErrorKind::PermissionDenied,
