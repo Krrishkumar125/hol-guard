@@ -19,6 +19,14 @@ that every non-Unix arm is named in `ci/platform_arms.json` with a verdict a
 reviewer wrote, and fails when an arm appears, moves or changes signature
 without one, or when an entry no longer matches any arm.
 
+An arm is in scope when its predicate names `unix` and compiles off Unix: the
+predicate is parsed and evaluated rather than matched as text, so
+`not(unix)`, `not(any(unix, windows))` and `all(not(unix), feature = "x")` are
+all found and no spelling of the same condition gets past the gate. `cfg!(..)`
+expressions are read too, in either polarity: a runtime branch written as
+`if cfg!(not(unix))` or `if !cfg!(unix)` is the same platform difference, and
+unlike an attribute it has no second arm for the gate to find on its own.
+
 Verdicts:
 
 ``posix-primitive``
@@ -47,6 +55,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -64,16 +73,105 @@ VERDICTS = (
 )
 UNREVIEWED = "unreviewed"
 
-# `#[cfg(not(unix))]` and `#[cfg(all(not(unix), ...))]`, but never a test arm:
-# a test that only runs off Unix is proof, not behaviour.
-ATTRIBUTE = re.compile(r"^(?P<indent>\s*)#\[cfg\((?P<cfg>[^\]]*\bnot\(unix\)[^\]]*)\)\]\s*$")
-# `all(test, ..)` is test-only. `any(not(unix), test)` is not: it compiles into
-# an ordinary non-Unix build, so it is behaviour and stays under review.
-TEST_ONLY = re.compile(r"^\s*all\(.*\btest\b")
+# A whole-line `#[cfg(..)]` attribute. The predicate is parsed below rather
+# than matched as text, so no spelling of "off Unix" gets past the gate.
+ATTRIBUTE = re.compile(r"^(?P<indent>\s*)#\[cfg\((?P<cfg>.*)\)\]\s*$")
+# `if cfg!(not(unix))` is the same platform difference written as an
+# expression, and reaches the same runtime branch. The predicate is read by
+# balancing brackets rather than by regex, so `cfg!(any(unix, windows))` keeps
+# its whole predicate instead of stopping at the first `)`.
+MACRO = re.compile(r"\bcfg!\(")
 SKIPPED = re.compile(r"^\s*(?:#\[|//[/!]?)")
 WHITESPACE = re.compile(r"\s+")
 # How far a multi-line item signature may run before the opening brace.
 SIGNATURE_LINES = 16
+# How far a bare block may run before its fingerprint stops reading.
+BLOCK_LINES = 200
+ATOM = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def macro_predicate(line: str) -> str | None:
+    """The predicate of the first `cfg!(..)` on `line`, brackets balanced."""
+    match = MACRO.search(line)
+    if match is None:
+        return None
+    depth, start = 1, match.end()
+    for position in range(start, len(line)):
+        if line[position] in "([":
+            depth += 1
+        elif line[position] in ")]":
+            depth -= 1
+            if depth == 0:
+                return line[start:position]
+    return None
+
+
+def split(predicate: str) -> list[str]:
+    """`a, b(c, d)` as `["a", "b(c, d)"]`: commas outside brackets only."""
+    parts, depth, start = [], 0, 0
+    for position, character in enumerate(predicate):
+        if character in "([":
+            depth += 1
+        elif character in ")]":
+            depth -= 1
+        elif character == "," and depth == 0:
+            parts.append(predicate[start:position])
+            start = position + 1
+    parts.append(predicate[start:])
+    return [part.strip() for part in parts if part.strip()]
+
+
+def evaluate(predicate: str, **atoms: bool) -> bool:
+    """A `cfg` predicate under the given atoms.
+
+    An atom the caller does not name is true, so a predicate narrowed by a
+    feature or an architecture still counts as reachable. A malformed or
+    unparseable predicate is true for the same reason: the gate's job is to
+    over-collect arms for review, never to quietly drop one.
+    """
+    predicate = predicate.strip()
+    for operator in ("all", "any", "not"):
+        if predicate.startswith(f"{operator}(") and predicate.endswith(")"):
+            inner = split(predicate[len(operator) + 1 : -1])
+            results = [evaluate(part, **atoms) for part in inner]
+            if operator == "all":
+                return all(results)
+            if operator == "any":
+                return any(results)
+            return not results[0] if len(results) == 1 else True
+    if ATOM.match(predicate):
+        return atoms.get(predicate, True)
+    return True
+
+
+def off_unix(predicate: str) -> bool:
+    """Whether this predicate selects a behaviour arm that replaces a Unix one.
+
+    It has to name `unix`, hold with `unix` unset, and not hold with `unix`
+    set. Naming `unix` is what keeps the gate to arms that substitute for Unix
+    behaviour rather than every `#[cfg(windows)]` block in the tree. `test` is
+    unset on both sides, so `all(test, not(unix))` — a test that only runs off
+    Unix, which is proof rather than behaviour — drops out, while
+    `any(not(unix), test)` stays: it compiles into an ordinary non-Unix build.
+    """
+    if not re.search(r"\bunix\b", predicate):
+        return False
+    off = evaluate(predicate, unix=False, test=False, windows=True) or evaluate(
+        predicate, unix=False, test=False, windows=False
+    )
+    return off and not evaluate(predicate, unix=True, test=False, windows=False)
+
+
+def branching(predicate: str) -> bool:
+    """Whether a `cfg!(..)` expression is a platform branch to review.
+
+    Naming `unix` is enough, in either polarity. An attribute has a separate
+    non-Unix arm for the gate to find, so only that arm needs an entry; an
+    expression has no second arm — `if cfg!(unix) { .. } else { .. }` and
+    `cfg!(not(unix)) || proven(path)` both decide Windows behaviour inside one
+    function, and the function is what a reviewer has to read either way.
+    """
+    return bool(re.search(r"\bunix\b", predicate))
 
 
 SCOPE = re.compile(
@@ -134,6 +232,64 @@ def signature(lines: list[str], start: int) -> str:
     return f"{enclosing(lines, start)} -- non-Unix block"
 
 
+def fingerprint(lines: list[str], start: int) -> str:
+    """A short digest of a bare block's own source.
+
+    An arm named after the item it sits in is keyed by its position among that
+    item's blocks, so inserting a block ahead of a reviewed one would otherwise
+    hand the newcomer the existing verdict. The digest is what makes the two
+    tell apart: a block whose source changed is a block to review again.
+    """
+    collected: list[str] = []
+    depth, opened = 0, False
+    for line in lines[start : start + BLOCK_LINES]:
+        collected.append(WHITESPACE.sub(" ", line.strip()))
+        depth += line.count("{") - line.count("}")
+        opened = opened or "{" in line
+        if opened and depth <= 0:
+            break
+    body = " ".join(part for part in collected if part and not part.startswith("//"))
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
+
+
+def test_module(lines: list[str]) -> set[int]:
+    """Line numbers inside an inline `#[cfg(test)] mod tests { .. }`.
+
+    A `*_tests.rs` file is skipped by name; a test module written in the same
+    file as the code it proves has to be skipped by extent, or its own
+    `cfg!(unix)` assertions read as behaviour arms.
+    """
+    inside: set[int] = set()
+    for index, line in enumerate(lines):
+        if line.strip() != "#[cfg(test)]":
+            continue
+        cursor = index + 1
+        while cursor < len(lines) and SKIPPED.match(lines[cursor]):
+            cursor += 1
+        if cursor >= len(lines) or not re.match(r"\s*(?:pub\b[^;{]*?)?mod\b", lines[cursor]):
+            continue
+        depth, opened = 0, False
+        while cursor < len(lines):
+            inside.add(cursor)
+            depth += lines[cursor].count("{") - lines[cursor].count("}")
+            opened = opened or "{" in lines[cursor]
+            if opened and depth <= 0:
+                break
+            cursor += 1
+    return inside
+
+
+def record(found: list[dict[str, str]], relative: str, item: str, cfg: str, body: str | None) -> None:
+    """Add an arm, numbering a repeat of an item that already appeared."""
+    repeats = sum(1 for seen in found if seen["file"] == relative and seen["item"].startswith(item))
+    if repeats:
+        item = f"{item} #{repeats + 1}"
+    arm = {"file": relative, "item": item, "cfg": WHITESPACE.sub(" ", cfg).strip()}
+    if body is not None:
+        arm["body"] = body
+    found.append(arm)
+
+
 def arms(root: Path) -> list[dict[str, str]]:
     """Every non-Unix behaviour arm under `root`, in path order."""
     found: list[dict[str, str]] = []
@@ -142,23 +298,31 @@ def arms(root: Path) -> list[dict[str, str]]:
         if "/src/" not in relative or path.name.endswith("_tests.rs"):
             continue
         text = path.read_text(encoding="utf-8")
-        if "not(unix)" not in text:
+        if "unix" not in text:
             continue
         lines = text.splitlines()
+        tests = test_module(lines)
         for index, line in enumerate(lines):
-            match = ATTRIBUTE.match(line)
-            if match is None or TEST_ONLY.match(match.group("cfg")):
+            if index in tests:
                 continue
-            cursor = index + 1
-            while cursor < len(lines) and SKIPPED.match(lines[cursor]):
-                cursor += 1
-            if cursor >= len(lines):
+            attribute = ATTRIBUTE.match(line)
+            if attribute is not None:
+                if not off_unix(attribute.group("cfg")):
+                    continue
+                cursor = index + 1
+                while cursor < len(lines) and SKIPPED.match(lines[cursor]):
+                    cursor += 1
+                if cursor >= len(lines):
+                    continue
+                item = signature(lines, cursor)
+                body = None if DECLARATION.match(lines[cursor]) else fingerprint(lines, cursor)
+                record(found, relative, item, attribute.group("cfg"), body)
                 continue
-            item = signature(lines, cursor)
-            repeats = sum(1 for seen in found if seen["file"] == relative and seen["item"].startswith(item))
-            if repeats:
-                item = f"{item} #{repeats + 1}"
-            found.append({"file": relative, "item": item, "cfg": WHITESPACE.sub(" ", match.group("cfg"))})
+            macro = macro_predicate(line)
+            if macro is None or SKIPPED.match(line) or not branching(macro):
+                continue
+            item = f"{enclosing(lines, index)} -- cfg! expression"
+            record(found, relative, item, macro, fingerprint(lines, index))
     return found
 
 
@@ -194,9 +358,15 @@ def problems(found: list[dict[str, str]], reviewed: list[dict[str, str]]) -> lis
     current = {key(arm) for arm in found}
     for arm in found:
         reviewed_arm = seen.get(key(arm))
-        if reviewed_arm is not None and reviewed_arm.get("cfg") != arm["cfg"]:
+        if reviewed_arm is None:
+            continue
+        if reviewed_arm.get("cfg") != arm["cfg"]:
             messages.append(
                 f"{arm['file']}: `{arm['item']}` is now `#[cfg({arm['cfg']})]`; review the entry and update its `cfg`."
+            )
+        if reviewed_arm.get("body") != arm.get("body"):
+            messages.append(
+                f"{arm['file']}: the block behind `{arm['item']}` changed; review the entry and update its `body`."
             )
     for arm in found:
         if key(arm) not in seen:
@@ -212,15 +382,36 @@ def problems(found: list[dict[str, str]], reviewed: list[dict[str, str]]) -> lis
     return messages
 
 
+PLACEHOLDER = {"verdict": "windows-unsupported", "note": UNREVIEWED}
+
+
+def carried(saved: dict[str, str] | None, arm: dict[str, str]) -> dict[str, str]:
+    """The verdict an arm keeps across a refresh.
+
+    Only an arm that still reads the same way keeps one. When the predicate or
+    the block behind it changed, the Windows behaviour under review changed
+    with it, so the entry goes back to unreviewed and the gate keeps failing
+    until a reviewer writes a reason for what it does now.
+    """
+    if saved is None or saved.get("cfg") != arm["cfg"]:
+        return dict(PLACEHOLDER)
+    # An entry written before fingerprints existed carries none, and adopts the
+    # one it is given. Afterwards a fingerprint that moved resets the verdict.
+    if "body" in saved and saved.get("body") != arm.get("body"):
+        return dict(PLACEHOLDER)
+    return saved
+
+
 def write(inventory: Path, found: list[dict[str, str]], reviewed: list[dict[str, str]]) -> None:
-    """Keep every reviewed verdict and add a placeholder for each new arm."""
+    """Keep every unchanged verdict and add a placeholder for each new arm."""
     kept = {key(entry): entry for entry in reviewed if isinstance(entry, dict) and {"file", "item"} <= set(entry)}
-    merged = [{**kept.get(key(arm), {"verdict": "windows-unsupported", "note": UNREVIEWED}), **arm} for arm in found]
+    merged = [{**carried(kept.get(key(arm)), arm), **arm} for arm in found]
     document = {
         "schema_version": SCHEMA_VERSION,
         "comment": (
-            "Every `#[cfg(not(unix))]` behaviour arm in rust/crates/*/src, with the verdict a"
-            " reviewer gave it. scripts/ci/platform_arm_inventory.py keeps this list honest."
+            "Every non-Unix behaviour arm in rust/crates/*/src — `#[cfg(..)]` attribute or"
+            " `cfg!(..)` expression — with the verdict a reviewer gave it."
+            " scripts/ci/platform_arm_inventory.py keeps this list honest."
         ),
         "arms": merged,
     }

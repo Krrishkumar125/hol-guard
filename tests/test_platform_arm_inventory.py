@@ -119,6 +119,119 @@ def test_a_const_keeps_the_type_its_name_is_read_with(tmp_path: Path) -> None:
     assert [arm["item"] for arm in gate.arms(crates)] == ["const NAMES: [&str; 2]"]
 
 
+def test_a_predicate_is_evaluated_rather_than_matched(tmp_path: Path) -> None:
+    """`not(any(unix, windows))` spells the same condition and a text match for `not(unix)` misses it."""
+    crates = _crate(
+        tmp_path,
+        "#[cfg(not(any(unix, windows)))]\nfn fallback() -> bool {\n    true\n}\n"
+        '#[cfg(all(not(unix), feature = "wide"))]\nfn gated() -> bool {\n    true\n}\n',
+    )
+
+    assert [arm["item"] for arm in gate.arms(crates)] == ["fn fallback() -> bool", "fn gated() -> bool"]
+
+
+def test_a_windows_only_predicate_is_not_an_arm(tmp_path: Path) -> None:
+    """The gate asks what compiles off Unix; a predicate that never names `unix` is not that."""
+    crates = _crate(tmp_path, "#[cfg(windows)]\nfn probe() -> bool {\n    true\n}\n")
+
+    assert gate.arms(crates) == []
+
+
+def test_a_cfg_expression_is_an_arm(tmp_path: Path) -> None:
+    """A runtime `cfg!` branch decides the same platform difference and has no second item to find."""
+    crates = _crate(
+        tmp_path,
+        "fn probe() -> bool {\n    if cfg!(unix) {\n        mode()\n    } else {\n        true\n    }\n}\n",
+    )
+
+    [arm] = gate.arms(crates)
+    assert arm["item"] == "fn probe -- cfg! expression"
+    assert arm["cfg"] == "unix"
+
+
+def test_a_cfg_expression_keeps_its_whole_predicate(tmp_path: Path) -> None:
+    """Nested brackets end the predicate, not the first `)` after `cfg!(`."""
+    crates = _crate(tmp_path, "fn probe() -> bool {\n    !cfg!(any(unix, windows))\n}\n")
+
+    [arm] = gate.arms(crates)
+    assert arm["cfg"] == "any(unix, windows)"
+
+
+def test_a_cfg_expression_inside_a_test_module_is_not_behaviour(tmp_path: Path) -> None:
+    """An inline `#[cfg(test)] mod` is proof; a platform branch in it is not an arm to review."""
+    crates = _crate(
+        tmp_path,
+        "fn probe() -> bool {\n    true\n}\n"
+        "#[cfg(test)]\n"
+        "mod tests {\n"
+        "    #[test]\n"
+        "    fn probes() {\n"
+        "        if cfg!(unix) {\n"
+        "            assert!(super::probe());\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+    )
+
+    assert gate.arms(crates) == []
+
+
+def test_a_changed_block_is_reported(tmp_path: Path) -> None:
+    """A block arm has no declaration to key on, so the verdict is bound to the block itself."""
+    crates = _crate(
+        tmp_path,
+        "fn probe() -> bool {\n    #[cfg(not(unix))]\n    {\n        true\n    }\n}\n",
+    )
+    [arm] = gate.arms(crates)
+    reviewed = [{**arm, "body": "0" * 12, "verdict": "windows-permissive", "note": "it used to return false"}]
+
+    messages = gate.problems(gate.arms(crates), reviewed)
+
+    assert len(messages) == 1
+    assert "the block behind `fn probe -- non-Unix block` changed" in messages[0]
+
+
+def test_a_rewritten_block_loses_its_verdict(tmp_path: Path) -> None:
+    """`--write` must not carry a reason for behaviour that is no longer there."""
+    crates = _crate(
+        tmp_path,
+        "fn probe() -> bool {\n    #[cfg(not(unix))]\n    {\n        true\n    }\n}\n",
+    )
+    [arm] = gate.arms(crates)
+    reviewed = [{**arm, "body": "0" * 12, "verdict": "windows-equivalent", "note": "reads the extension"}]
+    inventory = _inventory(tmp_path, reviewed)
+
+    gate.write(inventory, gate.arms(crates), reviewed)
+
+    [entry] = gate.load(inventory)
+    assert entry["note"] == gate.UNREVIEWED
+    assert entry["body"] == arm["body"]
+
+
+def test_a_reviewed_declaration_keeps_its_verdict_when_a_neighbour_arrives(tmp_path: Path) -> None:
+    """Adding an arm above a reviewed one must not renumber it into a fresh review."""
+    crates = _crate(
+        tmp_path,
+        "#[cfg(not(unix))]\nfn first() -> bool {\n    true\n}\n#[cfg(not(unix))]\nfn second() -> bool {\n    true\n}\n",
+    )
+    reviewed = [
+        {
+            "file": "rust/crates/guard-demo/src/lib.rs",
+            "item": "fn second() -> bool",
+            "cfg": "not(unix)",
+            "verdict": "windows-equivalent",
+            "note": "reads the extension",
+        }
+    ]
+    inventory = _inventory(tmp_path, reviewed)
+
+    gate.write(inventory, gate.arms(crates), reviewed)
+
+    entries = {entry["item"]: entry for entry in gate.load(inventory)}
+    assert entries["fn second() -> bool"]["note"] == "reads the extension"
+    assert entries["fn first() -> bool"]["note"] == gate.UNREVIEWED
+
+
 def test_a_new_arm_is_reported(tmp_path: Path) -> None:
     """The case both shipped gaps would have hit: a Windows arm added with no review."""
     crates = _crate(tmp_path, "#[cfg(not(unix))]\nfn sink() -> Option<PathBuf> {\n    None\n}\n")

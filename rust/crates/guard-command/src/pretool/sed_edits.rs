@@ -446,21 +446,24 @@ fn executable(path: &Path, _metadata: &std::fs::Metadata) -> bool {
     executable_extension(path)
 }
 
-/// Extensions Windows runs directly. `.js` is in the default `PATHEXT` and is
-/// left out on purpose: it is ordinary repository source far more often than it
-/// is a script, and `sed -i` over source has to stay silent.
+/// Extensions an in-place edit treats as a program, on top of the ones Windows
+/// runs a file by.
+///
+/// `.psm1` is here and not in the shared list because the risk differs by
+/// route: a module is imported by name rather than launched, so truncating one
+/// with a download is a different act from rewriting the statements inside it,
+/// which is what `sed -i` does. `.js` stays out of both: it is ordinary
+/// repository source far more often than it is a script, and `sed -i` over
+/// source has to stay silent.
 #[cfg(any(not(unix), test))]
-const EXECUTABLE_EXTENSIONS: [&str; 11] = [
-    "bat", "cmd", "com", "exe", "msi", "ps1", "psm1", "scr", "vbe", "vbs", "wsf",
-];
+const EDITED_PROGRAM_EXTENSIONS: [&str; 1] = ["psm1"];
 
 #[cfg(any(not(unix), test))]
 fn executable_extension(path: &Path) -> bool {
-    path.extension()
-        .and_then(std::ffi::OsStr::to_str)
-        .is_some_and(|extension| {
-            EXECUTABLE_EXTENSIONS.contains(&extension.to_ascii_lowercase().as_str())
-        })
+    super::curl_output_targets::windows_spelled_extension(path).is_some_and(|extension| {
+        super::curl_output_targets::WINDOWS_PROGRAM_EXTENSIONS.contains(&extension.as_str())
+            || EDITED_PROGRAM_EXTENSIONS.contains(&extension.as_str())
+    })
 }
 
 #[cfg(test)]
