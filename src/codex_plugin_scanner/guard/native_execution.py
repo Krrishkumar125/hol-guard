@@ -148,6 +148,7 @@ def _resident_request(
         "contained_package_script_execute": "guard-contained-package-script-execute-result.v1",
         "contained_workspace_write_execute": "guard-contained-workspace-write-execute-result.v1",
         "containment_health_probe": "guard-containment-health-probe-result.v1",
+        "contained_execute": "guard-contained-execute-result.v1",
     }.get(operation)
     if operation == "cloud_catalog":
         # Producer/completion replies use a strict payload/error union, with
