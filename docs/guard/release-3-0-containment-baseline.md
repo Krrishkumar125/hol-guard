@@ -60,5 +60,5 @@ Where a control is not enforced by the backend it is omitted rather than inferre
 
 ## Notes
 
-- This baseline records current enforced behavior; it does not authorize new isolation backends.
+- This baseline records the behavior enforced at the snapshot named above; it does not authorize new isolation backends.
 - Real-backend isolated runs (macOS Seatbelt, Linux bwrap) are exercised by CI on their respective platforms; this document does not substitute for that matrix.

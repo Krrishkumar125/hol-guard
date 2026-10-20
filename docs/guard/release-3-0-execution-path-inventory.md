@@ -31,4 +31,4 @@ This document is the versioned execution-path matrix for HOL Guard: every distin
 
 - Harness ownership grades are recorded separately in `release-3-0-harness-grades.md`.
 - `sandbox-required` consumer semantics are recorded in `release-3-0-sandbox-required-consumers.md`.
-- This inventory is descriptive of current behavior; it does not authorize new execution paths.
+- This inventory is descriptive of the snapshot named above; it does not authorize new execution paths.

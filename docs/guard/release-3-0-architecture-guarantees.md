@@ -69,5 +69,5 @@ The word "sandbox" is reserved for OS-enforced execution containment (Seatbelt/B
 
 ## Notes
 
-- This document describes current architecture; it does not authorize new planes or remote execution.
+- This document describes the architecture at the snapshot named above; it does not authorize new planes or remote execution.
 - Containment guarantee detail lives in `release-3-0-containment-baseline.md`; execution paths in `release-3-0-execution-path-inventory.md`.
