@@ -151,6 +151,26 @@ fn fact(inputs: &HookCompositionInputsV1, name: &'static str) -> Needs<bool> {
     inputs.facts.get(name).copied().ok_or(name)
 }
 
+/// Whether a prompt is clean enough to relax a review tier.
+///
+/// The transport reports one observation per name and composes none of them:
+/// a prompt is clean when it carries no prompt request, names no credential
+/// file, and attaches nothing from the account home. The observations are
+/// asked for in turn, so a prompt that already carries a request never pays
+/// for the scans behind the later two.
+fn prompt_is_clean(inputs: &HookCompositionInputsV1) -> Needs<bool> {
+    for name in [
+        "prompt_request_free",
+        "prompt_credential_free",
+        "prompt_attachment_free",
+    ] {
+        if !fact(inputs, name)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 /// A verified-benign tool call relaxes a review-tier configured default.
 fn relax_configured_default(
     inputs: &HookCompositionInputsV1,
@@ -169,7 +189,7 @@ fn relax_configured_default(
     let canonical = inputs.canonical_harness.as_str();
     if event == Some("UserPromptSubmit") {
         return if inputs.prompt_nonblank {
-            fact(inputs, "prompt_clean")
+            prompt_is_clean(inputs)
         } else {
             Ok(false)
         };

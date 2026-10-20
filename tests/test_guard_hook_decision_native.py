@@ -91,7 +91,9 @@ def test_classifiers_run_only_when_the_resident_asks() -> None:
     classifiers = {
         name: provider(name, False)
         for name in (
-            "prompt_clean",
+            "prompt_request_free",
+            "prompt_credential_free",
+            "prompt_attachment_free",
             "post_tool_read_only_inspection",
             "verified_apply_patch",
         )
@@ -346,7 +348,9 @@ def test_a_prompt_scan_the_resident_cannot_answer_is_not_clean(monkeypatch: pyte
         runtime_workspace=tmp_path,
     )
 
-    assert classifiers["prompt_clean"](None) is False
+    assert classifiers["prompt_request_free"](None) is True
+    assert classifiers["prompt_credential_free"](None) is True
+    assert classifiers["prompt_attachment_free"](None) is False
 
 
 _SAVED_TOKEN = (
