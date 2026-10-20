@@ -6542,6 +6542,20 @@ function CatalogExtensionDetail(props) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx(ProtectionModuleDetail, { ...detailProps, extension: state.extension });
 }
+const PROTECTION_DATA_CHANGED_MESSAGE = "Protection data changed while Guard was loading. Check again before making changes.";
+const CONSISTENT_LOAD_RETRY_DELAYS_MS = [250, 1e3, 2e3, 4e3];
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function loadConsistentProtectionData(loadCatalog, loadEffective, options = {}) {
+  const delays = options.delays ?? CONSISTENT_LOAD_RETRY_DELAYS_MS;
+  const sleep = options.sleep ?? defaultSleep;
+  for (let attempt = 0; ; attempt += 1) {
+    const [catalog, effective] = await Promise.all([loadCatalog(), loadEffective()]);
+    if (catalog.catalog_digest === effective.catalog_digest) return { catalog, effective };
+    const delay = delays[attempt];
+    if (delay === void 0) throw new Error(PROTECTION_DATA_CHANGED_MESSAGE);
+    await sleep(delay);
+  }
+}
 function randomToken() {
   return crypto.randomUUID().replaceAll("-", "");
 }
@@ -9909,8 +9923,7 @@ function ProtectionCenterWorkspace(props) {
     const request2 = (async () => {
       setState((current) => current.kind === "ready" ? current : { kind: "loading" });
       try {
-        const [fresh, effective] = await Promise.all([loadCatalogReadModel(), fetchEffectiveExtensionControls()]);
-        if (fresh.catalog_digest !== effective.catalog_digest) throw new Error("Protection data changed while Guard was loading. Check again before making changes.");
+        const { catalog: fresh, effective } = await loadConsistentProtectionData(loadCatalogReadModel, fetchEffectiveExtensionControls);
         const previous = catalogRef.current;
         const catalog = previous?.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol ? previous : fresh;
         catalogRef.current = catalog;

@@ -4,7 +4,7 @@
 //! (`runtime/containment_contract.py`, `runtime/containment_executor.py`,
 //! `runtime/containment_health.py`, `runtime/containment_outputs.py`,
 //! `runtime/contained_execution_common.py`, `runtime/contained_test_hook.py`,
-//! `runtime/workspace_snapshot_inputs.py`, `runtime/typescript_snapshot_inputs.py`,
+//! the retired `runtime/workspace_snapshot_inputs.py`, `runtime/typescript_snapshot_inputs.py`,
 //! `runtime/local_node_runner_evidence.py`, `runtime/local_package_script_evidence.py`,
 //! `runtime/local_node_runner_options.py`, `runtime/package_evidence_common.py`,
 //! `runtime/protection_health.py`, `file_identity.py`) — consolidating the
