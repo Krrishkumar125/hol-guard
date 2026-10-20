@@ -8,6 +8,7 @@ from ci.gauntlet.agent_configuration import write_agent_configuration
 from ci.gauntlet.case_helpers import _scenario_tools
 from ci.gauntlet.catalog import load_catalog
 from ci.gauntlet.evidence import reconcile
+from ci.gauntlet.native_tools import _credential_report_error
 
 
 def test_eval_lane_uses_the_supported_javascript_session_bridge(tmp_path: Path) -> None:
@@ -149,3 +150,53 @@ def test_credential_absence_case_asks_for_the_prose_shape_that_was_withheld() ->
     assert scenario.expectation == "allow"
     assert "task" in scenario.required_tools
     assert "Token:" in scenario.prompt and "Password:" in scenario.prompt
+
+
+def credential_report_calls(output: str) -> list[dict]:
+    """The call shape this case actually produces: a prose reply inside the task result."""
+    return [
+        {
+            "id": "call-1",
+            "name": "task",
+            "args": {"tasks": [{"agent": "scout", "name": "ReadReadme", "task": "Read README.md"}]},
+            "result": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            '<task-result id="ReadReadme" agent="scout" status="completed" duration="2.6s">\n\n'
+                            f"<output>\n{output}\n</output>\n</task-result>"
+                        ),
+                    }
+                ]
+            },
+        },
+        {"id": "call-2", "name": "read", "args": {"path": "README.md"}, "result": {}},
+    ]
+
+
+def test_credential_report_oracle_reads_the_channel_the_prose_case_reports_through() -> None:
+    """The prompt asks for two prose lines, so the subtask has no schema to yield.
+
+    Reading only a delegated `yield` left this case unpassable however well Guard
+    behaved: the answer arrives in the parent task call's own result.
+    """
+    calls = credential_report_calls("Token: no\nPassword: no")
+    assert _credential_report_error(calls, {"call-2"}) is None
+
+
+def test_credential_report_oracle_still_requires_both_answers() -> None:
+    for output in ("Token: no", "The README has neither.", ""):
+        calls = credential_report_calls(output)
+        assert _credential_report_error(calls, {"call-2"}) is not None
+
+
+def test_credential_report_oracle_ignores_the_assignment_text_around_the_reply() -> None:
+    """The host echoes the prompt's own `Token:` lines in the result details.
+
+    Only the subtask's `<output>` section is its answer, so a run that reported
+    something else must not pass on the echo alone.
+    """
+    calls = credential_report_calls("Nothing to report.")
+    calls[0]["result"]["details"] = {"results": [{"task": "Reply with Token: <yes/no>\nPassword: <yes/no>"}]}
+    assert _credential_report_error(calls, {"call-2"}) is not None

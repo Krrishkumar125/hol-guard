@@ -53,6 +53,9 @@ TASK_SCHEMA_CASE = "omp-native-task-result-schema-token-fields"
 CREDENTIAL_REPORT_CASE = "omp-native-task-credential-absence-report"
 # The three string fields the scenario's prompt asks the result schema to carry.
 TASK_SCHEMA_FIELDS = ("tokenMentions", "apiKeyMentions", "firstSentence")
+# The subtask's own reply inside the task tool's result, apart from the assignment
+# text and the status attributes the host renders around it.
+TASK_OUTPUT_SECTION = re.compile(r"<output>(.*?)</output>", re.DOTALL)
 CREDENTIAL_MARKERS = (
     "password",
     "passwd",
@@ -434,25 +437,44 @@ def _background_read_error(calls: list[dict[str, Any]], *, require_steps: bool =
     return None
 
 
+def _reported_credential_answers(text: str) -> bool:
+    """True when a report spells both fields out as `field: answer`."""
+    lowered = text.lower()
+    return all(re.search(rf"\b{field}\b\s*:", lowered) for field in ("token", "password"))
+
+
 def _credential_report_error(calls: list[dict[str, Any]], delegated: set[str]) -> str | None:
     """Return why the delegated report is not the credential answer this case proves.
 
     The case exists so an honest `Token: no` answer is not read back as an assigned
     secret. A report that never spells those fields out as `field: answer` leaves
     that path untested, so it is a deviation rather than a pass.
+
+    This case asks for plain prose rather than a result schema, so the subtask has
+    nothing to `yield` and answers through the parent `task` call's own result. Read
+    the `<output>` section of that result, which carries the subtask's reply and not
+    the assignment text the host echoes around it. A delegated `yield` still counts,
+    so a lane whose task tool reports that way is held to the same answer.
     """
     for call in calls:
-        if call["id"] not in delegated or call["name"] != "yield":
-            continue
-        data = call["args"].get("data")
-        if isinstance(data, str):
-            text = data
-        elif isinstance(data, dict):
-            text = "\n".join(value for value in data.values() if isinstance(value, str))
+        if call["id"] in delegated:
+            if call["name"] != "yield":
+                continue
+            data = call["args"].get("data")
+            if isinstance(data, str):
+                reports = [data]
+            elif isinstance(data, dict):
+                reports = [value for value in data.values() if isinstance(value, str)]
+            else:
+                continue
+        elif call["name"] == "task":
+            text = _text(call)
+            if text is None:
+                continue
+            reports = TASK_OUTPUT_SECTION.findall(text)
         else:
             continue
-        lowered = text.lower()
-        if all(re.search(rf"\b{field}\b\s*:", lowered) for field in ("token", "password")):
+        if any(_reported_credential_answers(report) for report in reports):
             return None
     return "delegated report did not answer the token and password fields"
 
