@@ -18,18 +18,36 @@ const DIRECTORY_COMMANDS: &str = "cd chdir dirs popd pushd";
 /// `None` when nothing is replaced, the directory is not a plain absolute
 /// literal, or any step at or before a replaced use could change the directory.
 pub(super) fn project(command: &str, cwd: &str) -> Option<String> {
-    if !literal_directory(cwd)
+    project_uses(command, cwd, "PWD", use_width, |word| {
+        listed(DIRECTORY_COMMANDS, word)
+            // zsh's AUTO_CD runs a bare directory name as `cd`.
+            || std::path::Path::new(cwd).join(word).is_dir()
+    })
+}
+
+/// The command with each use `width` recognizes replaced by `value`, a
+/// directory the variable `name` is known to hold; `None` when nothing is
+/// replaced, the value is not a plain absolute literal, or any step at or
+/// before a replaced use could set the variable or is a word `changes` names.
+pub(super) fn project_uses(
+    command: &str,
+    value: &str,
+    name: &str,
+    width: fn(&[char]) -> Option<usize>,
+    changes: impl Fn(&str) -> bool,
+) -> Option<String> {
+    if !literal_directory(value)
         || !command.is_ascii()
         || command.len() > MAX_COMMAND_CHARS
         || command.bytes().any(|b| b.is_ascii_control() && b != b'\t')
         // A changed `IFS` splits an unquoted use where the literal is whole,
-        // and any other mention of `PWD` might set it.
-        || names_variable(command, |name| name == "IFS" || name == "PWD")
+        // and any other mention of the variable might set it.
+        || names_variable(command, |named| named == "IFS" || named == name)
     {
         return None;
     }
     let chars: Vec<char> = command.chars().collect();
-    let (projected, last_use) = replace_uses(&chars, cwd)?;
+    let (projected, last_use) = replace_uses(&chars, value, width)?;
     let projected_chars: Vec<char> = projected.chars().collect();
     let tokens = tokenize(&projected_chars)?;
     let list = items(&tokens)?;
@@ -65,12 +83,10 @@ pub(super) fn project(command: &str, cwd: &str) -> Option<String> {
                 .filter(|&&c| !matches!(c, '\'' | '"' | '\\'))
                 .collect();
             if word.contains('$')
-                || listed(DIRECTORY_COMMANDS, &word)
                 || listed(STATE_COMMANDS, &word)
                 || listed(KEYWORDS, &word)
                 || listed(PRECOMMANDS, &word)
-                // zsh's AUTO_CD runs a bare directory name as `cd`.
-                || std::path::Path::new(cwd).join(&word).is_dir()
+                || changes(word.as_str())
             {
                 return None;
             }
@@ -81,21 +97,25 @@ pub(super) fn project(command: &str, cwd: &str) -> Option<String> {
 
 /// An absolute path whose characters the shell never splits, globs, quotes
 /// or expands, and which still names a directory.
-fn literal_directory(cwd: &str) -> bool {
-    cwd.starts_with('/')
-        && cwd.len() <= MAX_DIRECTORY_CHARS
-        && !cwd.split('/').any(|part| part == "..")
-        && cwd.chars().all(|c| {
+fn literal_directory(directory: &str) -> bool {
+    directory.starts_with('/')
+        && directory.len() <= MAX_DIRECTORY_CHARS
+        && !directory.split('/').any(|part| part == "..")
+        && directory.chars().all(|c| {
             c.is_ascii_alphanumeric()
                 || matches!(c, '_' | '.' | '/' | '@' | '%' | '+' | ':' | ',' | '-')
         })
-        && std::fs::canonicalize(cwd).is_ok_and(|path| path.is_dir())
+        && std::fs::canonicalize(directory).is_ok_and(|path| path.is_dir())
 }
 
 /// The text with every use outside single quotes and escapes replaced, and
 /// the index in that text just after the last replacement.
-fn replace_uses(chars: &[char], cwd: &str) -> Option<(String, usize)> {
-    let mut out = String::with_capacity(chars.len() + cwd.len());
+fn replace_uses(
+    chars: &[char],
+    value: &str,
+    width: fn(&[char]) -> Option<usize>,
+) -> Option<(String, usize)> {
+    let mut out = String::with_capacity(chars.len() + value.len());
     let mut last_use = None;
     let mut single = false;
     let mut double = false;
@@ -122,7 +142,7 @@ fn replace_uses(chars: &[char], cwd: &str) -> Option<(String, usize)> {
                 index += 2;
                 continue;
             }
-            '$' | '`' => use_width(&chars[index..])?,
+            '$' | '`' => width(&chars[index..])?,
             _ => 0,
         };
         if width == 0 {
@@ -130,7 +150,7 @@ fn replace_uses(chars: &[char], cwd: &str) -> Option<(String, usize)> {
             index += 1;
             continue;
         }
-        out.push_str(cwd);
+        out.push_str(value);
         // Byte and character offsets agree: the text is ASCII.
         last_use = Some(out.len());
         index += width;

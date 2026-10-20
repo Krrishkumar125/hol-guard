@@ -20,6 +20,8 @@ pub(crate) mod inert;
 #[path = "chain_literals_launch.rs"]
 mod launch;
 use launch::{launches_as_judged, reviewed};
+#[path = "chain_literals_home.rs"]
+mod home;
 #[path = "chain_literals_pwd.rs"]
 mod pwd;
 
@@ -127,7 +129,13 @@ pub(super) fn rejudge(
     let unopened = opened.as_deref().unwrap_or(&command);
     let directory = context.cwd.and_then(|cwd| pwd::project(unopened, cwd));
     let base = directory.as_deref().unwrap_or(unopened);
-    let Some(substituted) = substitute(base).or(directory).or(opened) else {
+    // `$HOME` names the declared home only while the shell's HOME does.
+    let homed = context
+        .home_dir
+        .filter(|_| context.shell_home_matches)
+        .and_then(|home| home::project(base, home));
+    let base = homed.as_deref().unwrap_or(base);
+    let Some(substituted) = substitute(base).or(homed).or(directory).or(opened) else {
         return raw;
     };
     let projected_payload = super::payload_with_command(payload, &command, &substituted);
