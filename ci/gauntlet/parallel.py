@@ -272,6 +272,7 @@ def run_scheduled(
     on_complete: Callable[[int, Any], None] | None = None,
     order: Sequence[int] | None = None,
     should_stop: Callable[[int, Any], bool] | None = None,
+    retry: Callable[[int, Any], bool] | None = None,
     admit: Callable[[], bool] | None = None,
     slots: HostSlots | None = None,
     poll_interval: float = 0.2,
@@ -289,6 +290,12 @@ def run_scheduled(
     slot stays held until the child exits. A true ``should_stop`` result stops
     new spawns; in-flight workers finish normally and unrun items come back as
     ``None``.
+
+    A true ``retry`` result discards that run of the item and queues it again at
+    the tail, so nothing is recorded for it and ``on_complete`` is not called;
+    the caller owns the budget and must eventually answer false. Requeuing stops
+    once ``should_stop`` has fired, because an item scheduled after that point
+    would never run.
     """
     validate_jobs(jobs)
     if order is None:
@@ -323,9 +330,13 @@ def run_scheduled(
                 finished = [index for index, handle in running.items() if handle.poll() is not None]
                 for index in finished:
                     handle = running.pop(index)
-                    results[index] = handle.collect()
+                    result = handle.collect()
                     if (lease := leases.pop(index, None)) is not None:
                         lease.release()
+                    if not stop and retry is not None and retry(index, result):
+                        pending.append(index)
+                        continue
+                    results[index] = result
                     if on_complete is not None:
                         on_complete(index, results[index])
                     if should_stop is not None and should_stop(index, results[index]):
