@@ -44,6 +44,19 @@ unsafe fn child_failure(error_fd: i32, code: i32) -> ! {
     }
 }
 
+/// The parent's error for a child that reported a launch failure. The code
+/// names the setup step that failed, so a refused launch can be traced.
+pub(super) fn child_failed(report: &[u8]) -> io::Error {
+    let code = report
+        .get(..4)
+        .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
+        .map_or(-1, i32::from_ne_bytes);
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        format!("native child initialization or execution failed (step {code})"),
+    )
+}
+
 pub(super) struct RequestWindow<'a> {
     pub(super) deadline: Instant,
     pub(super) cancel: &'a AtomicBool,

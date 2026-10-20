@@ -120,6 +120,9 @@ unsafe fn propagate(status: i32) -> ! {
 /// The caller is already the sandboxed foreign child with its final cwd,
 /// descriptors, limits and output files. It becomes a small native owner for
 /// one suspended hardened image and mirrors that image's terminal status.
+///
+/// Returns the suspended child, or a non-positive value: `-(1000 + errno)`
+/// when `posix_spawn` fails and `-1` when the image no longer matches.
 pub(super) unsafe fn spawn(
     path: &CString,
     argv: &[*const libc::c_char],
@@ -140,7 +143,7 @@ pub(super) unsafe fn spawn(
         )
     };
     if spawned != 0 {
-        return -1;
+        return -(1000 + spawned);
     }
     if unsafe { deadline.expired() }
         || !unsafe { crate::macos_code_image::dynamic_matches(child, binding) }
@@ -164,7 +167,8 @@ pub(super) unsafe fn release_and_wait(
     #[cfg(test)] resume_probe: bool,
 ) -> ! {
     if child <= 0 {
-        unsafe { fail(error_fd, 0, 12) };
+        // Report the spawn errno so a refused launch names its cause.
+        unsafe { fail(error_fd, 0, if child < -1000 { -child } else { 12 }) };
     }
     let initialized = 0i32.to_ne_bytes();
     if unsafe { libc::write(error_fd, initialized.as_ptr().cast(), initialized.len()) }
