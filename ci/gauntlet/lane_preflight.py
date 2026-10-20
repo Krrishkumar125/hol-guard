@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -25,7 +26,9 @@ from .luna_route import BACKEND, DEFAULT_EFFORT, NativeLunaRoute, parse_backend
 PROMPT = "Reply with exactly: OK"
 MAX_TOKENS = 16
 TIMEOUT = 120.0
-# A live backend reports its token usage. A signed-out one stops empty and reports none.
+# A live backend generates tokens and says so. A signed-out one stops empty: it
+# reports no usage at all, or only the prompt it never answered.
+ANSWER_PROOF = "completion_tokens"
 USAGE_PROOF = "total_tokens"
 
 
@@ -57,16 +60,29 @@ def _request(settings: dict[str, Any], effort: str) -> urllib.request.Request:
     )
 
 
-def _read_stream(response: Any) -> dict[str, Any]:
-    """Collect the delivered text and the final usage from one SSE response."""
+def _read_stream(response: Any, identity: str, limit: float) -> dict[str, Any]:
+    """Collect the delivered text, the final usage and the completion marker.
+
+    The socket timeout is per read, and a backend that streams keepalives while
+    generating nothing resets it on every one, so the exchange needs an elapsed
+    deadline of its own to stay the cheap probe it is meant to be.
+    """
+    deadline = time.monotonic() + limit
     delivered = 0
     usage: dict[str, Any] = {}
+    completed = False
     for raw in response:
+        if time.monotonic() > deadline:
+            raise RuntimeError(
+                f"inference lane did not finish within {limit:.0f}s ({identity}): "
+                f"{delivered} delivered characters so far."
+            )
         line = raw.decode("utf-8", "replace").strip()
         if not line.startswith("data:"):
             continue
         payload = line[len("data:") :].strip()
         if payload == "[DONE]":
+            completed = True
             break
         try:
             chunk = json.loads(payload)
@@ -78,7 +94,7 @@ def _read_stream(response: Any) -> dict[str, Any]:
             delta = choice.get("delta")
             if isinstance(delta, dict):
                 delivered += sum(len(value) for value in delta.values() if isinstance(value, str))
-    return {"delivered": delivered, "usage": usage}
+    return {"delivered": delivered, "usage": usage, "completed": completed}
 
 
 def check_lane(
@@ -98,14 +114,29 @@ def check_lane(
         identity = settings["identity"]
         try:
             with urllib.request.urlopen(_request(settings, effort), timeout=timeout) as response:
-                result = _read_stream(response)
+                result = _read_stream(response, identity, timeout)
         except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as exc:
             raise RuntimeError(f"inference lane is not answering ({identity}): {exc}") from exc
-    tokens = result["usage"].get(USAGE_PROOF)
-    if not isinstance(tokens, int) or tokens <= 0:
+    if not result["completed"]:
         raise RuntimeError(
-            f"inference lane completed no round ({identity}): "
-            f"{result['delivered']} delivered characters and no reported token usage. "
+            f"inference lane stopped mid-response ({identity}): "
+            f"{result['delivered']} delivered characters and no completion marker. "
+            "The stream ended before the backend finished its round."
+        )
+    usage = result["usage"]
+    generated = usage.get(ANSWER_PROOF)
+    if not isinstance(generated, int) or generated <= 0:
+        # Prompt tokens alone prove only that the request was read. A round that
+        # generated nothing is the empty stop this check exists to catch.
+        raise RuntimeError(
+            f"inference lane generated no tokens ({identity}): "
+            f"{result['delivered']} delivered characters and usage "
+            f"{usage or 'absent'}. "
             "The provider is most likely signed out; restore its login before qualifying."
         )
-    return {"identity": identity, "delivered": result["delivered"], "total_tokens": tokens}
+    total = usage.get(USAGE_PROOF)
+    return {
+        "identity": identity,
+        "delivered": result["delivered"],
+        "total_tokens": total if isinstance(total, int) and total > 0 else generated,
+    }

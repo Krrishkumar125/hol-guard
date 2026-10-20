@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,10 +24,10 @@ def delta(text: str) -> dict[str, Any]:
     return {"choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}]}
 
 
-def usage(total: int) -> dict[str, Any]:
+def usage(total: int, completion: int = 2) -> dict[str, Any]:
     return {
         "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 9, "completion_tokens": 2, "total_tokens": total},
+        "usage": {"prompt_tokens": 9, "completion_tokens": completion, "total_tokens": total},
     }
 
 
@@ -80,15 +81,40 @@ def test_reported_token_usage_proves_the_lane_answered(monkeypatch: pytest.Monke
 def test_empty_stop_without_usage_is_the_signed_out_signature(monkeypatch: pytest.MonkeyPatch) -> None:
     """A signed-out provider streams a well-formed stop that reports no tokens."""
     route = install(monkeypatch, sse([{"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}]))
-    with pytest.raises(RuntimeError, match="completed no round"):
+    with pytest.raises(RuntimeError, match="generated no tokens"):
         lane_preflight.check_lane(Path("/sdk"))
     assert route.stopped
 
 
-def test_zero_total_tokens_is_not_a_completed_round(monkeypatch: pytest.MonkeyPatch) -> None:
-    install(monkeypatch, sse([usage(0)]))
-    with pytest.raises(RuntimeError, match="completed no round"):
+def test_prompt_tokens_alone_are_not_a_completed_round(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stop that reports the prompt it never answered proves only that the request was read."""
+    install(monkeypatch, sse([usage(9, completion=0)]))
+    with pytest.raises(RuntimeError, match="generated no tokens"):
         lane_preflight.check_lane(Path("/sdk"))
+
+
+def test_a_stream_cut_off_before_its_marker_is_not_a_completed_round(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Usage at a bare end of file is a truncated response, not a finished round."""
+    install(monkeypatch, sse([delta("OK"), usage(11)], done=False))
+    with pytest.raises(RuntimeError, match="stopped mid-response"):
+        lane_preflight.check_lane(Path("/sdk"))
+
+
+def test_keepalives_do_not_let_a_stalled_lane_outlive_the_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each keepalive resets the socket timeout, so only an elapsed deadline bounds this."""
+
+    def stalled() -> Any:
+        while True:
+            time.sleep(0.01)
+            yield b": keepalive\n\n"
+
+    install(monkeypatch, stalled())
+    with pytest.raises(RuntimeError, match="did not finish within"):
+        lane_preflight.check_lane(Path("/sdk"), timeout=0.05)
 
 
 def test_a_transport_failure_names_the_lane_rather_than_the_product(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,7 +126,7 @@ def test_a_transport_failure_names_the_lane_rather_than_the_product(monkeypatch:
 def test_malformed_chunks_do_not_count_as_a_round(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = io.BytesIO(b"data: not-json\n\n: keepalive\n\ndata: [DONE]\n\n")
     install(monkeypatch, stream)
-    with pytest.raises(RuntimeError, match="completed no round"):
+    with pytest.raises(RuntimeError, match="generated no tokens"):
         lane_preflight.check_lane(Path("/sdk"))
 
 

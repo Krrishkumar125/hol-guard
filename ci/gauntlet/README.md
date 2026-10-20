@@ -209,13 +209,17 @@ including cold build and cleanup; a cached-wheel run must be reported as such.
 Once the SDK is in place and before the wheel is built, `qualify` spends one
 trivial completion on the backend it is about to use, through the same adapter
 and the same loopback Chat Completions protocol the cases use. It passes only
-when the backend reports a positive `total_tokens`. A signed-out provider does
-not fail loudly on its own: it answers every case with a well-formed empty stop
+when the stream reaches its completion marker and the backend reports positive
+`completion_tokens`; prompt tokens alone prove the request was read, not that
+anything was generated. A deadline over the whole exchange bounds it, because
+transport keepalives reset the socket timeout but not the probe. A signed-out
+provider does not fail loudly on its own: it answers every case with a well-formed empty stop
 until the round cap, so the run reaches `inference-error` for the whole catalog
 only after a cold wheel build and a full retry, and the evidence reads like a
 product failure when nothing about Guard was exercised. The lane check turns
 that into a named failure in seconds. Restore the provider's login and run
-again; there is nothing to diagnose in the candidate.
+again; there is nothing to diagnose in the candidate. `--prepare-only` runs no
+case, so it skips the lane check and builds the candidate without a provider.
 
 The native inference adapter treats sixty seconds without a model text,
 reasoning or tool-argument delta as a stalled medium/low request. Transport

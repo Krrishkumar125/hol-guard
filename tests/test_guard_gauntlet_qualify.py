@@ -504,6 +504,19 @@ def test_prepare_only_keeps_the_installed_candidate_and_runs_no_attempt(
     assert removed == [] and verify_calls == []
 
 
+def test_prepare_only_needs_no_live_inference_lane(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """Building and installing the candidate must not depend on a signed-in provider."""
+    _fake_setup(monkeypatch, tmp_path, [])
+
+    def dead_lane(*_a: Any, **_k: Any) -> dict[str, Any]:
+        raise RuntimeError("inference lane is not answering")
+
+    monkeypatch.setattr(lane_preflight, "check_lane", dead_lane)
+    assert qualify.main(_args(tmp_path, prepare_only=True)) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["prepare_only"] is True and "lane" not in result["phase_seconds"]
+
+
 @pytest.mark.parametrize("prepare_only", [False, True])
 def test_prepare_failure_still_cleans_the_candidate_worktree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prepare_only: bool

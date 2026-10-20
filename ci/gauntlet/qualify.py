@@ -375,13 +375,15 @@ def main(args: Any) -> int:
             progress(f"sdk {sdk_info['omp_version']} {sdk_info['lock_sha256'][:12]}")
             # One exchange before the expensive inputs: a dead lane fails here, not as
             # a catalog of inference-error cases after the wheel build and a full retry.
-            with timings.measure("lane"):
-                lane = lane_preflight.check_lane(
-                    Path(sdk_info["root"]),
-                    effort=args.effort,
-                    backend=lane_preflight.backend_for(native_route),
-                )
-            progress(f"lane {lane['identity']} total_tokens={lane['total_tokens']}")
+            # --prepare-only runs no case, so it needs no lane and must not want one.
+            if not args.prepare_only:
+                with timings.measure("lane"):
+                    lane = lane_preflight.check_lane(
+                        Path(sdk_info["root"]),
+                        effort=args.effort,
+                        backend=lane_preflight.backend_for(native_route),
+                    )
+                progress(f"lane {lane['identity']} total_tokens={lane['total_tokens']}")
             with timings.measure("wheel"):
                 wheel_info = qualify_setup.ensure_wheel(
                     args.cache_root, REPO, sha, run_root, wheel=args.wheel, release_profile=args.release_profile_wheel
