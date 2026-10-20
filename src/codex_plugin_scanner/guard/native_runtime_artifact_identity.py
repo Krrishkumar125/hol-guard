@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import native_execution
 from .native_context import _canonical_request_sha256, _resolve_digest_home, ensure_resident_prerequisite
+from .native_runtime import native_runtime_status
+from .native_runtime_resilience import native_record_resident_failure, native_record_resident_success
+
+if TYPE_CHECKING:
+    from .native_runtime_values import NativeRuntimeIdentity
 
 _FEATURE = "runtime-artifact-identity-v1"
 _REQUEST_SCHEMA = "guard-runtime-artifact-identity-request.v1"
@@ -80,6 +86,9 @@ def _request_identity(
         if not ensure_resident_prerequisite(home):
             raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_unavailable")
         request_sha256 = _canonical_request_sha256(wire)
+        # Resolved once: the transport and the health record below must name
+        # the same binary, and the lookup walks the runtime on disk.
+        status = native_runtime_status()
         decoded = native_execution._resident_request(
             operation="runtime_artifact_identity",
             request=wire,
@@ -88,11 +97,31 @@ def _request_identity(
             required_feature=_FEATURE,
             response_schema=_RESULT_SCHEMA,
             max_request_bytes=_MAX_WIRE_BYTES,
+            # Success is recorded below, once the reply is known to be usable.
+            record_success=False,
+            status=status,
         )
     except (OSError, TypeError, ValueError) as error:
         raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_unavailable") from error
     if decoded is None:
         raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_unavailable")
+    try:
+        artifact_id = _validated_artifact_id(decoded, wire, request_sha256, prefix=prefix, digest_chars=digest_chars)
+    except NativeRuntimeArtifactIdentityError:
+        _record(home, status.identity, success=False)
+        raise
+    _record(home, status.identity, success=True)
+    return artifact_id
+
+
+def _validated_artifact_id(
+    decoded: dict[str, object],
+    wire: dict[str, object],
+    request_sha256: str,
+    *,
+    prefix: str,
+    digest_chars: int,
+) -> str:
     if set(decoded) != _RESULT_KEYS or decoded.get("code") != "ok":
         raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_invalid_result")
     if decoded.get("request_id") != wire["request_id"] or decoded.get("request_sha256") != request_sha256:
@@ -104,3 +133,12 @@ def _request_identity(
     if len(digest) != digest_chars or any(character not in _HEX for character in digest):
         raise NativeRuntimeArtifactIdentityError("native_runtime_artifact_identity_invalid_result")
     return artifact_id
+
+
+def _record(home: Path, identity: NativeRuntimeIdentity | None, *, success: bool) -> None:
+    if identity is None:
+        return
+    if success:
+        native_record_resident_success(identity.sha256, home)
+    else:
+        native_record_resident_failure(identity.sha256, home, reason="native_runtime_artifact_identity_result")
