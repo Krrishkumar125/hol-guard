@@ -101,6 +101,7 @@ async function openDeveloperDetails(page: import("@playwright/test").Page) {
 }
 
 test("installed Protection Center keeps canonical routes and real-daemon inspection", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
   const extensionResponses: { path: string; status: number }[] = [];
   const runtimeErrors: string[] = [];
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
@@ -121,7 +122,7 @@ test("installed Protection Center keeps canonical routes and real-daemon inspect
   // runtime, so it gets longer than the default wait. If it never loads, the
   // failure names what the workspace showed and what the daemon answered.
   await expect(page.getByRole("heading", { name: "All tools" })).toBeAttached({ timeout: 30_000 }).catch(async (error: unknown) => {
-    const workspace = await page.getByTestId("extensions-workspace").innerText().catch(() => "<absent>");
+    const workspace = await page.getByTestId("extensions-workspace").innerText({ timeout: 2_000 }).catch(() => "<absent>");
     throw new Error(
       `${String(error)}\nworkspace: ${workspace.slice(0, 600)}\nextension-controls: ${JSON.stringify(extensionResponses)}\npage errors: ${JSON.stringify(runtimeErrors)}`,
     );
