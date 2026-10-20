@@ -1,7 +1,7 @@
 //! Parity vectors recorded from the retired Python final-action settle
 //! (`set_native_artifact_hook_final_action` and the browser outcome section of
 //! `finalize_native_artifact_hook`, frozen in
-//! `scripts/ci/record_artifact_finalize_vectors.py`), replayed through the
+//! `scripts/ci/artifact_finalize_oracle.py`), replayed through the
 //! resident `hook_decide` operation.
 
 use guard_contracts::{HOOK_DECISION_ARTIFACT_FINALIZE_FEATURE, HOOK_DECISION_REQUEST_SCHEMA};

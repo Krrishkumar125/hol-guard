@@ -98,6 +98,7 @@ Changing any of these produces a new command, and Guard asks again.
 - `tests/test_artifact_review_route_parity.py` (`test_review_tier_verdicts_keep_allow_once_and_always_allow`)
 - `rust/crates/guard-runtime/src/hook_decision_artifact_finalize_tests.rs` (`only_an_approval_or_a_terminal_verdict_settles_the_hook`)
 - `tests/test_artifact_finalize_parity.py` (`test_the_settle_leaves_the_approval_choice_alone`)
+- `tests/test_artifact_finalize_wire.py` (`test_an_outcome_that_contradicts_the_browsers_verdict_fails_closed`)
 - `dashboard/src/approval-retry-ux.test.ts`, `dashboard/e2e/approval-scope-ui.spec.ts`
 
 If one of these fails after a change, fix the change. Do not relax the test.

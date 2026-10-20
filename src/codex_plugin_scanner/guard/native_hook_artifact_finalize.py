@@ -138,20 +138,28 @@ def _validate_outcome(inputs: Mapping[str, object], payload: dict[str, Any]) -> 
     if set(payload) != {"kind", *_OUTCOME_FIELDS}:
         raise NativeHookDecisionError(_INVALID)
     outcome = _shape({key: payload[key] for key in _OUTCOME_FIELDS}, _OUTCOME_FIELDS)
+    decision = inputs["decision"]
     if not outcome["settle"]:
+        # The user's approval and the two terminal verdicts always settle: an
+        # answer that leaves one unsettled would render the review again.
+        if decision in _OUTCOME_ACTIONS:
+            raise NativeHookDecisionError(_INVALID)
         if outcome["action"] is not None or outcome["approval_source"] is not None:
             raise NativeHookDecisionError(_INVALID)
         if outcome["emit_native_allow"] or outcome["finish_without_render"]:
             raise NativeHookDecisionError(_INVALID)
         return
     # A browser outcome settles only as the verdict the user's browser gave.
-    if outcome["action"] not in _OUTCOME_ACTIONS or outcome["action"] != inputs["decision"]:
+    if outcome["action"] not in _OUTCOME_ACTIONS or outcome["action"] != decision:
         raise NativeHookDecisionError(_INVALID)
     if outcome["approval_source"] != "browser":
         raise NativeHookDecisionError(_INVALID)
-    if outcome["emit_native_allow"] and not outcome["finish_without_render"]:
+    # An approval ends the hook once its receipt is recorded, answered natively
+    # unless a tool call is, and a terminal verdict is rendered like any other.
+    approved = decision == "allow"
+    if outcome["finish_without_render"] != approved:
         raise NativeHookDecisionError(_INVALID)
-    if outcome["finish_without_render"] and outcome["action"] != "allow":
+    if outcome["emit_native_allow"] != (approved and inputs["event"] != "PreToolUse"):
         raise NativeHookDecisionError(_INVALID)
 
 
