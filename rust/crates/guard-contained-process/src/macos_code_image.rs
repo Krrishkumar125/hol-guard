@@ -146,11 +146,28 @@ unsafe fn read_binding(information: CfDictionary) -> io::Result<Binding> {
 }
 
 pub(crate) unsafe fn dynamic_matches(pid: libc::pid_t, binding: Binding) -> bool {
+    unsafe { dynamic_mismatch(pid, binding) == 0 }
+}
+
+/// Zero when the running image still matches `binding`. Otherwise a code naming
+/// the failed check: `2000 + errno` or `3000 + errno` when reading the flags or
+/// the cdhash fails, `0x4000_0000 | flags` when the signing flags are wrong,
+/// and 15 when the cdhash differs. Makes only system calls, so it is safe in a
+/// forked child.
+pub(crate) unsafe fn dynamic_mismatch(pid: libc::pid_t, binding: Binding) -> i32 {
     let mut flags = 0u32;
     let mut cdhash = [0u8; 20];
-    (unsafe { csops(pid, 0, (&mut flags as *mut u32).cast(), size_of::<u32>()) }) == 0
-        && (unsafe { csops(pid, 5, cdhash.as_mut_ptr().cast(), cdhash.len()) }) == 0
-        && flags & REQUIRED_DYNAMIC == REQUIRED_DYNAMIC
-        && flags & FORBIDDEN_DYNAMIC == 0
-        && cdhash == binding.cdhash
+    if unsafe { csops(pid, 0, (&mut flags as *mut u32).cast(), size_of::<u32>()) } != 0 {
+        return 2000 + unsafe { *libc::__error() };
+    }
+    if unsafe { csops(pid, 5, cdhash.as_mut_ptr().cast(), cdhash.len()) } != 0 {
+        return 3000 + unsafe { *libc::__error() };
+    }
+    if flags & REQUIRED_DYNAMIC != REQUIRED_DYNAMIC || flags & FORBIDDEN_DYNAMIC != 0 {
+        return 0x4000_0000 | (flags & 0x3fff_ffff) as i32;
+    }
+    if cdhash != binding.cdhash {
+        return 15;
+    }
+    0
 }
