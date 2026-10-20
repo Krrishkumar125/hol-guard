@@ -16844,6 +16844,38 @@
       "expect": "allow"
     },
     {
+      "id": "shell-substituted-parent-then-status",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "printf 'parent=%s\\n' \"$(dirname \"$PWD\")\"; git status --porcelain"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "shell-cd-substituted-toplevel-status",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd \"$(git rev-parse --show-toplevel)\" && git status --short"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "neg-shell-substituted-remote-script",
       "fix_area": "negative",
       "harnesses": [
