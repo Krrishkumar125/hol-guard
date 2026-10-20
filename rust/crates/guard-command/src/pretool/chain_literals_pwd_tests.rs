@@ -296,6 +296,8 @@ fn only_a_plain_cd_holding_the_last_use_may_change_the_directory() {
         "git init -q && cd \"$(git rev-parse --show-toplevel)\" && git status",
         "true; ls \"$(git rev-parse --show-toplevel)\"",
         "echo x | ls \"$(git rev-parse --show-toplevel)\"",
+        // A later pipeline stage runs beside it.
+        "ls \"$(git rev-parse --show-toplevel)\" | git init -q",
     ] {
         assert_eq!(project(command, s), None, "{command}");
     }
