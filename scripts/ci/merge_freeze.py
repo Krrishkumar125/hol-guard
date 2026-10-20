@@ -296,6 +296,9 @@ def _gate_failed(api: Api, job_id: int) -> bool:
     )
 
 
+IN_FLIGHT_AFTER_LIFT = (
+    "lifted the freeze check run; CI is still running, so re-run this workflow if it fails at the merge freeze gate"
+)
 IN_FLIGHT_WHILE_FROZEN = (
     "CI is still running and could finish green after the freeze took effect; re-run this workflow once it finishes"
 )
@@ -345,12 +348,14 @@ def _rerun(api: Api, pull: Pull, job: Mapping[str, Any]) -> Outcome | None:
 def _release(api: Api, pull: Pull, dry_run: bool) -> Outcome:
     aggregate = _aggregate(api, pull.head_sha)
     overlays = aggregate.failing_overlays()
+    # CI runs that failed only because the freeze gate saw the flag set. One can
+    # sit beside a freeze check run when CI was re-run during the freeze.
+    gate_failures = [
+        run
+        for run in aggregate.current
+        if not _is_overlay(run) and _finished_failing(run) and _gate_failed(api, run["id"])
+    ]
     if not overlays:
-        gate_failures = [
-            run
-            for run in aggregate.current
-            if not _is_overlay(run) and _finished_failing(run) and _gate_failed(api, run["id"])
-        ]
         # A genuine CI failure, a pass, or a run still going needs nothing here.
         if aggregate.in_flight or not gate_failures:
             return Outcome(pull.number, "unchanged", "")
@@ -385,6 +390,7 @@ def _release(api: Api, pull: Pull, dry_run: bool) -> Outcome:
                 "output": {"title": LIFTED_TITLE, "summary": LIFTED_SUMMARY},
             },
         )
+    rerun_suites: set[int] = set()
     for overlay in shared:
         job = _newest([run for run in aggregate.runs if not _is_overlay(run) and _suite(run) == _suite(overlay)])
         if job is None:
@@ -392,6 +398,16 @@ def _release(api: Api, pull: Pull, dry_run: bool) -> Outcome:
         failed = _rerun(api, pull, job)
         if failed is not None:
             return failed
+        rerun_suites.add(_suite(job))
+    for run in gate_failures:
+        if _suite(run) in rerun_suites:
+            continue
+        failed = _rerun(api, pull, run)
+        if failed is not None:
+            return failed
+    if aggregate.in_flight:
+        # The running job may already have passed its gate step while frozen.
+        return Outcome(pull.number, "released", IN_FLIGHT_AFTER_LIFT)
     return Outcome(pull.number, "released", "lifted the freeze check run")
 
 

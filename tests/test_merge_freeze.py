@@ -504,9 +504,32 @@ def test_unfreezing_while_ci_is_in_flight_lifts_a_freeze_check_run_in_its_own_su
     api = FakeApi([api_pull(1, SHA_A)])
     api.add_real(SHA_A, "success")
     run(api, "true")
-    api.add_real(SHA_A, None, run_id=101)
-    assert [o.action for o in run(api, "false").outcomes] == ["released"]
+    api.add_real(SHA_A, None, run_id=1001)
+    outcomes = run(api, "false").outcomes
+    assert [o.action for o in outcomes] == ["released"]
+    assert outcomes[0].detail == freeze.IN_FLIGHT_AFTER_LIFT
     assert required_state(api, SHA_A) == "pending"
+
+
+def test_unfreezing_reruns_a_gate_failure_beside_a_freeze_check_run_in_its_own_suite() -> None:
+    api = FakeApi([api_pull(1, SHA_A)])
+    api.add_real(SHA_A, "success")
+    run(api, "true")
+    # CI was re-run during the freeze and failed at its gate step.
+    api.add_real(SHA_A, "failure", run_id=1001, gate_failed=True)
+    assert [o.action for o in run(api, "false").outcomes] == ["released"]
+    assert ("POST", "actions/jobs/1001/rerun") in api.mutations()
+    assert required_state(api, SHA_A) == "success"
+
+
+def test_unfreezing_beside_a_genuine_ci_failure_does_not_rerun_it() -> None:
+    api = FakeApi([api_pull(1, SHA_A)])
+    api.add_real(SHA_A, "success")
+    run(api, "true")
+    api.add_real(SHA_A, "failure", run_id=1001)
+    run(api, "false")
+    assert not [path for method, path in api.mutations() if path.endswith("/rerun")]
+    assert required_state(api, SHA_A) == "failure"
 
 
 def test_unfreezing_with_no_real_aggregate_keeps_the_block_until_ci_reports() -> None:
