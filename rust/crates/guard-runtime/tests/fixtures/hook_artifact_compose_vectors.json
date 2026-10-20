@@ -5756,5 +5756,664 @@
         }
       ]
     }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "available",
+        "install": "available",
+        "remove": "disabled",
+        "repair": "available",
+        "sync": "available",
+        "test": "available"
+      },
+      "available_actions": [
+        "status",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "paid_guard_cloud_required",
+        "message": "HOL Guard Cloud paid access is required to run package firewall actions.",
+        "status": 402
+      },
+      "operation_allowed": true
+    },
+    "name": "package_firewall_access_allowed_runs_every_action",
+    "query": {
+      "entitlement": {
+        "allowed": true,
+        "reason": "entitled"
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "install"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "available",
+        "install": "available",
+        "remove": "available",
+        "repair": "available",
+        "sync": "available",
+        "test": "available"
+      },
+      "available_actions": [
+        "status",
+        "repair",
+        "remove",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "paid_guard_cloud_required",
+        "message": "HOL Guard Cloud paid access is required to run package firewall actions.",
+        "status": 402
+      },
+      "operation_allowed": null
+    },
+    "name": "package_firewall_access_allowed_with_shims_offers_local_recovery",
+    "query": {
+      "entitlement": {
+        "allowed": true,
+        "reason": "entitled"
+      },
+      "has_installed_managers": true,
+      "kind": "package_firewall_access",
+      "operation": null
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "connect_required",
+        "install": "connect_required",
+        "remove": "disabled",
+        "repair": "connect_required",
+        "sync": "connect_required",
+        "test": "connect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_connect_required",
+        "message": "Connect HOL Guard Cloud on this machine before running package firewall actions.",
+        "status": 403
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_connect_required_blocks_the_cloud_actions",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_connect_required"
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "install"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "connect_required",
+        "install": "connect_required",
+        "remove": "available",
+        "repair": "available",
+        "sync": "connect_required",
+        "test": "connect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "repair",
+        "remove",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_connect_required",
+        "message": "Connect HOL Guard Cloud on this machine before running package firewall actions.",
+        "status": 403
+      },
+      "operation_allowed": true
+    },
+    "name": "package_firewall_access_connect_required_still_repairs_installed_shims",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_connect_required"
+      },
+      "has_installed_managers": true,
+      "kind": "package_firewall_access",
+      "operation": "repair"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "reconnect_required",
+        "install": "reconnect_required",
+        "remove": "available",
+        "repair": "available",
+        "sync": "reconnect_required",
+        "test": "reconnect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "repair",
+        "remove",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_reconnect_required",
+        "message": "Reconnect HOL Guard Cloud to refresh package firewall access.",
+        "status": 403
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_reconnect_required_refuses_a_cloud_operation",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_reconnect_required"
+      },
+      "has_installed_managers": true,
+      "kind": "package_firewall_access",
+      "operation": "sync"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "available",
+        "install": "available",
+        "remove": "disabled",
+        "repair": "available",
+        "sync": "available",
+        "test": "available"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_reconnect_required",
+        "message": "Reconnect HOL Guard Cloud to refresh package firewall access.",
+        "status": 403
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_reconnect_required_refuses_even_a_proven_entitlement",
+    "query": {
+      "entitlement": {
+        "allowed": true,
+        "reason": "guard_cloud_reconnect_required"
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "sync"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "paid_required",
+        "install": "paid_required",
+        "remove": "disabled",
+        "repair": "paid_required",
+        "sync": "paid_required",
+        "test": "paid_required"
+      },
+      "available_actions": [
+        "status",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "paid_guard_cloud_required",
+        "message": "HOL Guard Cloud paid access is required to run package firewall actions.",
+        "status": 402
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_an_unknown_reason_reads_as_the_paid_requirement",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_entitlement_unreadable"
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "audit"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "paid_required",
+        "install": "paid_required",
+        "remove": "disabled",
+        "repair": "paid_required",
+        "sync": "paid_required",
+        "test": "paid_required"
+      },
+      "available_actions": [
+        "status",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "paid_guard_cloud_required",
+        "message": "HOL Guard Cloud paid access is required to run package firewall actions.",
+        "status": 402
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_a_missing_reason_reads_as_the_paid_requirement",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": null
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "test"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "paid_required",
+        "install": "paid_required",
+        "remove": "disabled",
+        "repair": "paid_required",
+        "sync": "paid_required",
+        "test": "paid_required"
+      },
+      "available_actions": [
+        "status",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "paid_guard_cloud_required",
+        "message": "HOL Guard Cloud paid access is required to run package firewall actions.",
+        "status": 402
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_remove_needs_installed_shims_not_an_entitlement",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "paid_guard_cloud_required"
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "remove"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "paid_required",
+        "install": "paid_required",
+        "remove": "available",
+        "repair": "available",
+        "sync": "paid_required",
+        "test": "paid_required"
+      },
+      "available_actions": [
+        "status",
+        "repair",
+        "remove",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "paid_guard_cloud_required",
+        "message": "HOL Guard Cloud paid access is required to run package firewall actions.",
+        "status": 402
+      },
+      "operation_allowed": true
+    },
+    "name": "package_firewall_access_remove_runs_off_installed_shims_alone",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "paid_guard_cloud_required"
+      },
+      "has_installed_managers": true,
+      "kind": "package_firewall_access",
+      "operation": "remove"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "connect_required",
+        "install": "connect_required",
+        "remove": "disabled",
+        "repair": "connect_required",
+        "sync": "connect_required",
+        "test": "connect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_connect_required",
+        "message": "Connect HOL Guard Cloud on this machine before running package firewall actions.",
+        "status": 403
+      },
+      "operation_allowed": true
+    },
+    "name": "package_firewall_access_status_is_answered_without_an_entitlement",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_connect_required"
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "STATUS"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "paid_required",
+        "install": "paid_required",
+        "remove": "disabled",
+        "repair": "paid_required",
+        "sync": "paid_required",
+        "test": "paid_required"
+      },
+      "available_actions": [
+        "status",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "paid_guard_cloud_required",
+        "message": "HOL Guard Cloud paid access is required to run package firewall actions.",
+        "status": 402
+      },
+      "operation_allowed": true
+    },
+    "name": "package_firewall_access_open_shell_is_answered_without_an_entitlement",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "paid_guard_cloud_required"
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": " open-shell "
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "connect_required",
+        "install": "connect_required",
+        "remove": "disabled",
+        "repair": "connect_required",
+        "sync": "connect_required",
+        "test": "connect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_connect_required",
+        "message": "Connect HOL Guard Cloud on this machine before running package firewall actions.",
+        "status": 403
+      },
+      "operation_allowed": null
+    },
+    "name": "package_firewall_access_a_reason_is_read_case_insensitively",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "  Guard_Cloud_Connect_Required "
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": null
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "reconnect_required",
+        "install": "reconnect_required",
+        "remove": "available",
+        "repair": "available",
+        "sync": "reconnect_required",
+        "test": "reconnect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "repair",
+        "remove",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_reconnect_required",
+        "message": "Reconnect HOL Guard Cloud to refresh package firewall access.",
+        "status": 403
+      },
+      "operation_allowed": true
+    },
+    "name": "package_firewall_access_a_lapsed_entitlement_still_repairs",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_reconnect_required",
+        "tier": "pro"
+      },
+      "has_installed_managers": true,
+      "kind": "package_firewall_access",
+      "operation": "repair"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "reconnect_required",
+        "install": "reconnect_required",
+        "remove": "available",
+        "repair": "available",
+        "sync": "reconnect_required",
+        "test": "reconnect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "repair",
+        "remove",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_reconnect_required",
+        "message": "Reconnect HOL Guard Cloud to refresh package firewall access.",
+        "status": 403
+      },
+      "operation_allowed": true
+    },
+    "name": "package_firewall_access_a_lapsed_entitlement_still_removes",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_reconnect_required",
+        "tier": "pro"
+      },
+      "has_installed_managers": true,
+      "kind": "package_firewall_access",
+      "operation": "remove"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "reconnect_required",
+        "install": "reconnect_required",
+        "remove": "disabled",
+        "repair": "reconnect_required",
+        "sync": "reconnect_required",
+        "test": "reconnect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_reconnect_required",
+        "message": "Reconnect HOL Guard Cloud to refresh package firewall access.",
+        "status": 403
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_a_lapsed_entitlement_repairs_nothing_unshimmed",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_reconnect_required",
+        "tier": "pro"
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "repair"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "reconnect_required",
+        "install": "reconnect_required",
+        "remove": "available",
+        "repair": "available",
+        "sync": "reconnect_required",
+        "test": "reconnect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "repair",
+        "remove",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_reconnect_required",
+        "message": "Reconnect HOL Guard Cloud to refresh package firewall access.",
+        "status": 403
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_a_lapsed_entitlement_installs_nothing",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_reconnect_required",
+        "tier": "pro"
+      },
+      "has_installed_managers": true,
+      "kind": "package_firewall_access",
+      "operation": "install"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "reconnect_required",
+        "install": "reconnect_required",
+        "remove": "available",
+        "repair": "available",
+        "sync": "reconnect_required",
+        "test": "reconnect_required"
+      },
+      "available_actions": [
+        "status",
+        "connect",
+        "repair",
+        "remove",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_cloud_reconnect_required",
+        "message": "Reconnect HOL Guard Cloud to refresh package firewall access.",
+        "status": 403
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_a_lapsed_entitlement_tests_nothing",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_cloud_reconnect_required",
+        "tier": "pro"
+      },
+      "has_installed_managers": true,
+      "kind": "package_firewall_access",
+      "operation": "test"
+    }
+  },
+  {
+    "expected": {
+      "action_states": {
+        "audit": "paid_required",
+        "install": "paid_required",
+        "remove": "disabled",
+        "repair": "paid_required",
+        "sync": "paid_required",
+        "test": "paid_required"
+      },
+      "available_actions": [
+        "status",
+        "education",
+        "cli_fallback"
+      ],
+      "block": {
+        "code": "guard_runtime_unavailable",
+        "message": "The HOL Guard runtime could not report package firewall access on this machine.",
+        "status": 503
+      },
+      "operation_allowed": false
+    },
+    "name": "package_firewall_access_an_unanswerable_runtime_is_not_an_unpaid_account",
+    "query": {
+      "entitlement": {
+        "allowed": false,
+        "reason": "guard_runtime_unavailable"
+      },
+      "has_installed_managers": false,
+      "kind": "package_firewall_access",
+      "operation": "audit"
+    }
   }
 ]
