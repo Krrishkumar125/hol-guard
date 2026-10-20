@@ -434,6 +434,29 @@ def _background_read_error(calls: list[dict[str, Any]], *, require_steps: bool =
     return None
 
 
+def _credential_report_error(calls: list[dict[str, Any]], delegated: set[str]) -> str | None:
+    """Return why the delegated report is not the credential answer this case proves.
+
+    The case exists so an honest `Token: no` answer is not read back as an assigned
+    secret. A report that never spells those fields out as `field: answer` leaves
+    that path untested, so it is a deviation rather than a pass.
+    """
+    for call in calls:
+        if call["id"] not in delegated or call["name"] != "yield":
+            continue
+        data = call["args"].get("data")
+        if isinstance(data, str):
+            text = data
+        elif isinstance(data, dict):
+            text = "\n".join(value for value in data.values() if isinstance(value, str))
+        else:
+            continue
+        lowered = text.lower()
+        if all(re.search(rf"\b{field}\b\s*:", lowered) for field in ("token", "password")):
+            return None
+    return "delegated report did not answer the token and password fields"
+
+
 def native_tools_scope_error(
     scenario: Scenario, calls: list[dict[str, Any]], case: dict[str, Any], *, guard_denied: bool = False
 ) -> str | None:
@@ -527,14 +550,21 @@ def native_tools_scope_error(
         return scope
     if scenario.id == TMP_ALIAS_READ_CASE and (scope := _scratch_read_error(calls, require_steps=False)):
         return scope
-    if scenario.id == TASK_SCHEMA_CASE:
-        if scope := _task_schema_error(calls, set(delegated), require_result=not guard_denied):
-            return scope
-        # The loop above already accepts every spelling that resolves to the
-        # requested file, the Windows backslash form included, so reuse its
-        # verdict instead of comparing the literal argument a second time.
-        if not guard_denied and not read_in_scope:
-            return "delegated lookup did not read README.md"
+    if scenario.id == TASK_SCHEMA_CASE and (
+        scope := _task_schema_error(calls, set(delegated), require_result=not guard_denied)
+    ):
+        return scope
+    if (
+        scenario.id == CREDENTIAL_REPORT_CASE
+        and not guard_denied
+        and (scope := _credential_report_error(calls, set(delegated)))
+    ):
+        return scope
+    # The loop above already accepts every spelling that resolves to the
+    # requested file, the Windows backslash form included, so reuse its
+    # verdict instead of comparing the literal argument a second time.
+    if scenario.id in {TASK_SCHEMA_CASE, CREDENTIAL_REPORT_CASE} and not guard_denied and not read_in_scope:
+        return "delegated lookup did not read README.md"
     if scenario.id == SESSION_EDIT_CASE and (scope := _session_edit_error(calls, require_steps=False)):
         return scope
     if scenario.id == GITHUB_LOOKUP_CASE and (scope := _github_lookup_error(calls, require_call=False)):

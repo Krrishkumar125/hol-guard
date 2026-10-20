@@ -80,6 +80,11 @@ const MAX_VALUE_CHARS: usize = 16;
 /// for a value rather than a word.
 const MIN_VALUE_RUN: usize = 8;
 
+/// Longest run of letters that still reads as a word rather than a chosen
+/// value. The longest words that turn up in these reports are around twenty
+/// characters, so a letter run past that was not typed as prose.
+const MAX_WORD_RUN: usize = 20;
+
 /// How much of the line in front of a match can make its field a question.
 const MAX_FIELD_LEAD_CHARS: usize = 48;
 
@@ -130,7 +135,13 @@ fn reports_about_field(preceding: &str, field: &str) -> bool {
     if field.trim_end().ends_with('?') {
         return true;
     }
-    let line = preceding.rsplit(['\n', '\r']).next().unwrap_or_default();
+    // A report word belongs to the field it introduces. `Has token: no; password: yes`
+    // answers the first field and assigns the second, so the lead stops at the
+    // separator in front of this field rather than borrowing the earlier one.
+    let line = preceding
+        .rsplit(['\n', '\r', ';'])
+        .next()
+        .unwrap_or_default();
     let start = line
         .char_indices()
         .rev()
@@ -161,18 +172,32 @@ fn ends_value(tail: &str) -> bool {
     next.is_whitespace() && !carries_value(tail)
 }
 
-/// Whether the rest of the line holds a token shaped like a credential. Prose
-/// words are short, or long without digits; a chosen secret mixes them.
+/// Whether the rest of the line holds a token shaped like a credential. `-` and
+/// `_` join a run, because a key is written `ab12-cd34-ef56-gh78`, while `/` and
+/// `.` end one so a path reads as the words it is made of.
 fn carries_value(tail: &str) -> bool {
     tail.split(['\n', '\r'])
         .next()
         .unwrap_or_default()
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .any(|run| {
-            run.len() >= MIN_VALUE_RUN
-                && run.bytes().any(|byte| byte.is_ascii_digit())
-                && run.bytes().any(|byte| byte.is_ascii_alphabetic())
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric() || character == '-' || character == '_')
         })
+        .any(holds_value)
+}
+
+/// Whether one token on that line is a chosen value rather than more prose.
+/// It has to be long enough and carry letters, and then either mix digits in or
+/// run past any word. Case is not read either way: an operator's `DB_PASSWORD`
+/// and an access key id are both upper case.
+fn holds_value(token: &str) -> bool {
+    let run: String = token
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect();
+    if run.len() < MIN_VALUE_RUN || !run.bytes().any(|byte| byte.is_ascii_alphabetic()) {
+        return false;
+    }
+    run.bytes().any(|byte| byte.is_ascii_digit()) || run.len() > MAX_WORD_RUN
 }
 
 #[cfg(test)]
@@ -251,5 +276,43 @@ mod tests {
         assert!(is_prose_answer("Password: not", " set", ""));
         assert!(is_prose_answer("Token: none", " in this file", ""));
         assert!(!credential_assignment("Password: not set in config v2\n"));
+    }
+
+    #[test]
+    fn a_long_or_separated_value_after_an_answer_is_still_a_value() {
+        assert!(!is_prose_answer(
+            "password: not",
+            " correcthorsebatterystaple",
+            ""
+        ));
+        assert!(!is_prose_answer(
+            "token: no",
+            " ghp_AbCdEfGhIjKlMnOpQrSt",
+            ""
+        ));
+        assert!(!is_prose_answer("token: no", " ab12-cd34-ef56-gh78", ""));
+        assert!(!is_prose_answer("token: no", " AKIAIOSFODNN7EXAMPLE", ""));
+        // A path, a setting's name and hyphenated prose are not values.
+        assert!(is_prose_answer(
+            "Password: unset",
+            " - see docs/CONFIGURATION.md",
+            ""
+        ));
+        assert!(is_prose_answer(
+            "password: none",
+            " - set DB_PASSWORD instead",
+            ""
+        ));
+        assert!(is_prose_answer(
+            "Token: none",
+            " in this read-only-by-design file",
+            ""
+        ));
+    }
+
+    #[test]
+    fn a_report_word_does_not_carry_past_its_own_field() {
+        assert!(!is_prose_answer("password: yes", "", "Has token: no; "));
+        assert!(credential_assignment("Has token: no; password: yes\n"));
     }
 }
