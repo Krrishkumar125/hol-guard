@@ -128,12 +128,13 @@ def test_duration_telemetry_uses_complete_push_manifest_on_target_branch() -> No
     command = restore["run"]
     # Only a run whose every coverage shard passed and reported publishes this
     # artifact, so requiring a fully green run would only make timings stale.
+    assert "/actions/workflows/ci.yml/runs" in command
+    assert '-f branch="$TELEMETRY_BRANCH" -f event=push' in command
+    assert '.event == "push" and .head_branch == env.TELEMETRY_BRANCH' in command
+    assert '.path == ".github/workflows/ci.yml"' in command
+    assert "/actions/runs/${run_id}/artifacts" in command
     assert "-f name=pytest-duration-manifest-candidate" in command
-    assert ".workflow_run.head_branch == env.TELEMETRY_BRANCH" in command
     assert "status=success" not in command
     assert "conclusion" not in command
-    assert 'test "$event" = "push"' in command
-    assert 'test "$branch" = "$TELEMETRY_BRANCH"' in command
-    assert 'test "$workflow_path" = ".github/workflows/ci.yml"' in command
     assert 'test -n "$artifact_id"' in command
     assert "release/3.0" not in command

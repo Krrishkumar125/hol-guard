@@ -27,27 +27,25 @@ runs:
       # reported, so it is trusted without requiring the whole run to be green.
       # A red main must not pin planning to timings older than the suite.
       run: |
-        candidates=$(
-          gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/artifacts" \
-            -f name=pytest-duration-manifest-candidate -f per_page=100 \
-            --jq '[.artifacts[] | select(.expired == false and .name == "pytest-duration-manifest-candidate"
-              and .workflow_run.head_branch == env.TELEMETRY_BRANCH)]
-              | sort_by(.created_at) | reverse | .[:10][] | "\(.id) \(.workflow_run.id)"'
+        # Walk this branch's own push runs newest first. Pull request runs
+        # upload an artifact with the same name, so a repository-wide artifact
+        # page can be filled by them and hide the newest main manifest.
+        run_ids=$(
+          gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
+            -f branch="$TELEMETRY_BRANCH" -f event=push -f per_page=30 \
+            --jq '.workflow_runs[] | select(.event == "push" and .head_branch == env.TELEMETRY_BRANCH
+              and .path == ".github/workflows/ci.yml") | .id'
         )
         artifact_id=
-        while read -r candidate run_id; do
-          test -n "$run_id" || continue
-          read -r event branch workflow_path < <(
-            gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
-              --jq '[.event, .head_branch, .path] | @tsv'
+        for run_id in $run_ids; do
+          artifact_id=$(
+            gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" \
+              -f name=pytest-duration-manifest-candidate \
+              --jq '[.artifacts[] | select(.expired == false
+                and .name == "pytest-duration-manifest-candidate")][0].id // empty'
           )
-          if test "$event" = "push" &&
-            test "$branch" = "$TELEMETRY_BRANCH" &&
-            test "$workflow_path" = ".github/workflows/ci.yml"; then
-            artifact_id=$candidate
-            break
-          fi
-        done <<< "$candidates"
+          test -z "$artifact_id" || break
+        done
         test -n "$artifact_id"
         gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > /tmp/duration-manifest.zip
         unzip -p /tmp/duration-manifest.zip pytest-duration-manifest-candidate.json.gz \
