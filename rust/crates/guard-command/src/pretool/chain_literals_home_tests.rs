@@ -96,6 +96,13 @@ fn a_possible_home_change_before_a_use_keeps_it_opaque() {
         "p=HO s=ME; strftime -s $p$s %s 0; cat $HOME/passwd",
         "p=HO s=ME; zstat -A $p$s /etc; cat $HOME/passwd",
         "p=HO s=ME; zstyle -s ctx style $p$s; cat $HOME/passwd",
+        "p=HO s=ME; syserror -e $p$s; cat $HOME/passwd",
+        "p=HO s=ME; sysopen -u $p$s -r /etc/hosts; cat $HOME/passwd",
+        "p=HO s=ME; syswrite -c $p$s x; cat $HOME/passwd",
+        "p=HO s=ME; zsystem flock -f $p$s /tmp/lock; cat $HOME/passwd",
+        "p=HO s=ME; pcre_match -v $p$s /etc; cat $HOME/passwd",
+        "p=HO s=ME; zgetattr /etc attr $p$s; cat $HOME/passwd",
+        "p=HO s=ME; compgen -V $p$s -W /etc; cat $HOME/passwd",
     ] {
         assert_eq!(project(command, h), None, "{command}");
     }
