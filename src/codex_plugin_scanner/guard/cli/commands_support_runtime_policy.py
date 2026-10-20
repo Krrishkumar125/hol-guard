@@ -444,8 +444,11 @@ def _remembered_rule_rejection_reason(
 ) -> str | None:
     """Why the resident refused a remembered local rule, or ``None``.
 
-    The reported rule state and the reason it produces are the resident's; this
-    only names the request and hands over the facts it reads them from.
+    Which rule states earn a reason, and the reason itself, are the resident's;
+    this only names the request and hands over the facts it reads them from. A
+    rejection is rare enough that asking about every reported state costs less
+    than a second copy of the rule that decides which states are worth asking
+    about.
     """
 
     rejection = response_payload.get("remembered_rule_rejection")
@@ -455,12 +458,6 @@ def _remembered_rule_rejection_reason(
     remembered_rules = (
         str(trust_status.get("remembered_rules") or "unknown") if isinstance(trust_status, Mapping) else "unknown"
     )
-    if remembered_rules != "disabled_degraded":
-        # The resident names no reason for any other reported state, so asking
-        # it would spend a round trip on an answer that is already known to be
-        # empty, and would fail the hook when the resident cannot be reached
-        # over a rejection that never had a reason to report.
-        return None
     answer = composer(
         "remembered_rule_reason",
         {

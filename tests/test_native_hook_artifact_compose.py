@@ -232,23 +232,47 @@ def test_the_kinds_the_op_shipped_with_require_the_op_feature(monkeypatch: pytes
     assert required == [compose.HOOK_ARTIFACT_COMPOSE_FEATURE]
 
 
-def test_a_rule_state_the_resident_names_no_reason_for_asks_it_nothing() -> None:
-    """Only a degraded rule state is worth a round trip."""
+def test_every_reported_rule_state_is_put_to_the_resident() -> None:
+    """Which states earn a reason is the resident's rule, not a second copy here."""
 
     from codex_plugin_scanner.guard.cli import commands_support_runtime_policy as policy
 
-    def refuse(*_args: object, **_kwargs: object) -> dict[str, object]:
-        raise AssertionError("the resident was asked for a reason it never names")
+    asked: list[object] = []
+
+    def compose_reason(_kind: str, fields: dict[str, object], **_kwargs: object) -> dict[str, object]:
+        asked.append(fields["remembered_rules"])
+        return {"reason": None}
 
     artifact = SimpleNamespace(artifact_type="tool_action_request", name="git push", metadata={}, command="git push")
     for state in ["enabled", "unknown", "disabled", None]:
         reason = policy._remembered_rule_rejection_reason(
-            composer=refuse,
+            composer=compose_reason,
             guard_home=None,
             response_payload={"remembered_rule_rejection": {"trust_status": {"remembered_rules": state}}},
             artifact=cast("Any", artifact),
         )
         assert reason is None, state
+    assert asked == ["enabled", "unknown", "disabled", "unknown"]
+
+
+def test_a_payload_without_a_rejection_asks_the_resident_nothing() -> None:
+    """Only an actual rejection is worth a round trip."""
+
+    from codex_plugin_scanner.guard.cli import commands_support_runtime_policy as policy
+
+    def refuse(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("the resident was asked about a rejection that never happened")
+
+    artifact = SimpleNamespace(artifact_type="tool_action_request", name="git push", metadata={}, command="git push")
+    assert (
+        policy._remembered_rule_rejection_reason(
+            composer=refuse,
+            guard_home=None,
+            response_payload={"remembered_rule_rejection": None},
+            artifact=cast("Any", artifact),
+        )
+        is None
+    )
 
 
 def test_a_claimed_saved_allow_is_read_back_when_the_resident_cannot_settle() -> None:
