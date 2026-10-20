@@ -334,3 +334,62 @@ fn only_a_plain_cd_holding_the_last_use_may_change_the_directory() {
         None
     );
 }
+
+// The configuration test is plain text, so it runs on every platform even
+// though `project` only ever substitutes a POSIX working directory.
+#[test]
+fn a_configuration_git_refuses_as_a_worktree_is_not_a_known_root() {
+    assert!(super::keeps_worktree(
+        "[core]\n\trepositoryformatversion = 0\n\tbare = false\n"
+    ));
+    for text in [
+        "[core]\n\tbare = true\n",
+        "[core]\n\tBare = True\n",
+        "[core]\n\trepositoryformatversion = 1\n",
+        "[extensions]\n\tobjectformat = sha256\n",
+    ] {
+        assert!(!super::keeps_worktree(text), "{text}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_repository_git_refuses_as_a_worktree_keeps_the_root_unknown() {
+    // Git prints nothing for these, so the substitution stands for an empty
+    // string and the command the shell runs is not the one a known root
+    // would describe.
+    let bare = repository("bare");
+    std::fs::write(bare.join(".git/config"), "[core]\n\tbare = true\n").unwrap();
+    let future = repository("future-format");
+    std::fs::write(
+        future.join(".git/config"),
+        "[core]\n\tbare = false\n\trepositoryformatversion = 1\n",
+    )
+    .unwrap();
+    let extended = repository("extended");
+    std::fs::write(
+        extended.join(".git/config"),
+        "[core]\n\tbare = false\n[extensions]\n\tobjectformat = sha256\n",
+    )
+    .unwrap();
+    for root in [&bare, &future, &extended] {
+        assert_eq!(
+            super::repository_root(root.join("sub").to_str().unwrap()),
+            None,
+            "{}",
+            root.display()
+        );
+    }
+    // The ordinary spelling Git writes still names its own root.
+    let plain = repository("worktree-config");
+    std::fs::write(
+        plain.join(".git/config"),
+        "[core]\n\trepositoryformatversion = 0\n\tbare = false\n",
+    )
+    .unwrap();
+    let sub = plain.join("sub");
+    assert_eq!(
+        super::repository_root(sub.to_str().unwrap()).as_deref(),
+        plain.to_str()
+    );
+}
