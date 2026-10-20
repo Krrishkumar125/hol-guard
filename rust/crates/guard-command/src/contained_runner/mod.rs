@@ -20,6 +20,8 @@ pub(crate) mod ts_inputs;
 #[cfg(all(test, target_os = "linux"))]
 mod real_backend_tests;
 #[cfg(test)]
+mod status_channel_tests;
+#[cfg(test)]
 mod vector_fs_tests;
 #[cfg(test)]
 mod vector_support;
