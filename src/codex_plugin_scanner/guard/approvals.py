@@ -496,7 +496,6 @@ def apply_approval_resolution(
         requested_scope=scope,
         contract_version=scope_contract_version,
         contract_digest=scope_contract_digest,
-        contract=contract,
     )
     requested_scope = selection.requested_scope
     scope = selection.applied_scope

@@ -66,6 +66,8 @@ mod local_cli_identity;
 pub use local_cli_identity::*;
 mod approval_scope;
 pub use approval_scope::*;
+mod approval_scope_select;
+pub use approval_scope_select::*;
 mod hook_render;
 pub use hook_render::*;
 mod approval_proof;

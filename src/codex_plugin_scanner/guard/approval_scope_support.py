@@ -113,16 +113,24 @@ class ApprovalScopeContract:
         }
 
 
+def _scope_item(request: Mapping[str, object]) -> dict[str, object]:
+    """Narrow a request to the fields the native scope contract reads."""
+
+    # Imported here for the same reason as in `_native_scopes`: the transport
+    # pulls in the native runtime, which the package-only hot paths skip.
+    from .native_approval_scope import REQUEST_FIELDS
+
+    item: dict[str, object] = {field: _json_boundary_value(request.get(field)) for field in REQUEST_FIELDS}
+    item["workspace_target"] = _derived_workspace_scope_target(request)
+    return item
+
+
 def _native_scopes(requests: Sequence[Mapping[str, object]]) -> list[tuple[ApprovalScopeContract, str | None]]:
     # Imported here: the resident transport pulls in the native runtime, which
     # hook hot paths that only need the package scope helpers must not load.
-    from .native_approval_scope import REQUEST_FIELDS, ApprovalScopeUnavailableError, native_approval_scopes
+    from .native_approval_scope import ApprovalScopeUnavailableError, native_approval_scopes
 
-    items: list[Mapping[str, object]] = []
-    for request in requests:
-        item: dict[str, object] = {field: _json_boundary_value(request.get(field)) for field in REQUEST_FIELDS}
-        item["workspace_target"] = _derived_workspace_scope_target(request)
-        items.append(item)
+    items: list[Mapping[str, object]] = [_scope_item(request) for request in requests]
     contracts: list[tuple[ApprovalScopeContract, str | None]] = []
     for native in native_approval_scopes(items):
         contract = _contract_from_native(native.contract)
@@ -287,47 +295,68 @@ def resolve_request_scope_selection(
     requested_scope: str,
     contract_version: str | None,
     contract_digest: str | None,
-    contract: ApprovalScopeContract | None = None,
 ) -> ApprovalScopeSelection:
-    if action == "allow":
-        resolution_action: ResolutionAction = "allow"
-    elif action == "block":
-        resolution_action = "block"
-    else:
-        raise ValueError("unsupported_resolution_action")
-    if requested_scope not in DECISION_SCOPE_VALUES:
-        raise ValueError(f"Unsupported approval scope: {requested_scope}")
-    typed_scope = _decision_scope(requested_scope)
-    if contract is None:
-        contract = request_scope_contract(request)
-    if (contract_version is None) != (contract_digest is None):
-        raise ValueError("incomplete_scope_contract")
-    if contract_version is not None and (
-        contract_version != APPROVAL_SCOPE_CONTRACT_VERSION or contract_digest != contract.digest
-    ):
-        raise StaleApprovalScopeContractError(contract)
-    eligible = contract.allow_scopes if resolution_action == "allow" else contract.block_scopes
-    if typed_scope in eligible:
-        return ApprovalScopeSelection(typed_scope, typed_scope)
-    if contract_version is not None or action == "block":
-        raise IneligibleApprovalScopeError(
-            "ineligible_request_scope",
-            contract,
-            action=resolution_action,
-            requested_scope=requested_scope,
-        )
-    if "artifact" not in eligible:
-        raise IneligibleApprovalScopeError(
-            "request_action_not_overridable",
-            contract,
-            action=resolution_action,
-            requested_scope=requested_scope,
-        )
-    return ApprovalScopeSelection(
-        requested_scope=typed_scope,
-        applied_scope="artifact",
-        warning="legacy_scope_narrowed_to_artifact",
+    """Ask the resident what a chosen approval scope actually resolves to.
+
+    The resident derives the contract itself and decides whether the chosen
+    scope is one the request offers for this action, whether a client that
+    never read a contract has its wider choice narrowed to the artifact, and
+    whether a client resolving against a superseded contract is refused. This
+    function only translates that answer into the exceptions its callers
+    already handle, so no scope can be honoured here that the request does not
+    offer.
+    """
+
+    from .native_approval_scope import ApprovalScopeUnavailableError
+    from .native_approval_scope_select import native_approval_scope_selection
+
+    answer = native_approval_scope_selection(
+        _scope_item(request),
+        action=action,
+        requested_scope=requested_scope,
+        contract_version=contract_version,
+        contract_digest=contract_digest,
     )
+    native_contract = answer.get("contract")
+    contract = _contract_from_native(native_contract) if isinstance(native_contract, Mapping) else None
+    outcome = answer.get("outcome")
+    if outcome == "selected":
+        applied_scope = answer.get("applied_scope")
+        warning = answer.get("warning")
+        if (
+            not isinstance(applied_scope, str)
+            or applied_scope not in DECISION_SCOPE_VALUES
+            or not (warning is None or isinstance(warning, str))
+        ):
+            raise ApprovalScopeUnavailableError
+        return ApprovalScopeSelection(
+            requested_scope=_decision_scope(requested_scope),
+            applied_scope=_decision_scope(applied_scope),
+            warning=warning,
+        )
+    if outcome != "refused":
+        raise ApprovalScopeUnavailableError
+    reason = answer.get("reason")
+    if reason == "unsupported_resolution_action":
+        raise ValueError("unsupported_resolution_action")
+    if reason == "unsupported_approval_scope":
+        raise ValueError(f"Unsupported approval scope: {requested_scope}")
+    # Every remaining refusal reports what the request does offer, so a caller
+    # that cannot see the contract has nothing to tell the user.
+    if contract is None:
+        raise ApprovalScopeUnavailableError
+    if reason == "incomplete_scope_contract":
+        raise ValueError("incomplete_scope_contract")
+    if reason == "stale_scope_contract":
+        raise StaleApprovalScopeContractError(contract)
+    if reason in ("ineligible_request_scope", "request_action_not_overridable"):
+        raise IneligibleApprovalScopeError(
+            reason,
+            contract,
+            action=cast(ResolutionAction, action),
+            requested_scope=requested_scope,
+        )
+    raise ApprovalScopeUnavailableError
 
 
 def resolve_request_workspace_scope(
