@@ -4,7 +4,8 @@
 //!
 //! `ApprovalScope` publishes which scopes a request offers. This op decides
 //! what a specific `allow` or `block` at a specific scope actually resolves
-//! to, so the honouring, narrowing and refusal of a user's choice has one
+//! to, whether it may be remembered, and whether the approval can be executed
+//! at all, so the honouring, narrowing and refusal of a user's choice has one
 //! owner. The op is pure: the caller ships the same narrowed request fields
 //! `ApprovalScope` takes plus the contract version and digest the client
 //! echoed back, and the resident derives the contract itself rather than
@@ -20,7 +21,7 @@ pub const APPROVAL_SCOPE_SELECT_REQUEST_SCHEMA: &str = "guard-approval-scope-sel
 /// Schema discriminator for the result.
 pub const APPROVAL_SCOPE_SELECT_RESULT_SCHEMA: &str = "guard-approval-scope-select-result.v1";
 /// Capability advertised by the runtime when this operation is available.
-pub const APPROVAL_SCOPE_SELECT_FEATURE: &str = "approval-scope-select-v1";
+pub const APPROVAL_SCOPE_SELECT_FEATURE: &str = "approval-scope-select-v2";
 /// Largest canonical request serialization the op will accept.
 pub const APPROVAL_SCOPE_SELECT_MAX_BYTES: usize = 4 * 1024 * 1024;
 
@@ -44,6 +45,24 @@ pub struct ApprovalScopeSelectRequestV1 {
     /// `contract_version` is.
     #[serde(default)]
     pub contract_digest: Option<String>,
+    /// Present when the caller also wants the op to decide whether the
+    /// decision may be remembered and whether the allow can be executed at
+    /// all. Absent for a caller that only resolves the scope, which keeps
+    /// those callers on exactly the answer they had before.
+    #[serde(default)]
+    pub persistence: Option<ApprovalScopePersistenceV1>,
+}
+
+/// The caller's remembered-decision preference, as the client expressed it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalScopePersistenceV1 {
+    /// `None` is a client that expressed no preference; `Some(false)` is one
+    /// that asked for this turn only. The op answers with the value that
+    /// survives its own eligibility rules, so the caller never has to decide
+    /// whether a remembered allow is honoured.
+    #[serde(default)]
+    pub persist_policy: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

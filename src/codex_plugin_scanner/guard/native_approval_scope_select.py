@@ -3,9 +3,10 @@
 Rust owns what an approval resolution actually covers: whether the scope a
 client chose is one the request offers for that action, whether a client
 resolving against a superseded contract is still heard, and whether a legacy
-client's wider choice is narrowed to the artifact or refused outright. This
-module only narrows the request to the fields the contract reads, ships the
-contract version and digest the client echoed back, binds the reply by
+client's wider choice is narrowed to the artifact or refused outright, whether
+the decision may be remembered, and whether an allow can be executed at all.
+This module only narrows the request to the fields the contract reads, ships
+the contract version and digest the client echoed back, binds the reply by
 ``request_id`` plus ``request_sha256`` and hands the answer back. Nothing is
 recomputed here, so an unavailable resident can never honour a scope the
 request does not offer.
@@ -22,7 +23,7 @@ from .native_context import _resolve_digest_home, ensure_resident_prerequisite
 from .native_execution import _resident_request
 from .native_store_policy import _payload
 
-APPROVAL_SCOPE_SELECT_FEATURE = "approval-scope-select-v1"
+APPROVAL_SCOPE_SELECT_FEATURE = "approval-scope-select-v2"
 _REQUEST_SCHEMA = "guard-approval-scope-select-request.v1"
 _RESULT_SCHEMA = "guard-approval-scope-select-result.v1"
 _TIMEOUT_SECONDS = 10.0
@@ -36,14 +37,17 @@ def native_approval_scope_selection(
     requested_scope: str,
     contract_version: str | None,
     contract_digest: str | None,
+    decide_persistence: bool = False,
+    persist_policy: bool | None = None,
     guard_home: Path | None = None,
 ) -> dict[str, object]:
     """Resolve one approval selection in the resident; raise when it cannot.
 
     ``item`` carries every name in ``REQUEST_FIELDS`` plus ``workspace_target``,
     exactly as the ``approval_scope`` op takes it. The answer is the resident's
-    payload: a selection with the scope it applied, or a refusal naming the
-    condition, each with the contract the resident derived.
+    payload: a selection with the scope it applied and the remembered-decision
+    preference that survived, or a refusal naming the condition, each with the
+    contract the resident derived.
     """
 
     home = Path(_resolve_digest_home(guard_home))
@@ -57,6 +61,7 @@ def native_approval_scope_selection(
         "requested_scope": requested_scope,
         "contract_version": contract_version,
         "contract_digest": contract_digest,
+        "persistence": {"persist_policy": persist_policy} if decide_persistence else None,
     }
     try:
         response = _resident_request(

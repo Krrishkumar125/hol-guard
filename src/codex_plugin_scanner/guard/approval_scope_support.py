@@ -58,6 +58,7 @@ class ApprovalScopeSelection:
     requested_scope: DecisionScope
     applied_scope: DecisionScope
     warning: str | None = None
+    persist_policy: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,6 +319,8 @@ def resolve_request_scope_selection(
     requested_scope: str,
     contract_version: str | None,
     contract_digest: str | None,
+    decide_persistence: bool = False,
+    persist_policy: bool | None = None,
     guard_home: Path | None = None,
 ) -> ApprovalScopeSelection:
     """Ask the resident what a chosen approval scope actually resolves to.
@@ -325,7 +328,10 @@ def resolve_request_scope_selection(
     The resident derives the contract itself and decides whether the chosen
     scope is one the request offers for this action, whether a client that
     never read a contract has its wider choice narrowed to the artifact, and
-    whether a client resolving against a superseded contract is refused. This
+    whether a client resolving against a superseded contract is refused. It
+    also answers, for a caller that passes ``decide_persistence``, whether the
+    decision may be remembered and whether an allow can be executed at all, so
+    those read the same contract once. This
     function only translates that answer into the exceptions its callers
     already handle, so no scope can be honoured here that the request does not
     offer.
@@ -340,6 +346,8 @@ def resolve_request_scope_selection(
         requested_scope=requested_scope,
         contract_version=contract_version,
         contract_digest=contract_digest,
+        decide_persistence=decide_persistence,
+        persist_policy=persist_policy,
         guard_home=guard_home,
     )
     native_contract = answer.get("contract")
@@ -348,16 +356,19 @@ def resolve_request_scope_selection(
     if outcome == "selected":
         applied_scope = answer.get("applied_scope")
         warning = answer.get("warning")
+        applied_persist = answer.get("persist_policy")
         if (
             not isinstance(applied_scope, str)
             or applied_scope not in DECISION_SCOPE_VALUES
             or not (warning is None or isinstance(warning, str))
+            or not (applied_persist is None or isinstance(applied_persist, bool))
         ):
             raise ApprovalScopeUnavailableError
         return ApprovalScopeSelection(
             requested_scope=_decision_scope(requested_scope),
             applied_scope=_decision_scope(applied_scope),
             warning=warning,
+            persist_policy=applied_persist,
         )
     if outcome != "refused":
         raise ApprovalScopeUnavailableError
@@ -380,6 +391,22 @@ def resolve_request_scope_selection(
             contract,
             action=cast(ResolutionAction, action),
             requested_scope=requested_scope,
+        )
+    # These three are decided after a scope was applied, so they report the
+    # scope the refusal is actually about rather than the one asked for.
+    if reason in (
+        "saved_allow_scope_ineligible",
+        "saved_block_scope_ineligible",
+        "execution_binding_unavailable",
+    ):
+        applied_scope = answer.get("applied_scope")
+        if not isinstance(applied_scope, str) or applied_scope not in DECISION_SCOPE_VALUES:
+            raise ApprovalScopeUnavailableError
+        raise IneligibleApprovalScopeError(
+            reason,
+            contract,
+            action="allow" if reason != "saved_block_scope_ineligible" else "block",
+            requested_scope=applied_scope,
         )
     raise ApprovalScopeUnavailableError
 

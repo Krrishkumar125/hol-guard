@@ -26,7 +26,6 @@ from .approval_once_eligibility import requires_local_once_approval
 from .approval_resolution import require_resolvable_approval_request
 from .approval_scope_support import (
     RETRY_CANNOT_REUSE_APPROVAL,
-    IneligibleApprovalScopeError,
     apply_scope_surfaces,
     package_request_portable_workspace_scope,
     request_scope_observation,
@@ -497,40 +496,22 @@ def apply_approval_resolution(
         if request.get("artifact_type") == "native_bash_request"
         else request_scope_observation(request)
     )
+    # The resident decides the scope, whether the decision may be remembered
+    # and whether the allow can be executed at all, in that order; it reads
+    # the contract it derives itself, so nothing here re-reads one.
     selection = resolve_request_scope_selection(
         request,
         action=action,
         requested_scope=scope,
         contract_version=scope_contract_version,
         contract_digest=scope_contract_digest,
+        decide_persistence=True,
+        persist_policy=persist_policy,
         guard_home=store.guard_home,
     )
     requested_scope = selection.requested_scope
     scope = selection.applied_scope
-    if selection.warning is not None:
-        persist_policy = None
-    elif scope == "artifact" and persist_policy is True:
-        if scope_contract_version is not None:
-            if not contract.exact_action_persistence_eligible:
-                raise IneligibleApprovalScopeError(
-                    "saved_allow_scope_ineligible" if action == "allow" else "saved_block_scope_ineligible",
-                    contract,
-                    action="allow" if action == "allow" else "block",
-                    requested_scope=scope,
-                )
-        else:
-            persist_policy = None
-    if (
-        action == "allow"
-        and not contract.can_run_once
-        and not (scope == "artifact" and persist_policy is True and contract.can_persist_exact_version)
-    ):
-        raise IneligibleApprovalScopeError(
-            "execution_binding_unavailable",
-            contract,
-            action="allow",
-            requested_scope=scope,
-        )
+    persist_policy = selection.persist_policy
     request_artifact_id = _string_or_none(request.get("artifact_id"))
     request_artifact_hash = _string_or_none(request.get("artifact_hash"))
     resolved_workspace = resolve_request_workspace_scope(request, workspace) if scope == "workspace" else None

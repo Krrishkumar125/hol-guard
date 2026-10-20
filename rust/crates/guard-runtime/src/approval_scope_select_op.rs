@@ -18,6 +18,15 @@
 //! The conditions run in the Python order, and each reason code is the
 //! message that function raised, so a caller reports the same refusal it
 //! always did.
+//!
+//! The op also owns what `approvals.apply_approval_resolution` decided after
+//! the selection: whether a remembered decision survives, and whether an
+//! allow can be executed at all. Those two read the same contract this op
+//! already derived - `exact_action_persistence_eligible`, and the
+//! `can_run_once` / `can_persist_exact_version` projections - so deciding
+//! them here keeps one reader of the contract instead of two. A caller that
+//! cannot reach the resident now has no way to honour a remembered allow the
+//! request never offered.
 
 use guard_contracts::{
     ApprovalScopeSelectRequestV1, ApprovalScopeSelectResultV1, APPROVAL_SCOPE_SELECT_MAX_BYTES,
@@ -32,6 +41,9 @@ use crate::package_authority_op::request_digest_with_limit;
 
 /// `models.DECISION_SCOPE_VALUES`.
 const DECISION_SCOPE_VALUES: &[&str] = &["global", "harness", "workspace", "artifact", "publisher"];
+
+/// `approval_scope_support.RETRY_CANNOT_REUSE_APPROVAL`.
+const RETRY_CANNOT_REUSE_APPROVAL: &str = "retry_cannot_reuse_approval";
 
 pub(crate) fn evaluate_approval_scope_select_request(
     request: &ApprovalScopeSelectRequestV1,
@@ -101,8 +113,9 @@ fn evaluate_with_owner(
         &derived.block_scopes
     };
     if eligible.contains(&request.requested_scope.as_str()) {
-        return selected(
-            &request.requested_scope,
+        return resolve_persistence(
+            request,
+            resolution_action,
             &request.requested_scope,
             None,
             &derived,
@@ -120,11 +133,89 @@ fn evaluate_with_owner(
     }
     // A legacy client never saw the contract, so its wider choice is narrowed
     // to the one scope this request does offer, and the warning says so.
-    selected(
-        &request.requested_scope,
+    resolve_persistence(
+        request,
+        resolution_action,
         "artifact",
         Some("legacy_scope_narrowed_to_artifact"),
         &derived,
+    )
+}
+
+/// `!contract.allow_scopes and RETRY_CANNOT_REUSE_APPROVAL not in restrictions`
+/// - the `can_run_once` projection `ApprovalScope` publishes.
+fn can_run_once(derived: &ScopeContract) -> bool {
+    !derived.allow_scopes.is_empty() && !derived.restrictions.contains(&RETRY_CANNOT_REUSE_APPROVAL)
+}
+
+/// The `can_persist_exact_version` projection `ApprovalScope` publishes.
+fn can_persist_exact_version(derived: &ScopeContract) -> bool {
+    !derived.allow_scopes.is_empty() && derived.exact_action_persistence_eligible
+}
+
+/// Decide what the client's `persist_policy` resolves to, and whether the
+/// approval can be executed at all, against the scope that was applied.
+///
+/// Faithful port of the block `approvals.apply_approval_resolution` ran after
+/// the selection. The order matters: a narrowed selection drops the
+/// remembered decision before eligibility is read, because the user never saw
+/// the scope their decision would have been saved at.
+fn resolve_persistence(
+    request: &ApprovalScopeSelectRequestV1,
+    resolution_action: &str,
+    applied_scope: &str,
+    warning: Option<&str>,
+    derived: &ScopeContract,
+) -> Value {
+    // A caller that did not ask for this leg gets exactly the selection it
+    // got before, with no remembered decision and no execution check.
+    let Some(persistence) = request.persistence.as_ref() else {
+        return selected(
+            &request.requested_scope,
+            applied_scope,
+            warning,
+            None,
+            derived,
+        );
+    };
+    let mut persist_policy = persistence.persist_policy;
+    if warning.is_some() {
+        persist_policy = None;
+    } else if applied_scope == "artifact" && persistence.persist_policy == Some(true) {
+        if request.contract_version.is_some() {
+            if !derived.exact_action_persistence_eligible {
+                return refused_at(
+                    if resolution_action == "allow" {
+                        "saved_allow_scope_ineligible"
+                    } else {
+                        "saved_block_scope_ineligible"
+                    },
+                    applied_scope,
+                    derived,
+                );
+            }
+        } else {
+            // A client with no contract never read that this request can be
+            // remembered, so its request to remember is not honoured.
+            persist_policy = None;
+        }
+    }
+    // An allow that cannot be run once and is not being saved as the exact
+    // version has no way to reach the action the user approved.
+    if resolution_action == "allow"
+        && !can_run_once(derived)
+        && !(applied_scope == "artifact"
+            && persist_policy == Some(true)
+            && can_persist_exact_version(derived))
+    {
+        return refused_at("execution_binding_unavailable", applied_scope, derived);
+    }
+    selected(
+        &request.requested_scope,
+        applied_scope,
+        warning,
+        persist_policy,
+        derived,
     )
 }
 
@@ -132,6 +223,7 @@ fn selected(
     requested_scope: &str,
     applied_scope: &str,
     warning: Option<&str>,
+    persist_policy: Option<bool>,
     derived: &ScopeContract,
 ) -> Value {
     json!({
@@ -139,6 +231,7 @@ fn selected(
         "requested_scope": requested_scope,
         "applied_scope": applied_scope,
         "warning": warning,
+        "persist_policy": persist_policy,
         "contract": contract_value(derived),
     })
 }
@@ -147,7 +240,19 @@ fn refused(reason: &str, derived: Option<&ScopeContract>) -> Value {
     json!({
         "outcome": "refused",
         "reason": reason,
+        "applied_scope": Value::Null,
         "contract": derived.map(contract_value),
+    })
+}
+
+/// A refusal reached after a scope was already applied. The caller reports
+/// the scope the refusal is about, which is not always the one it asked for.
+fn refused_at(reason: &str, applied_scope: &str, derived: &ScopeContract) -> Value {
+    json!({
+        "outcome": "refused",
+        "reason": reason,
+        "applied_scope": applied_scope,
+        "contract": contract_value(derived),
     })
 }
 
