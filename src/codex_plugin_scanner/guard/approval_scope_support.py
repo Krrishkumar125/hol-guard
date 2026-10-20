@@ -318,6 +318,7 @@ def resolve_request_scope_selection(
     requested_scope: str,
     contract_version: str | None,
     contract_digest: str | None,
+    guard_home: Path | None = None,
 ) -> ApprovalScopeSelection:
     """Ask the resident what a chosen approval scope actually resolves to.
 
@@ -339,6 +340,7 @@ def resolve_request_scope_selection(
         requested_scope=requested_scope,
         contract_version=contract_version,
         contract_digest=contract_digest,
+        guard_home=guard_home,
     )
     native_contract = answer.get("contract")
     contract = _contract_from_native(native_contract) if isinstance(native_contract, Mapping) else None

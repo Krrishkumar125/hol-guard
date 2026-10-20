@@ -351,12 +351,16 @@ def test_exact_apply_accepts_legacy_claim_without_native_bindings(
     assert resolution.action == "allow"
 
 
-def _scope_selection_outage(monkeypatch: pytest.MonkeyPatch, module: Any) -> None:
-    def unavailable(*_args: object, **_kwargs: object) -> object:
+def _scope_selection_outage(monkeypatch: pytest.MonkeyPatch, module: Any) -> list[dict[str, object]]:
+    calls: list[dict[str, object]] = []
+
+    def unavailable(*_args: object, **kwargs: object) -> object:
+        calls.append(kwargs)
         raise ApprovalScopeUnavailableError()
 
-    monkeypatch.setattr(module, "request_scope_contract", lambda _row: SimpleNamespace(digest="0" * 64))
+    monkeypatch.setattr(module, "request_scope_contract", lambda _row, **_kwargs: SimpleNamespace(digest="0" * 64))
     monkeypatch.setattr(module, "resolve_request_scope_selection", unavailable)
+    return calls
 
 
 def test_binding_validation_keeps_a_scope_selection_outage_distinct_from_a_mismatch(
@@ -368,12 +372,15 @@ def test_binding_validation_keeps_a_scope_selection_outage_distinct_from_a_misma
     oauth = _oauth_metadata(store)
     claim = build_local_review_request_claim(request_row=request, oauth=oauth, store=store)
     approval = _remote_approval(store, "exact-transport", receipt_id="selection-outage", source_claim=claim)
-    _scope_selection_outage(monkeypatch, review_contracts)
+    calls = _scope_selection_outage(monkeypatch, review_contracts)
 
     with pytest.raises(ApprovalScopeUnavailableError):
         validate_remote_approval_request_binding(
             envelope=approval, request_row=request, claim_request_row=request, oauth=oauth, store=store
         )
+    # The selection is derived by the resident that owns this store, the same
+    # one that published the contract the client echoed.
+    assert [call.get("guard_home") for call in calls] == [store.guard_home]
 
 
 def test_exact_apply_reports_a_scope_selection_outage_as_unavailable(

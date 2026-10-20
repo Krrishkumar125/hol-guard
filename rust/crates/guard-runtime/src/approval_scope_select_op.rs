@@ -35,10 +35,11 @@ const DECISION_SCOPE_VALUES: &[&str] = &["global", "harness", "workspace", "arti
 
 pub(crate) fn evaluate_approval_scope_select_request(
     request: &ApprovalScopeSelectRequestV1,
+    owner: Option<&crate::policy_store::PolicySnapshotStore>,
 ) -> Result<Vec<u8>, String> {
     let request_sha256 = request_digest_with_limit(request, APPROVAL_SCOPE_SELECT_MAX_BYTES)
         .map_err(|_| "native_approval_scope_select_too_large".to_owned())?;
-    let payload = evaluate(request);
+    let payload = evaluate_with_owner(request, owner);
     crate::encode_response(&ApprovalScopeSelectResultV1 {
         schema: APPROVAL_SCOPE_SELECT_RESULT_SCHEMA.to_owned(),
         request_id: request.request_id.clone(),
@@ -50,6 +51,13 @@ pub(crate) fn evaluate_approval_scope_select_request(
 }
 
 pub(crate) fn evaluate(request: &ApprovalScopeSelectRequestV1) -> Value {
+    evaluate_with_owner(request, None)
+}
+
+fn evaluate_with_owner(
+    request: &ApprovalScopeSelectRequestV1,
+    owner: Option<&crate::policy_store::PolicySnapshotStore>,
+) -> Value {
     // The action and the scope name are read before the contract is derived,
     // exactly as the Python function did: an answer that names no action Guard
     // records, or no scope Guard has, is not about this request at all.
@@ -62,7 +70,14 @@ pub(crate) fn evaluate(request: &ApprovalScopeSelectRequestV1) -> Value {
         return refused("unsupported_approval_scope", None);
     }
 
-    let derived = contract(&View::new(&request.item));
+    // Derived exactly as `ApprovalScope` publishes it, owner check included:
+    // a native Bash request the owner verified offers different scopes, and a
+    // client echoing the published digest must be checked against that one.
+    let mut view = View::new(&request.item);
+    view.native_bash_owner_verified = owner.is_some_and(|store| {
+        crate::native_bash_review_scope::owner_verified(&request.item, store, None)
+    });
+    let derived = contract(&view);
     let echoed = (
         request.contract_version.as_deref(),
         request.contract_digest.as_deref(),

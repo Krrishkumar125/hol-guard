@@ -390,7 +390,7 @@ def validate_remote_approval_request_binding(
             requested_scope=envelope_scope,
             contract_version=APPROVAL_SCOPE_CONTRACT_VERSION,
             contract_digest=contract.digest,
-            contract=contract,
+            guard_home=store.guard_home,
         )
     except ApprovalScopeUnavailableError:
         # A resident outage is not a scope mismatch; let callers report it as availability.

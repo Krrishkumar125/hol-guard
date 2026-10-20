@@ -294,6 +294,7 @@ class _ControlPostRoutes:
                     requested_scope=scope,
                     contract_version=scope_contract_version,
                     contract_digest=scope_contract_digest,
+                    guard_home=self.server.store.guard_home,  # type: ignore[attr-defined]
                 )
                 if existing_request.get("status") != "pending":
                     if (
@@ -356,6 +357,7 @@ class _ControlPostRoutes:
                         requested_scope=scope,
                         contract_version=scope_contract_version,
                         contract_digest=scope_contract_digest,
+                        guard_home=self.server.store.guard_home,  # type: ignore[attr-defined]
                     )
                 except StaleApprovalScopeContractError as error:
                     self._write_stale_approval_scope_error(error)
