@@ -353,7 +353,7 @@ def test_exact_apply_accepts_legacy_claim_without_native_bindings(
 
 def _scope_selection_outage(monkeypatch: pytest.MonkeyPatch, module: Any) -> None:
     def unavailable(*_args: object, **_kwargs: object) -> object:
-        raise ApprovalScopeUnavailableError("native_approval_scope_unavailable")
+        raise ApprovalScopeUnavailableError()
 
     monkeypatch.setattr(module, "request_scope_contract", lambda _row: SimpleNamespace(digest="0" * 64))
     monkeypatch.setattr(module, "resolve_request_scope_selection", unavailable)
