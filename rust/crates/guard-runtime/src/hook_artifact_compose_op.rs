@@ -87,6 +87,9 @@ pub(crate) fn compose(query: &HookArtifactComposeQueryV1) -> Result<Value, Strin
         HookArtifactComposeQueryV1::PolicyLookupSelect(query) => {
             lookup::policy_lookup_select(query)?
         }
+        HookArtifactComposeQueryV1::RememberedRuleReason(query) => {
+            reuse::remembered_rule_reason(query)
+        }
         HookArtifactComposeQueryV1::PackageReuseSettle(query) => reuse::package_reuse_settle(query),
     })
 }

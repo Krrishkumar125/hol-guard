@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -369,6 +370,28 @@ def run_case(
     return case
 
 
+def record_route_failure(report: dict[str, Any], route_health: Callable[[], str | None] | None) -> bool:
+    """Record a provider route that has died, once, and say whether it has.
+
+    A dead route makes every remaining case a harness error with no tool calls,
+    which is zero coverage rather than a result. Stopping on the first case that
+    sees it keeps the failure cheap, and the recorded message carries the
+    adapter's exit code and stderr, so the cause is legible without a second run.
+    The line is printed as well as recorded because the run's own summary is
+    written on the machine under test, while the driver reads only this stream.
+    """
+    if route_health is None:
+        return False
+    if "provider_route_failure" in report:
+        return True
+    failure = route_health()
+    if failure is None:
+        return False
+    report["provider_route_failure"] = failure
+    print(json.dumps({"provider_route_failure": failure}), flush=True)
+    return True
+
+
 def run_suite(
     *,
     expected_source_sha: str,
@@ -386,6 +409,7 @@ def run_suite(
     max_load: float | None = None,
     max_load_wait: float = 180.0,
     profile: str = "core",
+    route_health: Callable[[], str | None] | None = None,
 ) -> dict[str, Any]:
     """Run the complete profile or explicitly label a targeted exploratory run."""
     if re.fullmatch(r"[0-9a-f]{40}", expected_source_sha) is None:
@@ -460,6 +484,9 @@ def run_suite(
     gate = LoadGate(max_load, max_wait=max_load_wait) if max_load is not None else None
     completed: dict[str, dict[str, Any]] = {}
 
+    def route_failed() -> bool:
+        return record_route_failure(report, route_health)
+
     def record(scenario: Scenario, case: dict[str, Any]) -> None:
         """Publish progress in catalog order, whatever order cases finish in."""
         completed[scenario.id] = {"id": scenario.id, **case}
@@ -494,6 +521,8 @@ def run_suite(
                     timeout=model_timeout,
                 )
             record(scenario, case)
+            if route_failed():
+                break
             if fail_fast and case["assessment"]["outcome"] != "pass":
                 break
     else:
@@ -529,10 +558,16 @@ def run_suite(
             spawn=spawn,
             on_complete=lambda index, result: record(selected[index], result),
             order=order,
-            should_stop=((lambda _index, result: result["assessment"]["outcome"] != "pass") if fail_fast else None),
+            should_stop=(
+                (lambda _index, result: route_failed() or (fail_fast and result["assessment"]["outcome"] != "pass"))
+                if fail_fast or route_health is not None
+                else None
+            ),
             admit=gate,
             slots=slot_pool,
         )
+    # A route that died after the last case still explains that case's failure.
+    route_failed()
     report["finished_at"] = datetime.now(timezone.utc).isoformat()
     report.setdefault("inference_usage", inference_usage(output / "cases", ()))
     report["stopped_early"] = len(report["cases"]) < len(selected)

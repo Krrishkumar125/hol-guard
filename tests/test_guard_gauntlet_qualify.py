@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from ci.gauntlet import qualify, qualify_setup
+from ci.gauntlet import lane_preflight, qualify, qualify_setup
 
 SHA = "a" * 40
 
@@ -237,6 +237,11 @@ def _fake_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, summaries: list
         },
     )
     monkeypatch.setattr(qualify_setup, "ensure_commit", lambda *_a: None)
+    monkeypatch.setattr(
+        lane_preflight,
+        "check_lane",
+        lambda *_a, **_k: {"identity": "test-lane", "delivered": 2, "total_tokens": 1},
+    )
     monkeypatch.setattr(qualify_setup, "git_show", lambda *_a, **_k: b'{"lockfileVersion": 3}')
     wheel = tmp_path / "hol_guard-1.0.0-any.whl"
     wheel.write_bytes(b"wheel")
@@ -313,6 +318,7 @@ def test_qualifying_attempt_verifies_and_returns_zero(tmp_path: Path, monkeypatc
     assert set(result["phase_seconds"]) == {
         "preflight",
         "source",
+        "lane",
         "wheel",
         "install",
         "live_cases",
@@ -496,6 +502,19 @@ def test_prepare_only_keeps_the_installed_candidate_and_runs_no_attempt(
     assert result["sdk"]["root"] == str((tmp_path / "sdk").resolve())
     assert result["attempts"] == [] and result["cleanup"] == ["candidate-worktree-kept"]
     assert removed == [] and verify_calls == []
+
+
+def test_prepare_only_needs_no_live_inference_lane(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """Building and installing the candidate must not depend on a signed-in provider."""
+    _fake_setup(monkeypatch, tmp_path, [])
+
+    def dead_lane(*_a: Any, **_k: Any) -> dict[str, Any]:
+        raise RuntimeError("inference lane is not answering")
+
+    monkeypatch.setattr(lane_preflight, "check_lane", dead_lane)
+    assert qualify.main(_args(tmp_path, prepare_only=True)) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["prepare_only"] is True and "lane" not in result["phase_seconds"]
 
 
 @pytest.mark.parametrize("prepare_only", [False, True])
