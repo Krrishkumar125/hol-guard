@@ -37,9 +37,7 @@ DEFAULT_LIMITATIONS = (
     "Coverage is limited to the reviewed operations and the surrounding Guard policy.",
     "A maintainer profile is not a security certification or an official upstream endorsement.",
 )
-LINKEDIN_RE = re.compile(
-    r"^https://(?:www\.)?linkedin\.com/(?:in|company)/[A-Za-z0-9][A-Za-z0-9-]{1,99}/?$"
-)
+LINKEDIN_RE = re.compile(r"^https://(?:www\.)?linkedin\.com/(?:in|company)/[A-Za-z0-9][A-Za-z0-9-]{1,99}/?$")
 X_RE = re.compile(r"^https://(?:www\.)?(?:x\.com|twitter\.com)/[A-Za-z0-9_]{1,15}/?$")
 
 
@@ -78,7 +76,9 @@ def _contributor_profile(profile: object) -> None:
     linkedin = profile.get("linkedin")
     if linkedin is not None:
         if not isinstance(linkedin, str) or LINKEDIN_RE.fullmatch(linkedin) is None:
-            raise BuilderError("listing_url", "Contributor LinkedIn links must use a public LinkedIn profile or company URL.")
+            raise BuilderError(
+                "listing_url", "Contributor LinkedIn links must use a public LinkedIn profile or company URL."
+            )
         _public_https(linkedin)
     x_url = profile.get("x")
     if x_url is not None:
