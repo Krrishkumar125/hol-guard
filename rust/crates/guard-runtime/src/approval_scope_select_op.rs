@@ -50,6 +50,7 @@ pub(crate) fn evaluate_approval_scope_select_request(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn evaluate(request: &ApprovalScopeSelectRequestV1) -> Value {
     evaluate_with_owner(request, None)
 }
