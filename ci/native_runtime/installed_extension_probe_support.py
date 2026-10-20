@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from collections.abc import Mapping
@@ -467,6 +468,9 @@ def require_native_http_admission(response: Mapping[str, object]) -> None:
 
 
 _RELEASE_DOWNLOAD = "https://github.com/hashgraph-online/hol-guard/releases/download/"
+# The only names native code builds for an installed pack asset.
+_RELEASE_TAG = re.compile(r"extension-data-[0-9a-f]{40}-0\.0-[0-9]{6}")
+_PACK_ASSET = re.compile(r"pack-[0-9a-f]{64}\.zip")
 
 
 def serve_release_assets(directory: Path) -> None:
@@ -481,10 +485,15 @@ def serve_release_assets(directory: Path) -> None:
     def download(url: str, maximum: int) -> bytes:
         _require(url.startswith(_RELEASE_DOWNLOAD), "release_asset_url")
         tag, _, asset = url.removeprefix(_RELEASE_DOWNLOAD).partition("/")
-        _require(bool(tag) and bool(asset) and "/" not in asset, "release_asset_url")
+        _require(
+            _RELEASE_TAG.fullmatch(tag) is not None and _PACK_ASSET.fullmatch(asset) is not None,
+            "release_asset_url",
+        )
         path = directory / tag / asset
         _require(path.is_file() and not path.is_symlink(), "release_asset_missing")
-        data = path.read_bytes()
+        _require(path.stat().st_size <= maximum, "release_asset_too_large")
+        with path.open("rb") as stream:
+            data = stream.read(maximum + 1)
         _require(len(data) <= maximum, "release_asset_too_large")
         return data
 
