@@ -10,7 +10,7 @@ import re
 import shutil
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Container, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -71,6 +71,40 @@ from .supply_chain import stage_supply_chain
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
+# The only outcomes that say Guard itself did the wrong thing: it stopped
+# ordinary work, or it let a protected operation through.
+PRODUCT_FAILURES = frozenset({"false-positive", "false-negative"})
+
+
+def disqualifying(result: dict[str, Any]) -> bool:
+    """True when this case proved a product failure, so running the rest proves nothing.
+
+    A case the model never exercised, a provider round that died, or a host tool
+    that failed with no Guard deny behind it says nothing about Guard. Ending the
+    attempt on one of those spends the whole remaining catalog to learn that the
+    model was uncooperative, and the cases that never run are the ones scheduled
+    last: the protection cases that carry every false-negative proof.
+    """
+    return result["assessment"]["outcome"] in PRODUCT_FAILURES
+
+
+def case_coverage(
+    selected: Sequence[Scenario], catalog: Sequence[Scenario], executed: Container[str]
+) -> dict[str, Any]:
+    """How much of the catalog this run actually executed.
+
+    A run that stopped early used to report only the outcomes of the cases it
+    reached, so a sweep truncated a third of the way through read as a clean
+    record rather than as a truncated one. The ids that never ran are listed
+    here so that gap cannot pass unread.
+    """
+    missing = [scenario.id for scenario in selected if scenario.id not in executed]
+    return {
+        "catalog_cases": len(catalog),
+        "selected_cases": len(selected),
+        "executed_cases": len(selected) - len(missing),
+        "unexecuted_cases": missing,
+    }
 
 
 def run_case(
@@ -503,6 +537,7 @@ def run_suite(
         report["inference_usage"] = inference_usage(
             output / "cases", [scenario.id for scenario in selected if scenario.id in completed]
         )
+        report["case_coverage"] = case_coverage(selected, catalog, completed)
         print(json.dumps({"scenario": scenario.id, **case["assessment"]}), flush=True)
         (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
 
@@ -523,7 +558,7 @@ def run_suite(
             record(scenario, case)
             if route_failed():
                 break
-            if fail_fast and case["assessment"]["outcome"] != "pass":
+            if fail_fast and disqualifying(case):
                 break
     else:
         workdir = root / "workers"
@@ -559,7 +594,7 @@ def run_suite(
             on_complete=lambda index, result: record(selected[index], result),
             order=order,
             should_stop=(
-                (lambda _index, result: route_failed() or (fail_fast and result["assessment"]["outcome"] != "pass"))
+                (lambda _index, result: route_failed() or (fail_fast and disqualifying(result)))
                 if fail_fast or route_health is not None
                 else None
             ),
@@ -570,6 +605,7 @@ def run_suite(
     route_failed()
     report["finished_at"] = datetime.now(timezone.utc).isoformat()
     report.setdefault("inference_usage", inference_usage(output / "cases", ()))
+    report["case_coverage"] = case_coverage(selected, catalog, completed)
     report["stopped_early"] = len(report["cases"]) < len(selected)
     report.update(report_sections(report["cases"]))
     report["pass"] = (

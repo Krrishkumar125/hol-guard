@@ -180,6 +180,11 @@ def summarize_attempt(
                 if case.get("outcome") != "pass"
             ],
             "inference_usage": summary.get("inference_usage"),
+            # How much of the catalog this attempt reached. A truncated attempt
+            # that reports only its pass count reads as a clean record of the
+            # whole profile, which is how 59% of the catalog went unrun through
+            # a release sweep without anyone noticing.
+            "case_coverage": summary.get("case_coverage"),
         }
     )
     return record
@@ -442,7 +447,13 @@ def main(args: Any) -> int:
                 record = summarize_attempt(k, evidence, rc, time.monotonic() - t0, _read_summary(evidence))
                 record["work_root"] = str(work)
                 attempts.append(record)
-                progress(f"attempt {k} exit={rc} pass={record['pass']}")
+                covered = record.get("case_coverage") or {}
+                reached = (
+                    f" cases={covered['executed_cases']}/{covered['selected_cases']}"
+                    if covered.get("selected_cases")
+                    else ""
+                )
+                progress(f"attempt {k} exit={rc} pass={record['pass']}{reached}")
                 if "error" in record:
                     break
                 if record["pass"]:

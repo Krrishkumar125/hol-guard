@@ -62,7 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument(
         "--fail-fast",
         action="store_true",
-        help="Stop scheduling new cases after the first non-pass outcome; in-flight cases finish normally",
+        help="Stop scheduling new cases after the first false positive or false negative; a case the model "
+        "never exercised, a dead provider round or a host-tool failure is recorded and the run continues",
     )
     run.add_argument(
         "--host-slots",
