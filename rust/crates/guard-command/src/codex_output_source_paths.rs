@@ -453,7 +453,6 @@ mod unix_tests {
 
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
-    use std::path::Path;
 
     use super::*;
     use crate::sfrs_token_vectors::NoEnvHost;
