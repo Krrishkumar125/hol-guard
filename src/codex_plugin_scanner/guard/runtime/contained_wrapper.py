@@ -128,15 +128,21 @@ def _lex(command: str) -> tuple[list[tuple[str, bool]], bool]:
 def sibling_project_root(directory: Path, *, home: Path | None) -> Path | None:
     """The repository holding a cd target outside the hook workspace, as native authority finds it.
 
-    The nearest ancestor with a `.git` entry, strictly below home or the system
-    temporary directory and owned by this user. The sink rebases its approved
-    root there, so the run is contained to that repository exactly as it would
+    The nearest ancestor with a `.git` entry, strictly below home - or the
+    system temporary directory, on POSIX - and owned by this user. The sink
+    rebases its approved root there, so the run is contained to that repository exactly as it would
     be from a session started in it.
     """
     if home is None:
         return None
     directory = directory.resolve(strict=True)
-    for base in (home, Path("/tmp")):
+    # Native authority's Windows arm bases the search on the profile alone, so a
+    # checkout outside it keeps its review. `Path("/tmp")` resolves to `C:\tmp`
+    # on the current drive, which any authenticated user can create, and the
+    # owner check Python can still make there is the native one - which never
+    # runs for a root native would not return. Keep the bases identical.
+    bases = (home,) if os.name == "nt" else (home, Path("/tmp"))
+    for base in bases:
         try:
             base = base.resolve(strict=True)
         except (OSError, RuntimeError):

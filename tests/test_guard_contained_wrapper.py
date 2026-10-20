@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -425,6 +426,31 @@ def test_the_owner_question_is_left_to_native_authority_on_windows(
     # The structural questions Python can still answer stay answered.
     assert sibling_project_root(home / "loose", home=home) is None
     assert sibling_project_root(tmp_path, home=home) is None
+
+
+@pytest.mark.skipif(not Path("/tmp").is_dir(), reason="needs a POSIX temporary root")
+def test_windows_does_not_accept_a_checkout_under_the_temporary_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Leaving the owner to native authority only holds for roots it would return.
+
+    Native's Windows arm bases the search on the profile alone, so it never asks
+    `owned_by_current_user` about a checkout under the temporary root - and
+    `Path("/tmp")` resolves to `C:\\tmp` there, which any authenticated user can
+    create. Accepting one would rebase the sandbox onto a planted repository
+    with no owner check from either side.
+    """
+
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix="guard-sibling-") as value:
+        planted = Path(value) / "planted"
+        (planted / ".git").mkdir(parents=True)
+        home = Path(value) / "home"
+        home.mkdir()
+
+        assert sibling_project_root(planted, home=home) == planted.resolve()
+
+        monkeypatch.setattr(contained_wrapper.os, "name", "nt")
+        assert sibling_project_root(planted, home=home) is None
 
 
 def test_home_itself_is_never_a_sibling_repository(tmp_path: Path) -> None:
