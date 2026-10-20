@@ -4063,5 +4063,35 @@
       "scanner_action": null,
       "scanner_risk_signals": []
     }
+  },
+  {
+    "expected": {
+      "reason": "HOL Guard stopped this Codex prompt before Codex could open a credential-looking local file. Codex does not expose native approval prompts for Read-tool file reads, so Guard blocks this request at prompt time."
+    },
+    "name": "prompt_request_reason_codex_secret_read",
+    "query": {
+      "harness": "codex",
+      "kind": "prompt_request_reason",
+      "policy_action": "block",
+      "prompt_classes": [
+        "secret_read"
+      ],
+      "prompt_summary": "Asks to read a credential-looking local file in the workspace"
+    }
+  },
+  {
+    "expected": {
+      "reason": "HOL Guard blocked this prompt because it asks to bypass or disable Guard."
+    },
+    "name": "prompt_request_reason_bypass_intent",
+    "query": {
+      "harness": "claude-code",
+      "kind": "prompt_request_reason",
+      "policy_action": "block",
+      "prompt_classes": [
+        "guard_bypass_intent"
+      ],
+      "prompt_summary": null
+    }
   }
 ]

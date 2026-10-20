@@ -81,6 +81,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::DAEMON_ROUTE_FEATURE,
     guard_contracts::DAEMON_HANDLER_FEATURE,
     guard_contracts::HOOK_ARTIFACT_COMPOSE_FEATURE,
+    guard_contracts::HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE,
     guard_contracts::CONSUMER_ARTIFACT_COMPOSE_FEATURE,
     guard_contracts::CONSUMER_ARTIFACT_PROJECT_FEATURE,
     guard_contracts::HOOK_ADAPTER_FEATURE,

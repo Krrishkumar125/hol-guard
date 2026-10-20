@@ -21,6 +21,7 @@ from .native_context import _canonical_request_sha256, _resolve_digest_home, ens
 from .native_execution import _resident_request
 
 HOOK_ARTIFACT_COMPOSE_FEATURE = "hook-artifact-compose-v1"
+HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE = "hook-artifact-compose-prompt-reason-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-compose-request.v1"
 _RESULT_SCHEMA = "guard-hook-artifact-compose-result.v1"
 _RESIDENT_CODE = re.compile(r"^native_hook_artifact_compose_[a-z_]{1,64}$")
@@ -135,7 +136,12 @@ _FIELDS: dict[str, frozenset[str]] = {
         }
     ),
     "decision_build_copy": frozenset({"copy", "reason", "signals"}),
+    "prompt_request_reason": frozenset({"harness", "prompt_classes", "prompt_summary", "policy_action"}),
 }
+
+# The feature a kind needs beyond the op itself. A runtime that predates the
+# kind rejects it as an unknown kind, so the gate is per kind, not per op.
+_KIND_FEATURES: dict[str, str] = {"prompt_request_reason": HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE}
 
 # The exact answer shape of each query kind. Spec letters: a action,
 # A action or null, b bool, s string, S string or null, d dict, D dict or null,
@@ -178,6 +184,7 @@ _ANSWERS: dict[str, dict[str, str]] = {
     },
     "decision_copy": {"decision_overrides": "d", "risk_headline": "S"},
     "decision_build_copy": {"decision_v2": "d", "risk_headline": "S"},
+    "prompt_request_reason": {"reason": "s"},
 }
 
 
@@ -241,7 +248,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
         request=request,
         guard_home=home,
         timeout_seconds=_TIMEOUT_SECONDS,
-        required_feature=HOOK_ARTIFACT_COMPOSE_FEATURE,
+        required_feature=_KIND_FEATURES.get(kind, HOOK_ARTIFACT_COMPOSE_FEATURE),
         response_schema=_RESULT_SCHEMA,
     )
     if (
@@ -274,6 +281,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
 
 __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE",
     "NativeHookComposeError",
     "NativeHookComposeValidationError",
     "native_hook_compose",

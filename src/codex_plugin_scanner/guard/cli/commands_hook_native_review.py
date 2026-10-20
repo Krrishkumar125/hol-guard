@@ -267,7 +267,12 @@ def review_native_artifact_hook(
             response_payload = state.response_payload
             state.browser_approval_daemon_client = None
             return None
-        native_reason = _runtime_artifact_native_reason(runtime_artifact, response_payload)
+        native_reason = _runtime_artifact_native_reason(
+            runtime_artifact,
+            response_payload,
+            composer=native_hook_compose,
+            guard_home=state.guard_home,
+        )
         additional_context = _claude_prompt_additional_context(
             harness=args.harness,
             event_name=event_name,

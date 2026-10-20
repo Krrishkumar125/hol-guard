@@ -996,7 +996,12 @@ def evaluate_native_artifact_hook(
             policy_action=policy_action,
             guard_payload=response_payload,
         ):
-            native_reason = _runtime_artifact_native_reason(runtime_artifact, response_payload)
+            native_reason = _runtime_artifact_native_reason(
+                runtime_artifact,
+                response_payload,
+                composer=native_hook_compose,
+                guard_home=context.guard_home,
+            )
             _record_cursor_pending_shell_permission(
                 store=store,
                 guard_home=context.guard_home,

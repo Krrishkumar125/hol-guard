@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -257,22 +259,40 @@ def _prompt_request_classes(artifact: GuardArtifact) -> set[str]:
     values = prompt_classes if isinstance(prompt_classes, list) else [artifact.metadata.get("prompt_request_class")]
     return {str(item) for item in values if isinstance(item, str) and item.strip()}
 
-def _native_prompt_context(artifact: GuardArtifact) -> str:
-    if _prompt_requires_hard_block(artifact):
-        return "HOL Guard blocked this prompt because it asks to bypass or disable Guard."
-    prompt_classes = _prompt_request_classes(artifact)
-    if "secret_read" in prompt_classes:
-        return (
-            "HOL Guard flagged this prompt because it asks for direct local secret access and is protecting your "
-            "local secrets. "
-            "If that is intentional, continue and Guard will ask again on the actual tool call."
-        )
-    return (
-        "HOL Guard flagged this prompt as higher risk. Continue only if you expect the next tool call to need "
-        "explicit approval."
-    )
+def _prompt_request_reason(
+    artifact: GuardArtifact,
+    response_payload: dict[str, object],
+    *,
+    composer: Callable[..., dict[str, object]],
+    guard_home: Path | None,
+) -> str:
+    """What the resident says a flagged prompt request asks for.
 
-def _runtime_artifact_native_reason(artifact: GuardArtifact, response_payload: dict[str, object]) -> str:
+    The classes are read out of the artifact; which of them decides the copy,
+    and what that copy is, belong to the resident.
+    """
+
+    prompt_summary = artifact.metadata.get("prompt_summary")
+    answer = composer(
+        "prompt_request_reason",
+        {
+            "harness": _optional_string(response_payload.get("harness")),
+            "prompt_classes": sorted(_prompt_request_classes(artifact)),
+            "prompt_summary": prompt_summary if isinstance(prompt_summary, str) else None,
+            "policy_action": _optional_string(response_payload.get("policy_action")),
+        },
+        guard_home=guard_home,
+    )
+    return str(answer["reason"])
+
+
+def _runtime_artifact_native_reason(
+    artifact: GuardArtifact,
+    response_payload: dict[str, object],
+    *,
+    composer: Callable[..., dict[str, object]],
+    guard_home: Path | None,
+) -> str:
     guidance = response_payload.get("blocked_request_guidance")
     if isinstance(guidance, str) and guidance.strip():
         return guidance.strip()
@@ -280,24 +300,12 @@ def _runtime_artifact_native_reason(artifact: GuardArtifact, response_payload: d
     if decision_message is not None and _should_use_decision_v2_harness_message(response_payload, decision_message):
         return decision_message
     if artifact.artifact_type == "prompt_request":
-        harness = response_payload.get("harness")
-        prompt_classes = _prompt_request_classes(artifact)
-        if harness == "codex" and "secret_read" in prompt_classes:
-            prompt_summary = artifact.metadata.get("prompt_summary")
-            if isinstance(prompt_summary, str) and "credential-looking local file" in prompt_summary:
-                return (
-                    "HOL Guard stopped this Codex prompt before Codex could open a credential-looking local file. "
-                    "Codex does not expose native approval prompts for Read-tool file reads, so Guard blocks this "
-                    "request at prompt time."
-                )
-            return (
-                "HOL Guard stopped this Codex prompt before Codex could open a sensitive local file. Codex does not "
-                "expose native approval prompts for Read-tool file reads, so Guard blocks this request at prompt time."
-            )
-        policy_action = response_payload.get("policy_action")
-        if policy_action in {"block", "sandbox-required"} and not _prompt_requires_hard_block(artifact):
-            return "HOL Guard blocked this prompt because it requests guarded local secret access."
-        return _native_prompt_context(artifact)
+        return _prompt_request_reason(
+            artifact,
+            response_payload,
+            composer=composer,
+            guard_home=guard_home,
+        )
     path_class = artifact.metadata.get("path_class")
     tool_name = artifact.metadata.get("tool_name")
     if isinstance(path_class, str) and isinstance(tool_name, str):
@@ -579,7 +587,6 @@ __all__ = [
     "_guard_approvals_command",
     "_guard_diff_command",
     "_guard_rerun_command",
-    "_native_prompt_context",
     "_prompt_request_classes",
     "_prompt_requires_hard_block",
     "_run_approval_password_settings_command",

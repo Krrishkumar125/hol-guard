@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 
+from ..native_hook_artifact_compose import native_hook_compose
 from .commands_support import *
 
 if TYPE_CHECKING:
@@ -248,7 +249,12 @@ def finalize_native_artifact_hook(
         response_payload = state.response_payload
     record_native_artifact_hook_receipt(state, store)
     approval_context = live_hook_approval_context(response_payload, harness=args.harness, guard_home=store.guard_home)
-    raw_runtime_reason = _runtime_artifact_native_reason(runtime_artifact, response_payload)
+    raw_runtime_reason = _runtime_artifact_native_reason(
+        runtime_artifact,
+        response_payload,
+        composer=native_hook_compose,
+        guard_home=store.guard_home,
+    )
     if _should_emit_native_hook_exit_block(args, event_name=event_name, policy_action=policy_action):
         if _canonical_harness_name(args.harness) == "codex" and approval_context is not None:
             native_block_reason = _native_hook_reason(
