@@ -128,6 +128,8 @@ def test_rust_shards_preserve_full_target_selection(
     )
     cargo.chmod(0o755)
     capture = tmp_path / "cargo.json"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
     subprocess.run(
         ["bash", "-e", "-o", "pipefail", "-c", validate],
         env={
@@ -139,7 +141,7 @@ def test_rust_shards_preserve_full_target_selection(
             "CARGO_PROFILE_TEST_OPT_LEVEL": "1",
             "RUNTIME_ARCHIVE_HIT": str(archive_hit).lower(),
             "RUNNER_TEMP": str(tmp_path),
-            "GITHUB_WORKSPACE": str(ROOT),
+            "GITHUB_WORKSPACE": str(workspace),
         },
         check=True,
         capture_output=True,
@@ -147,12 +149,13 @@ def test_rust_shards_preserve_full_target_selection(
     )
     invocation = json.loads(capture.read_text())
     assert invocation["opt"] == "1"
+    assert (workspace / "rust/target").is_dir() is archive_hit
     if archive_hit:
         build_args = [
             "--archive-file",
             str(tmp_path / "runtime-test-archive.tar.zst"),
             "--workspace-remap",
-            str(ROOT / "rust"),
+            str(workspace / "rust"),
         ]
     else:
         build_args = ["--manifest-path", "rust/Cargo.toml", "--locked", "--all-targets", *packages]

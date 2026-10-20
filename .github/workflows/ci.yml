@@ -274,6 +274,7 @@ jobs:
               esac
               nextest_bin="$(python3 scripts/ci/install_nextest.py)"
               if [[ "${RUNTIME_ARCHIVE_HIT:-false}" == true ]]; then
+                mkdir -p "$GITHUB_WORKSPACE/rust/target"
                 PATH="$nextest_bin:$PATH" cargo nextest run \
                   --archive-file "$RUNNER_TEMP/runtime-test-archive.tar.zst" \
                   --workspace-remap "$GITHUB_WORKSPACE/rust" "${nextest_args[@]}" \
