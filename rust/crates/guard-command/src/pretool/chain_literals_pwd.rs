@@ -116,6 +116,18 @@ pub(super) fn project(command: &str, cwd: &str, allowed: impl Fn(&str) -> bool) 
     let projected_chars: Vec<char> = projected.chars().collect();
     let tokens = tokenize(&projected_chars)?;
     let list = items(&tokens)?;
+    // The root comes from `.git` as it is now. A step that runs first, such
+    // as `git init`, could move it, so a root use must be in the first stage.
+    if values.toplevel.as_ref().is_some_and(Option::is_some)
+        && list
+            .first()?
+            .0
+            .first()?
+            .last()
+            .is_none_or(|&(_, end)| end < last_use)
+    {
+        return None;
+    }
     // Every replacement ends no later than `last_use` in the projection, so
     // each step that starts before it runs before or alongside a use.
     for (stages, _) in &list {

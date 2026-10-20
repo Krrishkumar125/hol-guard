@@ -292,6 +292,10 @@ fn only_a_plain_cd_holding_the_last_use_may_change_the_directory() {
         "builtin cd \"$(git rev-parse --show-toplevel)\" && git status",
         "A=1 cd \"$(git rev-parse --show-toplevel)\" && git status",
         "pushd \"$(git rev-parse --show-toplevel)\" && git status",
+        // A step before the root use could move the root.
+        "git init -q && cd \"$(git rev-parse --show-toplevel)\" && git status",
+        "true; ls \"$(git rev-parse --show-toplevel)\"",
+        "echo x | ls \"$(git rev-parse --show-toplevel)\"",
     ] {
         assert_eq!(project(command, s), None, "{command}");
     }
