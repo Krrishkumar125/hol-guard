@@ -1,11 +1,12 @@
 //! Listing operands in a temporary directory agents keep scratch work in.
 //!
-//! A path below the shared temporary root, or below the home owner's private
-//! one, answers two listing shapes the home tree answers differently: a name
-//! that is not there, whatever it spells, and a pattern below the root
-//! itself. Neither reads anything the owner did not put there, and a home
-//! that itself lives below the temporary root - every test fixture, some
-//! sandboxes - keeps the home screens' own answers.
+//! A path below a temporary directory only the home owner can create an
+//! entry in - the owner's private temporary root, or an owned directory below
+//! the shared one - answers two listing shapes the home tree answers
+//! differently: a name that is not there, whatever it spells, and a pattern
+//! below that directory. Neither reads anything the owner did not put there,
+//! and a home that itself lives below the temporary root - every test
+//! fixture, some sandboxes - keeps the home screens' own answers.
 
 /// Whether `ancestor` is a temporary directory only the home owner can
 /// create an entry in. Below one, a name that is not there prints the same
@@ -20,22 +21,18 @@ pub(super) fn private_temporary_ancestor(
     std::fs::canonicalize(ancestor).is_ok_and(|canonical| outside_home(&canonical, context))
 }
 
-/// Whether a glob's literal directory is a temporary root: a shared one
-/// (`/tmp`) or the home owner's private one, or an owned directory below
-/// either. The listing names the matches, not the directory holding them,
-/// and every match is screened on its own, so a pattern below a root this
-/// admits names only what its own screens admit.
+/// Whether a glob's literal directory is a temporary directory only the home
+/// owner can create an entry in: the owner's private temporary root, or an
+/// owned directory below a shared one. The listing names the matches, not
+/// the directory holding them, and every match is screened on its own. The
+/// shared root itself (`/tmp`) is not one: the shell expands the pattern
+/// after the screen, and any local user can plant a matching link there in
+/// between, so a pattern directly below it keeps its review.
 pub(super) fn temporary_glob_directory(
     base: &std::path::Path,
     context: super::PathContext<'_>,
 ) -> bool {
-    let Ok(canonical) = std::fs::canonicalize(base) else {
-        return false;
-    };
-    super::git_routes::owned_temporary_roots()
-        .iter()
-        .any(|root| *root == canonical)
-        || outside_home(&canonical, context)
+    std::fs::canonicalize(base).is_ok_and(|canonical| outside_home(&canonical, context))
 }
 
 /// Whether canonical `path` is a temporary directory only the home owner can

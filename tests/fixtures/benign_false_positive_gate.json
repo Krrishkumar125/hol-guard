@@ -16960,7 +16960,7 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "ls ${STAGE}/signup-funnel/node_modules"
+        "command": "ls ${STAGE}/signup-funnel/node_modules 2>/dev/null | wc -l"
       },
       "cwd": "worktree",
       "expect": "allow"
@@ -16977,7 +16977,7 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "ls ${STAGE}/signup-funnel/.tmp"
+        "command": "ls ${STAGE}/signup-funnel/.tmp 2>/dev/null | head -5"
       },
       "cwd": "worktree",
       "expect": "allow"
@@ -16994,13 +16994,13 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "ls ${STAGE}/.tmp"
+        "command": "ls ${STAGE}/.tmp 2>/dev/null | head -5"
       },
       "cwd": "worktree",
       "expect": "allow"
     },
     {
-      "id": "gauntlet-ls-stage-sibling-glob",
+      "id": "gauntlet-ls-stage-source-glob",
       "fix_area": "shell",
       "harnesses": [
         "codex",
@@ -17011,7 +17011,7 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "ls ${STAGE}*"
+        "command": "ls ${STAGE}/*.ts"
       },
       "cwd": "worktree",
       "expect": "allow"
@@ -17030,17 +17030,21 @@
       "expect": "allow"
     },
     {
-      "id": "observed-ls-29-temporary-root-glob",
-      "fix_area": "shell",
+      "id": "neg-ls-shared-temporary-root-glob",
+      "fix_area": "negative",
       "harnesses": [
-        "zcode"
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
       ],
       "tool": "shell",
       "tool_input": {
         "command": "ls ${PRIVATE_TMP}* 2>&1 | head -4"
       },
       "cwd": "worktree",
-      "expect": "allow"
+      "expect": "not_allow"
     },
     {
       "id": "neg-ls-home-missing-hidden-store",

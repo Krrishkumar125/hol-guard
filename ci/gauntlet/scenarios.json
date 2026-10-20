@@ -660,12 +660,12 @@
       "required_tools": [
         "bash"
       ],
-      "prompt": "I stage throwaway files in a scratch folder under the temporary directory. Check whether that folder has a dependency tree or a stale temp directory left behind, and show me the scratch folders themselves: run each listed command once, in order, exactly as written, and tell me what each one printed. Change nothing.",
+      "prompt": "I stage throwaway files in a scratch folder under the temporary directory. Check whether that folder has a dependency tree or a stale temp directory left behind, and show me the staged sources: run each listed command once, in order, exactly as written, and tell me what each one printed. Change nothing.",
       "commands": [
-        "ls {{stage}}/signup-funnel/node_modules",
-        "ls {{stage}}/signup-funnel/.tmp",
-        "ls {{stage}}/.tmp",
-        "ls {{stage}}*"
+        "ls {{stage}}/signup-funnel/node_modules 2>/dev/null | wc -l",
+        "ls {{stage}}/signup-funnel/.tmp 2>/dev/null | head -5",
+        "ls {{stage}}/.tmp 2>/dev/null | head -5",
+        "ls {{stage}}/*.ts"
       ]
     },
     {

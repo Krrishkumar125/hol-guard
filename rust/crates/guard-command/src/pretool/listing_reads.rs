@@ -285,9 +285,9 @@ fn leaf_glob_operand(value: &str, context: super::PathContext<'_>) -> bool {
         return false;
     };
     // The listing names the matches, not the directory holding them, so a
-    // temporary root agents keep their scratch directories in answers for a
-    // pattern below it (`ls /tmp/tmp.ab12*`) although listing that root
-    // whole stays reviewed. Every match is screened on its own below.
+    // temporary directory only the owner can add entries to answers for a
+    // pattern below it (`ls /tmp/tmp.ab12/pg*`) although listing it whole
+    // may stay reviewed. Every match is screened on its own below.
     if !safe_reads::safe_listing_arguments(&[directory.to_owned()], context)
         && !super::listing_temporary::temporary_glob_directory(&base, context)
     {
