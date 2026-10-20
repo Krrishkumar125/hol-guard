@@ -139,8 +139,12 @@ def test_classifiers_run_only_when_the_resident_asks() -> None:
 
 @pytest.mark.usefixtures("native_approval_reuse_runtime")
 def test_unrequested_or_missing_classifier_fails_closed() -> None:
+    # The resident asks for the patch classifier and the caller offers none.
     with pytest.raises(decision.NativeHookDecisionError):
-        decision.native_compose_current(_BASE_INPUTS, {})
+        decision.native_compose_current(_PATCH_INPUTS, {})
+    # A caller that offers only the wrong classifier is no better off.
+    with pytest.raises(decision.NativeHookDecisionError):
+        decision.native_compose_current(_PATCH_INPUTS, {"prompt_clean": lambda _event: True})
 
 
 @pytest.mark.usefixtures("native_approval_reuse_runtime")
