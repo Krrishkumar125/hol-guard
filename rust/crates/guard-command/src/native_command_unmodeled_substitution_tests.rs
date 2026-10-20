@@ -53,6 +53,9 @@ fn a_substitution_that_could_run_or_write_anything_is_not_bounded() {
         "find . -exec $(echo r)m {} \\;",
         "pkexec $(printf r)m -rf /",
         "nice -n 5 $(echo r)m -rf build",
+        // An interpreter runs the output it is handed as source.
+        "python3 -c \"$(cat x)\"",
+        "node -e \"$(cat x)\"",
         // A redirect target the floor cannot read.
         "git status > \"$(cat target)\"",
         "git status >$(cat target)",
@@ -126,6 +129,9 @@ fn a_substitution_that_runs_an_unnamed_program_keeps_the_evaluation_failure() {
         "command -p $(printf r)m -rf build",
         "find . -exec $(echo r)m {} \\;",
         "pkexec $(printf r)m -rf /",
+        // Interpreter source is never an inert argument.
+        "python3 -c \"$(cat x)\"; git status",
+        "node -e \"$(cat x)\"; git status",
     ] {
         assert_eq!(decision(&controls, command).1, FAILED, "{command}");
     }
