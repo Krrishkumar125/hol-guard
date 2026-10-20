@@ -77,7 +77,7 @@ pub(in crate::pretool) fn fresh_destination(
     // every directory on the way, is as private as one below home. Directly
     // in the sticky root or the user's own temporary directory, the leaf
     // must not exist yet, which the check above already proves.
-    let temporary = super::super::git_routes::temporary_checkout_parent(canonical_parent, context);
+    let temporary = fresh_temporary_parent(canonical_parent, context);
     if !existing_parent.is_dir() {
         return None;
     }
@@ -102,6 +102,40 @@ pub(in crate::pretool) fn fresh_destination(
         return None;
     }
     Some(destination)
+}
+
+/// Missing intermediate directories are safe only below an existing private
+/// temporary ancestor. A shared sticky root may hold a fresh checkout leaf,
+/// but cannot vouch for an intermediate directory another user could plant.
+pub(in crate::pretool) fn fresh_temporary_parent(
+    parent: &Path,
+    context: super::super::PathContext<'_>,
+) -> bool {
+    if super::super::git_routes::temporary_checkout_parent(parent, context) {
+        return true;
+    }
+    let mut existing = parent;
+    loop {
+        match std::fs::symlink_metadata(existing) {
+            Ok(metadata) => {
+                return metadata.is_dir()
+                    && super::super::git_routes::private_temporary_parent(existing, context);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if existing
+                    .file_name()
+                    .is_none_or(|name| name.to_string_lossy().starts_with('.'))
+                {
+                    return false;
+                }
+                let Some(ancestor) = existing.parent() else {
+                    return false;
+                };
+                existing = ancestor;
+            }
+            Err(_) => return false,
+        }
+    }
 }
 
 /// Whether every symlink on the way to `path` sits where only root or the

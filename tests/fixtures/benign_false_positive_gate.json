@@ -9016,6 +9016,17 @@
       "expect": "allow"
     },
     {
+      "id": "session-git-worktree-add-missing-private-temporary-parent",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": ["claude-code", "codex", "omp", "zcode", "cursor"],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add -b fix/nested-temporary ${TMP_ORG}/reviews/pending/report HEAD"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "neg-git-worktree-add-missing-protected-parent",
       "fix_area": "git-sibling-worktree",
       "harnesses": ["claude-code", "codex", "omp", "zcode", "cursor"],

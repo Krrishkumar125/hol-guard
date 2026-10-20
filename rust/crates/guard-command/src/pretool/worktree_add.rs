@@ -11,6 +11,7 @@ mod destination;
 mod names;
 
 pub(in crate::pretool) use destination::fresh_destination;
+pub(in crate::pretool) use destination::fresh_temporary_parent;
 use destination::resolve_chdir;
 
 pub(in crate::pretool) use names::{valid_branch_name, valid_destination_text};
@@ -215,7 +216,7 @@ pub(super) fn outside_home_reason(
         Path::new(&base).join(supplied)
     };
     let parent = std::fs::canonicalize(target.parent()?).ok()?;
-    if parent.starts_with(&home) || super::git_routes::temporary_checkout_parent(&parent, context) {
+    if parent.starts_with(&home) || fresh_temporary_parent(&parent, context) {
         return None;
     }
     Some(
