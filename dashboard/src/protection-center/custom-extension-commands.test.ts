@@ -5,7 +5,7 @@ import { normalizeLocalCliItem } from "../local-cli-api";
 import { commandPermissionChanges, mcpCatalogCopy, mcpToolCanReceiveDirectAllow, rebaseCommandDraft } from "./mcp-catalog-state";
 import { commandStatesPayload, withCommandState } from "./custom-extension-commands";
 import { customExtensionStateLabel } from "./local-clis-panel";
-import { customExtensionRowBehavior } from "./local-cli-panel-copy";
+import { customExtensionRowBehavior, customExtensionRowSource } from "./local-cli-panel-copy";
 
 {
   const catalog = {
@@ -157,10 +157,13 @@ assert.equal(
   });
   const unset = "Detected · Permissions not configured. Inspect this connection.";
   for (const app of ["Claude Code", "Oh My Pi", "OpenCode"]) {
-    assert.equal(customExtensionRowBehavior(detected(app)), `${app} · ${unset}`);
+    assert.equal(customExtensionRowSource(detected(app)), app);
+    // The status line stays whole; the app sits beside the name instead.
+    assert.equal(customExtensionRowBehavior(detected(app)), unset);
   }
-  assert.equal(customExtensionRowBehavior(detected(undefined)), unset);
-  // A command-line extension keeps its line; its app is not a connection host.
+  assert.equal(customExtensionRowSource(detected(undefined)), undefined);
+  // A command-line extension's source is a file or folder, not a host app.
+  assert.equal(customExtensionRowSource({ ...legacyAllowed, source_label: "~/bin" }), undefined);
   assert.equal(customExtensionRowBehavior(legacyAllowed), "Matching commands from this file are allowed.");
 }
 

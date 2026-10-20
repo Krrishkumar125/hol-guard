@@ -2077,6 +2077,13 @@ function customExtensionStateLabel(item) {
   }
   return item.surface === "mcp" ? "Detected · Permissions not configured. Inspect this connection." : item.example_label;
 }
+function customExtensionRowBehavior(item) {
+  const continuity = continuityCopy(item);
+  return continuity ? `${continuity.title}. ${continuity.description}` : customExtensionStateLabel(item);
+}
+function customExtensionRowSource(item) {
+  return item.surface === "mcp" && item.source_label ? item.source_label : void 0;
+}
 function continuityCopy(item) {
   const status = item.continuity?.status;
   if (status === "applied") {
@@ -2646,6 +2653,7 @@ function ProtectionModuleRow(props) {
         props.external ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] font-semibold text-brand-dark/55", children: "External" }) : null,
         props.managed ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] font-semibold text-brand-dark/55", children: props.managedLabel ?? "Synced from Guard Cloud" }) : null,
         props.custom ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] font-semibold text-brand-dark/55", children: "Custom" }) : null,
+        props.source ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "max-w-[16rem] truncate text-[11px] font-semibold text-brand-dark/55", title: props.source, "data-testid": "extension-row-source", children: props.source }) : null,
         props.badge ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded-full border border-brand-blue/30 bg-brand-blue/5 px-2 py-0.5 text-[11px] font-semibold text-brand-dark", "data-testid": "custom-extension-badge", children: props.badge }) : null
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block truncate text-sm text-brand-dark/70", children: props.behavior }),
@@ -7677,7 +7685,6 @@ function CustomExtensionRow(props) {
     else onOpen(item.cli_id);
   }, [item, onOpen, onSetUp]);
   const action = customExtensionActionLabel(item);
-  const continuity = continuityCopy(props.item);
   const catalog = mcpCatalogCopy(props.item);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     ProtectionModuleRow,
@@ -7685,7 +7692,8 @@ function CustomExtensionRow(props) {
       extensionId: props.item.cli_id,
       name: customExtensionDisplayName(props.item),
       description: customExtensionRowDescription(props.item, catalog?.title ?? null),
-      behavior: continuity ? `${continuity.title}. ${continuity.description}` : customExtensionStateLabel(props.item),
+      behavior: customExtensionRowBehavior(props.item),
+      source: customExtensionRowSource(props.item),
       brand: props.item.brand,
       badge: customExtensionBadge(props.item) ?? void 0,
       actionLabel: action ?? void 0,

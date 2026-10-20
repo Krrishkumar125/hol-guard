@@ -16,6 +16,7 @@ import {
   customExtensionActionLabel,
   customExtensionRowBehavior,
   customExtensionRowDescription,
+  customExtensionRowSource,
 } from "./local-cli-panel-copy";
 import { mcpCatalogCopy } from "./mcp-catalog-state";
 
@@ -39,6 +40,7 @@ function CustomExtensionRow(props: {
       name={customExtensionDisplayName(props.item)}
       description={customExtensionRowDescription(props.item, catalog?.title ?? null)}
       behavior={customExtensionRowBehavior(props.item)}
+      source={customExtensionRowSource(props.item)}
       brand={props.item.brand}
       badge={customExtensionBadge(props.item) ?? undefined}
       actionLabel={action ?? undefined}
