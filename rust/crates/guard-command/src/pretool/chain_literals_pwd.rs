@@ -98,9 +98,11 @@ pub(super) fn project_uses(
                 return None;
             }
             if listed(OPTION_SETTERS, &word)
-                && stage[leading + 1..]
-                    .iter()
-                    .any(|&(from, to)| sets_a_variable(&projected_chars[from..to]))
+                && sets_a_variable(
+                    stage[leading + 1..]
+                        .iter()
+                        .map(|&(from, to)| &projected_chars[from..to]),
+                )
             {
                 return None;
             }
@@ -109,13 +111,29 @@ pub(super) fn project_uses(
     Some(projected)
 }
 
-/// Whether an operand of an [`OPTION_SETTERS`] builtin is a `-v` option, in
-/// the separate (`-v NAME`) or the attached (`-vNAME`) form. The shell
-/// removes quotes and escapes before the builtin reads the word, so they are
-/// removed here too.
-fn sets_a_variable(word: &[char]) -> bool {
-    let mut chars = word.iter().filter(|&&c| !matches!(c, '\'' | '"' | '\\'));
-    chars.next() == Some(&'-') && chars.any(|&c| c == 'v')
+/// Whether an [`OPTION_SETTERS`] builtin may read one of its operands as the
+/// `-v` option, in the separate (`-v NAME`) or the attached (`-vNAME`) form.
+/// The builtin stops reading options at the first operand that is not one, so
+/// only the leading run is read. A word the shell still has to expand, such as
+/// the `$o` of `o=-v; printf $o $p$s %s /etc`, can spell that option, and one
+/// starting with `-` can be it outright. The shell removes quotes and escapes
+/// before the builtin reads the word, so they are removed here too.
+fn sets_a_variable<'a>(operands: impl Iterator<Item = &'a [char]>) -> bool {
+    for word in operands {
+        let mut chars = word.iter().filter(|&&c| !matches!(c, '\'' | '"' | '\\'));
+        match chars.next() {
+            Some('-') => {
+                if chars.any(|&c| c == 'v') {
+                    return true;
+                }
+            }
+            // An expansion is read as an option only where one could stand,
+            // and its text is unknown, so it keeps the chain opaque.
+            Some('$') => return true,
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// An absolute path whose characters the shell never splits, globs, quotes

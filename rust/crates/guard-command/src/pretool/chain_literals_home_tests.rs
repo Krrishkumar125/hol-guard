@@ -32,6 +32,12 @@ fn home_uses_before_any_assignment_take_the_home_directory() {
             "printf 'NVM_DIR=%s\\n' \"${HOME}/.nvm\"; ls ${HOME}/.nvm".to_owned(),
             format!("printf 'NVM_DIR=%s\\n' \"{h}/.nvm\"; ls {h}/.nvm"),
         ),
+        // `printf` stops reading options at its format string, so an
+        // expansion after it is text it prints, not a name it sets.
+        (
+            "printf '%s\\n' \"$node\"; ls \"$HOME/.nvm\"".to_owned(),
+            format!("printf '%s\\n' \"$node\"; ls \"{h}/.nvm\""),
+        ),
         // A directory change moves the working directory, not HOME.
         (
             "cd /tmp && ls \"$HOME/.nvm\"".to_owned(),
@@ -74,6 +80,8 @@ fn a_possible_home_change_before_a_use_keeps_it_opaque() {
         "printf -v p HO; printf -v s ME; printf -v $p$s %s /etc; cat $HOME/passwd",
         "printf -vHOME %s /etc; cat $HOME/passwd",
         "printf \"-v\" $p$s %s /etc && cat $HOME/passwd",
+        // The option word itself can come from an expansion.
+        "o=-v p=HO s=ME; printf $o $p$s %s /etc; cat $HOME/passwd",
     ] {
         assert_eq!(project(command, h), None, "{command}");
     }
