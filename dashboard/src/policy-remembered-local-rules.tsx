@@ -14,6 +14,8 @@ type PolicyRememberedLocalRulesProps = {
   onToggleSelect?: (policy: GuardPolicyDecision) => void;
   onClearSelection?: () => void;
   onRemoveSelected?: () => void;
+  removingSelected?: boolean;
+  removeError?: string | null;
 };
 
 export function PolicyRememberedLocalRules({
@@ -28,6 +30,8 @@ export function PolicyRememberedLocalRules({
   onToggleSelect,
   onClearSelection,
   onRemoveSelected,
+  removingSelected,
+  removeError,
 }: PolicyRememberedLocalRulesProps) {
   return (
     <GroupedPolicySection
@@ -48,6 +52,8 @@ export function PolicyRememberedLocalRules({
       onToggleSelect={onToggleSelect}
       onClearSelection={onClearSelection}
       onRemoveSelected={onRemoveSelected}
+      removingSelected={removingSelected}
+      removeError={removeError}
     />
   );
 }

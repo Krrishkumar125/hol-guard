@@ -113,7 +113,7 @@ test.describe("Rules & exceptions UX", () => {
 
   test("deep link opens cloud exceptions and empty search recovers", async ({ page }) => {
     await mount(page);
-    await page.goto(`/policy${DAEMON_PARAM}#cloud-exceptions`);
+    await page.goto(`/policy${DAEMON_PARAM}#policy-view=cloud-exceptions`);
     await expect(page.getByText("Guard Cloud is not connected")).toBeVisible();
     await expect(page.getByText("Connect Guard Cloud to request an exception.")).toBeVisible();
 

@@ -25,6 +25,7 @@ import { PolicyRulesOverview } from "./policy-rules-overview";
 import {
   countPolicyRules,
   filterPoliciesByAction,
+  isBulkRemovablePolicy,
   policySelectionKey,
   prunePolicySelection,
   resolveRulesResultSummary,
@@ -37,7 +38,7 @@ type PolicyRememberedRulesTabProps = {
   policies: GuardPolicyDecision[];
   snapshot: GuardRuntimeSnapshot;
   cloudControlsUrl: string | null;
-  onClearPolicy?: (policy: GuardPolicyDecision) => void;
+  onClearPolicy?: (policy: GuardPolicyDecision) => void | Promise<void>;
   onOpenCloudExceptions: () => void;
   onOpenInbox?: () => void;
   onNavigate?: (pathname: string) => void;
@@ -65,6 +66,8 @@ export function PolicyRememberedRulesTab({
   const [showFilters, setShowFilters] = useState(false);
   const [sort, setSort] = useState<PolicySortState>({ key: "updated", direction: "desc" });
   const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(new Set());
+  const [removingSelected, setRemovingSelected] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -152,21 +155,45 @@ export function PolicyRememberedRulesTab({
   });
   const hasActiveFilters = searchQuery.trim() !== "" || actionFilter !== "all" || appFilter !== "" || familyFilter !== "";
 
+  const bulkRemovableRules = useMemo(() => localRules.filter(isBulkRemovablePolicy), [localRules]);
+
   useEffect(() => {
-    setSelectedKeys((current) => prunePolicySelection(current, localRules));
-  }, [localRules]);
+    setSelectedKeys((current) => prunePolicySelection(current, bulkRemovableRules));
+  }, [bulkRemovableRules]);
 
   const handleToggleSelect = useCallback((policy: GuardPolicyDecision) => {
     setSelectedKeys((current) => togglePolicySelection(current, policySelectionKey(policy)));
   }, []);
-  const handleClearSelection = useCallback(() => setSelectedKeys(new Set()), []);
-  const handleRemoveSelected = useCallback(() => {
-    if (!onClearPolicy) return;
-    for (const policy of localRules) {
-      if (selectedKeys.has(policySelectionKey(policy))) onClearPolicy(policy);
-    }
+  const handleClearSelection = useCallback(() => {
     setSelectedKeys(new Set());
-  }, [localRules, onClearPolicy, selectedKeys]);
+    setRemoveError(null);
+  }, []);
+  const handleRemoveSelected = useCallback(async () => {
+    if (!onClearPolicy || removingSelected) return;
+    const targets = bulkRemovableRules.filter((policy) => selectedKeys.has(policySelectionKey(policy)));
+    if (targets.length === 0) return;
+    setRemovingSelected(true);
+    setRemoveError(null);
+    const failed = new Set<string>();
+    // Sequential: each clear refetches the policy list, so parallel clears can
+    // resolve out of order and resurrect rules that were already removed.
+    for (const policy of targets) {
+      try {
+        await onClearPolicy(policy);
+      } catch {
+        failed.add(policySelectionKey(policy));
+      }
+    }
+    setSelectedKeys(failed);
+    if (failed.size > 0) {
+      setRemoveError(
+        failed.size === 1
+          ? "1 rule could not be removed. It is still selected — try again."
+          : `${failed.size} rules could not be removed. They are still selected — try again.`,
+      );
+    }
+    setRemovingSelected(false);
+  }, [bulkRemovableRules, onClearPolicy, removingSelected, selectedKeys]);
 
   const handleExportCsv = useCallback(() => downloadPolicies("csv", rememberedRules), [rememberedRules]);
   const handleExportJson = useCallback(() => downloadPolicies("json", rememberedRules), [rememberedRules]);
@@ -300,6 +327,8 @@ export function PolicyRememberedRulesTab({
           onToggleSelect={onClearPolicy ? handleToggleSelect : undefined}
           onClearSelection={handleClearSelection}
           onRemoveSelected={onClearPolicy ? handleRemoveSelected : undefined}
+          removingSelected={removingSelected}
+          removeError={removeError}
         />
         <PolicyRememberedCloudRules
           policies={cloudRules}

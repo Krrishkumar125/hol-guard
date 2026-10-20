@@ -2,16 +2,22 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { resolvePolicyViewFromHash } from "./policy-workspace-page";
+import { resolvePolicyViewFromHash, withPolicyViewHash } from "./policy-workspace-page";
 import { resolvePolicyViewHint } from "./policy-workspace";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (name: string) => readFileSync(join(here, name), "utf8");
 
-assert.equal(resolvePolicyViewFromHash("#cloud-exceptions"), "exceptions");
-assert.equal(resolvePolicyViewFromHash("#how-guard-decides"), "strict");
-assert.equal(resolvePolicyViewFromHash("#remembered-rules"), "rules");
+assert.equal(resolvePolicyViewFromHash("#policy-view=cloud-exceptions"), "exceptions");
+assert.equal(resolvePolicyViewFromHash("#policy-view=how-guard-decides"), "strict");
+assert.equal(resolvePolicyViewFromHash("#policy-view=remembered-rules"), "rules");
 assert.equal(resolvePolicyViewFromHash(""), "rules");
+assert.equal(resolvePolicyViewFromHash("#guard-token=tok&guardDaemon=http://127.0.0.1:9"), "rules");
+// Tab writes preserve session/daemon fragment params.
+const preserved = withPolicyViewHash("#guard-token=tok&guardDaemon=http://127.0.0.1:9", "exceptions");
+assert.ok(preserved.includes("guard-token=tok"), "tab hash keeps the session token param");
+assert.ok(preserved.includes("guardDaemon="), "tab hash keeps the daemon param");
+assert.equal(resolvePolicyViewFromHash(preserved), "exceptions");
 assert.match(resolvePolicyViewHint("rules"), /approved or blocked/);
 
 const page = read("policy-workspace-page.tsx");

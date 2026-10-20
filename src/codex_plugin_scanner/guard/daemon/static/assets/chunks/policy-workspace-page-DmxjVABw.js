@@ -1,4 +1,4 @@
-import { j as jsxRuntimeExports, S as SectionLabel, _ as HiMiniXMark, a6 as Badge, T as Tag, o as HiMiniCommandLine, a4 as HiMiniExclamationTriangle, dG as scopeLabel, h as harnessDisplayName, A as ActionButton, bc as guardAwareHref, f as formatRelativeTime$1, q as HiMiniDocumentText, s as HiMiniCheckCircle, dH as HiMiniCloudArrowUp, e as HiMiniCheck, dI as HiMiniCodeBracket, dJ as HiMiniClipboardDocument, dK as HiMiniUsers, dj as HiMiniBeaker, bZ as HiMiniFolder, v as HiMiniLockClosed, R as HiMiniShieldCheck, bS as HiMiniInformationCircle, dq as HiMiniCloudArrowDown, cs as HiMiniArrowTopRightOnSquare, dL as HiMiniIdentification, dM as policyActionLabel, r as reactExports, dN as createCloudExceptionRequest, t as HiMiniArrowRight, N as EmptyState, p as HiMiniMagnifyingGlass, b as HiMiniChevronUp, c as HiMiniChevronDown, H as HiMiniChevronRight, dO as HiMiniPuzzlePiece, bX as HiMiniGlobeAlt, cw as HiMiniClock, dP as fetchCloudExceptions, dQ as fetchCloudExceptionRequests, dR as downloadBlob, dS as PolicyStatField, cW as HiMiniTrash, dT as PaginationControls, g as HiMiniNoSymbol, l as HiMiniCube, d as HiMiniArrowPath, a0 as HiMiniCloud, dU as HiMiniComputerDesktop, aM as HiMiniAdjustmentsHorizontal, dV as HiMiniArrowDownTray, dW as HiMiniInbox, dX as HiMiniQueueList, ba as WorkspacePageHeader, dE as lazyWorkspace, dF as __vitePreload } from "../guard-dashboard.js";
+import { j as jsxRuntimeExports, S as SectionLabel, _ as HiMiniXMark, a6 as Badge, T as Tag, o as HiMiniCommandLine, a4 as HiMiniExclamationTriangle, dG as scopeLabel, h as harnessDisplayName, A as ActionButton, bc as guardAwareHref, f as formatRelativeTime$1, q as HiMiniDocumentText, s as HiMiniCheckCircle, dH as HiMiniCloudArrowUp, e as HiMiniCheck, dI as HiMiniCodeBracket, dJ as HiMiniClipboardDocument, dK as HiMiniUsers, dj as HiMiniBeaker, bZ as HiMiniFolder, v as HiMiniLockClosed, R as HiMiniShieldCheck, bS as HiMiniInformationCircle, dq as HiMiniCloudArrowDown, cs as HiMiniArrowTopRightOnSquare, dL as HiMiniIdentification, dM as policyActionLabel, r as reactExports, dN as createCloudExceptionRequest, t as HiMiniArrowRight, N as EmptyState, p as HiMiniMagnifyingGlass, b as HiMiniChevronUp, c as HiMiniChevronDown, H as HiMiniChevronRight, dO as HiMiniPuzzlePiece, bX as HiMiniGlobeAlt, cw as HiMiniClock, dP as fetchCloudExceptions, dQ as fetchCloudExceptionRequests, dR as downloadBlob, dS as PolicyStatField, db as policyIdentityKey, cW as HiMiniTrash, dT as PaginationControls, g as HiMiniNoSymbol, l as HiMiniCube, d as HiMiniArrowPath, a0 as HiMiniCloud, dU as HiMiniComputerDesktop, aM as HiMiniAdjustmentsHorizontal, dV as HiMiniArrowDownTray, dW as HiMiniInbox, dX as HiMiniQueueList, dY as subscribeDashboardLocation, ba as WorkspacePageHeader, dE as lazyWorkspace, dF as __vitePreload } from "../guard-dashboard.js";
 import { C as ConnectGuardCloudButton } from "./connect-guard-cloud-button-COC8NKLs.js";
 const CLOUD_EXCEPTION_EXPIRING_SOON_DAYS = 7;
 function parseCloudExceptionTimestamp(value) {
@@ -3278,7 +3278,13 @@ function filterPoliciesByAction(policies, filter) {
   return policies.filter((policy) => policy.action === filter);
 }
 function policySelectionKey(policy) {
-  return `${policy.harness}-${policy.scope}-${policy.artifact_id ?? policy.publisher ?? "global"}-${policy.updated_at ?? ""}-${policy.source}`;
+  if (typeof policy.decision_id === "number") {
+    return `decision:${policy.decision_id}`;
+  }
+  return `identity:${policyIdentityKey(policy)}`;
+}
+function isBulkRemovablePolicy(policy) {
+  return policy.scope !== "global" && !isCloudManagedPolicy(policy.source);
 }
 function togglePolicySelection(selected, key) {
   const next = new Set(selected);
@@ -3409,7 +3415,7 @@ function PolicyRuleRow({ policy, cloudControlsUrl, onClear, onNavigate, cloudVar
   const folder = resolvePolicyRowFolder(policy);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(EvidenceTableRow, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(EvidenceTableCell, { className: "w-10", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
-      canClear && onToggleSelect ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      canClear && onToggleSelect && isBulkRemovablePolicy(policy) ? /* @__PURE__ */ jsxRuntimeExports.jsx(
         "input",
         {
           type: "checkbox",
@@ -3503,7 +3509,9 @@ function PolicyRuleTable({
   selectedKeys,
   onToggleSelect,
   onClearSelection,
-  onRemoveSelected
+  onRemoveSelected,
+  removingSelected = false,
+  removeError = null
 }) {
   const [page, setPage] = reactExports.useState(1);
   const sortedPolicies = reactExports.useMemo(() => sortPolicyDecisions(policies, sort), [policies, sort]);
@@ -3533,20 +3541,22 @@ function PolicyRuleTable({
         " selected"
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClearSelection, className: "min-h-9 rounded-lg px-2 text-sm font-medium text-slate-600 hover:text-brand-dark", children: "Clear selection" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClearSelection, disabled: removingSelected, className: "min-h-9 rounded-lg px-2 text-sm font-medium text-slate-600 hover:text-brand-dark disabled:opacity-50", children: "Clear selection" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "button",
           {
             type: "button",
             onClick: onRemoveSelected,
-            className: "inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-rose-600 px-3 text-sm font-medium text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-600/30",
+            disabled: removingSelected,
+            className: "inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-rose-600 px-3 text-sm font-medium text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-600/30 disabled:opacity-50",
             children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniTrash, { className: "h-4 w-4", "aria-hidden": "true" }),
-              "Remove selected"
+              removingSelected ? "Removing…" : "Remove selected"
             ]
           }
         )
-      ] })
+      ] }),
+      removeError ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "w-full text-sm text-rose-700", role: "alert", children: removeError }) : null
     ] }) : null,
     /* @__PURE__ */ jsxRuntimeExports.jsxs(EvidenceTable, { label: cloudVariant ? "Cloud policy rules" : "Remembered policy rules", tableClassName: TABLE_MIN_WIDTH_CLASS, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(EvidenceTableHead, { children: [
@@ -3650,7 +3660,9 @@ function GroupedPolicySection({
   selectedKeys,
   onToggleSelect,
   onClearSelection,
-  onRemoveSelected
+  onRemoveSelected,
+  removingSelected,
+  removeError
 }) {
   const [open, setOpen] = reactExports.useState(defaultOpen);
   const handleToggle = reactExports.useCallback(() => setOpen((current) => !current), []);
@@ -3704,7 +3716,9 @@ function GroupedPolicySection({
         selectedKeys,
         onToggleSelect,
         onClearSelection,
-        onRemoveSelected
+        onRemoveSelected,
+        removingSelected,
+        removeError
       }
     ) : null
   ] });
@@ -3765,7 +3779,9 @@ function PolicyRememberedLocalRules({
   selectedKeys,
   onToggleSelect,
   onClearSelection,
-  onRemoveSelected
+  onRemoveSelected,
+  removingSelected,
+  removeError
 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     GroupedPolicySection,
@@ -3786,7 +3802,9 @@ function PolicyRememberedLocalRules({
       selectedKeys,
       onToggleSelect,
       onClearSelection,
-      onRemoveSelected
+      onRemoveSelected,
+      removingSelected,
+      removeError
     }
   );
 }
@@ -3876,7 +3894,7 @@ function StatItem({
   ] });
 }
 function PolicyRulesOverview({ counts, protectionLabel, cloudConnected, bundleSynced }) {
-  const cloudDetail = !cloudConnected ? "Guard Cloud is not connected" : bundleSynced ? "Synced to this device" : "Sync needs attention — see below";
+  const cloudDetail = !cloudConnected ? "Guard Cloud is not connected" : bundleSynced === null ? "Connected — first bundle sync pending" : bundleSynced ? "Synced to this device" : "Sync needs attention — see below";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "Rules at a glance", className: "rounded-2xl border border-slate-200 bg-white shadow-sm", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-sm font-semibold text-brand-dark", children: "At a glance" }),
@@ -3970,6 +3988,8 @@ function PolicyRememberedRulesTab({
   const [showFilters, setShowFilters] = reactExports.useState(false);
   const [sort, setSort] = reactExports.useState({ key: "updated", direction: "desc" });
   const [selectedKeys, setSelectedKeys] = reactExports.useState(/* @__PURE__ */ new Set());
+  const [removingSelected, setRemovingSelected] = reactExports.useState(false);
+  const [removeError, setRemoveError] = reactExports.useState(null);
   const searchInputRef = reactExports.useRef(null);
   reactExports.useEffect(() => {
     const handleKeyDown = (event) => {
@@ -4068,20 +4088,39 @@ function PolicyRememberedRulesTab({
     familyFilter
   });
   const hasActiveFilters = searchQuery.trim() !== "" || actionFilter !== "all" || appFilter !== "" || familyFilter !== "";
+  const bulkRemovableRules = reactExports.useMemo(() => localRules.filter(isBulkRemovablePolicy), [localRules]);
   reactExports.useEffect(() => {
-    setSelectedKeys((current) => prunePolicySelection(current, localRules));
-  }, [localRules]);
+    setSelectedKeys((current) => prunePolicySelection(current, bulkRemovableRules));
+  }, [bulkRemovableRules]);
   const handleToggleSelect = reactExports.useCallback((policy) => {
     setSelectedKeys((current) => togglePolicySelection(current, policySelectionKey(policy)));
   }, []);
-  const handleClearSelection = reactExports.useCallback(() => setSelectedKeys(/* @__PURE__ */ new Set()), []);
-  const handleRemoveSelected = reactExports.useCallback(() => {
-    if (!onClearPolicy) return;
-    for (const policy of localRules) {
-      if (selectedKeys.has(policySelectionKey(policy))) onClearPolicy(policy);
-    }
+  const handleClearSelection = reactExports.useCallback(() => {
     setSelectedKeys(/* @__PURE__ */ new Set());
-  }, [localRules, onClearPolicy, selectedKeys]);
+    setRemoveError(null);
+  }, []);
+  const handleRemoveSelected = reactExports.useCallback(async () => {
+    if (!onClearPolicy || removingSelected) return;
+    const targets = bulkRemovableRules.filter((policy) => selectedKeys.has(policySelectionKey(policy)));
+    if (targets.length === 0) return;
+    setRemovingSelected(true);
+    setRemoveError(null);
+    const failed = /* @__PURE__ */ new Set();
+    for (const policy of targets) {
+      try {
+        await onClearPolicy(policy);
+      } catch {
+        failed.add(policySelectionKey(policy));
+      }
+    }
+    setSelectedKeys(failed);
+    if (failed.size > 0) {
+      setRemoveError(
+        failed.size === 1 ? "1 rule could not be removed. It is still selected — try again." : `${failed.size} rules could not be removed. They are still selected — try again.`
+      );
+    }
+    setRemovingSelected(false);
+  }, [bulkRemovableRules, onClearPolicy, removingSelected, selectedKeys]);
   const handleExportCsv = reactExports.useCallback(() => downloadPolicies("csv", rememberedRules), [rememberedRules]);
   const handleExportJson = reactExports.useCallback(() => downloadPolicies("json", rememberedRules), [rememberedRules]);
   const modeCopy = resolveSecurityModeCopy(snapshot.protection_posture ?? snapshot.security_level);
@@ -4196,7 +4235,9 @@ function PolicyRememberedRulesTab({
           selectedKeys,
           onToggleSelect: onClearPolicy ? handleToggleSelect : void 0,
           onClearSelection: handleClearSelection,
-          onRemoveSelected: onClearPolicy ? handleRemoveSelected : void 0
+          onRemoveSelected: onClearPolicy ? handleRemoveSelected : void 0,
+          removingSelected,
+          removeError
         }
       ),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -4503,16 +4544,22 @@ function resolveProtectionRulesPath(search) {
   }
   return `/settings?${params.toString()}`;
 }
-const POLICY_VIEW_HASH = {
+const POLICY_VIEW_PARAM = "policy-view";
+const POLICY_VIEW_VALUES = {
   rules: "remembered-rules",
   exceptions: "cloud-exceptions",
   strict: "how-guard-decides"
 };
 function resolvePolicyViewFromHash(hash) {
-  const value = hash.replace(/^#/, "");
-  if (value === POLICY_VIEW_HASH.exceptions) return "exceptions";
-  if (value === POLICY_VIEW_HASH.strict) return "strict";
+  const value = new URLSearchParams(hash.replace(/^#/, "")).get(POLICY_VIEW_PARAM);
+  if (value === POLICY_VIEW_VALUES.exceptions) return "exceptions";
+  if (value === POLICY_VIEW_VALUES.strict) return "strict";
   return "rules";
+}
+function withPolicyViewHash(hash, view) {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  params.set(POLICY_VIEW_PARAM, POLICY_VIEW_VALUES[view]);
+  return `#${params.toString()}`;
 }
 function PolicyWorkspacePage(props) {
   const [activeView, setActiveView] = reactExports.useState(
@@ -4527,9 +4574,13 @@ function PolicyWorkspacePage(props) {
     [props.policies]
   );
   reactExports.useEffect(() => {
-    const handleHashChange = () => setActiveView(resolvePolicyViewFromHash(window.location.hash));
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
+    const syncFromLocation = () => setActiveView(resolvePolicyViewFromHash(window.location.hash));
+    window.addEventListener("hashchange", syncFromLocation);
+    const unsubscribe = subscribeDashboardLocation(syncFromLocation);
+    return () => {
+      window.removeEventListener("hashchange", syncFromLocation);
+      unsubscribe();
+    };
   }, []);
   const handleOpenSettings = reactExports.useCallback(() => {
     const settingsPath = resolveProtectionRulesPath(window.location.search);
@@ -4542,7 +4593,7 @@ function PolicyWorkspacePage(props) {
   const handleOpenInbox = reactExports.useCallback(() => props.onOpenInbox(), [props]);
   const handleViewChange = reactExports.useCallback((view) => {
     setActiveView(view);
-    const hash = `#${POLICY_VIEW_HASH[view]}`;
+    const hash = withPolicyViewHash(window.location.hash, view);
     if (window.location.hash !== hash) {
       window.history.replaceState(null, "", hash);
     }
@@ -4602,5 +4653,6 @@ function PolicyWorkspacePage(props) {
 export {
   PolicyWorkspacePage,
   resolvePolicyViewFromHash,
-  resolveProtectionRulesPath
+  resolveProtectionRulesPath,
+  withPolicyViewHash
 };

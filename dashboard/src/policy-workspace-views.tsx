@@ -39,7 +39,7 @@ import {
 } from "./policy-workspace-helpers";
 import { resolvePolicyRowSourceLabel } from "./policy-managed-authority";
 import { GoverningExtensionLink } from "./policy-governing-extension-link";
-import { policySelectionKey } from "./policy-rules-overview-model";
+import { isBulkRemovablePolicy, policySelectionKey } from "./policy-rules-overview-model";
 export type { PolicySortKey, PolicySortState };
 const PAGE_SIZE = 10;
 const TABLE_MIN_WIDTH_CLASS = "min-w-[640px] lg:min-w-[980px]";
@@ -189,7 +189,7 @@ function PolicyRuleRow({ policy, cloudControlsUrl, onClear, onNavigate, cloudVar
     <EvidenceTableRow>
       <EvidenceTableCell className="w-10">
         <div className="flex items-center gap-2">
-          {canClear && onToggleSelect ? (
+          {canClear && onToggleSelect && isBulkRemovablePolicy(policy) ? (
             <input
               type="checkbox"
               checked={selected}
@@ -308,6 +308,8 @@ type PolicyRuleTableProps = {
   onToggleSelect?: (policy: GuardPolicyDecision) => void;
   onClearSelection?: () => void;
   onRemoveSelected?: () => void;
+  removingSelected?: boolean;
+  removeError?: string | null;
 };
 
 export function PolicyRuleTable({
@@ -325,6 +327,8 @@ export function PolicyRuleTable({
   onToggleSelect,
   onClearSelection,
   onRemoveSelected,
+  removingSelected = false,
+  removeError = null,
 }: PolicyRuleTableProps) {
   const [page, setPage] = useState(1);
 
@@ -360,18 +364,22 @@ export function PolicyRuleTable({
             {selectedCount} {selectedCount === 1 ? "rule" : "rules"} selected
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={onClearSelection} className="min-h-9 rounded-lg px-2 text-sm font-medium text-slate-600 hover:text-brand-dark">
+            <button type="button" onClick={onClearSelection} disabled={removingSelected} className="min-h-9 rounded-lg px-2 text-sm font-medium text-slate-600 hover:text-brand-dark disabled:opacity-50">
               Clear selection
             </button>
             <button
               type="button"
               onClick={onRemoveSelected}
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-rose-600 px-3 text-sm font-medium text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-600/30"
+              disabled={removingSelected}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-rose-600 px-3 text-sm font-medium text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-600/30 disabled:opacity-50"
             >
               <HiMiniTrash className="h-4 w-4" aria-hidden="true" />
-              Remove selected
+              {removingSelected ? "Removing…" : "Remove selected"}
             </button>
           </div>
+          {removeError ? (
+            <p className="w-full text-sm text-rose-700" role="alert">{removeError}</p>
+          ) : null}
         </div>
       ) : null}
       <EvidenceTable label={cloudVariant ? "Cloud policy rules" : "Remembered policy rules"} tableClassName={TABLE_MIN_WIDTH_CLASS}>
@@ -467,6 +475,8 @@ type GroupedPolicySectionProps = {
   onToggleSelect?: (policy: GuardPolicyDecision) => void;
   onClearSelection?: () => void;
   onRemoveSelected?: () => void;
+  removingSelected?: boolean;
+  removeError?: string | null;
 };
 
 export function GroupedPolicySection({
@@ -488,6 +498,8 @@ export function GroupedPolicySection({
   onToggleSelect,
   onClearSelection,
   onRemoveSelected,
+  removingSelected,
+  removeError,
 }: GroupedPolicySectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const handleToggle = useCallback(() => setOpen((current) => !current), []);
@@ -546,6 +558,8 @@ export function GroupedPolicySection({
           onToggleSelect={onToggleSelect}
           onClearSelection={onClearSelection}
           onRemoveSelected={onRemoveSelected}
+          removingSelected={removingSelected}
+          removeError={removeError}
         />
       ) : null}
     </section>

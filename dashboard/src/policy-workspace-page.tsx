@@ -6,6 +6,7 @@ import type { PolicyPageView } from "./policy-workspace";
 import { countPolicyRules } from "./policy-rules-overview-model";
 import { resolveCloudPolicyControlsUrl, resolveCloudExceptionsConnected } from "./policy-workspace-helpers";
 import { lazyWorkspace } from "./lazy-workspace";
+import { subscribeDashboardLocation } from "./dashboard-location";
 
 const PolicyWorkspace = lazyWorkspace("policy-workspace", () =>
   import("./policy-workspace").then((module) => ({ default: module.PolicyWorkspace })),
@@ -23,17 +24,30 @@ export function resolveProtectionRulesPath(search: string): string {
   return `/settings?${params.toString()}`;
 }
 
-const POLICY_VIEW_HASH: Record<PolicyPageView, string> = {
+const POLICY_VIEW_PARAM = "policy-view";
+
+const POLICY_VIEW_VALUES: Record<PolicyPageView, string> = {
   rules: "remembered-rules",
   exceptions: "cloud-exceptions",
   strict: "how-guard-decides",
 };
 
+/**
+ * The tab lives in a `policy-view` fragment parameter, never as the whole
+ * fragment: the dashboard also stores `guard-token` and `guardDaemon` there,
+ * and replacing the fragment would end storage-unavailable sessions.
+ */
 export function resolvePolicyViewFromHash(hash: string): PolicyPageView {
-  const value = hash.replace(/^#/, "");
-  if (value === POLICY_VIEW_HASH.exceptions) return "exceptions";
-  if (value === POLICY_VIEW_HASH.strict) return "strict";
+  const value = new URLSearchParams(hash.replace(/^#/, "")).get(POLICY_VIEW_PARAM);
+  if (value === POLICY_VIEW_VALUES.exceptions) return "exceptions";
+  if (value === POLICY_VIEW_VALUES.strict) return "strict";
   return "rules";
+}
+
+export function withPolicyViewHash(hash: string, view: PolicyPageView): string {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  params.set(POLICY_VIEW_PARAM, POLICY_VIEW_VALUES[view]);
+  return `#${params.toString()}`;
 }
 
 export function PolicyWorkspacePage(props: {
@@ -58,9 +72,14 @@ export function PolicyWorkspacePage(props: {
   );
 
   useEffect(() => {
-    const handleHashChange = () => setActiveView(resolvePolicyViewFromHash(window.location.hash));
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
+    const syncFromLocation = () => setActiveView(resolvePolicyViewFromHash(window.location.hash));
+    window.addEventListener("hashchange", syncFromLocation);
+    // Sidebar links navigate with pushState plus this event, without a remount.
+    const unsubscribe = subscribeDashboardLocation(syncFromLocation);
+    return () => {
+      window.removeEventListener("hashchange", syncFromLocation);
+      unsubscribe();
+    };
   }, []);
 
   const handleOpenSettings = useCallback(() => {
@@ -74,7 +93,7 @@ export function PolicyWorkspacePage(props: {
   const handleOpenInbox = useCallback(() => props.onOpenInbox(), [props]);
   const handleViewChange = useCallback((view: PolicyPageView) => {
     setActiveView(view);
-    const hash = `#${POLICY_VIEW_HASH[view]}`;
+    const hash = withPolicyViewHash(window.location.hash, view);
     if (window.location.hash !== hash) {
       window.history.replaceState(null, "", hash);
     }

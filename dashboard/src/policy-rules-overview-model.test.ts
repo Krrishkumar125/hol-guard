@@ -3,11 +3,16 @@ import type { GuardPolicyDecision } from "./guard-types";
 import {
   countPolicyRules,
   filterPoliciesByAction,
+  isBulkRemovablePolicy,
   policySelectionKey,
   prunePolicySelection,
   resolveRulesResultSummary,
   togglePolicySelection,
 } from "./policy-rules-overview-model";
+
+assert.equal(isBulkRemovablePolicy(policy({ scope: "workspace" })), true);
+assert.equal(isBulkRemovablePolicy(policy({ scope: "global" })), false);
+assert.equal(isBulkRemovablePolicy(policy({ scope: "workspace", source: "cloud-sync" })), false);
 
 function policy(overrides: Partial<GuardPolicyDecision>): GuardPolicyDecision {
   return {
@@ -41,6 +46,12 @@ assert.equal(filterPoliciesByAction(rules, "block").length, 1);
 const key = policySelectionKey(rules[0]);
 assert.equal(key, policySelectionKey({ ...rules[0] }));
 assert.notEqual(key, policySelectionKey(rules[1]));
+
+// Rules that share harness/scope/timestamp but differ in workspace stay distinct.
+const twinA = policy({ artifact_id: "same", workspace: "/work/a" });
+const twinB = policy({ artifact_id: "same", workspace: "/work/b" });
+assert.notEqual(policySelectionKey(twinA), policySelectionKey(twinB));
+assert.equal(policySelectionKey(policy({ decision_id: 7, workspace: "/work/a" })), "decision:7");
 
 let selected = togglePolicySelection(new Set<string>(), key);
 assert.equal(selected.has(key), true);

@@ -36,9 +36,11 @@ function StatItem({
 export function PolicyRulesOverview({ counts, protectionLabel, cloudConnected, bundleSynced }: PolicyRulesOverviewProps) {
   const cloudDetail = !cloudConnected
     ? "Guard Cloud is not connected"
-    : bundleSynced
-      ? "Synced to this device"
-      : "Sync needs attention — see below";
+    : bundleSynced === null
+      ? "Connected — first bundle sync pending"
+      : bundleSynced
+        ? "Synced to this device"
+        : "Sync needs attention — see below";
   return (
     <section aria-label="Rules at a glance" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-3">

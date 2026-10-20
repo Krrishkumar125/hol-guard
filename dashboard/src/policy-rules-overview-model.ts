@@ -1,4 +1,5 @@
 import type { GuardPolicyDecision } from "./guard-types";
+import { policyIdentityKey } from "./clear-policy-payload";
 import { isCloudManagedPolicy } from "./policy-workspace-helpers";
 
 export type PolicyActionFilter = "all" | "allow" | "block";
@@ -45,9 +46,25 @@ export function filterPoliciesByAction(
   return policies.filter((policy) => policy.action === filter);
 }
 
-/** Stable identity for selection/bulk actions. Mirrors the row key used by the table. */
+/**
+ * Stable identity for selection/bulk actions. Uses the full clear-policy
+ * identity (workspace, artifact hash, action, reason included) so two rules
+ * that merely share a timestamp can never be selected or removed together.
+ */
 export function policySelectionKey(policy: GuardPolicyDecision): string {
-  return `${policy.harness}-${policy.scope}-${policy.artifact_id ?? policy.publisher ?? "global"}-${policy.updated_at ?? ""}-${policy.source}`;
+  if (typeof policy.decision_id === "number") {
+    return `decision:${policy.decision_id}`;
+  }
+  return `identity:${policyIdentityKey(policy)}`;
+}
+
+/**
+ * Global-scope rules are excluded from bulk removal: the clear payload for a
+ * global decision clears every global decision, which is wider than any
+ * checkbox selection. Single removal keeps the existing labelled action.
+ */
+export function isBulkRemovablePolicy(policy: GuardPolicyDecision): boolean {
+  return policy.scope !== "global" && !isCloudManagedPolicy(policy.source);
 }
 
 export function togglePolicySelection(selected: ReadonlySet<string>, key: string): Set<string> {
