@@ -289,7 +289,7 @@ fn client_request_with_deadline_inner(
             }
             probe => drop(probe),
         }
-        restart_budget::consume_for_spawn(state_base, &scope)?;
+        restart_budget::consume_for_spawn(state_base, &scope, overall_deadline)?;
         let generation = next_generation(&scope, &digest)?;
         let mut token = [0u8; crate::AUTH_TOKEN_BYTES];
         getrandom::fill(&mut token).map_err(|_| "native_client_random_failed".to_owned())?;
