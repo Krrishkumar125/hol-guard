@@ -194,6 +194,9 @@ pub(super) fn approved_user_python_runtime(path: &Path) -> bool {
 
 /// `_executable_symlink_chain_is_approved` (:370-385).
 /// Links inside an approved external venv's `bin` are part of its launcher.
+/// A hop into the sealed developer directory stands on the same terms as in
+/// `allowed_executable_path`: a venv made from a `/usr/bin` shim links to the
+/// tool the shim forwards to, not to the shim.
 pub(super) fn executable_symlink_chain_is_approved(
     path: &Path,
     workspace: &Path,
@@ -209,6 +212,7 @@ pub(super) fn executable_symlink_chain_is_approved(
         if !path_is_within_lexically(&current, workspace)
             && !path_is_within_any_lexically(&current, &TRUSTED_EXECUTABLE_ROOTS)
             && !approved_user_python_runtime(&current)
+            && !super::developer_shim::is_developer_tool(&current)
             && !venv_root.is_some_and(|root| venv::in_bin(&current, root))
         {
             return false;
