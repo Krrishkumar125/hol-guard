@@ -65,6 +65,18 @@ fn layout(name: &str) -> (PathBuf, PathBuf) {
     (root, home)
 }
 
+/// A junction at `link` pointing at `target`, which a standard user may make.
+fn junction(link: &Path, target: &Path) -> bool {
+    std::process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
 #[test]
 fn reading_a_sibling_checkout_under_the_profile_is_proved_on_windows() {
     let (root, home) = layout("guard-win-sibling");
@@ -135,5 +147,19 @@ fn reading_a_sibling_checkout_under_the_profile_is_proved_on_windows() {
         format!("cd {home_text} && git log -1"),
     ] {
         assert_ne!(action(&command), "allow", "{command}");
+    }
+
+    // A junction outside the profile pointing into it: the target resolves
+    // inside home, so containment holds, but its spelled ancestors never
+    // equal the profile. The nearest `.git` above it is `outside-project`'s,
+    // which the agent owns, so a walk that stopped only at the profile would
+    // hand back a root outside it.
+    let escape = outside.join("link");
+    if junction(&escape, &home.join("Documents")) {
+        assert_ne!(
+            action(&format!("cd {} && git log -1", spelled(&escape))),
+            "allow",
+            "a junction must not walk out of the profile"
+        );
     }
 }

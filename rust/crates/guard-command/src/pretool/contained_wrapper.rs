@@ -169,7 +169,16 @@ pub(super) fn sibling_project_root(
     target
         .ancestors()
         .take_while(|directory| {
-            std::fs::canonicalize(directory).is_ok_and(|directory| directory != base)
+            // Containment is decided on canonical paths while the walk climbs
+            // the spelling the caller passed, so an ancestor can leave the
+            // profile without ever equalling `base`: `C:/outside/link/sub`,
+            // where `C:\outside\link` is a junction into the profile,
+            // resolves inside home but climbs to `C:\outside`. Stopping only
+            // at `base` would keep walking there and could return a
+            // user-created `.git` root outside the profile. Stop as soon as an
+            // ancestor is no longer strictly inside it.
+            std::fs::canonicalize(directory)
+                .is_ok_and(|directory| directory.starts_with(&base) && directory != base)
         })
         .find(|directory| directory.join(".git").symlink_metadata().is_ok())
         .filter(|root| path_owned_by_current_user(root))

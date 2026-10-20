@@ -146,10 +146,28 @@ def sibling_project_root(directory: Path, *, home: Path | None) -> Path | None:
         candidate = directory
         while candidate != base:
             if os.path.lexists(candidate / ".git"):
-                return candidate if candidate.stat().st_uid == getattr(os, "getuid", lambda: -1)() else None
+                return candidate if _owned_by_this_user(candidate) else None
             candidate = candidate.parent
         return None
     return None
+
+
+def _owned_by_this_user(candidate: Path) -> bool:
+    """Whether this user owns `candidate`, as far as this process can ask.
+
+    POSIX compares the owning uid. Windows has no uid: `st_uid` is always 0
+    there and `os.getuid` does not exist, so comparing them rejected every
+    Windows checkout. The owner question is the native runtime's
+    (`path_owned_by_current_user`, owner SID against the process SID), it is
+    asked before any receipt is issued, and every caller here runs only after
+    `_contained_receipt` accepted that receipt. So on Windows this answers the
+    part Python can still see - the checkout is strictly inside the profile and
+    carries a `.git` - and leaves the owner to the authority that can read it.
+    """
+
+    if os.name == "nt":
+        return True
+    return candidate.stat().st_uid == getattr(os, "getuid", lambda: -1)()
 
 
 def anchored_sibling_root(command: str, *, workspace: Path, cwd: Path, home: Path | None) -> Path | None:
