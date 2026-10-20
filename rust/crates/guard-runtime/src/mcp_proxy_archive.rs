@@ -92,8 +92,6 @@ fn walk(
     Some(())
 }
 
-/// `unchanged`, `unbound` (fail closed) or `bound` with the edits to apply.
-/// Every download is re-verified first; one that changed refuses the binding.
 /// Whether this evaluation only permits a request bound to the external
 /// archives it verified.
 ///
@@ -109,6 +107,8 @@ pub(crate) fn binding_required(query: &McpExternalArchiveBindingRequiredQueryV1)
     })
 }
 
+/// `unchanged`, `unbound` (fail closed) or `bound` with the edits to apply.
+/// Every download is re-verified first; one that changed refuses the binding.
 pub(crate) fn bind(query: &McpExternalArchiveBindQueryV1) -> Value {
     match verified_replacements(&query.downloads) {
         Some(replacements) => {
