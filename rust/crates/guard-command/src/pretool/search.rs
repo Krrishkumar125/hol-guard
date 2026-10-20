@@ -7,6 +7,7 @@ mod git_metadata;
 mod glob_class;
 pub(super) mod grep;
 mod hint;
+mod names_only;
 mod options;
 mod rg;
 mod rg_whitelist;
