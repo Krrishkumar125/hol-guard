@@ -295,8 +295,28 @@ def _write_dev_cargo_config(worktree: Path, *, env: dict[str, str] | None = None
     config.write_text(render_profile(names, "0"), encoding="utf-8")
 
 
-def _cached_wheel(store: Path) -> dict[str, Any] | None:
-    """Reuse a cached wheel only when its recorded digest matches its bytes."""
+RELEASE_ASSETS_DIRECTORY = "release-assets"
+ASSET_OUTPUT_MARKER = "HOL_GUARD_BUNDLE_ASSET_OUTPUT"
+PACK_BUNDLE_SCRIPT = "scripts/command_pack_bundle_build.py"
+
+
+def _exported_assets(store: Path) -> Path | None:
+    """The cached pack export, when the build actually wrote one."""
+    assets = store / RELEASE_ASSETS_DIRECTORY
+    return assets if assets.is_dir() else None
+
+
+def _exports_release_assets(repo: Path, sha: str) -> bool:
+    """Whether this candidate's pack build can export its assets for us."""
+    try:
+        return ASSET_OUTPUT_MARKER.encode() in git_show(repo, sha, PACK_BUNDLE_SCRIPT)
+    except subprocess.SubprocessError:
+        # A candidate from before the pack bundler has nothing to export.
+        return False
+
+
+def _cached_wheel(store: Path, *, assets_required: bool) -> dict[str, Any] | None:
+    """Reuse a cached wheel only when its digest matches and its packs are present."""
     wheels = list(store.glob("*.whl"))
     digest_record = store / "wheel.sha256"
     if len(wheels) != 1 or not digest_record.is_file():
@@ -304,11 +324,30 @@ def _cached_wheel(store: Path) -> dict[str, Any] | None:
     digest = digest_file(wheels[0])
     if digest_record.read_text(encoding="utf-8").strip() != digest:
         return None
-    return {"path": str(wheels[0]), "sha256": digest, "cached": True}
+    assets = _exported_assets(store)
+    if assets_required and assets is None:
+        # A cache filled before the export existed would otherwise send the
+        # extension-control cases to GitHub for an unreleased candidate.
+        return None
+    return {
+        "path": str(wheels[0]),
+        "sha256": digest,
+        "cached": True,
+        "release_assets": str(assets) if assets is not None else None,
+    }
 
 
 def _build_wheel(
-    store: Path, repo: Path, sha: str, tag: str, target: str, deployment: str, run_root: Path, profile: str
+    store: Path,
+    repo: Path,
+    sha: str,
+    tag: str,
+    target: str,
+    deployment: str,
+    run_root: Path,
+    profile: str,
+    *,
+    assets_required: bool,
 ) -> None:
     """Build the tested commit's wheel in the persistent warm worktree."""
     cargo = Path.home() / ".cargo" / "bin"
@@ -320,7 +359,7 @@ def _build_wheel(
     setup_log = run_root / "logs" / "setup.log"
     git_env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1"}
     with file_lock(cache_root / "locks" / "build.lock"):
-        cached = _cached_wheel(store)
+        cached = _cached_wheel(store, assets_required=assets_required)
         if cached is not None:
             return
         print("qualify: building wheel (cold builds take several minutes)", file=sys.stderr, flush=True)
@@ -356,8 +395,13 @@ def _build_wheel(
             stale_config = worktree / ".cargo" / "config.toml"
             if stale_config.exists():
                 stale_config.unlink()
+        # The candidate's optional packs, served to extension-control cases
+        # before their extension-data release exists.
+        assets = store / RELEASE_ASSETS_DIRECTORY
+        shutil.rmtree(assets, ignore_errors=True)
         build_env = {
             **env,
+            "HOL_GUARD_BUNDLE_ASSET_OUTPUT": str(assets),
             "HOL_GUARD_BUILD_SHA": sha,
             "PLATFORM_TAG": tag,
             "TARGET": target,
@@ -389,11 +433,33 @@ def _build_wheel(
 
 
 def ensure_wheel(
-    cache_root: Path, repo: Path, sha: str, run_root: Path, *, wheel: Path | None = None, release_profile: bool = False
+    cache_root: Path,
+    repo: Path,
+    sha: str,
+    run_root: Path,
+    *,
+    wheel: Path | None = None,
+    release_assets: Path | None = None,
+    release_profile: bool = False,
 ) -> dict[str, Any]:
     """The tested commit's platform wheel: supplied, cache-hit, or built under one host lock."""
+    assets_required = _exports_release_assets(repo, sha)
     if wheel is not None:
-        return {"path": str(wheel), "sha256": digest_file(wheel), "cached": False, "profile": "supplied"}
+        if release_assets is None:
+            if assets_required:
+                raise RuntimeError(
+                    "this candidate exports its optional command packs, so --wheel also needs "
+                    "--wheel-release-assets naming the directory that build exported"
+                )
+        elif not release_assets.is_dir():
+            raise RuntimeError(f"--wheel-release-assets is not a directory: {release_assets}")
+        return {
+            "path": str(wheel),
+            "sha256": digest_file(wheel),
+            "cached": False,
+            "profile": "supplied",
+            "release_assets": str(release_assets) if release_assets is not None else None,
+        }
     tag, target, deployment = host_platform()
     profile = "release" if release_profile else "dev"
     if profile == "dev" and DEV_WHEEL_MARKER.encode() not in git_show(repo, sha, WHEEL_BUILD_SCRIPT):
@@ -413,11 +479,11 @@ def ensure_wheel(
     private_dir(cache_root / "wheels", tighten=driver_owned(cache_root / "wheels"))
     store = cache_root / "wheels" / f"{sha}-{tag}{'-dev' if profile == 'dev' else ''}"
     store.mkdir(parents=True, exist_ok=True)
-    cached = _cached_wheel(store)
+    cached = _cached_wheel(store, assets_required=assets_required)
     if cached is not None:
         return {**cached, "profile": profile}
-    _build_wheel(store, repo, sha, tag, target, deployment, run_root, profile)
-    cached = _cached_wheel(store)
+    _build_wheel(store, repo, sha, tag, target, deployment, run_root, profile, assets_required=assets_required)
+    cached = _cached_wheel(store, assets_required=assets_required)
     if cached is None:
         raise RuntimeError("native wheel build produced no verifiable wheel")
     return {**cached, "cached": False, "profile": profile}

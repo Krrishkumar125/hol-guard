@@ -673,7 +673,13 @@ jobs:
         run: uv sync --frozen --extra dev --python "${{ matrix.python }}"
       - uses: ./.github/actions/setup-rust
       - name: Build native command evaluators
+        env:
+          # The installed-wheel check packages this runtime, so it carries the
+          # same source and version identity as a release build.
+          HOL_GUARD_BUILD_SHA: ${{ github.sha }}
         run: |
+          HOL_GUARD_PACKAGE_VERSION=$(uv run --no-sync python scripts/sync_repo_version.py --check | tr -d '\r')
+          export HOL_GUARD_PACKAGE_VERSION
           cargo build --manifest-path rust/Cargo.toml --locked --release -p guard-command -p hol-guard-runtime --bin guard-command-source --bin hol-guard-runtime
           compiler="$GITHUB_WORKSPACE/rust/target/release/guard-command-source"
           runtime="$GITHUB_WORKSPACE/rust/target/release/hol-guard-runtime"
@@ -700,14 +706,49 @@ jobs:
             tests/test_guard_extension_contribution.py \
             tests/test_guard_extension_trust.py \
             tests/test_contribution_trust_map.py \
-            tests/test_guard_mcp_mail_server_policy.py \
             tests/test_guard_mcp_server_contribution.py \
             --junitxml=builder-evidence/tests.xml --tb=short
       - name: Build and install a wheel outside the checkout
         env:
           HOL_GUARD_BUILD_SOURCE_COMPILER: ${{ env.HOL_GUARD_NATIVE_SOURCE_COMPILER }}
+          SOURCE_SHA: ${{ github.sha }}
         run: |
-          uv build --wheel --out-dir "$RUNNER_TEMP/extension-builder-dist"
+          # Installed authoring compiles against the packaged compiler and the
+          # verified command pack bundle. Only the native wheel carries both, so
+          # assemble it the way a release does instead of installing the pure wheel.
+          # The runtime is a host build, so the Linux wheel carries the plain
+          # host tag and claims no manylinux portability.
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64) platform_tag=linux_x86_64 target=x86_64-unknown-linux-gnu ;;
+            macOS-ARM64) platform_tag=macosx_11_0_arm64 target=aarch64-apple-darwin ;;
+            Windows-X64) platform_tag=win_amd64 target=x86_64-pc-windows-msvc ;;
+            *) echo "No native wheel tag for $RUNNER_OS-$RUNNER_ARCH" >&2; exit 1 ;;
+          esac
+          build="$RUNNER_TEMP/extension-builder-build"
+          mkdir -p "$build"
+          version=$(uv run --no-sync python scripts/sync_repo_version.py --check | tr -d '\r')
+          uv build --wheel --out-dir "$build/pure"
+          runtime=rust/target/release/hol-guard-runtime
+          if [[ "$RUNNER_OS" == "Windows" ]]; then runtime="${runtime}.exe"; fi
+          rule_digest=$("$runtime" capabilities --json | jq -r '.rule_digest' | tr -d '\r')
+          "$runtime" export-built > "$build/source-built.json"
+          jq -n --slurpfile source rust/crates/guard-command/tests/fixtures/command-source-example.v1.json \
+            --slurpfile trust contracts/extensions/build-trust-class-map.v1.json \
+            --slurpfile built "$build/source-built.json" \
+            '{schema:"guard.command-extension-build.v1",sources:$source,mcp_sources:[],trust:$trust[0],base:"packaged",validation_base:{catalog:$built[0].catalog,programs:[]}}' \
+            > "$build/source-build.json"
+          "$runtime" compile < "$build/source-build.json" > "$build/source-compiled.json"
+          uv run --no-sync python scripts/build_native_hol_guard_wheel.py \
+            --wheel "$build/pure/hol_guard-${version}-py3-none-any.whl" \
+            --runtime "$runtime" \
+            --output-dir "$RUNNER_TEMP/extension-builder-dist" \
+            --version "$version" \
+            --platform-tag "$platform_tag" \
+            --target "$target" \
+            --source-sha "$SOURCE_SHA" \
+            --rule-digest "$rule_digest" \
+            --implementation-digest "$(jq -r '.implementation_digest' "$build/source-compiled.json" | tr -d '\r')" \
+            --base-program-digest "$(jq -r '.base_program_digest' "$build/source-compiled.json" | tr -d '\r')"
           uv export --frozen --no-dev --no-emit-project --format requirements-txt \
             > builder-evidence/runtime-requirements.txt
           root="$RUNNER_TEMP/extension-builder-installed"

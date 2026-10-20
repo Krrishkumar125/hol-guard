@@ -585,11 +585,9 @@ def run_native_generic_payload(
         runtime_workspace=runtime_workspace,
     )
     classifiers = hook_classifiers(
-        canonical_harness=_canonical_harness_name(args.harness),
         guard_home=store.guard_home,
         home_dir=home_dir,
         payload=payload_map,
-        runtime_artifact_checked=runtime_artifact_checked,
         runtime_workspace=runtime_workspace,
     )
     composition, facts = native_compose_current(inputs, classifiers, guard_home=store.guard_home)
