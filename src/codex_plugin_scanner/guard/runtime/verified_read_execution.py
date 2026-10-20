@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Final, cast
 
-from ..native_verified_read_decision import workspace_read_decision
+from ..native_verified_read_decision import NativeVerifiedReadDecisionError, workspace_read_decision
 from .effect_contract import ProofRequirement, ProofRoute
 from .effect_decision import EffectDecision, FinalDisposition, PositiveProof
 from .secret_sensitivity import classify_secret_path
@@ -75,7 +75,7 @@ def try_execute_verified_local_read(argv: tuple[str, ...]) -> VerifiedReadResult
             return None
         proof = _proof(context, argv=argv, output=output, source_digest=source_digest)
         decision = _decision(proof, operation_id=output.operation_id)
-    except (OSError, TypeError, UnicodeError, ValueError):
+    except (NativeVerifiedReadDecisionError, OSError, TypeError, UnicodeError, ValueError):
         return None
     if decision.disposition is not FinalDisposition.SILENT_VERIFIED:
         return None

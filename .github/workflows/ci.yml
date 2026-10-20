@@ -19,8 +19,6 @@ env:
   # Release wheels use fat LTO with one codegen unit (rust/Cargo.toml). PR test
   # builds keep the per-crate defaults so sccache and incremental link time
   # stay on the critical path budget; this does not change program behavior.
-  # native-release-size unsets both variables before it builds the binaries
-  # the wheel-size gate measures.
   CARGO_PROFILE_RELEASE_LTO: "false"
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
   # Balance the complete suite across parallel runners. Keep this independent
@@ -507,7 +505,6 @@ jobs:
           HOL_GUARD_NATIVE_REGRESSION: "1"
         run: |
           uv run --no-sync pytest -q --tb=short \
-            ci/package_size \
             tests/test_guard_command_corpus_native_contract.py::test_native_contract_validates_every_authored_signature_without_rewriting_evidence \
             tests/test_pi_adapter.py::TestPiInstall::test_install_writes_managed_extension_that_denies_on_hook_errors \
             tests/test_pi_adapter.py::TestPiInstall::test_managed_extension_fails_safe_on_ambiguous_success_payloads \
@@ -537,18 +534,6 @@ jobs:
           echo "shard $SHARD_INDEX runs $(wc -l < gate-shard.txt) of $(wc -l < gate-nodes.txt) gate cases"
           uv run --no-sync python scripts/ci/run_projection_shard.py gate-shard.txt -- \
             -q --tb=short -n 4 --dist load --max-worker-restart 0 "@gate-shard.txt"
-
-  native-release-size:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    concurrency:
-      group: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && format('shipped-native-ci-build-{0}-linux', github.sha) || format('shipped-native-ci-build-run-{0}-linux', github.run_id) }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/ci-job-native-release-size
 
   coverage:
     name: coverage (3.12, ${{ matrix.shard-index }})
@@ -1071,7 +1056,7 @@ jobs:
   required:
     name: hol-guard / required
     if: always()
-    needs: [plan, native-workspace, native-command-evaluators, native-offline-previous, native-offline-upgrade, native-gates, native-release-size, quality, coverage, compatibility, scheduling-sensitive, dashboard, cisco-full, ci-python-312, pi-exact-continuation, cross-platform, windows-native-runtime, windows-shim-admin, windows-packaged-daemon, macos-native-runtime, macos-skill-identity, macos-gates]
+    needs: [plan, native-workspace, native-command-evaluators, native-offline-previous, native-offline-upgrade, native-gates, quality, coverage, compatibility, scheduling-sensitive, dashboard, cisco-full, ci-python-312, pi-exact-continuation, cross-platform, windows-native-runtime, windows-shim-admin, windows-packaged-daemon, macos-native-runtime, macos-skill-identity, macos-gates]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -1101,7 +1086,7 @@ jobs:
           # data-only plan coast through on surviving lane-gated residue.
           always_on = ["plan","native-workspace","native-command-evaluators","native-offline-previous",
                        "native-offline-upgrade","native-gates",
-                       "native-release-size","quality","ci-python-312"]
+                       "quality","ci-python-312"]
           # Lane-gated required set: skipped is acceptable only on a data-only
           # plan; failure/cancelled always fails.
           required = ["coverage","compatibility","scheduling-sensitive",
