@@ -117,6 +117,15 @@ test("installed Protection Center keeps canonical routes and real-daemon inspect
   await page.goto("/extensions");
   await expectSecretSafeUrl(page);
   await expect(page.getByRole("heading", { name: "Extensions", level: 1 })).toBeVisible();
+  // The first catalog read on a fresh installed daemon prepares the native
+  // runtime, so it gets longer than the default wait. If it never loads, the
+  // failure names what the workspace showed and what the daemon answered.
+  await expect(page.getByRole("heading", { name: "All tools" })).toBeAttached({ timeout: 30_000 }).catch(async (error: unknown) => {
+    const workspace = await page.getByTestId("extensions-workspace").innerText().catch(() => "<absent>");
+    throw new Error(
+      `${String(error)}\nworkspace: ${workspace.slice(0, 600)}\nextension-controls: ${JSON.stringify(extensionResponses)}\npage errors: ${JSON.stringify(runtimeErrors)}`,
+    );
+  });
   await expect(page.getByRole("heading", { name: "All tools" })).toBeVisible();
   await expect(page.getByTestId("catalog-tool-count")).toHaveText(/^[1-9]\d* tools$/);
   await expect(page.getByRole("button", { name: /Git/ }).first()).toBeVisible();
