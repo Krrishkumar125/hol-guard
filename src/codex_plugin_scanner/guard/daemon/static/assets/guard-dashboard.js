@@ -13910,6 +13910,12 @@ function resolveQueueCategoryId(item) {
   if (gitOperationCommand(command)) {
     return "git_operation";
   }
+  if (dockerCommand(command)) {
+    return "docker_command";
+  }
+  if (githubCommand(command)) {
+    return "github_command";
+  }
   if (fileUploadCommand(command)) {
     return "file_upload";
   }
@@ -14182,7 +14188,15 @@ function fileDeleteOrCleanupCommand(command, text2) {
 }
 function gitOperationCommand(command) {
   const normalized = command.toLowerCase();
-  return /\bgit\s+(?:add|commit|push|pull|merge|rebase|reset|checkout|restore|clean|stash|tag)\b/.test(normalized);
+  return /\bgit(?:\s+(?:-c\s+\S+|--git-dir(?:=|\s+)\S+|--work-tree(?:=|\s+)\S+|--no-pager|--bare))*\s+(?:add|commit|push|pull|fetch|clone|status|diff|log|show|branch|rev-parse|worktree|remote|config|merge|rebase|reset|checkout|restore|clean|stash|tag|apply|cherry-pick|revert|ls-files|ls-remote|grep)\b/.test(normalized) || /(?:^|[;&|]\s*)git\s+-c\s+/i.test(command);
+}
+function dockerCommand(command) {
+  const normalized = command.toLowerCase();
+  return /\b(?:docker|docker-compose)\b/.test(normalized);
+}
+function githubCommand(command) {
+  const normalized = command.toLowerCase();
+  return /(?:^|[;&|]\s*)gh\s+\S+/.test(normalized);
 }
 function processControlCommand(command) {
   const normalized = command.toLowerCase();

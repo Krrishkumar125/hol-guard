@@ -705,6 +705,14 @@ function resolveQueueCategoryId(item: GuardApprovalRequest): QueueCategoryId {
     return "git_operation";
   }
 
+  if (dockerCommand(command)) {
+    return "docker_command";
+  }
+
+  if (githubCommand(command)) {
+    return "github_command";
+  }
+
   if (fileUploadCommand(command, text)) {
     return "file_upload";
   }
@@ -1059,7 +1067,20 @@ function fileDeleteOrCleanupCommand(command: string, text: string): boolean {
 
 function gitOperationCommand(command: string): boolean {
   const normalized = command.toLowerCase();
-  return /\bgit\s+(?:add|commit|push|pull|merge|rebase|reset|checkout|restore|clean|stash|tag)\b/.test(normalized);
+  return (
+    /\bgit(?:\s+(?:-c\s+\S+|--git-dir(?:=|\s+)\S+|--work-tree(?:=|\s+)\S+|--no-pager|--bare))*\s+(?:add|commit|push|pull|fetch|clone|status|diff|log|show|branch|rev-parse|worktree|remote|config|merge|rebase|reset|checkout|restore|clean|stash|tag|apply|cherry-pick|revert|ls-files|ls-remote|grep)\b/.test(normalized) ||
+    /(?:^|[;&|]\s*)git\s+-c\s+/i.test(command)
+  );
+}
+
+function dockerCommand(command: string): boolean {
+  const normalized = command.toLowerCase();
+  return /\b(?:docker|docker-compose)\b/.test(normalized);
+}
+
+function githubCommand(command: string): boolean {
+  const normalized = command.toLowerCase();
+  return /(?:^|[;&|]\s*)gh\s+\S+/.test(normalized);
 }
 
 function processControlCommand(command: string): boolean {

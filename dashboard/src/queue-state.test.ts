@@ -367,12 +367,34 @@ assert(
 const containerCommandItem: GuardApprovalRequest = {
   ...BASE_REQUEST,
   request_id: "req-container",
-  action_envelope_json: { ...shellEnvelope, command: "docker compose down -v" },
+  action_envelope_json: { ...shellEnvelope, command: "helm upgrade api ./chart" },
 };
 
 assert(
   resolveQueueCategory(containerCommandItem).label === "Container or deploy command",
   "T-QS-31: container and deploy commands get a specific category"
+);
+
+const dockerComposeCommandItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-docker-compose",
+  action_envelope_json: { ...shellEnvelope, command: "docker version --format '{{.Server.Version}}'" },
+};
+
+assert(
+  resolveQueueCategory(dockerComposeCommandItem).label === "Docker command",
+  "T-QS-31-docker: docker commands get the Docker category even without command_category metadata"
+);
+
+const gitRoutedStatusItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-git-routed-status",
+  action_envelope_json: { ...shellEnvelope, command: "git -C ~/workspace/repo status --short" },
+};
+
+assert(
+  resolveQueueCategory(gitRoutedStatusItem).label === "Git workspace operation",
+  "T-QS-31-git-routed: git -C commands get the Git workspace operation category"
 );
 
 const categorizedDockerItem: GuardApprovalRequest = {

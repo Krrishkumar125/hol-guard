@@ -42,6 +42,28 @@ def test_plain_origin_fetch_hints_the_origin_refresh_permission(tmp_path: Path) 
     assert "main" not in repr(hint)
 
 
+def test_docker_version_format_hints_docker_sensitive_permission(tmp_path: Path) -> None:
+    _fixture, hint = _hint("docker version --format '{{.Server.Version}}'", tmp_path)
+
+    assert hint is not None
+    assert hint["permission_ids"] == ["command.container-runtime.permission.docker-sensitive"]
+    assert hint["rule_ids"] == ["command.container-runtime.docker-sensitive"]
+    assert hint["extension_ids"] == ["command.container-runtime"]
+    assert hint["catalog_digest"] == BUILT_IN_COMMAND_EXTENSION_REGISTRY.catalog_digest
+    assert validated_extension_allow_hint(hint) == hint
+    assert "Server.Version" not in repr(hint)
+
+
+def test_no_hint_when_docker_sensitive_permission_is_already_allowed(tmp_path: Path) -> None:
+    _fixture, hint = _hint(
+        "docker version --format '{{.Server.Version}}'",
+        tmp_path,
+        controls=(("permission", "command.container-runtime.permission.docker-sensitive", "enabled"),),
+    )
+
+    assert hint is None
+
+
 def test_uncertain_fetch_forms_store_no_hint(tmp_path: Path) -> None:
     for command in (
         "git -c core.sshCommand=payload fetch origin",
