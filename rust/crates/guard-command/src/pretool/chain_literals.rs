@@ -34,8 +34,9 @@ const MAX_BINDINGS: usize = 32;
 /// Builtins and zsh commands that can set a variable or run text as shell
 /// code. A chain that calls one has bindings this recognizer cannot track.
 const STATE_COMMANDS: &str = ". alias autoload builtin declare emulate enable eval exec export \
-    float function getopts integer let local mapfile private read readarray readonly select set \
-    setopt shopt source trap typeset unalias unset unsetopt vared wait zmodload zparseopts";
+    float function getln getopts integer let local mapfile private read readarray readonly select \
+    set setopt shopt source strftime sysread trap typeset unalias unset unsetopt vared wait \
+    zformat zmodload zparseopts zregexparse zselect zstat zstyle";
 
 /// Reserved words. A literal in their place would be parsed as syntax,
 /// while the expansion it replaces is an ordinary word.

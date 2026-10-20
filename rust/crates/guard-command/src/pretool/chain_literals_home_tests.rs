@@ -88,6 +88,14 @@ fn a_possible_home_change_before_a_use_keeps_it_opaque() {
         "printf `echo -vHOME` %s /etc; cat $HOME/passwd",
         "printf {-vHO,}ME %s /etc; cat $HOME/passwd",
         "printf -[v]HOME %s /etc; cat $HOME/passwd",
+        // zsh's `print -v` sets a name the same way, and other zsh
+        // builtins set one given as an operand.
+        "p=HO s=ME; print -v $p$s /etc; cat $HOME/passwd",
+        "p=HO s=ME; print -rv $p$s /etc; cat $HOME/passwd",
+        "p=HO s=ME; getln $p$s; cat $HOME/passwd",
+        "p=HO s=ME; strftime -s $p$s %s 0; cat $HOME/passwd",
+        "p=HO s=ME; zstat -A $p$s /etc; cat $HOME/passwd",
+        "p=HO s=ME; zstyle -s ctx style $p$s; cat $HOME/passwd",
     ] {
         assert_eq!(project(command, h), None, "{command}");
     }

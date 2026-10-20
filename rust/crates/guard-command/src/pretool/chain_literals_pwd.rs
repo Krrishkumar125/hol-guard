@@ -15,11 +15,12 @@ const MAX_DIRECTORY_CHARS: usize = 1024;
 const DIRECTORY_COMMANDS: &str = "cd chdir dirs popd pushd";
 
 /// Builtins that take the variable they set as an option operand rather than
-/// as a bare word. `names_variable` reads a bare name, so it sees
-/// `printf -v HOME`, but not a name the shell assembles from expansions, as
+/// as a bare word: `printf -v` in bash and zsh, and zsh's `print -v`.
+/// `names_variable` reads a bare name, so it sees `printf -v HOME`, but not a
+/// name the shell assembles from expansions, as
 /// `printf -v $prefix$suffix %s /other/home` does. Any `-v` on one of these
 /// keeps the chain opaque.
-const OPTION_SETTERS: &str = "printf";
+const OPTION_SETTERS: &str = "print printf";
 
 /// The command with each working-directory expansion replaced by `cwd`;
 /// `None` when nothing is replaced, the directory is not a plain absolute
