@@ -6,6 +6,7 @@
 //! unpaired. These cover both branches of the drain loop and the pairing rules
 //! in `cli/commands_support_command_activity.py:208-246`.
 
+use std::collections::VecDeque;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
@@ -65,6 +66,12 @@ enum ReceiptBehaviour {
     Contended {
         failures: Mutex<u32>,
         failed: Arc<Gate>,
+        written: Arc<Gate>,
+    },
+    /// Fail each write with the next error kind in the list, then enter
+    /// `written` and accept.
+    Sequence {
+        refusals: Mutex<VecDeque<io::ErrorKind>>,
         written: Arc<Gate>,
     },
     /// Refuse every write of the receipt with this decision id, the way a
@@ -195,6 +202,17 @@ impl EvidenceStoreApi for StubStore {
                         io::ErrorKind::TimedOut,
                         "native_guard_store_busy (database is locked)",
                     ));
+                }
+                written.enter();
+                Ok(true)
+            }
+            ReceiptBehaviour::Sequence { refusals, written } => {
+                let refusal = refusals
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .pop_front();
+                if let Some(kind) = refusal {
+                    return Err(io::Error::new(kind, "refused"));
                 }
                 written.enter();
                 Ok(true)
@@ -1108,6 +1126,37 @@ fn a_receipt_waits_out_a_store_locked_past_the_attempt_cap() {
     let drained = writer.stats();
     assert_eq!(drained.receipt_processed, 1);
     assert_eq!(drained.receipt_dropped, 0);
+    assert!(journal.records().is_empty());
+}
+
+/// Waiting out a long lock spends none of the attempts a receipt gets for
+/// other refusals, so one such refusal after the lock does not drop it.
+#[test]
+fn a_long_lock_spends_none_of_the_attempts_other_refusals_get() {
+    let written = Gate::new();
+    let mut refusals = VecDeque::from(vec![io::ErrorKind::TimedOut; 8]);
+    refusals.push_back(io::ErrorKind::Other);
+    let store = StubStore::with_receipts(
+        queue_home(),
+        ReceiptBehaviour::Sequence {
+            refusals: Mutex::new(refusals),
+            written: Arc::clone(&written),
+        },
+    );
+    let journal = RecordingJournal::new();
+    let writer = queue_writer(store, Arc::clone(&journal), 64);
+
+    assert!(writer.submit_native_decision_receipt(&receipt("decision-1")));
+    written.wait_for_entry();
+    let refused = writer.stats();
+    assert_eq!(refused.receipt_failures, 9);
+    assert_eq!(refused.receipt_dropped, 0);
+    assert_eq!(journal.records().len(), 1);
+
+    written.release();
+    assert!(writer.stop(DRAIN_BUDGET_SECONDS));
+    let drained = writer.stats();
+    assert_eq!(drained.receipt_processed, 1);
     assert!(journal.records().is_empty());
 }
 

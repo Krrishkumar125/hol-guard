@@ -955,6 +955,9 @@ struct EvidenceState {
     /// `_retry_attempts` — `record_id` → failed attempts, which set the
     /// backoff before the next one.
     retry_attempts: HashMap<String, u32>,
+    /// `record_id` → refusals other than a busy store, which alone count
+    /// toward [`MAX_STORE_ATTEMPTS`].
+    retry_refusals: HashMap<String, u32>,
     /// `record_id` → when a record whose write failed may be tried again.
     /// Records that are not due yet stay queued while the rest move on.
     retry_at: HashMap<String, Instant>,
@@ -1653,6 +1656,7 @@ impl EvidenceWorker {
                         let _ = state.durable.remove(&record.record_id());
                         state.retry_attempts.remove(&record.record_id());
                         state.retry_at.remove(&record.record_id());
+                        state.retry_refusals.remove(&record.record_id());
                         if record.is_receipt() {
                             state.receipt_processed += 1;
                         }
@@ -1674,6 +1678,7 @@ impl EvidenceWorker {
                         let _ = state.durable.remove(&record.record_id());
                         state.retry_attempts.remove(&record.record_id());
                         state.retry_at.remove(&record.record_id());
+                        state.retry_refusals.remove(&record.record_id());
                         if record.is_receipt() {
                             state.receipt_deduped += 1;
                         }
@@ -1712,11 +1717,15 @@ impl EvidenceWorker {
                             state.receipt_failures += 1;
                         }
                         state.degraded = true;
-                        if matches!(outcome, PersistOutcome::Retry) && attempt >= MAX_STORE_ATTEMPTS
-                        {
+                        // Every failure lengthens the backoff, but only a
+                        // refusal other than a busy store spends an attempt.
+                        let refusals = state.retry_refusals.get(&record_id).copied().unwrap_or(0)
+                            + u32::from(matches!(outcome, PersistOutcome::Retry));
+                        if refusals >= MAX_STORE_ATTEMPTS {
                             let _ = state.durable.remove(&record_id);
                             state.retry_attempts.remove(&record_id);
                             state.retry_at.remove(&record_id);
+                            state.retry_refusals.remove(&record_id);
                             state.dropped += 1;
                             if record.is_receipt() {
                                 state.receipt_dropped += 1;
@@ -1726,6 +1735,9 @@ impl EvidenceWorker {
                                 Err(_) => state.failures += 1,
                             }
                         } else {
+                            if refusals > 0 {
+                                state.retry_refusals.insert(record_id.clone(), refusals);
+                            }
                             state.retry_attempts.insert(record_id.clone(), attempt);
                             state
                                 .retry_at
