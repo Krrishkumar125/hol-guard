@@ -181,6 +181,24 @@ fn clear_reopens_a_tripped_circuit() {
     std::fs::remove_dir_all(scope).unwrap();
 }
 
+#[test]
+fn a_held_budget_lock_reads_as_busy_and_a_spawn_waits_it_out() {
+    let scope = temp_scope("held-lock");
+    let held = acquire_budget_lock(&scope).unwrap();
+    // Windows reports this overlap as a lock violation rather than WouldBlock.
+    assert_eq!(
+        acquire_budget_lock(&scope).err().as_deref(),
+        Some("native_resident_restart_budget_busy")
+    );
+    let waiting_scope = scope.clone();
+    let spawn = std::thread::spawn(move || consume(&waiting_scope));
+    std::thread::sleep(Duration::from_millis(100));
+    drop(held);
+    spawn.join().unwrap().unwrap();
+    assert_eq!(read_budget(&scope).attempts, 1);
+    std::fs::remove_dir_all(scope).unwrap();
+}
+
 #[cfg(windows)]
 #[test]
 fn restart_budget_lock_retains_directory_binding_until_drop() {

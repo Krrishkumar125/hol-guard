@@ -19,9 +19,9 @@ const MAX_RESTARTS_PER_WINDOW: u32 = 3;
 /// every orderly cycle outlives this; a resident that reports success within
 /// milliseconds, over and over, is still a loop and keeps its charge.
 const HEALTHY_RUN_MIN_MS: u128 = 1_000;
-/// A supervisor records its exit while it is already shutting down, so it may
-/// wait for a concurrent spawn to finish with the budget instead of dropping
-/// the correction.
+/// Every budget update holds the lock for one small read and write, so a
+/// spawn, a reset and a supervisor recording its exit each wait briefly for
+/// one another instead of failing on an ordinary overlap.
 const BUDGET_LOCK_RETRY_DELAY: Duration = Duration::from_millis(25);
 const BUDGET_LOCK_RETRIES: u32 = 20;
 const BUDGET_SCHEMA: &str = "hol-guard-resident-restart-budget.v1";
@@ -66,7 +66,10 @@ fn acquire_budget_lock(scope: &Path) -> Result<RestartBudgetLock, String> {
     let file = crate::resident_state::private_lock_file(&path, &private_root)
         .map_err(|_| "native_resident_restart_budget_lock_failed".to_owned())?;
     fs2::FileExt::try_lock_exclusive(&file).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::WouldBlock {
+        // Windows reports a held lock as ERROR_LOCK_VIOLATION, not WouldBlock.
+        // Treating that as a hard failure turned an ordinary race with the
+        // supervisor's exit bookkeeping into a failed resident spawn.
+        if crate::resident_state::is_lock_contention(&error) {
             "native_resident_restart_budget_busy".to_owned()
         } else {
             "native_resident_restart_budget_lock_failed".to_owned()
@@ -319,7 +322,7 @@ pub(super) fn consume_for_spawn(state_base: &Path, scope: &Path) -> Result<(), S
 
 pub(super) fn consume(scope: &Path) -> Result<(), String> {
     let private_root = crate::resident_state::private_root_for_scope(scope)?;
-    let _lock = acquire_budget_lock(scope)?;
+    let _lock = acquire_budget_lock_waiting(scope)?;
     let path = scope.join("restart-budget.json");
     #[cfg(windows)]
     recover_interrupted_replace(&path, &private_root)?;
@@ -438,7 +441,7 @@ pub(super) fn release_after_exit(
 
 pub(super) fn clear(scope: &Path) -> Result<(), String> {
     let private_root = crate::resident_state::private_root_for_scope(scope)?;
-    let _lock = acquire_budget_lock(scope)?;
+    let _lock = acquire_budget_lock_waiting(scope)?;
     let path = scope.join("restart-budget.json");
     if !existing_private_file(&path, &private_root)? {
         return Ok(());
