@@ -292,6 +292,21 @@ fn artifact(
     })
 }
 
+/// The last component of `path` for an artifact's display name, as the
+/// retired Python builders read it with `Path(...).name`: on Windows that
+/// splits on `\` as well as `/`, so a review names `id_rsa` rather than the
+/// whole path.
+pub(crate) fn artifact_file_name(path: &str) -> String {
+    let parsed = PyPath::new(path);
+    let name = parsed.name();
+    if cfg!(windows) {
+        let name = name.trim_end_matches('\\');
+        name.rsplit('\\').next().unwrap_or(name).to_owned()
+    } else {
+        name.to_owned()
+    }
+}
+
 /// `build_file_read_request_artifact`.
 pub(crate) fn build_file_read_request_artifact(
     harness: &str,
@@ -322,7 +337,7 @@ pub(crate) fn build_file_read_request_artifact(
         format!(
             "{} {}",
             request.tool_name,
-            PyPath::new(&request.path_match.path).name()
+            artifact_file_name(&request.path_match.path)
         ),
         harness,
         "file_read_request",
@@ -369,7 +384,7 @@ pub(crate) fn build_file_write_request_artifact(
         format!(
             "{} {}",
             request.tool_name,
-            PyPath::new(&request.normalized_path).name()
+            artifact_file_name(&request.normalized_path)
         ),
         harness,
         "tool_action_request",

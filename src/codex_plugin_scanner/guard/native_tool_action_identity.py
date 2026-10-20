@@ -6,6 +6,8 @@ from pathlib import Path
 
 from . import native_execution
 from .native_context import _canonical_request_sha256, _resolve_digest_home, ensure_resident_prerequisite
+from .native_runtime import native_runtime_status
+from .native_runtime_resilience import native_record_resident_failure, native_record_resident_success
 from .runtime.secret_file_request_services.request_models import ToolActionRequestMatch
 
 _FEATURE = "tool-action-request-identity-v1"
@@ -67,20 +69,47 @@ def tool_action_request_artifact_id(
             required_feature=_FEATURE,
             response_schema=_RESULT_SCHEMA,
             max_request_bytes=_MAX_WIRE_BYTES,
+            # Success is recorded below, once the reply is known to be usable.
+            record_success=False,
         )
     except (OSError, TypeError, ValueError) as error:
         raise NativeToolActionIdentityError("native_tool_action_identity_unavailable") from error
     if decoded is None:
         raise NativeToolActionIdentityError("native_tool_action_identity_unavailable")
-    if set(decoded) != _RESULT_KEYS or decoded.get("code") != "ok":
+    try:
+        artifact_id = _bound_artifact_id(decoded, wire, request_sha256, f"{harness}:{source_scope}:tool-action:")
+    except NativeToolActionIdentityError as error:
+        # A refusal is a well-formed answer; anything else is a resident fault.
+        if str(error) != "native_tool_action_identity_rejected":
+            _record(home, success=False)
+        raise
+    _record(home, success=True)
+    return artifact_id
+
+
+def _bound_artifact_id(decoded: dict[str, object], wire: dict[str, object], request_sha256: str, prefix: str) -> str:
+    if set(decoded) != _RESULT_KEYS:
         raise NativeToolActionIdentityError("native_tool_action_identity_invalid_result")
     if decoded.get("request_id") != wire["request_id"] or decoded.get("request_sha256") != request_sha256:
         raise NativeToolActionIdentityError("native_tool_action_identity_request_mismatch")
+    if decoded.get("status") == "error":
+        raise NativeToolActionIdentityError("native_tool_action_identity_rejected")
+    if decoded.get("code") != "ok":
+        raise NativeToolActionIdentityError("native_tool_action_identity_invalid_result")
     artifact_id = decoded.get("artifact_id")
-    prefix = f"{harness}:{source_scope}:tool-action:"
     if not isinstance(artifact_id, str) or not artifact_id.startswith(prefix):
         raise NativeToolActionIdentityError("native_tool_action_identity_invalid_result")
     fingerprint = artifact_id[len(prefix) :]
     if len(fingerprint) != 64 or any(character not in "0123456789abcdef" for character in fingerprint):
         raise NativeToolActionIdentityError("native_tool_action_identity_invalid_result")
     return artifact_id
+
+
+def _record(home: Path, *, success: bool) -> None:
+    identity = native_runtime_status().identity
+    if identity is None:
+        return
+    if success:
+        native_record_resident_success(identity.sha256, home)
+    else:
+        native_record_resident_failure(identity.sha256, home, reason="native_tool_action_request_identity_result")
