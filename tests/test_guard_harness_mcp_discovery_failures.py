@@ -125,3 +125,15 @@ def test_configured_discovery_failure_reaches_the_daemon_log(tmp_path: Path, mon
     # Each failed scan names its cause, never the stage error that wraps it.
     assert recorded
     assert set(recorded) == {("local_cli_configured_discovery_failed", "RuntimeError")}
+
+
+def test_the_daemon_wires_its_log_recorder_into_discovery(tmp_path: Path) -> None:
+    from codex_plugin_scanner.guard.daemon import GuardDaemonServer
+
+    daemon = GuardDaemonServer(GuardStore(tmp_path / "guard-home"), host="127.0.0.1", port=0)
+    daemon.start()
+    try:
+        server = daemon._server
+        assert server.local_cli_api._record_exception == server.diagnostics.record_exception
+    finally:
+        daemon.stop()
