@@ -69,46 +69,10 @@ def _arch() -> str:
     return "unknown"
 
 
-# Labels Guard seeds or falls back to before anyone names the machine.
-GENERIC_DEVICE_LABELS = frozenset({"", "local machine", "local-device", "this machine", "localhost"})
-
-
-def machine_display_name() -> str | None:
-    """The host name without its domain (``Ada-MacBook-Pro`` from ``Ada-MacBook-Pro.local``)."""
-
-    name = platform.node().strip().split(".", 1)[0].strip()
-    if name.lower() in GENERIC_DEVICE_LABELS:
-        return None
-    return clip(name, 120)
-
-
-def effective_device_label(label: str, *, chosen: bool = False) -> str:
-    """The label Guard Cloud shows: the user's label, or the host name while it is still generic.
-
-    A label set with ``hol-guard device label set`` always wins; a seeded label such as
-    "Local machine" would make every machine in a fleet look the same.
-    """
-
-    if chosen or label.strip().lower() not in GENERIC_DEVICE_LABELS:
-        return label
-    return machine_display_name() or label
-
-
 def device_display_name(store: GuardStore, label: str) -> str:
-    """``effective_device_label`` for the stored label, honouring an explicit choice.
+    """The machine name Guard Cloud shows; see ``GuardStore.device_display_name``."""
 
-    Sync, policy matching and approval checks all name the machine through this
-    function, so a policy scoped to the name Guard Cloud shows matches everywhere.
-    """
-
-    from ..store_inventory import DEVICE_LABEL_CHOICE_KEY
-
-    try:
-        choice = store.get_sync_payload(DEVICE_LABEL_CHOICE_KEY)
-    except (OSError, RuntimeError, ValueError):
-        choice = None
-    chosen = isinstance(choice, dict) and choice.get("label") == label
-    return effective_device_label(label, chosen=chosen)
+    return store.device_display_name(label)
 
 
 def machine_section(*, include_os_version: bool, hash_key: bytes) -> dict[str, object]:

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from codex_plugin_scanner.guard import store_inventory as naming
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.inventory_contract import GuardAgentInventoryItem, GuardAgentInventorySnapshot
 from codex_plugin_scanner.guard.runtime import fleet_posture as fp
@@ -187,17 +188,17 @@ def test_a_later_collection_keeps_first_seen_and_drops_items_it_no_longer_finds(
 
 @pytest.mark.parametrize("label", ["Local machine", "local-device", "This machine", "  "])
 def test_generic_labels_are_sent_as_the_host_name(label: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(tools.platform, "node", lambda: "Ada-MacBook-Pro.local")
-    assert tools.effective_device_label(label) == "Ada-MacBook-Pro"
+    monkeypatch.setattr(naming.platform, "node", lambda: "Ada-MacBook-Pro.local")
+    assert naming.effective_device_label(label) == "Ada-MacBook-Pro"
 
 
 def test_a_chosen_label_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(tools.platform, "node", lambda: "Ada-MacBook-Pro.local")
-    assert tools.effective_device_label("Build server 3") == "Build server 3"
+    monkeypatch.setattr(naming.platform, "node", lambda: "Ada-MacBook-Pro.local")
+    assert naming.effective_device_label("Build server 3") == "Build server 3"
 
 
 def test_a_chosen_label_that_reads_like_a_default_is_kept(store: GuardStore, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(tools.platform, "node", lambda: "Ada-MacBook-Pro.local")
+    monkeypatch.setattr(naming.platform, "node", lambda: "Ada-MacBook-Pro.local")
     seeded = str(store.get_device_metadata()["device_label"])
     assert tools.device_display_name(store, seeded) == "Ada-MacBook-Pro"
     store.set_device_label("Local machine", "2026-10-20T00:00:00Z")
@@ -212,7 +213,7 @@ def test_policy_matching_and_approval_checks_use_one_machine_name(
 ) -> None:
     from codex_plugin_scanner.guard.runtime import runner
 
-    monkeypatch.setattr(tools.platform, "node", lambda: "Ada-MacBook-Pro.local")
+    monkeypatch.setattr(naming.platform, "node", lambda: "Ada-MacBook-Pro.local")
     captured: list[str] = []
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.policy_bundle_decisions.build_policy_bundle_decisions",
@@ -228,5 +229,5 @@ def test_policy_matching_and_approval_checks_use_one_machine_name(
 
 
 def test_a_generic_label_stays_when_the_host_has_no_usable_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(tools.platform, "node", lambda: "localhost")
-    assert tools.effective_device_label("Local machine") == "Local machine"
+    monkeypatch.setattr(naming.platform, "node", lambda: "localhost")
+    assert naming.effective_device_label("Local machine") == "Local machine"
