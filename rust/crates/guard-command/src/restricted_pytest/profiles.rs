@@ -1,5 +1,5 @@
 //! Native OS policy construction for a contained launch plan.
-use super::authority::{ancestor_paths, dedupe_parent_paths, runtime_roots};
+use super::authority::{ancestor_paths, dedupe_parent_paths, framework_exec_roots, runtime_roots};
 use super::credentials::{denials, patterns, seatbelt_string};
 use super::*;
 use serde::Deserialize;
@@ -234,6 +234,22 @@ fn compose_macos_profile(
         .filter(|p| !path_is_within(p, &input.workspace))
         .cloned()
         .collect();
+    // A framework interpreter re-execs a binary beside itself, so its version
+    // directory is granted as a subpath and the privileged names are denied
+    // back out; everything else stays an exec list of the binaries themselves.
+    let framework_roots = framework_exec_roots(&input.allowed_executables);
+    let named: Vec<PathBuf> = input
+        .allowed_executables
+        .iter()
+        .filter(|path| !path_is_within_any(path, &framework_roots))
+        .cloned()
+        .collect();
+    if named.is_empty() && framework_roots.is_empty() {
+        return Err(RestrictedPytestError::new(
+            PYTEST_INVALID_COMMAND_REASON_CODE,
+            "Contained run has no executable to allow.",
+        ));
+    }
     let mut lines = vec![
         "(version 1)".to_owned(),
         "(deny default)".to_owned(),
@@ -241,7 +257,17 @@ fn compose_macos_profile(
         "(allow process-fork)".to_owned(),
         format!(
             "(allow process-exec {})",
-            filter(&input.allowed_executables, "literal")
+            // An allow with no filter at all allows every exec, so a run with
+            // nothing to execute denies instead.
+            [
+                filter(&named, "literal"),
+                filter(&framework_roots, "subpath")
+            ]
+            .iter()
+            .filter(|part| !part.is_empty())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ")
         ),
         "(allow signal (target self) (target children))".to_owned(),
         "(allow sysctl-read)".to_owned(),
@@ -260,6 +286,22 @@ fn compose_macos_profile(
             filter(&writes, "subpath")
         ),
     ];
+    // Granting a directory rather than a list of binaries would otherwise let
+    // a command reach a privileged name inside it, so the exec grant for a
+    // framework carries the same denial the workspace profile uses.
+    if !framework_roots.is_empty() {
+        let position = lines
+            .iter()
+            .position(|line| line.starts_with("(allow process-exec "))
+            .unwrap_or(lines.len() - 1);
+        lines.insert(
+            position + 1,
+            format!(
+                "(deny process-exec {})",
+                filter(&workspace_profile::privileged_executables(), "literal")
+            ),
+        );
+    }
     if !immutable.is_empty() {
         lines.push(format!(
             "(deny file-write* {})",

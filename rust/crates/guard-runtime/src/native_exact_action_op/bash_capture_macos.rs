@@ -309,7 +309,8 @@ pub(super) fn inspect(request: &NativeBashCaptureV1) -> Result<NativeBashSubject
 
 pub(super) fn capture(request: &NativeBashCaptureV1, bind_outputs: bool) -> Result<CapturedBash> {
     // Resource deadline, not the separately measured installed-latency gate.
-    let deadline = Instant::now() + Duration::from_millis(request.budget_ms.min(1000));
+    let deadline = Instant::now()
+        + Duration::from_millis(request.budget_ms.min(super::ANALYSIS_BUDGET_CAP_MS));
     if request.file_creation_mask.is_some_and(|mask| mask > 0o777) {
         return Err("bash_host_creation_mask_invalid");
     }

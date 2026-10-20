@@ -71,6 +71,7 @@ def test_linux_wheel_build_targets_the_host_without_a_macos_deployment_target(
             builds.append(dict(env or {}))
             (cwd / "native-dist").mkdir()
             (cwd / "native-dist" / "hol_guard-1.0.0-py3-none-linux_x86_64.whl").write_bytes(b"wheel")
+            Path((env or {})["HOL_GUARD_BUNDLE_ASSET_OUTPUT"]).mkdir()
 
     monkeypatch.setattr(qualify_setup, "run_logged", fake_run_logged)
     monkeypatch.setattr(qualify_setup, "git_show", lambda *_a, **_k: qualify_setup.DEV_WHEEL_MARKER.encode())
@@ -83,6 +84,8 @@ def test_linux_wheel_build_targets_the_host_without_a_macos_deployment_target(
     assert env["TARGET"] == "x86_64-unknown-linux-gnu"
     assert env[qualify_setup.DEV_WHEEL_MARKER] == "1"
     assert "MACOSX_DEPLOYMENT_TARGET" not in env
+    # The candidate's optional packs are exported beside the cached wheel.
+    assert result["release_assets"] == env["HOL_GUARD_BUNDLE_ASSET_OUTPUT"]
 
 
 def test_linux_refuses_a_release_wheel_whose_script_still_runs_the_size_check(
@@ -209,6 +212,7 @@ def _args(tmp_path: Path, **overrides: Any) -> SimpleNamespace:
         "run_root": tmp_path / "run",
         "work_parent": tmp_path / "w",
         "wheel": None,
+        "wheel_release_assets": None,
         "sdk_root": tmp_path / "sdk",
         "release_profile_wheel": False,
         "keep_work": False,
@@ -630,3 +634,43 @@ def test_an_interrupted_attempt_still_counts_as_driven(tmp_path: Path, monkeypat
             on_started=lambda: started.append(1),
         )
     assert started == [1]
+
+
+def test_a_cache_without_the_exported_packs_is_a_miss(tmp_path: Path) -> None:
+    """A cache filled before the export existed must not skip the rebuild."""
+    store = tmp_path / "store"
+    store.mkdir()
+    wheel = store / "hol_guard-1.0.0-any.whl"
+    wheel.write_bytes(b"wheel")
+    (store / "wheel.sha256").write_text(qualify_setup.digest_file(wheel) + "\n")
+    assert qualify_setup._cached_wheel(store, assets_required=True) is None
+    reused = qualify_setup._cached_wheel(store, assets_required=False)
+    assert reused is not None and reused["release_assets"] is None
+    (store / qualify_setup.RELEASE_ASSETS_DIRECTORY).mkdir()
+    rebuilt = qualify_setup._cached_wheel(store, assets_required=True)
+    assert rebuilt is not None
+    assert rebuilt["release_assets"] == str(store / qualify_setup.RELEASE_ASSETS_DIRECTORY)
+
+
+def test_a_supplied_wheel_carries_the_packs_its_build_exported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--wheel`` on an exporting candidate needs its matching asset directory."""
+    monkeypatch.setattr(qualify_setup, "git_show", lambda *_a, **_k: qualify_setup.ASSET_OUTPUT_MARKER.encode())
+    wheel = tmp_path / "hol_guard-1.0.0-any.whl"
+    wheel.write_bytes(b"wheel")
+    with pytest.raises(RuntimeError, match="--wheel-release-assets"):
+        qualify_setup.ensure_wheel(tmp_path / "cache", tmp_path / "repo", SHA, tmp_path / "run", wheel=wheel)
+    with pytest.raises(RuntimeError, match="not a directory"):
+        qualify_setup.ensure_wheel(
+            tmp_path / "cache",
+            tmp_path / "repo",
+            SHA,
+            tmp_path / "run",
+            wheel=wheel,
+            release_assets=tmp_path / "missing",
+        )
+    assets = tmp_path / "packs"
+    assets.mkdir()
+    result = qualify_setup.ensure_wheel(
+        tmp_path / "cache", tmp_path / "repo", SHA, tmp_path / "run", wheel=wheel, release_assets=assets
+    )
+    assert result["release_assets"] == str(assets)

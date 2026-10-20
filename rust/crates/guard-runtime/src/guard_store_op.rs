@@ -74,7 +74,7 @@ use crate::guard_store_storage_maintenance as storage_maintenance;
 use crate::guard_store_tool_call_evidence as tool_call_evidence;
 use crate::guard_store_wfcap_wire as wfcap;
 
-const MAX_BUSY_TIMEOUT_MS: u64 = 600_000;
+pub(crate) const MAX_BUSY_TIMEOUT_MS: u64 = 600_000;
 const CACHE_SIZE_KIB: i64 = 256 * 1024;
 const MMAP_SIZE_BYTES: i64 = 1024 * 1024 * 1024;
 

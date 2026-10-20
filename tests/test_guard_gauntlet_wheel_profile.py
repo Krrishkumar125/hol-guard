@@ -69,6 +69,7 @@ def test_wheel_cache_requires_a_matching_digest(tmp_path: Path, monkeypatch: pyt
         "sha256": digest,
         "cached": False,
         "profile": "release",
+        "release_assets": None,
     }
     assert any(argv[:3] == ["nice", "-n", "10"] and argv[-1].endswith("build-native-wheel-macos.sh") for argv in calls)
     assert (store / "wheel.sha256").read_text().strip() == digest
