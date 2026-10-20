@@ -9,7 +9,8 @@ use crate::bounded_hook_bridge_render::{member, rendered, Rendered};
 use crate::claude_hook_bridge_render::py_strip;
 use crate::pyjson::PyVal;
 
-const DEFAULT_REASON: &str = "HOL Guard blocked this action";
+// Matches the installed Hermes bridge byte for byte, trailing period included.
+const DEFAULT_REASON: &str = "HOL Guard blocked this action.";
 
 fn text_of(value: Option<&PyVal>) -> Option<&str> {
     match value {
