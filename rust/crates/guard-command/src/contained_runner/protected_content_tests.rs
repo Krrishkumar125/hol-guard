@@ -74,8 +74,14 @@ fn generic_package_names_stay_in_the_snapshot() {
 
 /// Presence alone decides review, so an unreadable credential still produces
 /// the protected verdict instead of a read failure.
+///
+/// Mode 000 makes a stray read fail only for an unprivileged process. Root
+/// reads straight through it, so there the verdicts below still hold but the
+/// file proves nothing about whether it was opened; the trap is checked to be
+/// armed wherever it can be.
 #[test]
 fn protected_presence_is_decided_without_reading_the_file() {
+    let unprivileged = !nix::unistd::geteuid().is_root();
     for relative in [
         ".env.example",
         ".git-credentials",
@@ -101,6 +107,10 @@ fn protected_presence_is_decided_without_reading_the_file() {
         let protected = workspace.path.join(relative);
         write(&protected, "must-not-read\n");
         fs::set_permissions(&protected, fs::Permissions::from_mode(0o000)).expect("chmod");
+        assert!(
+            !unprivileged || fs::read(&protected).is_err(),
+            "{relative}: mode 000 must make a read of the credential fail"
+        );
 
         assert_eq!(
             complete_workspace_snapshot(&workspace.path, false).unwrap_err(),
