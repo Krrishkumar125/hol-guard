@@ -1185,3 +1185,28 @@ jobs:
           # residue would fail every valid fast lane.
           print("required aggregate: all planned required results green")
           PY
+      # Merge freeze: while the repository variable MERGE_FREEZE is true, this
+      # aggregate (a required check in the main-status-checks ruleset) fails for
+      # every pull request except Release Please PRs and MERGE_FREEZE_ALLOW
+      # entries, so neither a direct merge nor an armed auto-merge can land.
+      # It runs after the evaluation step, which must stay first, and even when
+      # that step failed, so a frozen PR always shows why. merge-freeze.yml
+      # re-evaluates PRs whose CI already finished when the variable changes.
+      - name: Check out the merge freeze policy
+        if: ${{ !cancelled() }}
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci/merge_freeze.py
+          sparse-checkout-cone-mode: false
+      - name: Merge freeze gate
+        if: ${{ !cancelled() }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          MERGE_FREEZE: ${{ vars.MERGE_FREEZE }}
+          MERGE_FREEZE_ALLOW: ${{ vars.MERGE_FREEZE_ALLOW }}
+        run: python3 scripts/ci/merge_freeze.py gate
