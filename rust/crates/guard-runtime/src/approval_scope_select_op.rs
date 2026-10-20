@@ -42,7 +42,6 @@ use crate::package_authority_op::request_digest_with_limit;
 /// `models.DECISION_SCOPE_VALUES`.
 const DECISION_SCOPE_VALUES: &[&str] = &["global", "harness", "workspace", "artifact", "publisher"];
 
-
 pub(crate) fn evaluate_approval_scope_select_request(
     request: &ApprovalScopeSelectRequestV1,
     owner: Option<&crate::policy_store::PolicySnapshotStore>,
