@@ -412,6 +412,62 @@ fn registered_worktree_of_workspace(target: &std::path::Path, workspace: &std::p
         .is_some_and(|backlink| backlink == entry)
 }
 
+/// Whether a call names a path with nothing behind it inside a linked
+/// worktree that the working directory's own repository registers. An agent
+/// told to work in a linked worktree names the file it is about to create
+/// there before it creates it. Nothing is behind that name, so the call reads,
+/// lists or searches nothing and the tool reports the missing path by itself;
+/// stopping it protects no file and spends the agent's turn. The registry is
+/// the gate: the same repository already routes every existing file in that
+/// worktree, so a missing name there is never wider than a name that is
+/// already readable. Paths below the working directory are handled by their
+/// own screens, and the caller proves the path is missing and clears the
+/// sensitive-name screens first.
+pub(in crate::pretool) fn missing_path_in_registered_worktree(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    let Some(workspace) = cwd.and_then(|cwd| std::fs::canonicalize(cwd).ok()) else {
+        return false;
+    };
+    let expanded = match value.strip_prefix('~') {
+        Some(rest) => {
+            if !rest.is_empty() && !rest.starts_with('/') {
+                return false;
+            }
+            let Some(home) = home_dir else {
+                return false;
+            };
+            std::path::Path::new(home).join(rest.trim_start_matches('/'))
+        }
+        None => std::path::PathBuf::from(value),
+    };
+    let candidate = if expanded.is_absolute() {
+        expanded
+    } else {
+        workspace.join(expanded)
+    };
+    // The nearest ancestor that exists is the only part of the name the
+    // filesystem can speak for; canonicalizing there resolves every link and
+    // `..` before the registry is consulted.
+    let Some(existing) = candidate
+        .ancestors()
+        .take(64)
+        .find(|path| std::fs::symlink_metadata(path).is_ok())
+        .and_then(|path| std::fs::canonicalize(path).ok())
+    else {
+        return false;
+    };
+    if !existing.is_dir() || existing.starts_with(&workspace) {
+        return false;
+    }
+    existing
+        .ancestors()
+        .take(64)
+        .any(|root| registered_worktree_of_workspace(root, &workspace))
+}
+
 /// `git --git-dir=<bare repository>` reads a repository without a work tree,
 /// and `--git-dir=<work tree>/.git` reads the repository of a work tree at
 /// or below the current directory.

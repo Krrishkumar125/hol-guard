@@ -140,6 +140,7 @@ pub mod pretool_lockfile_install_forms;
 pub mod pretool_lookup_reads;
 pub mod pretool_metadata_predicate_reads;
 pub mod pretool_metadata_reads;
+pub mod pretool_missing_worktree_paths;
 pub mod pretool_native_home_writes;
 pub mod pretool_network_reads;
 pub mod pretool_node_check_environment;
