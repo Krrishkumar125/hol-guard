@@ -191,7 +191,10 @@ impl EvidenceStoreApi for StubStore {
                 };
                 if refused {
                     failed.enter();
-                    return Err(io::Error::other("database is locked"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "native_guard_store_busy (database is locked)",
+                    ));
                 }
                 written.enter();
                 Ok(true)
@@ -1081,6 +1084,30 @@ fn a_receipt_outlasts_a_briefly_locked_store() {
     assert_eq!(drained.receipt_dropped, 0);
     assert_eq!(drained.dropped, 0);
     assert_eq!(drained.receipt_durable_pending, 0);
+    assert!(journal.records().is_empty());
+}
+
+/// A lock outlasting the attempts a refused write gets is still only a lock:
+/// the receipt is written once the store frees up, never dropped.
+#[test]
+fn a_receipt_waits_out_a_store_locked_past_the_attempt_cap() {
+    let written = Gate::new();
+    let journal = RecordingJournal::new();
+    let store = StubStore::contended(queue_home(), 9, signal(), Arc::clone(&written));
+    let writer = queue_writer(store, Arc::clone(&journal), 64);
+
+    assert!(writer.submit_native_decision_receipt(&receipt("decision-1")));
+    written.wait_for_entry();
+    let contended = writer.stats();
+    assert_eq!(contended.receipt_failures, 9);
+    assert_eq!(contended.receipt_dropped, 0);
+    assert_eq!(journal.records().len(), 1, "still journaled while it waits");
+
+    written.release();
+    assert!(writer.stop(DRAIN_BUDGET_SECONDS));
+    let drained = writer.stats();
+    assert_eq!(drained.receipt_processed, 1);
+    assert_eq!(drained.receipt_dropped, 0);
     assert!(journal.records().is_empty());
 }
 

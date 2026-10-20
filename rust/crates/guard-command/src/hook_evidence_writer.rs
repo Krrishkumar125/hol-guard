@@ -51,10 +51,11 @@ const WORKER_EXIT_GRACE: Duration = Duration::from_millis(250);
 /// `min(1.0, 0.05 * 2 ** (attempt - 1))` the Python writer waited.
 const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(50);
 const RETRY_BACKOFF_CAP: Duration = Duration::from_secs(1);
-/// Store writes a record gets before it is dropped. The backoff spreads them
-/// over about four seconds, long enough for another writer holding the store
-/// to finish, while a write that can never succeed still leaves the queue and
-/// the journal instead of being replayed forever.
+/// Store writes a record gets when the store refuses it for a reason other
+/// than a lock, before it is dropped. A write the store can never take, such
+/// as one that breaks a constraint or evidence that cannot be built, then
+/// leaves the queue and the journal instead of being replayed forever. A lock
+/// is waited out however long it lasts: see [`PersistOutcome::Busy`].
 const MAX_STORE_ATTEMPTS: u32 = 8;
 
 /// The wait before the attempt that follows failure number `attempt`.
@@ -1510,7 +1511,23 @@ impl RuntimeHookEvidenceWriter {
 pub(crate) enum PersistOutcome {
     Done,
     Deduped,
+    /// The write failed for a reason a later attempt may not fix. It is
+    /// retried at most [`MAX_STORE_ATTEMPTS`] times.
     Retry,
+    /// Another writer held the store past this one's lock budget. The record
+    /// stays journaled and is retried until the store frees up or a stop
+    /// leaves it for the next writer.
+    Busy,
+}
+
+/// How a store error is retried: a lock the store or its storage gate timed
+/// out on is waited out, anything else is retried a bounded number of times.
+pub(crate) fn store_refused(error: &io::Error) -> PersistOutcome {
+    if error.kind() == io::ErrorKind::TimedOut {
+        PersistOutcome::Busy
+    } else {
+        PersistOutcome::Retry
+    }
 }
 
 /// `hashlib.sha256(json.dumps([...]).encode("utf-8")).hexdigest()` over the
@@ -1673,16 +1690,16 @@ impl EvidenceWorker {
                             }
                         }
                     }
-                    PersistOutcome::Retry => {
+                    outcome @ (PersistOutcome::Retry | PersistOutcome::Busy) => {
                         // A failed write is most often another writer holding
                         // the store for longer than this one's short lock
                         // budget. The record is already in the journal, so it
                         // goes to the back of the queue and waits out a
                         // backoff while the records behind it keep moving. A
                         // stop that runs out of drain time leaves it for the
-                        // next writer to replay. Only a record that has used
-                        // every attempt is dropped and cleared from the
-                        // journal.
+                        // next writer to replay. Only a record the store
+                        // refused for another reason on every attempt is
+                        // dropped and cleared from the journal.
                         let record_id = record.record_id();
                         let attempt = state
                             .retry_attempts
@@ -1695,7 +1712,8 @@ impl EvidenceWorker {
                             state.receipt_failures += 1;
                         }
                         state.degraded = true;
-                        if attempt >= MAX_STORE_ATTEMPTS {
+                        if matches!(outcome, PersistOutcome::Retry) && attempt >= MAX_STORE_ATTEMPTS
+                        {
                             let _ = state.durable.remove(&record_id);
                             state.retry_attempts.remove(&record_id);
                             state.retry_at.remove(&record_id);
@@ -1859,14 +1877,14 @@ impl EvidenceWorker {
         match self.store.is_exact_command_activity_pre_replay(&evidence) {
             Ok(true) => return PersistOutcome::Done,
             Ok(false) => {}
-            Err(_) => return PersistOutcome::Retry,
+            Err(error) => return store_refused(&error),
         }
         match self
             .store
             .record_command_activity(&evidence, record.invocation_preview.as_deref())
         {
             Ok(_) => PersistOutcome::Done,
-            Err(_) => PersistOutcome::Retry,
+            Err(error) => store_refused(&error),
         }
     }
 
@@ -1890,7 +1908,7 @@ impl EvidenceWorker {
             &record.proposals,
         ) {
             Ok(()) => PersistOutcome::Done,
-            Err(_) => PersistOutcome::Retry,
+            Err(error) => store_refused(&error),
         }
     }
 
@@ -1906,7 +1924,7 @@ impl EvidenceWorker {
         match self.store.record_native_decision_receipt(&record.receipt) {
             Ok(true) => PersistOutcome::Done,
             Ok(false) => PersistOutcome::Deduped,
-            Err(_) => PersistOutcome::Retry,
+            Err(error) => store_refused(&error),
         }
     }
 

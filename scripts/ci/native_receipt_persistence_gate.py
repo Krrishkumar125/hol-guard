@@ -169,6 +169,7 @@ def _validate_tests_and_provenance(root: Path) -> None:
             "a_receipt_the_store_keeps_refusing_stays_journaled_for_the_next_writer",
             "a_refused_receipt_does_not_hold_up_the_receipts_behind_it",
             "a_receipt_the_store_never_takes_is_dropped_after_its_last_attempt",
+            "a_receipt_waits_out_a_store_locked_past_the_attempt_cap",
         ),
         "receipt fault tests",
     )
