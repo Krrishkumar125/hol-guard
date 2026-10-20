@@ -48,6 +48,10 @@ def inventory_artifact_wire(
     }
 
 
+# Sync payload naming the label someone set with ``hol-guard device label set``.
+DEVICE_LABEL_CHOICE_KEY = "device_label_choice"
+
+
 class StoreInventoryMixin:
     def save_snapshot(
         self,
@@ -244,6 +248,9 @@ class StoreInventoryMixin:
                 """,
                 (normalized_label, now, _DEVICE_ROW_KEY),
             )
+        # A chosen label is kept even when it reads like a default ("Local machine");
+        # clearing the label hands the name back to the host name.
+        self.set_sync_payload(DEVICE_LABEL_CHOICE_KEY, {"label": normalized_label if label.strip() else None}, now)
         return self.get_device_metadata()
 
     def rotate_installation_id(self, now: str) -> dict[str, str]:

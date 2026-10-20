@@ -82,16 +82,33 @@ def machine_display_name() -> str | None:
     return clip(name, 120)
 
 
-def effective_device_label(label: str) -> str:
+def effective_device_label(label: str, *, chosen: bool = False) -> str:
     """The label Guard Cloud shows: the user's label, or the host name while it is still generic.
 
-    ``hol-guard device label set`` always wins; a seeded label such as "Local machine"
-    would make every machine in a fleet look the same.
+    A label set with ``hol-guard device label set`` always wins; a seeded label such as
+    "Local machine" would make every machine in a fleet look the same.
     """
 
-    if label.strip().lower() not in GENERIC_DEVICE_LABELS:
+    if chosen or label.strip().lower() not in GENERIC_DEVICE_LABELS:
         return label
     return machine_display_name() or label
+
+
+def device_display_name(store: GuardStore, label: str) -> str:
+    """``effective_device_label`` for the stored label, honouring an explicit choice.
+
+    Sync, policy matching and approval checks all name the machine through this
+    function, so a policy scoped to the name Guard Cloud shows matches everywhere.
+    """
+
+    from ..store_inventory import DEVICE_LABEL_CHOICE_KEY
+
+    try:
+        choice = store.get_sync_payload(DEVICE_LABEL_CHOICE_KEY)
+    except (OSError, RuntimeError, ValueError):
+        choice = None
+    chosen = isinstance(choice, dict) and choice.get("label") == label
+    return effective_device_label(label, chosen=chosen)
 
 
 def machine_section(*, include_os_version: bool, hash_key: bytes) -> dict[str, object]:

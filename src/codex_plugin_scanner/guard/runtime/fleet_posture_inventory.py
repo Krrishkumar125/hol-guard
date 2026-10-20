@@ -49,6 +49,8 @@ _ITEM_SOURCES = {
     "lockfile": "lockfile",
     "config": "config",
 }
+# Scope names a local source can carry; ``_ITEM_SOURCES`` maps each to its contract source.
+ITEM_SOURCE_SCOPES = frozenset(_ITEM_SOURCES)
 
 
 def inventory_item_kind(artifact_type: object) -> str | None:

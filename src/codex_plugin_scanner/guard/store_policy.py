@@ -261,11 +261,14 @@ class StorePolicyMixin:
         if validated_bundle is None:
             return frozenset()
         try:
+            from .runtime.fleet_posture_tools import device_display_name
+
             device_metadata = self.get_device_metadata()
             decisions = build_policy_bundle_decisions(
                 validated_bundle,
                 device_id=str(device_metadata["installation_id"]),
-                device_name=str(device_metadata["device_label"]),
+                # The same name policy sync matched against; see ``_guard_device_metadata``.
+                device_name=device_display_name(cast("GuardStore", self), str(device_metadata["device_label"])),
             )
         except (KeyError, OSError, RuntimeError, TypeError, ValueError):
             return frozenset()
