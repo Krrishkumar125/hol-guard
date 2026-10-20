@@ -117,7 +117,9 @@ mod pytest_contained;
 mod tool_bin_listing;
 mod trailing_group;
 mod trusted_location;
-pub(crate) use git_routes::{git_dir_route_within_scope, git_route_within_workspace};
+pub(crate) use git_routes::{
+    git_dir_route_within_scope, git_route_within_workspace, git_route_without_repository,
+};
 mod apply_patch_writes;
 mod data_heredocs;
 mod lockfile_install;

@@ -285,8 +285,12 @@ fn routed<'a>(
         if saw_change_directory && !std::path::Path::new(target).is_absolute() {
             return None;
         }
+        // A read that discovers no repository below `-C` only prints an
+        // error, so it needs no repository proof. Operations that write still
+        // have to land in a checkout the route proofs admit.
         if !crate::pretool::safe_directory_target(target)
-            || !crate::pretool::git_route_within_workspace(target, context)
+            || !(crate::pretool::git_route_within_workspace(target, context)
+                || (inspection && crate::pretool::git_route_without_repository(target, context)))
         {
             return None;
         }

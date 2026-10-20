@@ -866,6 +866,19 @@
       ]
     },
     {
+      "id": "omp-native-git-read-directory-without-repository",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "bash"
+      ],
+      "prompt": "I am not sure which of these two directories holds a checkout. Run each listed command once, in order, and tell me for each whether it is a Git repository. A 'fatal: not a git repository' answer, or a message that the directory could not be entered, is a valid result: report it and carry on to the next command. Do not initialize or clone anything, do not substitute tools, change the command or cwd, add verification calls, request approval, or change policy. Stop after the listed calls.",
+      "commands": [
+        "git -C {{home}}/acme-plain status --short",
+        "git -C {{home}}/not-cloned-yet log --oneline -3"
+      ]
+    },
+    {
       "id": "omp-native-git-compound-reads",
       "expectation": "allow",
       "oracle": "native-tools",

@@ -860,6 +860,84 @@
       "expect": "allow"
     },
     {
+      "id": "observed-git-07",
+      "fix_area": "git",
+      "harnesses": [
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${PRIVATE_TMP} status --short"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "observed-git-18",
+      "fix_area": "git",
+      "harnesses": [
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${PRIVATE_TMP}/audit-trail log --oneline -3"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "observed-git-27",
+      "fix_area": "git",
+      "harnesses": [
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${PRIVATE_TMP} status"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "git-c-plain-directory-diff",
+      "fix_area": "git",
+      "harnesses": [
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${PRIVATE_TMP} diff --stat"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "git-c-missing-checkout-status",
+      "fix_area": "git",
+      "harnesses": [
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${WORKTREE}/not-cloned-yet status --short"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "git-c-home-plain-directory-log",
+      "fix_area": "git",
+      "harnesses": [
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${HOME}/acme-plain log --oneline -3"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "git-parent-status-with-untracked-nested-repo",
       "fix_area": "git",
       "harnesses": [
