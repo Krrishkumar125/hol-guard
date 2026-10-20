@@ -123,6 +123,7 @@ const MAX_CACHE_ENTRIES = 256;
 const UNSUPPORTED = /* @__PURE__ */ new Set(["404:", "404:not_found", "501:catalog_read_model_unavailable"]);
 const CATALOG_SNAPSHOT_EXPIRED = "catalog_snapshot_expired";
 const UNAVAILABLE_RETRY_DELAYS_MS = [250, 500, 1e3, 2e3, 4e3, 4e3];
+const CATALOG_PREPARATION_FAILED = "catalog_read_preparation_failed";
 class CatalogV2UnsupportedError extends ExtensionControlApiError {
 }
 const readCache = /* @__PURE__ */ new Map();
@@ -178,6 +179,7 @@ async function readAvailable(path, ifNoneMatch, signal) {
       return await readOnce(path, ifNoneMatch, signal);
     } catch (error) {
       if (!(error instanceof ExtensionControlApiError) || error.status !== 503) throw error;
+      if (error.code === CATALOG_PREPARATION_FAILED) throw error;
     }
     await waitBeforeRetry(delayMs, signal);
   }
@@ -6616,6 +6618,10 @@ const LOAD_ERROR_COPY = {
   catalog_snapshot_expired: {
     title: "The extension list changed while it loaded",
     detail: "Guard rebuilt the extension list while this page was reading it, so this page never finished loading. Load it again to read the rebuilt list."
+  },
+  catalog_read_preparation_failed: {
+    title: "Guard cannot rebuild your extension list",
+    detail: "Guard on this device has failed to rebuild its extension list on every recent attempt, so waiting or loading the page again will not clear it. Install the latest version of HOL Guard. Guard writes the reason to its log file at ~/.hol-guard/logs/daemon.log."
   },
   catalog_snapshot_mismatch: {
     title: "Guard's parts are on different versions",
