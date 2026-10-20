@@ -56,10 +56,38 @@ enum Liveness {
     SameExecutable,
 }
 
+/// State-file counts summed over every scope one discovery pass loads.
+#[derive(Default)]
+struct ScopeTotals {
+    files: usize,
+    read_failed: usize,
+    invalid: usize,
+}
+
 fn discover_states(
     base: &Path,
     preferred_digest: Option<&str>,
     liveness: Liveness,
+) -> Result<Vec<(PathBuf, String, ResidentState)>, String> {
+    // Write one note per pass, not per scope: scopes with different counts
+    // would otherwise alternate values and defeat the repeat suppression.
+    let mut totals = ScopeTotals::default();
+    let result = discover_states_counted(base, preferred_digest, liveness, &mut totals);
+    note("discovery_state_files", totals.files);
+    if totals.read_failed > 0 {
+        note("discovery_state_read_failed", totals.read_failed);
+    }
+    if totals.invalid > 0 {
+        note("discovery_state_invalid", totals.invalid);
+    }
+    result
+}
+
+fn discover_states_counted(
+    base: &Path,
+    preferred_digest: Option<&str>,
+    liveness: Liveness,
+    totals: &mut ScopeTotals,
 ) -> Result<Vec<(PathBuf, String, ResidentState)>, String> {
     let private_root = private_root_for_state_base(base)?;
     let durable_digest = match liveness {
@@ -120,7 +148,7 @@ fn discover_states(
     budget.liveness = liveness;
     budget.durable_digest = durable_digest;
     if let Some((path, digest_prefix)) = preferred_candidate {
-        match load_scope_states(&path, &digest_prefix, &private_root, &mut budget) {
+        match load_scope_states(&path, &digest_prefix, &private_root, &mut budget, totals) {
             Ok(found) => states.extend(found),
             Err(error) if error == "native_resident_state_list_failed" => {
                 note("discovery_preferred_scope_failed", 1);
@@ -150,7 +178,7 @@ fn discover_states(
         // Empty and stale version directories must not displace the live
         // resident. Bound total fallback I/O instead of selecting hash prefixes.
         for (path, digest_prefix) in fallback_candidates {
-            match load_scope_states(&path, &digest_prefix, &private_root, &mut budget) {
+            match load_scope_states(&path, &digest_prefix, &private_root, &mut budget, totals) {
                 Ok(found) => {
                     let mut live = None;
                     for (index, (_, _, state)) in found.iter().enumerate() {
@@ -265,16 +293,13 @@ fn load_scope_states(
     digest_prefix: &str,
     private_root: &Path,
     budget: &mut DiscoveryBudget,
+    totals: &mut ScopeTotals,
 ) -> Result<Vec<(PathBuf, String, ResidentState)>, String> {
     let scope = ensure_private_directory_under(scope, private_root, true)?;
     let mut paths = state_paths_with_budget(&scope, budget)?;
     paths.sort_by_key(|path| std::cmp::Reverse(generation_number(path).unwrap_or(0)));
-    note("discovery_state_files", paths.len());
+    totals.files += paths.len();
     let mut states = Vec::new();
-    // Count failures per scope and write one note each after the loop, so a
-    // directory of bad files cannot flood the bounded diagnostic tail.
-    let mut read_failed = 0usize;
-    let mut invalid = 0usize;
     let mut budget_result = Ok(());
     for (attempted, path) in paths.into_iter().enumerate() {
         if attempted >= MAX_STATE_READ_ATTEMPTS || states.len() == MAX_STATE_FILES {
@@ -286,7 +311,7 @@ fn load_scope_states(
             break;
         }
         let Ok(state) = read_state_file_raw(&path, private_root) else {
-            read_failed += 1;
+            totals.read_failed += 1;
             continue;
         };
         let digest = state.runtime_sha256.clone();
@@ -295,16 +320,10 @@ fn load_scope_states(
             || !digest[..16].eq_ignore_ascii_case(digest_prefix)
             || validate_state(&scope, &state, &digest).is_err()
         {
-            invalid += 1;
+            totals.invalid += 1;
             continue;
         }
         states.push((scope.clone(), digest, state));
-    }
-    if read_failed > 0 {
-        note("discovery_state_read_failed", read_failed);
-    }
-    if invalid > 0 {
-        note("discovery_state_invalid", invalid);
     }
     budget_result?;
     Ok(states)
