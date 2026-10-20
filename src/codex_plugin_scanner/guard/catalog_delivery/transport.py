@@ -75,13 +75,14 @@ def _retriable(error):
 
 
 def download(url, maximum):
-    for delay in (*_RETRY_DELAYS, None):
+    for delay in _RETRY_DELAYS:
         try:
             return _download(url, maximum)
         except OSError as error:
-            if delay is None or not _retriable(error):
+            if not _retriable(error):
                 raise
         time.sleep(delay)
+    return _download(url, maximum)
 
 
 def _download(url, maximum):
