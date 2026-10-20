@@ -420,8 +420,10 @@ fn names_only_globs_proven(arguments: &[String], roots: &[&str], context: ReadCo
 /// Every `-g`, `--glob` or `--iglob` value that selects rather than excludes.
 ///
 /// A short cluster ends at its first option that takes a value, which is the
-/// rest of the argument or the next one. Values of other long options are
-/// not skipped, so an argument is at worst read as a glob it is not.
+/// rest of the argument or the next one. Every other long option that takes
+/// a value consumes the next argument too, as `rg` parses it, so a `--`
+/// spelled as that value (`--context-separator --`) never ends the scan
+/// before a later `-g`.
 fn inclusion_globs(arguments: &[String]) -> Vec<&str> {
     let mut globs = Vec::new();
     let mut arguments = arguments.iter();
@@ -432,8 +434,13 @@ fn inclusion_globs(arguments: &[String]) -> Vec<&str> {
         let value = if let Some(long) = argument.strip_prefix("--") {
             match long.split_once('=') {
                 Some(("glob" | "iglob", value)) => Some(value),
+                Some(_) => None,
                 None if matches!(long, "glob" | "iglob") => arguments.next().map(String::as_str),
-                _ => None,
+                None if options::rg_value_role(argument).is_some() => {
+                    arguments.next();
+                    None
+                }
+                None => None,
             }
         } else if let Some(cluster) = argument.strip_prefix('-') {
             match cluster

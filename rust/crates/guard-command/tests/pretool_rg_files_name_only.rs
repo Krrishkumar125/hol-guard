@@ -144,6 +144,9 @@ fn a_listing_that_re_includes_a_hidden_entry_keeps_its_review() {
     for command in [
         "rg --files -g .ssh ~/vault",
         "rg --files --glob=.ssh ~/vault",
+        // `--` here is the separator's value, so the `-g` after it still
+        // selects the hidden entry.
+        "rg --files --context-separator -- -g .ssh ~/vault",
         "rg --files ~/ledger",
     ] {
         check(&f, command, false);
