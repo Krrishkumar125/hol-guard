@@ -42,6 +42,25 @@ fn scratch(name: &str) -> Scratch {
     }
 }
 
+/// The declared home, carrying the configuration a developer machine has:
+/// an LFS filter, a credential helper, a pager and an external diff driver.
+/// None of it can run on a route that discovers no repository, because Git
+/// dies in its own setup before it reads any of it, so the route is proved
+/// without the configuration probe the same reads need inside a checkout.
+fn home(root: &Path) -> PathBuf {
+    let home = directory(root, "home");
+    std::fs::write(
+        home.join(".gitconfig"),
+        "[core]\n\tpager = /nonexistent/pager\n\thooksPath = /nonexistent/hooks\n\
+         [filter \"lfs\"]\n\tclean = git-lfs clean -- %f\n\tsmudge = git-lfs smudge -- %f\n\
+         \tprocess = git-lfs filter-process\n\trequired = true\n\
+         [diff \"spelled\"]\n\tcommand = /nonexistent/difft\n\ttextconv = /nonexistent/strings\n\
+         [credential]\n\thelper = osxkeychain\n",
+    )
+    .unwrap();
+    home
+}
+
 fn directory(root: &Path, name: &str) -> PathBuf {
     let path = root.join(name);
     std::fs::create_dir_all(&path).unwrap();
@@ -51,7 +70,7 @@ fn directory(root: &Path, name: &str) -> PathBuf {
 #[test]
 fn git_read_routed_to_a_directory_without_a_repository_is_allowed() {
     let scratch = scratch("plain");
-    let home = directory(&scratch.root, "home");
+    let home = home(&scratch.root);
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let plain = directory(&scratch.root, "home/Code/scratch-notes");
@@ -72,7 +91,7 @@ fn git_read_routed_to_a_directory_without_a_repository_is_allowed() {
 #[test]
 fn git_read_routed_to_a_missing_directory_is_allowed() {
     let scratch = scratch("missing");
-    let home = directory(&scratch.root, "home");
+    let home = home(&scratch.root);
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let missing = scratch.root.join("home/Code/not-cloned-yet");
@@ -91,7 +110,7 @@ fn git_read_routed_to_a_missing_directory_is_allowed() {
 #[test]
 fn git_read_routed_below_a_reviewed_repository_is_still_reviewed() {
     let scratch = scratch("below");
-    let home = directory(&scratch.root, "home");
+    let home = home(&scratch.root);
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let hidden = directory(&scratch.root, "home/.config-repo");
@@ -111,7 +130,7 @@ fn git_read_routed_below_a_reviewed_repository_is_still_reviewed() {
 #[test]
 fn git_read_routed_outside_the_read_screens_stays_reviewed() {
     let scratch = scratch("screened");
-    let home = directory(&scratch.root, "home");
+    let home = home(&scratch.root);
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let hidden = directory(&scratch.root, "home/.scratch-notes");
@@ -137,7 +156,7 @@ fn git_read_routed_outside_the_read_screens_stays_reviewed() {
 #[test]
 fn git_read_routed_into_a_bare_repository_is_still_reviewed() {
     let scratch = scratch("bare");
-    let home = directory(&scratch.root, "home");
+    let home = home(&scratch.root);
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let bare = scratch.root.join("home/Code/mirror.git");
@@ -161,7 +180,7 @@ fn git_read_routed_into_a_bare_repository_is_still_reviewed() {
 #[test]
 fn git_read_routed_through_a_link_to_a_sensitive_directory_is_reviewed() {
     let scratch = scratch("linked");
-    let home = directory(&scratch.root, "home");
+    let home = home(&scratch.root);
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let ssh = directory(&scratch.root, "home/.ssh");
@@ -183,7 +202,7 @@ fn git_read_routed_through_a_link_to_a_sensitive_directory_is_reviewed() {
 #[test]
 fn git_read_that_opens_files_without_a_repository_is_reviewed() {
     let scratch = scratch("reads");
-    let home = directory(&scratch.root, "home");
+    let home = home(&scratch.root);
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let plain = directory(&scratch.root, "home/Code/scratch-notes");
@@ -207,7 +226,7 @@ fn git_read_that_opens_files_without_a_repository_is_reviewed() {
 #[test]
 fn git_read_with_inline_configuration_without_a_repository_is_reviewed() {
     let scratch = scratch("inline-config");
-    let home = directory(&scratch.root, "home");
+    let home = home(&scratch.root);
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let plain = directory(&scratch.root, "home/Code/scratch-notes");

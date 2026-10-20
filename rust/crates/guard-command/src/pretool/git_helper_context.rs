@@ -41,7 +41,19 @@ pub(super) fn routes_to_no_repository(
     segment: &crate::CommandSegmentV1,
     context: PathContext<'_>,
 ) -> bool {
-    let arguments = &segment.arguments;
+    segment
+        .executable
+        .as_deref()
+        .is_some_and(|executable| executable_basename(executable) == "git")
+        && arguments_route_to_no_repository(&segment.arguments, context)
+}
+
+/// [`routes_to_no_repository`] for a segment's arguments alone, for the
+/// proofs that already know the segment runs Git and hold its arguments.
+pub(super) fn arguments_route_to_no_repository(
+    arguments: &[String],
+    context: PathContext<'_>,
+) -> bool {
     let mut index = 0;
     let mut route = None;
     while let Some(argument) = arguments.get(index) {
@@ -65,10 +77,6 @@ pub(super) fn routes_to_no_repository(
         index += 1;
     }
     route.is_some_and(|target| super::git_routes::git_route_without_repository(target, context))
-        && segment
-            .executable
-            .as_deref()
-            .is_some_and(|executable| executable_basename(executable) == "git")
         && crate::command_compatibility::git_inspection_arguments(arguments, context).is_some()
 }
 
