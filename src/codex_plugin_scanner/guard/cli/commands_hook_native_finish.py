@@ -228,7 +228,6 @@ def finalize_native_artifact_hook(
         action_envelope = state.action_envelope
         policy_action = state.policy_action
         response_payload = state.response_payload
-    record_native_artifact_hook_receipt(state, store)
     approval_context = live_hook_approval_context(response_payload, harness=args.harness, guard_home=store.guard_home)
     canonical_harness = _canonical_harness_name(args.harness)
     is_claude = canonical_harness == "claude-code"
@@ -247,6 +246,9 @@ def finalize_native_artifact_hook(
         },
         guard_home=store.guard_home,
     )
+    # The receipt follows the directive: a resident that cannot say how to
+    # answer leaves no record of a verdict the harness never received.
+    record_native_artifact_hook_receipt(state, store)
 
     def raw_runtime_reason() -> str:
         """The resident's reason for this artifact.

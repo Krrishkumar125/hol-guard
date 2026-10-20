@@ -253,3 +253,36 @@ def test_incomplete_inputs_are_refused_before_the_resident_is_asked(monkeypatch:
     with pytest.raises(decision.NativeHookDecisionError):
         decision.native_artifact_directive({key: value for key, value in _FACTS.items() if key != "replayed"})
     assert asked == []
+
+
+def test_an_unavailable_directive_records_no_receipt(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorder = _recorder()
+    _stub_transport(monkeypatch, recorder)
+    receipts: list[object] = []
+    monkeypatch.setattr(finish, "record_native_artifact_hook_receipt", lambda state, _store: receipts.append(state))
+
+    def unavailable(_inputs: dict[str, object], *, guard_home: object = None) -> dict[str, Any]:
+        raise decision.NativeHookDecisionError("native_hook_decision_unavailable")
+
+    monkeypatch.setattr(finish, "native_artifact_directive", unavailable)
+    case = next(iter(recorder.cases()))
+    state = SimpleNamespace(
+        action_envelope=SimpleNamespace(command="python -c 'x'", action_type="shell_command"),
+        event_name=case.event,
+        policy_action=case.action,
+        response_payload=case.response_payload,
+        runtime_artifact=case.artifact(),
+    )
+    recorder.CURRENT.append(case)
+    try:
+        with pytest.raises(decision.NativeHookDecisionError):
+            finish.finalize_native_artifact_hook(
+                state,  # type: ignore[arg-type]
+                SimpleNamespace(harness=case.harness, json=case.json),  # type: ignore[arg-type]
+                config=None,  # type: ignore[arg-type]
+                payload=case.payload,
+                store=SimpleNamespace(guard_home=None),  # type: ignore[arg-type]
+            )
+    finally:
+        recorder.CURRENT.pop()
+    assert receipts == []
