@@ -100,3 +100,66 @@ fn the_exemption_is_only_for_the_report_body() {
         );
     }
 }
+
+/// The same report after the call, carrying the harness's acknowledgement.
+fn post_report() -> Value {
+    let mut payload = report();
+    payload
+        .as_object_mut()
+        .expect("envelope")
+        .insert("tool_response".into(), json!({"ok": true}));
+    payload
+}
+
+#[test]
+fn the_pre_tool_authority_names_a_verified_report() {
+    let native = guard_command::pretool::evaluate_pre_tool_envelope("omp", "PreToolUse", &report());
+    assert_eq!(native.decision, "allow");
+    assert_eq!(native.reason_code, "native_omp_yield_metadata");
+}
+
+#[test]
+fn the_report_is_still_labels_after_the_call() {
+    for reason_code in [
+        "output_scan_allow",
+        "source_full_scan_allow",
+        "output_empty_allow",
+    ] {
+        assert!(!facts(&post_report(), "omp", reason_code), "{reason_code}");
+    }
+}
+
+#[test]
+fn a_post_tool_exemption_needs_the_output_scan_to_have_allowed() {
+    for reason_code in [
+        "output_scan_review",
+        "native_policy_reapproval_required",
+        "output_secret_match",
+    ] {
+        assert!(facts(&post_report(), "omp", reason_code), "{reason_code}");
+    }
+}
+
+#[test]
+fn a_report_the_pre_tool_authority_would_not_verify_keeps_its_floor() {
+    // A URL in the report is not plain task data, so the authority never
+    // verified it and its field names are read as names again.
+    let payload = json!({"tool_name": "yield", "tool_input": {"data": {
+        "tokenMentions": "No, the README does not mention a token.",
+        "url": "https://example.com/report"
+    }}, "tool_response": {"ok": true}});
+    assert!(facts(&payload, "omp", "output_scan_allow"));
+}
+
+#[test]
+fn the_acknowledgement_of_a_verified_report_carries_its_labels() {
+    let mut payload = report();
+    payload.as_object_mut().expect("envelope").insert(
+        "tool_response".into(),
+        json!({"result": {"tokenMentions": "No", "apiKeyMentions": "No"}}),
+    );
+    assert!(!facts(&payload, "omp", "output_scan_allow"));
+    // A path in the acknowledgement keeps its floor.
+    payload["tool_response"]["path"] = json!("~/.aws/credentials");
+    assert!(facts(&payload, "omp", "output_scan_allow"));
+}
