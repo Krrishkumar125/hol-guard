@@ -26,7 +26,12 @@ DENIED = {
 }
 
 
-def _ask(monkeypatch: pytest.MonkeyPatch, answer: object, sent: list[dict[str, Any]] | None = None) -> Any:
+def _ask(
+    monkeypatch: pytest.MonkeyPatch,
+    answer: object,
+    sent: list[dict[str, Any]] | None = None,
+    payload: object = None,
+) -> Any:
     def decide(query: Any, **kwargs: Any) -> Any:
         if sent is not None:
             sent.append({"query": dict(query), **kwargs})
@@ -36,7 +41,7 @@ def _ask(monkeypatch: pytest.MonkeyPatch, answer: object, sent: list[dict[str, A
 
     monkeypatch.setattr(native_mcp_proxy_decision, "native_mcp_proxy_decide", decide)
     return native_inline_approval_reply(
-        {"action": "accept", "content": {"decision": "deny"}},
+        {"action": "accept", "content": {"decision": "deny"}} if payload is None else payload,
         tool_name="delete_secret_file",
         server_name="workspace-files",
         guard_home=Path("/guard-home"),
@@ -58,12 +63,42 @@ def test_the_query_carries_the_answer_the_client_gave(monkeypatch: pytest.Monkey
     assert sent[0]["guard_home"] == Path("/guard-home")
 
 
-@pytest.mark.parametrize("block", [DENIED, None])
-def test_the_resident_names_the_classification_and_the_block(monkeypatch: pytest.MonkeyPatch, block: object) -> None:
-    assert _ask(monkeypatch, {"inline_approval": "denied", "block": block}) == {
-        "inline_approval": "denied",
+@pytest.mark.parametrize(
+    ("classified", "block"),
+    [("denied", DENIED), ("allow", None), ("fallthrough", None)],
+)
+def test_the_resident_names_the_classification_and_the_block(
+    monkeypatch: pytest.MonkeyPatch, classified: str, block: object
+) -> None:
+    assert _ask(monkeypatch, {"inline_approval": classified, "block": block}) == {
+        "inline_approval": classified,
         "block": block,
     }
+
+
+@pytest.mark.parametrize(
+    ("sent_payload", "expected"),
+    [
+        (
+            {"action": "accept", "content": {"decision": "approve", "note": "ok"}, "_meta": {"id": 2**70}},
+            {"action": "accept", "content": {"decision": "approve"}},
+        ),
+        ({"action": "cancel", "content": None}, {"action": "cancel"}),
+        ({"action": 7, "content": {"decision": 7}}, {"content": {}}),
+        ({"action": "accept", "content": ["approve"]}, {"action": "accept"}),
+        (["accept"], None),
+    ],
+)
+def test_only_the_two_classified_fields_reach_the_resident(
+    monkeypatch: pytest.MonkeyPatch, sent_payload: object, expected: object
+) -> None:
+    """The client wrote the rest of the result; it must not enter the digest."""
+
+    sent: list[dict[str, Any]] = []
+
+    _ = _ask(monkeypatch, {"inline_approval": "fallthrough", "block": None}, sent, payload=sent_payload)
+
+    assert sent[0]["query"]["payload"] == expected
 
 
 @pytest.mark.parametrize(
@@ -74,6 +109,10 @@ def test_the_resident_names_the_classification_and_the_block(monkeypatch: pytest
         {"inline_approval": "denied", "block": "inline-denied"},
         {"inline_approval": "denied", "block": {"decision_source": "inline-denied"}},
         {"inline_approval": "denied", "block": {**DENIED, "reason": None}},
+        {"inline_approval": "denied", "block": None},
+        {"inline_approval": "allow", "block": DENIED},
+        {"inline_approval": "fallthrough", "block": DENIED},
+        {"inline_approval": "queued", "block": None},
         NativeMcpProxyDecisionError("native_mcp_proxy_decision_unavailable"),
     ],
 )

@@ -60,6 +60,7 @@ from ..native_mcp_proxy_decision import (
     cursor_fact,
     native_external_archive_bind,
     native_inline_approval_reply,
+    native_inline_approval_reply_available,
     native_mcp_proxy_decide,
     native_package_reason_signals,
     package_facts,
@@ -1053,7 +1054,15 @@ class RuntimeMcpGuardProxy:
             "mode": self.config.mode,
             "package_present": package_artifact is not None,
             "asks_for_approval": bool(asks_for_approval(self.config)),
-            "inline_available": bool(self._inline_prompt_available and approval_callback is not None),
+            # A prompt is only worth raising when the resident can classify the
+            # answer. Without the query every answer -- including an approval the
+            # user gave -- fails closed into the approval queue, so an older
+            # resident would interrupt the user for nothing.
+            "inline_available": bool(
+                self._inline_prompt_available
+                and approval_callback is not None
+                and native_inline_approval_reply_available()
+            ),
             "tool_name": tool_name,
         }
 
