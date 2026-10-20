@@ -20,6 +20,10 @@ from .managed_controls_policy_bundle import (
     managed_controls_revision_from_state,
 )
 from .native_policy_bundle import PolicyBundleNativeError, PolicyBundleNativeUnavailableError
+from .native_policy_lookup_compose import (
+    PolicyLookupComposeUnavailableError,
+    native_policy_lookup_compose,
+)
 from .policy_bundle_activation import (
     PolicyBundleActivationRejectionError,
     PrecomputedVerdicts,
@@ -49,7 +53,6 @@ if TYPE_CHECKING:
     from .store import GuardStore
 
 # ruff: noqa: F403,F405
-from .action_lattice import guard_action_severity
 from .native_approval_proof import approval_reuse_claim_disposition as native_claim_disposition
 from .native_execution import _resident_request
 from .native_memory_pattern import memory_pattern_verdict
@@ -168,37 +171,30 @@ def memory_lookup_candidates(
 def _most_restrictive_policy_lookup(
     lookups: Sequence[PolicyDecisionLookupResult],
 ) -> PolicyDecisionLookupResult:
-    """Compose non-consuming direct, exact-command, and memory matches."""
+    """Compose non-consuming direct, exact-command, and memory matches.
+
+    Which of the probes answers is a verdict about the user's remembered
+    rules, so the resident orders them. This function only ships the probes it
+    already resolved; an unreachable resident raises rather than letting a
+    looser saved rule stand in for a stricter one.
+    """
 
     if not lookups:
         raise ValueError("at least one policy lookup is required")
-    selected_lookup = lookups[0]
-    selected_decision = selected_lookup["decision"]
-    ignored_integrity = selected_lookup.get("ignored_local_integrity")
-    revisions = {lookup["authority_revision"] for lookup in lookups}
-    authority_revision = next(iter(revisions)) if len(revisions) == 1 else -1
-    for lookup in lookups[1:]:
-        decision = lookup["decision"]
-        if ignored_integrity is None and lookup.get("ignored_local_integrity") is not None:
-            ignored_integrity = lookup["ignored_local_integrity"]
-        if decision is None:
-            continue
-        if selected_decision is None or guard_action_severity(
-            decision.get("action"),
-            unknown_action="block",
-        ) > guard_action_severity(selected_decision.get("action"), unknown_action="block"):
-            selected_lookup = lookup
-            selected_decision = decision
-    if selected_decision is not None:
-        selected_decision = {
-            **selected_decision,
-            "_approval_authority_revision": authority_revision,
-        }
+    composed = native_policy_lookup_compose(list(lookups))
+    decision = composed.get("decision")
+    ignored = composed.get("ignored_local_integrity")
+    trust_status = composed.get("trust_status")
+    revision = composed.get("authority_revision")
+    if not isinstance(trust_status, dict) or not isinstance(revision, int) or isinstance(revision, bool):
+        raise PolicyLookupComposeUnavailableError
+    if not (decision is None or isinstance(decision, dict)) or not (ignored is None or isinstance(ignored, dict)):
+        raise PolicyLookupComposeUnavailableError
     return {
-        "decision": selected_decision,
-        "ignored_local_integrity": ignored_integrity,
-        "trust_status": selected_lookup["trust_status"],
-        "authority_revision": authority_revision,
+        "decision": decision,
+        "ignored_local_integrity": ignored,
+        "trust_status": trust_status,
+        "authority_revision": revision,
     }
 
 

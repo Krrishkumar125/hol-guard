@@ -43,6 +43,8 @@ mod policy_decision_lookup;
 pub use policy_decision_lookup::*;
 mod policy_document_decision;
 pub use policy_document_decision::*;
+mod policy_lookup_compose;
+pub use policy_lookup_compose::*;
 mod native_hook_receipt;
 pub use native_hook_receipt::*;
 mod native_command_observations;

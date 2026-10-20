@@ -609,6 +609,7 @@ mod policy_enforcement;
 mod policy_integrity_generation;
 mod policy_integrity_resolver;
 mod policy_integrity_rows_op;
+mod policy_lookup_compose_op;
 mod policy_lookup_groups;
 mod policy_lookup_local_tool_grant;
 mod policy_lookup_portable;

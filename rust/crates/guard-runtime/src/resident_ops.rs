@@ -470,6 +470,9 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
             ResidentOperationV1::HookArtifactCompose(request) => {
                 crate::hook_artifact_compose_op::evaluate_hook_artifact_compose_request(&request)
             }
+            ResidentOperationV1::PolicyLookupCompose(request) => {
+                crate::policy_lookup_compose_op::evaluate_policy_lookup_compose_request(&request)
+            }
             ResidentOperationV1::ConsumerArtifactCompose(request) => {
                 crate::consumer_artifact_compose_op::evaluate_consumer_artifact_compose_request(
                     &request,
