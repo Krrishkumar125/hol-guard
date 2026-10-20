@@ -585,7 +585,7 @@ fn post_policy_fields_raise_without_python_semantic_input() {
 }
 
 #[test]
-fn unknown_post_action_warns_once_the_whole_output_scanned_clean() {
+fn unknown_post_action_is_review_even_when_default_allows() {
     let request = post_request(json!({
         "tool_name": "future_tool_v9",
         "tool_response": "ok"
@@ -597,13 +597,13 @@ fn unknown_post_action_warns_once_the_whole_output_scanned_clean() {
         HookReviewResponseV1::allow("output_scan_allow"),
     )
     .unwrap();
-    assert_eq!(result.decision, "allow");
-    assert_eq!(result.policy_action.as_deref(), Some("warn"));
-    assert_eq!(result.reason_code, "native_policy_warning");
+    assert_eq!(result.decision, "deny");
+    assert_eq!(result.policy_action.as_deref(), Some("review"));
+    assert_eq!(result.reason_code, "native_policy_review_required");
 }
 
 #[test]
-fn unreadable_tool_stays_unknown_and_warns_on_a_clean_full_scan() {
+fn unreadable_tool_remains_unknown_under_allow_policy() {
     let request = post_request(json!({
         "tool_name": "unreadable_tool",
         "tool_response": "ok"
@@ -615,48 +615,9 @@ fn unreadable_tool_stays_unknown_and_warns_on_a_clean_full_scan() {
         HookReviewResponseV1::allow("output_scan_allow"),
     )
     .unwrap();
-    assert_eq!(result.decision, "allow");
-    assert_eq!(result.policy_action.as_deref(), Some("warn"));
-    assert_eq!(result.reason_code, "native_policy_warning");
-}
-
-#[test]
-fn unknown_post_action_is_review_without_a_full_output_scan() {
-    let request = post_request(json!({
-        "tool_name": "future_tool_v9",
-        "tool_response": "ok"
-    }));
-    let result = apply_post_tool_policy(
-        &snapshot(policy("allow")),
-        &request,
-        GuardHookPayloadKindV2::Inline,
-        HookReviewResponseV1::allow("scanner_budget_exhausted"),
-    )
-    .unwrap();
     assert_eq!(result.decision, "deny");
     assert_eq!(result.policy_action.as_deref(), Some("review"));
     assert_eq!(result.reason_code, "native_policy_review_required");
-}
-
-#[test]
-fn a_tool_the_name_list_misses_does_not_withhold_output_the_pre_tool_allowed() {
-    // `github` matches none of `classify_tool_name`'s word lists, so PostToolUse
-    // reads it as an unknown operation while PreToolUse allowed the same call at
-    // the configured warn default. The clean full scan has to carry the result.
-    let request = post_request(json!({
-        "tool_name": "github",
-        "tool_input": {"op": "search_prs", "repo": "example-org/example-repo"},
-        "tool_response": "{\"total_count\":1}"
-    }));
-    let result = apply_post_tool_policy(
-        &snapshot(policy("warn")),
-        &request,
-        GuardHookPayloadKindV2::Inline,
-        HookReviewResponseV1::allow("output_scan_allow"),
-    )
-    .unwrap();
-    assert_eq!(result.decision, "allow");
-    assert_eq!(result.policy_action.as_deref(), Some("warn"));
 }
 
 #[test]

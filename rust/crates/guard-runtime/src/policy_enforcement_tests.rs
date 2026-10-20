@@ -469,6 +469,8 @@ fn prompt_risk_classes_reject_non_prompt_duplicate_and_unordered_evidence() {
 mod github_tests;
 #[path = "policy_enforcement_omp_eval_output_tests.rs"]
 mod omp_eval_output_tests;
+#[path = "policy_enforcement_omp_github_output_tests.rs"]
+mod omp_github_output_tests;
 #[path = "policy_enforcement_post_tool_tests.rs"]
 mod post_tool_tests;
 #[path = "policy_enforcement_task_schema_tests.rs"]
