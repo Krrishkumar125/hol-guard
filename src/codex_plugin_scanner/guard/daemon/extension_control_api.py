@@ -114,17 +114,28 @@ class ExtensionControlApiService:
         self._pending_proofs: OrderedDict[str, _PendingMutation] = OrderedDict()
         self._applied_mutations: OrderedDict[str, _AppliedMutation] = OrderedDict()
 
-    def rebind_registry(self, registry: CommandSafetyExtensionRegistry) -> None:
-        """Serve a registry the daemon recovered after starting on another.
+    def rebind_registry(
+        self,
+        registry: CommandSafetyExtensionRegistry,
+        *,
+        installed: ExtensionControlRuntimeSnapshot,
+    ) -> bool:
+        """Serve the registry whose view the runtime installed as `installed`.
 
         Proofs prepared against the previous registry name its catalog digest,
         and a preview in flight sees the registry change, so both fail as
-        conflicts.
+        conflicts. A refresh rebinds after releasing the authority lease, so
+        an apply can commit a newer activation in between. That apply binds
+        its own registry and installs a newer snapshot, which this refuses to
+        roll back.
         """
 
         with self._apply_lock:
+            if self._runtime.current() is not installed:
+                return False
             self._registry = registry
             self.catalog_digest = registry.catalog_digest
+            return True
 
     def recommendation_inputs(self) -> tuple[CommandSafetyExtensionRegistry, ExtensionControlRuntimeSnapshot]:
         return self._registry, self._runtime.current()

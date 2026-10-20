@@ -21,6 +21,7 @@ import {
 } from "../extension-controls-api";
 import { loadCatalogReadModel, type CatalogReadModel } from "../extension-catalog-v2";
 import { CatalogExtensionDetail } from "./catalog-extension-detail";
+import { loadConsistentProtectionData } from "./consistent-protection-load";
 import { buildExtensionMutation, randomToken } from "./extension-mutation";
 
 export { buildExtensionMutation };
@@ -118,8 +119,7 @@ export function ProtectionCenterWorkspace(props: {
       // flight so an applied change's confirmation toast survives the reload.
       setState((current) => (current.kind === "ready" ? current : { kind: "loading" }));
       try {
-        const [fresh, effective] = await Promise.all([loadCatalogReadModel(), fetchEffectiveExtensionControls()]);
-        if (fresh.catalog_digest !== effective.catalog_digest) throw new Error("Protection data changed while Guard was loading. Check again before making changes.");
+        const { catalog: fresh, effective } = await loadConsistentProtectionData(loadCatalogReadModel, fetchEffectiveExtensionControls);
         // An unchanged catalog keeps its model (and loaded details); effective state always refreshes.
         const previous = catalogRef.current;
         const catalog = previous?.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol ? previous : fresh;
