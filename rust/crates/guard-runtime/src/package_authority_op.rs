@@ -2611,7 +2611,7 @@ pub(crate) fn evaluate_package_intent_parse(
 /// decoded: a partially rebuilt intent would fingerprint to an id no earlier
 /// approval was stored under, which reads to the user as an approval that
 /// stopped working.
-pub(crate) fn evaluate_package_request_artifact(
+pub(crate) fn evaluate_package_request_artifact_request(
     request: &PackageRequestArtifactRequestV1,
 ) -> Result<Vec<u8>, String> {
     let request_sha256 = request_digest(request)?;

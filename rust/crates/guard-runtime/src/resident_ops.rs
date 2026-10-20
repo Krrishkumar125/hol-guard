@@ -321,7 +321,7 @@ pub(crate) fn evaluate_resident_bytes(
                 crate::package_authority_op::evaluate_package_intent_parse(&request)
             }
             ResidentOperationV1::PackageRequestArtifact(request) => {
-                crate::package_authority_op::evaluate_package_request_artifact(&request)
+                crate::package_authority_op::evaluate_package_request_artifact_request(&request)
             }
             ResidentOperationV1::SupplyChainEval(request) => {
                 crate::package_authority_op::evaluate_supply_chain_eval(&request)

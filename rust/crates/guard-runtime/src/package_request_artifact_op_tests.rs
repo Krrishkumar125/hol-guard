@@ -11,7 +11,7 @@ use guard_command::package_intent_common::{
 use guard_contracts::{PackageRequestArtifactRequestV1, PACKAGE_AUTHORITY_REQUEST_SCHEMA};
 use serde_json::{json, Value};
 
-use super::evaluate_package_request_artifact;
+use super::evaluate_package_request_artifact_request;
 
 fn exact_intent_payload() -> Value {
     json!({
@@ -90,7 +90,7 @@ fn request(intent: Value) -> PackageRequestArtifactRequestV1 {
 }
 
 fn evaluate(request: &PackageRequestArtifactRequestV1) -> Value {
-    let bytes = evaluate_package_request_artifact(request).expect("op answers");
+    let bytes = evaluate_package_request_artifact_request(request).expect("op answers");
     serde_json::from_slice(&bytes).expect("op answers JSON")
 }
 
