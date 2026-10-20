@@ -123,6 +123,7 @@ const MAX_CACHE_ENTRIES = 256;
 const UNSUPPORTED = /* @__PURE__ */ new Set(["404:", "404:not_found", "501:catalog_read_model_unavailable"]);
 const CATALOG_SNAPSHOT_EXPIRED = "catalog_snapshot_expired";
 const UNAVAILABLE_RETRY_DELAYS_MS = [250, 500, 1e3, 2e3, 4e3, 4e3];
+const CATALOG_PREPARATION_FAILED = "catalog_read_preparation_failed";
 class CatalogV2UnsupportedError extends ExtensionControlApiError {
 }
 const readCache = /* @__PURE__ */ new Map();
@@ -178,6 +179,7 @@ async function readAvailable(path, ifNoneMatch, signal) {
       return await readOnce(path, ifNoneMatch, signal);
     } catch (error) {
       if (!(error instanceof ExtensionControlApiError) || error.status !== 503) throw error;
+      if (error.code === CATALOG_PREPARATION_FAILED) throw error;
     }
     await waitBeforeRetry(delayMs, signal);
   }
@@ -6542,6 +6544,20 @@ function CatalogExtensionDetail(props) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx(ProtectionModuleDetail, { ...detailProps, extension: state.extension });
 }
+const PROTECTION_DATA_CHANGED_MESSAGE = "Protection data changed while Guard was loading. Check again before making changes.";
+const CONSISTENT_LOAD_RETRY_DELAYS_MS = [250, 1e3, 2e3, 4e3];
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function loadConsistentProtectionData(loadCatalog, loadEffective, options = {}) {
+  const delays = options.delays ?? CONSISTENT_LOAD_RETRY_DELAYS_MS;
+  const sleep = options.sleep ?? defaultSleep;
+  for (let attempt = 0; ; attempt += 1) {
+    const [catalog, effective] = await Promise.all([loadCatalog(), loadEffective()]);
+    if (catalog.catalog_digest === effective.catalog_digest) return { catalog, effective };
+    const delay = delays[attempt];
+    if (delay === void 0) throw new Error(PROTECTION_DATA_CHANGED_MESSAGE);
+    await sleep(delay);
+  }
+}
 function randomToken() {
   return crypto.randomUUID().replaceAll("-", "");
 }
@@ -6602,6 +6618,10 @@ const LOAD_ERROR_COPY = {
   catalog_snapshot_expired: {
     title: "The extension list changed while it loaded",
     detail: "Guard rebuilt the extension list while this page was reading it, so this page never finished loading. Load it again to read the rebuilt list."
+  },
+  catalog_read_preparation_failed: {
+    title: "Guard cannot rebuild your extension list",
+    detail: "Guard on this device has failed to rebuild its extension list on every recent attempt, so waiting or loading the page again will not clear it. Install the latest version of HOL Guard. Guard writes the reason to its log file at ~/.hol-guard/logs/daemon.log."
   },
   catalog_snapshot_mismatch: {
     title: "Guard's parts are on different versions",
@@ -9909,8 +9929,7 @@ function ProtectionCenterWorkspace(props) {
     const request2 = (async () => {
       setState((current) => current.kind === "ready" ? current : { kind: "loading" });
       try {
-        const [fresh, effective] = await Promise.all([loadCatalogReadModel(), fetchEffectiveExtensionControls()]);
-        if (fresh.catalog_digest !== effective.catalog_digest) throw new Error("Protection data changed while Guard was loading. Check again before making changes.");
+        const { catalog: fresh, effective } = await loadConsistentProtectionData(loadCatalogReadModel, fetchEffectiveExtensionControls);
         const previous = catalogRef.current;
         const catalog = previous?.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol ? previous : fresh;
         catalogRef.current = catalog;

@@ -114,6 +114,7 @@ from .aibom_inventory_persist import persist_aibom_inventory_context
 from .audit_persistence import NOT_PERSISTED as AUDIT_NOT_PERSISTED
 from .audit_persistence import WRITTEN as AUDIT_WRITTEN
 from .audit_persistence import AuditPersistence
+from .background_diagnostics import install_sink as install_background_sink
 from .bounded_http import BoundedThreadingHTTPServer
 from .catalog_read_v2 import CATALOG_V2_PREFIX, serve_catalog_read_v2
 from .command_activity_api import (
@@ -725,11 +726,19 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 require_current(self.store, _key(self.store), activation_digest)
                 view = self.store.read_extension_control_authority_for_registry(registry, read_only=shared)
                 snapshot = self.extension_control_runtime.refresh(view)
-            if self._extension_control_on_core_registry:
-                # Startup bound the control API to the core registry. Once the
-                # authority reads again, serve the registry it was read for so
-                # previews and mutations stop failing against the core one.
-                self.extension_control_api.rebind_registry(registry)
+            # The runtime now holds a view read for `registry`. Serve the same
+            # registry from the control API, whether startup fell back to the
+            # core one or a pack activation landed after startup (an upgrade
+            # settling its transition, another process's activation).
+            # Otherwise the effective controls and the catalog read model
+            # report different digests until the daemon restarts. Rebind after
+            # the authority lease is released: apply() takes the API lock
+            # before that lease. The API skips the rebind if an apply installed
+            # a newer snapshot in the meantime.
+            if (
+                self._extension_control_on_core_registry
+                or registry.catalog_digest != self.extension_control_api.catalog_digest
+            ) and self.extension_control_api.rebind_registry(registry, installed=snapshot):
                 self._extension_control_on_core_registry = False
             return snapshot
 
@@ -3257,6 +3266,10 @@ class GuardDaemonServer:
             raise RuntimeError("A previous Guard daemon remains quarantined after unconfirmed containment.")
         self._diagnostics = DaemonDiagnostics(store.guard_home)
         flush_pending_phases(self._diagnostics.record_phase)
+        # Catalog preparation and publication run on their own threads and hold
+        # no daemon object. Without this sink a permanent preparation fault
+        # leaves no line in daemon.log while every catalog read answers 503.
+        install_background_sink(self._diagnostics.record_background)
         try:
             with timed_phase("init_provider_registry"):
                 self._isolation_provider_registry = load_managed_provider_registry()

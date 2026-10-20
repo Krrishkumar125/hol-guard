@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-CkMTJ0-Z.js","assets/chunks/harness-version-label-0p6P70WE.js","assets/chunks/connect-guard-cloud-button-COC8NKLs.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-DdhT0dGq.js","assets/chunks/confirm-dialog-DoiBaaXB.js","assets/chunks/extensions-workspace-BFc8UHjL.js","assets/chunks/app-detail-workspace-D7AhoD71.js","assets/chunks/policy-workspace-page-BTvusmsE.js","assets/chunks/about-workspace-CMujLmFA.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-CkMTJ0-Z.js","assets/chunks/harness-version-label-0p6P70WE.js","assets/chunks/connect-guard-cloud-button-COC8NKLs.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-DdhT0dGq.js","assets/chunks/confirm-dialog-DoiBaaXB.js","assets/chunks/extensions-workspace-txhcGZII.js","assets/chunks/app-detail-workspace-D7AhoD71.js","assets/chunks/policy-workspace-page-BTvusmsE.js","assets/chunks/about-workspace-CMujLmFA.js"])))=>i.map(i=>d[i]);
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -13901,6 +13901,9 @@ function resolveQueueCategoryId(item) {
   if (textIncludesAny(text2, ["destructive shell command", " rm -", "rm -rf", "delete files", "wipe", "force-clean", "git clean -fd", "truncate"])) {
     return "destructive_shell";
   }
+  if (secretReadAction(item, command, text2) && hasSecretSignal(decisionCategories, text2)) {
+    return "secret_file_read";
+  }
   const commandCategory = categoryFromCommandExtension(
     envelope?.command_category ?? item.queue_command_category
   );
@@ -13909,6 +13912,12 @@ function resolveQueueCategoryId(item) {
   }
   if (gitOperationCommand(command)) {
     return "git_operation";
+  }
+  if (dockerCommand(command)) {
+    return "docker_command";
+  }
+  if (githubCommand(command)) {
+    return "github_command";
   }
   if (fileUploadCommand(command)) {
     return "file_upload";
@@ -13927,9 +13936,6 @@ function resolveQueueCategoryId(item) {
   }
   if (packageInstallCommand(command)) {
     return "package_install";
-  }
-  if (secretReadAction(item, command, text2) && hasSecretSignal(decisionCategories, text2)) {
-    return "secret_file_read";
   }
   if (envelope?.action_type === "mcp_tool") {
     return "mcp_tool";
@@ -14181,8 +14187,15 @@ function fileDeleteOrCleanupCommand(command, text2) {
   return /\b(?:rm|unlink|rmdir|shred)\b/.test(normalized) || /\btruncate\s+-s\s+0\b/.test(normalized) || /\bgit\s+(?:clean|reset\s+--hard|checkout\s+--)\b/.test(normalized) || textIncludesAny(text2, ["force-clean", "delete files", "wipe files"]);
 }
 function gitOperationCommand(command) {
-  const normalized = command.toLowerCase();
-  return /\bgit\s+(?:add|commit|push|pull|merge|rebase|reset|checkout|restore|clean|stash|tag)\b/.test(normalized);
+  return /\bgit(?:\s+(?:-[cC](?:\s+\S+|\S+)|--git-dir(?:=|\s+)\S+|--work-tree(?:=|\s+)\S+|--no-pager|--bare))*\s+(?:add|commit|push|pull|fetch|clone|status|diff|log|show|branch|rev-parse|worktree|remote|config|merge|rebase|reset|checkout|restore|clean|stash|tag|apply|cherry-pick|revert|ls-files|ls-remote|grep)\b/i.test(
+    command
+  );
+}
+function dockerCommand(command) {
+  return /(?:^|[;&|]\s*)\s*(?:sudo\s+)?(?:docker|docker-compose)(?:\s|$)/i.test(command);
+}
+function githubCommand(command) {
+  return /(?:^|[;&|]\s*)\s*(?:sudo\s+)?gh\s+\S+/i.test(command);
 }
 function processControlCommand(command) {
   const normalized = command.toLowerCase();
@@ -35634,7 +35647,7 @@ const FleetWorkspace = lazyWorkspace("fleet-workspace", () => __vitePreload(() =
 const SettingsWorkspace = lazyWorkspace("settings-workspace", () => __vitePreload(() => import("./chunks/settings-workspace-DdhT0dGq.js"), true ? __vite__mapDeps([8,7,3,9,6]) : void 0).then((m) => ({ default: m.SettingsWorkspace })));
 const ExtensionsWorkspace = lazyWorkspace(
   "extensions-workspace",
-  () => __vitePreload(() => import("./chunks/extensions-workspace-BFc8UHjL.js"), true ? __vite__mapDeps([10,9]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
+  () => __vitePreload(() => import("./chunks/extensions-workspace-txhcGZII.js"), true ? __vite__mapDeps([10,9]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
 );
 const AppDetailWorkspace = lazyWorkspace("app-detail-workspace", () => __vitePreload(() => import("./chunks/app-detail-workspace-D7AhoD71.js"), true ? __vite__mapDeps([11,5]) : void 0).then((m) => ({ default: m.AppDetailWorkspace })));
 const HelpModal = lazyWorkspace("help-modal", () => __vitePreload(() => import("./chunks/help-modal-B0TZsHE3.js"), true ? [] : void 0).then((m) => ({ default: m.HelpModal })));
