@@ -70,6 +70,8 @@ mod approval_persist_select;
 pub use approval_persist_select::*;
 mod approval_scope_select;
 pub use approval_scope_select::*;
+mod hook_artifact_facts;
+pub use hook_artifact_facts::*;
 mod hook_render;
 pub use hook_render::*;
 mod approval_proof;

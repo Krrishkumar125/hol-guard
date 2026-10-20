@@ -155,7 +155,9 @@ fn prepare(input: &Input) -> Result<Value, RestrictedPytestError> {
         &input.search_path,
     )?;
     let mut command = command;
-    command[0] = launch.to_string_lossy().into_owned();
+    command[0] = launched_path(&launch, &executable)
+        .to_string_lossy()
+        .into_owned();
     let mut denied = vec![
         "host-home-read",
         "host-secret-environment",
@@ -174,6 +176,22 @@ fn prepare(input: &Input) -> Result<Value, RestrictedPytestError> {
         "cwd": cwd, "command": command, "executable": executable, "allowed_executables": allowed,
         "denied_capabilities": denied}),
     )
+}
+
+/// The path the contained run execs.
+///
+/// The launcher, so a virtual environment keeps the prefix its own
+/// `bin/python` names. A `/usr/bin` shim is the exception: running it inside
+/// containment would repeat the `xcode-select` lookup the resolution already
+/// answered, which is the failure that resolution exists to avoid, so the tool
+/// it forwards to takes its place.
+pub(super) fn launched_path(launch: &Path, executable: &Path) -> PathBuf {
+    launch
+        .canonicalize()
+        .ok()
+        .and_then(|path| super::developer_shim::forwarded_tool(&path))
+        .filter(|forwarded| forwarded == executable)
+        .unwrap_or_else(|| launch.to_path_buf())
 }
 
 const SEALED: &[&str] = &["/bin", "/System", "/usr/bin"];

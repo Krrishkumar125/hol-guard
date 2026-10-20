@@ -68,6 +68,14 @@ use extract::extract_generic_signals;
 use result::{generic_action, generic_error_result, generic_result};
 use std::time::Instant;
 
+/// The command a virtualenv activation hands its verdict to, or `None` when
+/// the activation is not one the scan can read through. The pre-tool pass
+/// answers for the projected command, so a caller that routes that answer
+/// somewhere which plans the call again has to plan the same text.
+pub fn venv_activation_target(command: &str, context: super::PathContext<'_>) -> Option<String> {
+    venv_activation_projection::project(command, context)
+}
+
 /// Bounded caller-supplied context, never authenticated provider facts.
 pub struct UntrustedCommandContext {
     pub command: Option<String>,

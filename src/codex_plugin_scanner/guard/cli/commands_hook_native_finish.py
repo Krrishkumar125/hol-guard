@@ -300,7 +300,7 @@ def finalize_native_artifact_hook(
                 _canonical_harness_name(args.harness), policy_action, event_name
             )
         elif _canonical_harness_name(args.harness) in {"pi", "omp"}:
-            from ..adapters.pi_hooks import emit_pi_hook_response
+            from ..adapters._modules.pi.pi_hooks import emit_pi_hook_response
 
             emit_pi_hook_response(
                 policy_action=policy_action,
@@ -309,7 +309,7 @@ def finalize_native_artifact_hook(
                 output_stream=output_stream,
             )
         elif _canonical_harness_name(args.harness) == "zcode":
-            from ..adapters.zcode_hooks import emit_zcode_hook_response
+            from ..adapters._modules.zcode.zcode_hooks import emit_zcode_hook_response
 
             emit_zcode_hook_response(
                 policy_action=policy_action,
@@ -319,7 +319,7 @@ def finalize_native_artifact_hook(
                 output_stream=output_stream,
             )
         elif _canonical_harness_name(args.harness) == "devin":
-            from ..adapters.devin_hooks import emit_devin_hook_response
+            from ..adapters._modules.devin.devin_hooks import emit_devin_hook_response
 
             emit_devin_hook_response(
                 policy_action=policy_action,
@@ -439,7 +439,7 @@ def finalize_native_artifact_hook(
             )
             return native_hook_verdict_exit_code(canonical_harness, policy_action, event_name)
         if canonical_harness in {"pi", "omp"}:
-            from ..adapters.pi_hooks import emit_pi_hook_response
+            from ..adapters._modules.pi.pi_hooks import emit_pi_hook_response
 
             emit_pi_hook_response(
                 policy_action=policy_action,
@@ -455,7 +455,7 @@ def finalize_native_artifact_hook(
             )
             return native_hook_verdict_exit_code(canonical_harness, policy_action, event_name)
         if canonical_harness == "zcode":
-            from ..adapters.zcode_hooks import emit_zcode_hook_response
+            from ..adapters._modules.zcode.zcode_hooks import emit_zcode_hook_response
 
             emit_zcode_hook_response(
                 policy_action=policy_action,
@@ -472,7 +472,7 @@ def finalize_native_artifact_hook(
             )
             return native_hook_verdict_exit_code(canonical_harness, policy_action, event_name)
         if canonical_harness == "devin":
-            from ..adapters.devin_hooks import emit_devin_hook_response
+            from ..adapters._modules.devin.devin_hooks import emit_devin_hook_response
 
             emit_devin_hook_response(
                 policy_action=policy_action,
