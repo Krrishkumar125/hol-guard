@@ -109,10 +109,7 @@ fn the_home_tree_and_hidden_matches_keep_their_review() {
         format!("ls {home}/.secret-store/token"),
         format!("ls {home}/.ssh/missing-key"),
         format!("ls {home}/.*"),
-        format!(
-            "ls {}/*",
-            fixture::shell_word(&world.root.parent().unwrap())
-        ),
+        format!("ls {}/*", fixture::shell_word(world.root.parent().unwrap())),
     ] {
         assert_decision(&world.workspace, &world.home, &command, false);
     }

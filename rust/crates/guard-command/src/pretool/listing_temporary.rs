@@ -35,6 +35,19 @@ pub(super) fn temporary_glob_directory(
     std::fs::canonicalize(base).is_ok_and(|canonical| outside_home(&canonical, context))
 }
 
+/// Whether `directory` is world-writable, as the shared temporary roots are.
+/// Any local user can add an entry there at any moment.
+#[cfg(unix)]
+pub(super) fn writable_by_anyone(directory: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(directory).is_ok_and(|metadata| metadata.permissions().mode() & 0o002 != 0)
+}
+
+#[cfg(not(unix))]
+pub(super) fn writable_by_anyone(_directory: &std::path::Path) -> bool {
+    false
+}
+
 /// Whether canonical `path` is a temporary directory only the home owner can
 /// create an entry in, and lies outside the home tree.
 fn outside_home(path: &std::path::Path, context: super::PathContext<'_>) -> bool {
