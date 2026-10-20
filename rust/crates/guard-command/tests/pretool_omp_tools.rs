@@ -487,7 +487,8 @@ fn glob_path_selectors_prove_the_fixed_directory_without_allowing_escape() {
     ] {
         assert!(!allowed(&omp(&f, "glob", json!({"path": path}))), "{path}");
     }
-    for tool in ["find", "ls", "read", "grep"] {
+    // `grep` proves the folder before a glob; see pretool_omp_grep_glob_paths.
+    for tool in ["find", "ls", "read"] {
         assert!(
             !allowed(&omp(&f, tool, json!({"path": "src/**/*.ts"}))),
             "{tool}"
@@ -668,7 +669,6 @@ fn semicolon_path_lists_prove_every_entry() {
         "calc.py; ~/.codex/auth.json",
         "calc.py; ~/secret-dir/.env",
         "calc.py; missing.py",
-        "calc.py; src/*.rs",
     ] {
         let result = omp(&f, "grep", json!({"pattern": "x", "path": path}));
         assert!(!allowed(&result), "{path}: {}", result.reason_code);
