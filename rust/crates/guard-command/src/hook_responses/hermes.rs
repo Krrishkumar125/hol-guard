@@ -11,19 +11,20 @@ use super::Object;
 use serde_json::{json, Value};
 
 const BLOCK_REASON: &str = "HOL Guard blocked this action.";
-const BLOCK_ACTIONS: [&str; 4] = ["review", "require-reapproval", "sandbox-required", "block"];
 
 /// Whether a policy action stops the Hermes call.
 ///
 /// A review is a stop: Hermes has no prompt of its own to put the question to,
-/// so an action that is not already cleared never runs.
+/// so an action that is not already cleared never runs. Only `allow` and
+/// `warn` clear it; anything else, including an action this build does not
+/// recognize, stops the call on both the document and the exit status.
 pub fn should_exit_block(policy_action: &str) -> bool {
-    BLOCK_ACTIONS.contains(&policy_action)
+    !matches!(policy_action, "allow" | "warn")
 }
 
 /// The decision document Hermes reads for a verdict event.
 pub fn native_decision(policy_action: &str, reason: &str) -> Object {
-    if matches!(policy_action, "allow" | "warn") {
+    if !should_exit_block(policy_action) {
         let mut document = Object::new();
         document.insert("decision".into(), json!("allow"));
         document.insert("reason".into(), json!(reason));

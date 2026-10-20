@@ -48,3 +48,13 @@ fn a_warn_is_not_a_stop() {
     assert!(!should_exit_block("warn"));
     assert_eq!(native_decision("warn", "noted")["decision"], json!("allow"));
 }
+
+#[test]
+fn an_unrecognized_policy_action_blocks_on_both_channels() {
+    for action in ["deny", "pause", "Allow", "BLOCK"] {
+        let response = object(json!({"policy_action": action}));
+        let (document, exit_code) = bridge_response(&response);
+        assert_eq!(document["decision"], json!("block"), "{action}");
+        assert_eq!(exit_code, 2, "{action}");
+    }
+}
