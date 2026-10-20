@@ -6994,11 +6994,11 @@
      "event_fields": {
       "hook_event_name": "PreToolUse"
      },
-     "tool_name_text": "Bash",
+     "tool_name_text": "apply_patch",
      "configured_action": "review",
      "has_configured_override": false,
      "has_narrow_override": false,
-     "runtime_artifact_checked": false,
+     "runtime_artifact_checked": true,
      "prompt_nonblank": false,
      "has_command_text": true,
      "facts": {},
@@ -7008,7 +7008,25 @@
      "native_edge": null,
      "daemon_status": null,
      "fail_mode": null,
-     "permission_decision_reason": null
+     "permission_decision_reason": null,
+     "native_request": {
+      "tool_name": "apply_patch",
+      "tool_input": {
+       "patch": "*** Begin Patch\n*** Update File: README.md\n*** End Patch\n"
+      },
+      "cwd": "/work/project",
+      "home_dir": "/work",
+      "host": {
+       "process_cwd": "/work/project",
+       "home": "/work",
+       "account_home": null,
+       "groups": [],
+       "environment": {
+        "HOME": "/work"
+       },
+       "git_executable": null
+      }
+     }
     },
     "settled": {
      "current_policy_action": "review",
