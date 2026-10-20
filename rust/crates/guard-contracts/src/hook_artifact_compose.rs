@@ -18,6 +18,11 @@ pub const HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA: &str = "guard-hook-artifact-comp
 pub const HOOK_ARTIFACT_COMPOSE_RESULT_SCHEMA: &str = "guard-hook-artifact-compose-result.v1";
 /// Capability advertised by the runtime when this operation is available.
 pub const HOOK_ARTIFACT_COMPOSE_FEATURE: &str = "hook-artifact-compose-v1";
+/// Capability advertised when the `package_reuse_settle` query is served. A
+/// runtime that predates the query rejects it as an unknown kind, so the
+/// caller requires this feature for that query alone.
+pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE: &str =
+    "hook-artifact-compose-package-reuse-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -56,6 +61,29 @@ pub enum HookArtifactComposeQueryV1 {
     DecisionCopy(Box<DecisionCopyQueryV1>),
     /// Build the canonical decision and its copy in the same resident request.
     DecisionBuildCopy(Box<DecisionBuildCopyQueryV1>),
+    /// Settle a package request's saved-approval reuse from the reasons the
+    /// evaluation carries, folding the saved-block reuse of the same request.
+    PackageReuseSettle(Box<PackageReuseSettleQueryV1>),
+}
+
+/// The package-request facts the reuse settlement reads. `reasons` is the
+/// evaluation's reason list as it stands after the stored-policy override.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PackageReuseSettleQueryV1 {
+    pub reasons: Vec<Value>,
+    /// The caller claims a saved approval on this pass.
+    pub claim_saved_approval: bool,
+    /// The composed action before any reuse is applied.
+    pub current_action: Value,
+    /// The evaluation's own action after the stored-policy override.
+    pub evaluation_policy_action: Value,
+    /// The saved decision's action, `null` when nothing is saved.
+    pub stored_policy_action: Value,
+    /// The saved decision's artifact hash, `null` when nothing is saved.
+    pub stored_artifact_hash: Value,
+    /// The source already named for this request's reuse evidence, if any.
+    pub approval_reuse_source: Value,
 }
 
 /// Guard configuration facts the native policy-config action reads.
