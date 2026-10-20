@@ -12,6 +12,7 @@ seconds.
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -98,7 +99,7 @@ def check_lane(
         try:
             with urllib.request.urlopen(_request(settings, effort), timeout=timeout) as response:
                 result = _read_stream(response)
-        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as exc:
             raise RuntimeError(f"inference lane is not answering ({identity}): {exc}") from exc
     tokens = result["usage"].get(USAGE_PROOF)
     if not isinstance(tokens, int) or tokens <= 0:
