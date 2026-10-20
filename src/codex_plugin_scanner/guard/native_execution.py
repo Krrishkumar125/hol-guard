@@ -147,6 +147,7 @@ def _resident_request(
         "contained_typescript_execute": "guard-contained-typescript-execute-result.v1",
         "contained_package_script_execute": "guard-contained-package-script-execute-result.v1",
         "contained_workspace_write_execute": "guard-contained-workspace-write-execute-result.v1",
+        "containment_health_probe": "guard-containment-health-probe-result.v1",
     }.get(operation)
     if operation == "cloud_catalog":
         # Producer/completion replies use a strict payload/error union, with
@@ -411,8 +412,10 @@ def contained_workspace_write_execute_native(
 # ---------------------------------------------------------------------------
 
 # The resident runs a real contained process under a five second timeout and
-# may spend another five seconds reaping it.
-_CONTAINMENT_HEALTH_PROBE_SECONDS = 12.0
+# may spend another five seconds reaping it, on top of resident start-up and
+# sandbox setup. This matches the resident's own ceiling for the operation
+# (CONTAINMENT_HEALTH_PROBE_TIMEOUT_CEILING_MS), which clamps anything larger.
+_CONTAINMENT_HEALTH_PROBE_SECONDS = 15.0
 
 
 def containment_health_probe_native(
