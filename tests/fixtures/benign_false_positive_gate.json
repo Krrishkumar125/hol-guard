@@ -6352,7 +6352,7 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "python3 -c \"import sys; print(sys.version_info[0])\""
+        "command": "python3 -c \"import sys; print(sys.version_info[0], sys.executable)\""
       },
       "cwd": "worktree",
       "expect": "allow"
