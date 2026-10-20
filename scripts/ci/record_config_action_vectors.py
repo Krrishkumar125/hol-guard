@@ -172,7 +172,6 @@ def record() -> list[dict[str, object]]:
     from codex_plugin_scanner.guard.cli import commands_support_runtime_policy as runtime_policy
     from codex_plugin_scanner.guard.cli.commands_support_prompts import _prompt_requires_hard_block
     from codex_plugin_scanner.guard.harness_posture import harness_posture_override
-    from codex_plugin_scanner.guard.protection_posture import is_high_confidence
 
     events: list[dict[str, object]] = []
     protection_events.record_protection_event = lambda _home, _name, payload: events.append(dict(payload))
@@ -216,7 +215,6 @@ def record() -> list[dict[str, object]]:
                 "shell_local_script_review": metadata.get("reason_code") == "shell_local_script_execution_review",
                 "guard_default_action": default if default is None or isinstance(default, str) else "",
                 "confidence_text": str(confidence or ""),
-                "confidence_strong": is_high_confidence(confidence),
                 "writes_launch_agent": runtime_policy._artifact_writes_launch_agent(artifact),
                 "action_class": runtime_policy._artifact_action_class(artifact),
                 "skill_is_known_bad": runtime_policy._artifact_skill_is_known_bad(artifact),
