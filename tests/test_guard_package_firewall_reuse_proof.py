@@ -13,8 +13,7 @@ from codex_plugin_scanner.guard.package_firewall_action_rate_limit import (
     PackageFirewallActionRateLimiter,
 )
 from codex_plugin_scanner.guard.package_firewall_entitlement import (
-    package_firewall_action_states,
-    package_firewall_operation_allowed,
+    package_firewall_access,
 )
 from codex_plugin_scanner.guard.package_firewall_receipts import (
     package_firewall_receipt_metadata,
@@ -76,8 +75,7 @@ def test_gpfr244_reuses_local_posture_builder(tmp_path: Path) -> None:
 def test_gpfr244_reuses_entitlement_and_rate_limit_helpers() -> None:
     # The entitlement projections are resident queries now, so reuse is proven
     # by the helpers existing and being called, not by recomputing the table.
-    assert callable(package_firewall_operation_allowed)
-    assert callable(package_firewall_action_states)
+    assert callable(package_firewall_access)
 
     limiter = PackageFirewallActionRateLimiter(limit=1, window_seconds=10)
     assert limiter.allow("workspace:install", now=100.0) == (True, 0)

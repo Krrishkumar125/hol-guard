@@ -11,20 +11,19 @@ from codex_plugin_scanner.guard import package_firewall_entitlement as entitleme
 from codex_plugin_scanner.guard.native_hook_artifact_compose import NativeHookComposeError
 from codex_plugin_scanner.guard.package_firewall_entitlement import (
     build_oauth_package_firewall_entitlement,
-    package_firewall_action_states,
-    package_firewall_available_actions,
-    package_firewall_block_details,
-    package_firewall_operation_allowed,
+    package_firewall_access,
     reconcile_connect_state_with_oauth_entitlement,
 )
 from codex_plugin_scanner.guard.store import GuardStore
 
 
 def test_package_firewall_access_is_answered_by_the_resident(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every projection sends the whole entitlement and returns what comes back.
+    """One question carries the whole entitlement and returns every projection.
 
     Which actions a lapsed or unproven entitlement still leaves available is
     the resident's call now; the shared composition vectors own that table.
+    A request that needs the action table, the offered actions, the block copy
+    and one operation's verdict asks once, not once per projection.
     """
 
     asked: list[dict[str, object]] = []
@@ -42,30 +41,50 @@ def test_package_firewall_access_is_answered_by_the_resident(monkeypatch: pytest
     entitlement = {"allowed": False, "reason": "guard_cloud_reconnect_required"}
     home = Path("/guard-home")
 
-    assert package_firewall_operation_allowed(entitlement, "repair", has_installed_managers=True, guard_home=home)
-    assert package_firewall_action_states(entitlement, has_installed_managers=True, guard_home=home) == {
-        "repair": "available"
-    }
-    assert package_firewall_available_actions(entitlement, has_installed_managers=True, guard_home=home) == [
-        "status",
-        "repair",
-    ]
-    assert package_firewall_block_details(entitlement, guard_home=home) == (
-        402,
-        "paid_guard_cloud_required",
-        "Upgrade.",
+    access = package_firewall_access(
+        entitlement,
+        operation="repair",
+        has_installed_managers=True,
+        guard_home=home,
     )
 
-    assert [question["kind"] for question in asked] == ["package_firewall_access"] * 4
+    assert access.operation_allowed is True
+    assert access.action_states == {"repair": "available"}
+    assert access.available_actions == ["status", "repair"]
+    assert access.block == (402, "paid_guard_cloud_required", "Upgrade.")
+
+    assert [question["kind"] for question in asked] == ["package_firewall_access"]
     assert asked[0]["fields"] == {
         "entitlement": entitlement,
         "has_installed_managers": True,
         "operation": "repair",
     }
-    # Only the operation question names an operation; the rest read the
-    # projections the entitlement alone decides.
-    assert [question["fields"]["operation"] for question in asked] == ["repair", None, None, None]
-    assert {question["guard_home"] for question in asked} == {home}
+    assert asked[0]["guard_home"] == home
+
+
+def test_package_firewall_access_without_an_operation_reads_only_the_projections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller that names no operation still asks once and gets no verdict."""
+
+    asked: list[dict[str, object]] = []
+
+    def answer(kind: str, fields: dict[str, object], *, guard_home: Path | None) -> dict[str, object]:
+        asked.append({"kind": kind, "fields": dict(fields), "guard_home": guard_home})
+        return {
+            "action_states": {"install": "paid_required"},
+            "available_actions": ["status", "education", "cli_fallback"],
+            "block": {"code": "paid_guard_cloud_required", "message": "Upgrade.", "status": 402},
+            "operation_allowed": None,
+        }
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", answer)
+
+    access = package_firewall_access({"allowed": False, "reason": "paid_guard_cloud_required"})
+
+    assert access.operation_allowed is False
+    assert access.action_states == {"install": "paid_required"}
+    assert [question["fields"]["operation"] for question in asked] == [None]
 
 
 def test_an_unavailable_resident_does_not_decide_package_firewall_access(
@@ -77,9 +96,9 @@ def test_an_unavailable_resident_does_not_decide_package_firewall_access(
     monkeypatch.setattr(entitlement_module, "native_hook_compose", unavailable)
 
     with pytest.raises(NativeHookComposeError):
-        package_firewall_operation_allowed(
+        package_firewall_access(
             {"allowed": True, "reason": "paid_entitlement_active"},
-            "install",
+            operation="install",
             has_installed_managers=True,
         )
 
@@ -250,3 +269,32 @@ def test_reconcile_connect_state_ignores_free_oauth_plan(tmp_path: Path) -> None
     )
 
     assert reconcile_connect_state_with_oauth_entitlement(store, now=now) is None
+
+
+def test_the_cli_block_payload_fails_closed_when_the_resident_cannot_compose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The CLI answers `unavailable` rather than raising out of the command.
+
+    Nothing is offered in that reply: the composition is the authority, so a
+    request it could not answer is refused instead of being rebuilt from the
+    entitlement dict.
+    """
+
+    from codex_plugin_scanner.guard.cli.commands_support_workspace import _package_firewall_block_payload
+
+    def unavailable(kind: str, fields: dict[str, object], *, guard_home: Path | None) -> dict[str, object]:
+        raise NativeHookComposeError("native_hook_artifact_compose_unavailable")
+
+    monkeypatch.setattr(entitlement_module, "native_hook_compose", unavailable)
+
+    status, payload = _package_firewall_block_payload(
+        entitlement={"allowed": False, "reason": "paid_guard_cloud_required"},
+        has_installed_managers=True,
+        operation="install",
+    )
+
+    assert status == 503
+    assert payload["error"] == "package_firewall_authority_unavailable"
+    assert payload["operation"] == "install"
+    assert payload["available_actions"] == []

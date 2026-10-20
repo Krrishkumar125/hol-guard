@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import TypedDict
 
 from ..adapters import get_adapter
@@ -26,10 +25,6 @@ from ..native_daemon_handler import (
     native_headless_action_error,
     native_headless_action_state,
     native_headless_cursor_surface_error,
-)
-from ..package_firewall_entitlement import (
-    package_firewall_available_actions,
-    package_firewall_block_details,
 )
 from ..package_firewall_receipts import package_firewall_receipt_metadata
 from ..receipts.manager import build_receipt
@@ -228,16 +223,19 @@ class _HeadlessRoutes:
             return
         entitlement = self._supply_chain_entitlement()
         if not bool(entitlement["allowed"]):
-            guard_home = Path(self.server.store.guard_home)  # type: ignore[attr-defined]
-            status, error_code, message = package_firewall_block_details(entitlement, guard_home=guard_home)
             current_status = package_shim_status(self._supply_chain_context(payload))
+            access = self._package_firewall_access(
+                entitlement,
+                operation=None,
+                has_installed_managers=bool(current_status.get("installed_managers")),
+                reported_operation=action,
+            )
+            if access is None:
+                return
+            status, error_code, message = access.block
             self._write_json(
                 {
-                    "available_actions": package_firewall_available_actions(
-                        entitlement,
-                        has_installed_managers=bool(current_status.get("installed_managers")),
-                        guard_home=guard_home,
-                    ),
+                    "available_actions": access.available_actions,
                     "entitlement": entitlement,
                     "error": error_code,
                     "message": message,

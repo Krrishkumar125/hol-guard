@@ -74,7 +74,7 @@ def test_orphaned_package_shim_symlink_is_not_recovered(tmp_path: Path) -> None:
 def test_expired_cloud_entitlement_does_not_block_existing_local_repair() -> None:
     """The lapsed-entitlement recovery rule is pinned where it is decided.
 
-    `package_firewall_operation_allowed` asks the resident now, so the five
+    `package_firewall_access` asks the resident now, so the five
     cases this regression covers live in the shared composition vectors as
     `package_firewall_access_a_lapsed_entitlement_*`: repair and remove stay
     available to a shimmed machine, and repair without shims, install and test

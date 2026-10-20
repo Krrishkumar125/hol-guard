@@ -25,11 +25,12 @@ from ..local_supply_chain import (
 from ..native_daemon_handler import (
     native_supply_chain_error,
 )
+from ..native_hook_artifact_compose import NativeHookComposeError
 from ..package_firewall_entitlement import (
-    package_firewall_action_states,
-    package_firewall_available_actions,
-    package_firewall_block_details,
-    package_firewall_operation_allowed,
+    PACKAGE_FIREWALL_AUTHORITY_UNAVAILABLE,
+    PACKAGE_FIREWALL_AUTHORITY_UNAVAILABLE_MESSAGE,
+    PackageFirewallAccess,
+    package_firewall_access,
     resolve_package_firewall_entitlement,
 )
 from ..package_firewall_receipts import package_firewall_receipt_metadata
@@ -77,17 +78,57 @@ class _SupplyChainRoutes:
     def _guard_home(self) -> Path:
         return Path(self.server.store.guard_home)  # type: ignore[attr-defined]
 
+    def _package_firewall_access(
+        self,
+        entitlement: dict[str, object],
+        *,
+        operation: str | None,
+        has_installed_managers: bool,
+        reported_operation: str,
+    ) -> PackageFirewallAccess | None:
+        """What the entitlement permits, or a fail-closed reply and ``None``.
+
+        The resident composes every projection this request needs in one
+        answer. When it cannot answer, the request is refused with an
+        unavailable reply rather than crashing the handler, and no action is
+        offered: an unanswered composition is not an allow.
+        """
+
+        try:
+            return package_firewall_access(
+                entitlement,
+                operation=operation,
+                has_installed_managers=has_installed_managers,
+                guard_home=self._guard_home(),
+            )
+        except NativeHookComposeError:
+            self._write_json(  # type: ignore[attr-defined]
+                {
+                    "available_actions": [],
+                    "entitlement": entitlement,
+                    "error": PACKAGE_FIREWALL_AUTHORITY_UNAVAILABLE,
+                    "message": PACKAGE_FIREWALL_AUTHORITY_UNAVAILABLE_MESSAGE,
+                    "operation": reported_operation,
+                },
+                status=503,
+            )
+            return None
+
     def _handle_supply_chain_package_firewall_status(self) -> None:
         entitlement = self._supply_chain_entitlement()
         status = package_shim_dashboard_status(self._harness_context({}))
+        access = self._package_firewall_access(
+            entitlement,
+            operation=None,
+            has_installed_managers=bool(status.get("installed_managers")),
+            reported_operation="status",
+        )
+        if access is None:
+            return
         audit_workspace_dir = self._resolve_supply_chain_workspace_dir({})
         self._write_json(
             {
-                "actions": package_firewall_action_states(
-                    entitlement,
-                    has_installed_managers=bool(status.get("installed_managers")),
-                    guard_home=self._guard_home(),
-                ),
+                "actions": access.action_states,
                 "audit_workspace_dir": (str(audit_workspace_dir) if audit_workspace_dir is not None else None),
                 "cli_fallback": {
                     "connect": "hol-guard connect",
@@ -111,13 +152,16 @@ class _SupplyChainRoutes:
         entitlement = self._supply_chain_entitlement()
         context = self._supply_chain_context(payload)
         current_status = package_shim_status(context)
-        if not package_firewall_operation_allowed(
+        access = self._package_firewall_access(
             entitlement,
-            "repair",
+            operation="repair",
             has_installed_managers=bool(current_status.get("installed_managers")),
-            guard_home=self._guard_home(),
-        ):
-            status, error_code, message = package_firewall_block_details(entitlement, guard_home=self._guard_home())
+            reported_operation="repair_all",
+        )
+        if access is None:
+            return
+        if not access.operation_allowed:
+            status, error_code, message = access.block
             self._write_json(
                 {
                     "entitlement": entitlement,
@@ -186,20 +230,19 @@ class _SupplyChainRoutes:
             self._write_json(self._supply_chain_value_error_payload(operation, str(error)), status=400)
             return
         current_status = package_shim_status(context)
-        if not package_firewall_operation_allowed(
+        access = self._package_firewall_access(
             entitlement,
-            operation,
+            operation=operation,
             has_installed_managers=bool(current_status.get("installed_managers")),
-            guard_home=self._guard_home(),
-        ):
-            status, error_code, message = package_firewall_block_details(entitlement, guard_home=self._guard_home())
+            reported_operation=operation,
+        )
+        if access is None:
+            return
+        if not access.operation_allowed:
+            status, error_code, message = access.block
             self._write_json(
                 {
-                    "available_actions": package_firewall_available_actions(
-                        entitlement,
-                        has_installed_managers=bool(current_status.get("installed_managers")),
-                        guard_home=self._guard_home(),
-                    ),
+                    "available_actions": access.available_actions,
                     "entitlement": entitlement,
                     "error": error_code,
                     "message": message,

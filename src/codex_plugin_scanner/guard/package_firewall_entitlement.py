@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
@@ -19,6 +20,13 @@ PACKAGE_FIREWALL_CONNECT_CTA = (
 )
 PACKAGE_FIREWALL_RECONNECT_CTA = "Reconnect HOL Guard Cloud to refresh package firewall access."
 PACKAGE_FIREWALL_UPGRADE_CTA = "Upgrade to HOL Guard Cloud to run package firewall actions."
+# What a caller answers with when the resident cannot say what the
+# entitlement permits. No action is offered and nothing runs: the
+# composition is the authority, and an unanswered request is not an allow.
+PACKAGE_FIREWALL_AUTHORITY_UNAVAILABLE = "package_firewall_authority_unavailable"
+PACKAGE_FIREWALL_AUTHORITY_UNAVAILABLE_MESSAGE = (
+    "The HOL Guard runtime could not answer what package firewall access permits on this machine."
+)
 
 
 def _optional_string(value: object) -> str | None:
@@ -320,23 +328,41 @@ def resolve_package_firewall_entitlement(
     return _connect_required_entitlement(store)
 
 
-def _package_firewall_access(
+@dataclass(frozen=True)
+class PackageFirewallAccess:
+    """What the resident says one entitlement permits on this machine.
+
+    Every projection a caller needs comes back in one answer, so a request
+    that has to report an action table, the actions still offered, the block
+    copy and one operation's verdict asks the resident once rather than once
+    per projection.
+    """
+
+    action_states: dict[str, str]
+    available_actions: list[str]
+    block: tuple[int, str, str]
+    operation_allowed: bool
+
+
+def package_firewall_access(
     entitlement: dict[str, object],
     *,
-    operation: str | None,
-    has_installed_managers: bool,
-    guard_home: Path | None,
-) -> dict[str, object]:
-    """What the resident says this entitlement permits on this machine.
+    operation: str | None = None,
+    has_installed_managers: bool = False,
+    guard_home: Path | None = None,
+) -> PackageFirewallAccess:
+    """Ask the resident what this entitlement permits.
 
     The entitlement reports whether Cloud access is proven and, when it is
     not, why. Which actions that leaves available, which the caller may still
     offer, what the block says, and whether one named operation may run are
-    all composed by the resident. An unreachable resident raises, so nothing
-    here recomposes an allow from the entitlement dict.
+    all composed by the resident. An unreachable resident raises
+    ``NativeHookComposeError``, so nothing here recomposes an allow from the
+    entitlement dict; callers answer with
+    ``PACKAGE_FIREWALL_AUTHORITY_UNAVAILABLE`` instead of guessing.
     """
 
-    return native_hook_compose(
+    access = native_hook_compose(
         "package_firewall_access",
         {
             "entitlement": dict(entitlement),
@@ -345,64 +371,10 @@ def _package_firewall_access(
         },
         guard_home=guard_home,
     )
-
-
-def package_firewall_action_states(
-    entitlement: dict[str, object],
-    *,
-    has_installed_managers: bool,
-    guard_home: Path | None = None,
-) -> dict[str, str]:
-    access = _package_firewall_access(
-        entitlement,
-        operation=None,
-        has_installed_managers=has_installed_managers,
-        guard_home=guard_home,
-    )
-    return cast("dict[str, str]", access["action_states"])
-
-
-def package_firewall_available_actions(
-    entitlement: dict[str, object],
-    *,
-    has_installed_managers: bool,
-    guard_home: Path | None = None,
-) -> list[str]:
-    access = _package_firewall_access(
-        entitlement,
-        operation=None,
-        has_installed_managers=has_installed_managers,
-        guard_home=guard_home,
-    )
-    return cast("list[str]", access["available_actions"])
-
-
-def package_firewall_operation_allowed(
-    entitlement: dict[str, object],
-    operation: str,
-    *,
-    has_installed_managers: bool,
-    guard_home: Path | None = None,
-) -> bool:
-    access = _package_firewall_access(
-        entitlement,
-        operation=operation,
-        has_installed_managers=has_installed_managers,
-        guard_home=guard_home,
-    )
-    return cast("bool", access["operation_allowed"])
-
-
-def package_firewall_block_details(
-    entitlement: dict[str, object],
-    *,
-    guard_home: Path | None = None,
-) -> tuple[int, str, str]:
-    access = _package_firewall_access(
-        entitlement,
-        operation=None,
-        has_installed_managers=False,
-        guard_home=guard_home,
-    )
     block = cast("dict[str, object]", access["block"])
-    return (int(cast(int, block["status"])), str(block["code"]), str(block["message"]))
+    return PackageFirewallAccess(
+        action_states=cast("dict[str, str]", access["action_states"]),
+        available_actions=cast("list[str]", access["available_actions"]),
+        block=(int(cast(int, block["status"])), str(block["code"]), str(block["message"])),
+        operation_allowed=bool(access["operation_allowed"]),
+    )
