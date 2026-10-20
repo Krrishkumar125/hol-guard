@@ -140,8 +140,30 @@ impl PolicyArtifactFactsV1 {
     /// The artifact risk confidence is one a protection posture stops on.
     #[must_use]
     pub fn confidence_strong(&self) -> bool {
-        self.confidence_text.trim().eq_ignore_ascii_case("strong")
+        self.confidence_text
+            .trim_matches(is_python_space)
+            .eq_ignore_ascii_case("strong")
     }
+}
+
+/// What `str.strip()` removes. Rust's own `trim` leaves the C1 and the
+/// information separators in place, so confidence text padded with them would
+/// read as a weaker confidence than the one the artifact reported.
+fn is_python_space(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{09}'..='\u{0d}'
+            | ' '
+            | '\u{1c}'..='\u{1f}'
+            | '\u{85}'
+            | '\u{a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'..='\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -365,6 +387,20 @@ mod confidence_tests {
     fn any_other_confidence_text_is_not_strong() {
         for text in ["", "weak", "moderate", "strongly"] {
             assert!(!facts(text).confidence_strong(), "{text:?} read as strong");
+        }
+    }
+
+    #[test]
+    fn padding_a_strong_confidence_does_not_weaken_it() {
+        // The reporting side strips with `str.strip()`, which also removes the
+        // information separators and the C1 space that Rust's `trim` keeps.
+        for text in [
+            "\u{1c}strong\u{1f}",
+            "\u{1d}\u{1e}Strong",
+            "\u{85}strong\u{a0}",
+            "\u{2028}strong\u{3000}",
+        ] {
+            assert!(facts(text).confidence_strong(), "{text:?} read as weaker");
         }
     }
 
