@@ -33,7 +33,14 @@ def test_refresh_shares_unchanged_authority_and_excludes_readers_only_for_mutati
     initial = store.read_extension_control_authority_for_registry(BUILT_IN_COMMAND_EXTENSION_REGISTRY)
     server = cast(
         _GuardDaemonHttpServer,
-        cast(object, SimpleNamespace(store=store, extension_control_runtime=ExtensionControlRuntime(initial))),
+        cast(
+            object,
+            SimpleNamespace(
+                store=store,
+                extension_control_runtime=ExtensionControlRuntime(initial),
+                _installed_authority_pending=False,
+            ),
+        ),
     )
     read_locked = store._read_extension_control_authority_locked
     entered = threading.Event()
@@ -103,7 +110,12 @@ def test_busy_refresh_retains_the_installed_authority_even_during_migration(
     initial = store.read_extension_control_authority_for_registry(BUILT_IN_COMMAND_EXTENSION_REGISTRY)
     runtime = ExtensionControlRuntime(initial)
     installed = runtime.current()
-    server = cast(_GuardDaemonHttpServer, cast(object, SimpleNamespace(store=store, extension_control_runtime=runtime)))
+    server = cast(
+        _GuardDaemonHttpServer,
+        cast(
+            object, SimpleNamespace(store=store, extension_control_runtime=runtime, _installed_authority_pending=False)
+        ),
+    )
     attempts = []
 
     def busy(registry, *, read_only=False):

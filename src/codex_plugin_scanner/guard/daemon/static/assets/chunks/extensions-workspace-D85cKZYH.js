@@ -122,6 +122,7 @@ const MAX_TRAVERSAL_BYTES = 64 * 1024 * 1024;
 const MAX_CACHE_ENTRIES = 256;
 const UNSUPPORTED = /* @__PURE__ */ new Set(["404:", "404:not_found", "501:catalog_read_model_unavailable"]);
 const CATALOG_SNAPSHOT_EXPIRED = "catalog_snapshot_expired";
+const UNAVAILABLE_RETRY_DELAYS_MS = [250, 500, 1e3, 2e3, 4e3, 4e3];
 class CatalogV2UnsupportedError extends ExtensionControlApiError {
 }
 const readCache = /* @__PURE__ */ new Map();
@@ -157,18 +158,43 @@ async function readOnce(path, ifNoneMatch, signal) {
   if (!isRecord(payload)) throw protocolError(`Guard returned invalid JSON (${response.status})`);
   return { status: 200, etag, payload, size };
 }
+function waitBeforeRetry(delayMs, signal) {
+  signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+async function readAvailable(path, ifNoneMatch, signal) {
+  for (const delayMs of UNAVAILABLE_RETRY_DELAYS_MS) {
+    try {
+      return await readOnce(path, ifNoneMatch, signal);
+    } catch (error) {
+      if (!(error instanceof ExtensionControlApiError) || error.status !== 503) throw error;
+    }
+    await waitBeforeRetry(delayMs, signal);
+  }
+  return readOnce(path, ifNoneMatch, signal);
+}
 async function readSized(route, query, signal) {
   const path = `${CATALOG_V2_PATH}${route}${query ? `?${query}` : ""}`;
   const key = `${guardApiCacheScope()}|${path}`;
   const cached = readCache.get(key);
-  let response = await readOnce(path, cached?.etag ?? null, signal);
+  let response = await readAvailable(path, cached?.etag ?? null, signal);
   if (response.status === 304) {
     if (cached && response.etag === cached.etag) {
       readCache.delete(key);
       readCache.set(key, cached);
       return cached;
     }
-    response = await readOnce(path, null, signal);
+    response = await readAvailable(path, null, signal);
     if (response.status !== 200) throw protocolError("Guard answered 304 to an unconditional catalog request");
   }
   if (!response.etag) throw protocolError("Guard catalog response is missing its validator");

@@ -84,7 +84,7 @@ from ..package_firewall_action_rate_limit import PackageFirewallActionRateLimite
 from ..runtime.approval_attention import ApprovalAttentionCoordinator
 from ..runtime.cloud_review_sync import CloudReviewSyncWorker, start_cloud_sync_sync_worker, stop_cloud_sync_sync_worker
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY, CommandSafetyExtensionRegistry
-from ..runtime.extension_control_authority import ExtensionControlAuthorityError, ExtensionControlAuthorityView
+from ..runtime.extension_control_authority import ExtensionControlAuthorityView
 from ..runtime.extension_control_runtime import (
     ExtensionControlRuntime,
     ExtensionControlRuntimeSnapshot,
@@ -218,6 +218,10 @@ _DEFAULT_HEADLESS_CLOUD_SYNC_INTERVAL_SECONDS = 30.0
 _DEFAULT_HEADLESS_CLOUD_SYNC_BACKOFF_SECONDS = 10.0
 
 
+class _InstalledAuthorityMigrationError(Exception):
+    """The installed release's command-pack authority is not migrated yet."""
+
+
 class _HookPathValidationError(ValueError):
     def __init__(self, parameter: str, reason: str) -> None:
         self.parameter = parameter
@@ -347,6 +351,8 @@ _PEER_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbor
 
 class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
     request_queue_size = _MAX_CONCURRENT_DAEMON_CONNECTIONS
+    # Set while the installed release's authority still awaits migration.
+    _installed_authority_pending: bool = False
     store: GuardStore
     runtime: GuardSurfaceRuntime
     auth_token: str
@@ -593,16 +599,17 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
             from ..catalog_delivery.projection import capture
 
             try:
-                self.store.migrate_installed_command_pack_authority()
+                self._migrate_installed_authority()
                 _, control_registry, _ = capture(self.store)
                 startup_view = self._startup_extension_control_view(control_registry)
-            except (ExtensionControlAuthorityError, NativePolicySnapshotError):
-                # An authority or activation record this build cannot read or
-                # authenticate, such as one written under a newer schema,
-                # activates nothing. Start on the core registry with a tampered
-                # authority so every hook fails closed, rather than taking hook
-                # protection down with the daemon. The refresh loop keeps this
-                # snapshot until the record reads again.
+            except (_InstalledAuthorityMigrationError, NativePolicySnapshotError):
+                # An activation record this build cannot authenticate, such as
+                # one written under a newer schema, or an installed release whose
+                # authority could not be migrated, activates nothing. Start on
+                # the core registry with a tampered authority so every hook
+                # fails closed, rather than taking hook protection down with
+                # the daemon. The refresh loop keeps this snapshot until the
+                # record reads again.
                 control_registry = BUILT_IN_COMMAND_EXTENSION_REGISTRY
                 startup_view = self.store._tampered_view(control_registry.catalog_digest)
             self.extension_control_runtime = ExtensionControlRuntime(startup_view)
@@ -644,6 +651,22 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
             if self.codex_binding_capture_writer is not None:
                 self.codex_binding_capture_writer.stop_capture()
             raise
+
+    def _migrate_installed_authority(self) -> None:
+        """Admit the installed release, or report why it cannot be admitted yet.
+
+        A failure leaves the migration pending. The daemon then starts on a
+        tampered authority, so every hook fails closed instead of the daemon
+        exiting, and each refresh retries it before reading anything newer.
+        """
+
+        try:
+            self.store.migrate_installed_command_pack_authority()
+        except Exception as error:
+            self._installed_authority_pending = True
+            _LOGGER.warning("Installed command-pack authority could not be migrated: %s", error, exc_info=True)
+            raise _InstalledAuthorityMigrationError from error
+        self._installed_authority_pending = False
 
     def _startup_extension_control_view(
         self, registry: CommandSafetyExtensionRegistry
@@ -698,6 +721,12 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 view = self.store.read_extension_control_authority_for_registry(registry, read_only=shared)
                 return self.extension_control_runtime.refresh(view)
 
+        if self._installed_authority_pending:
+            try:
+                self._migrate_installed_authority()
+            except _InstalledAuthorityMigrationError:
+                # Nothing newer is admitted until the release is migrated.
+                return self.extension_control_runtime.current()
         try:
             try:
                 return read(shared=True)

@@ -474,7 +474,7 @@ def test_prepared_dataclass_through_real_daemon_control_commit(delivery, tmp_pat
     from codex_plugin_scanner.guard.daemon.server import _GuardDaemonHTTPServer
 
     refreshed = _GuardDaemonHTTPServer.refresh_extension_control_runtime(
-        SimpleNamespace(store=store, extension_control_runtime=service._runtime)
+        SimpleNamespace(store=store, extension_control_runtime=service._runtime, _installed_authority_pending=False)
     )
     assert refreshed.revision == service._runtime.current().revision
     assert refreshed.catalog_digest == service.catalog_digest
@@ -486,6 +486,8 @@ def test_prepared_dataclass_through_real_daemon_control_commit(delivery, tmp_pat
         patches.setattr(projection, "capture", lambda store: before_capture)
         with pytest.raises(NativePolicySnapshotError, match="native_command_pack_projection_changed"):
             _GuardDaemonHTTPServer.refresh_extension_control_runtime(
-                SimpleNamespace(store=store, extension_control_runtime=service._runtime)
+                SimpleNamespace(
+                    store=store, extension_control_runtime=service._runtime, _installed_authority_pending=False
+                )
             )
     assert service._runtime.current() == refreshed
