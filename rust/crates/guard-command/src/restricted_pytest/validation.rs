@@ -288,6 +288,11 @@ pub(super) fn resolve_executable(
             format!("Restricted pytest executable could not be resolved: {value}"),
         )
     })?;
+    // macOS ships `/usr/bin/python3` and its siblings as shims that ask
+    // `xcode-select` where the real tool is. That lookup cannot run inside
+    // containment, so it is answered here instead and the run execs the tool
+    // the shim would have forwarded to.
+    let resolved = super::developer_shim::forwarded_tool(&resolved).unwrap_or(resolved);
     let metadata = resolved.metadata().map_err(|_| {
         RestrictedPytestError::new(
             PYTEST_INVALID_COMMAND_REASON_CODE,

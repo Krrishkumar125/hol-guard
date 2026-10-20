@@ -709,6 +709,19 @@
       ]
     },
     {
+      "id": "omp-native-shell-system-python-check",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "bash"
+      ],
+      "prompt": "Check the project's calculation helper with the system Python: run each listed command once, in order, and tell me what they printed.",
+      "commands": [
+        "python3 -c \"import sys; print(sys.version_info[0])\"",
+        "python3 test_calc.py"
+      ]
+    },
+    {
       "id": "github-review-work-enabled-permissions",
       "expectation": "allow",
       "oracle": "commands",

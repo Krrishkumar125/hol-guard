@@ -33,6 +33,21 @@ const PRIVILEGE_NAMES: &[&str] = &[
     "killall",
     "pkill",
 ];
+
+/// The privileged names, under each system directory that holds them. A
+/// profile that grants exec over a directory rather than a list of binaries
+/// denies these back out, so widening the grant never widens privilege.
+pub(super) fn privileged_executables() -> Vec<PathBuf> {
+    ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        .iter()
+        .flat_map(|dir| {
+            PRIVILEGE_NAMES
+                .iter()
+                .map(move |name| Path::new(dir).join(name))
+        })
+        .collect()
+}
+
 /// The libinfo endpoint Apple's own `system.sb` grants for user and group
 /// lookups. Credential, keychain and directory-administration services stay
 /// unreachable.
@@ -372,14 +387,7 @@ pub(super) fn compose_with(
     executable.extend(linked.map(|linked| linked.checkout().to_path_buf()));
     executable.extend(existing(&["/bin", "/usr/bin"]));
     executable.extend(input.exec_roots.iter().cloned());
-    let privileged: Vec<PathBuf> = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-        .iter()
-        .flat_map(|dir| {
-            PRIVILEGE_NAMES
-                .iter()
-                .map(move |name| Path::new(dir).join(name))
-        })
-        .collect();
+    let privileged = privileged_executables();
     let mut lines = vec![
         "(version 1)".to_owned(),
         "(deny default)".to_owned(),
