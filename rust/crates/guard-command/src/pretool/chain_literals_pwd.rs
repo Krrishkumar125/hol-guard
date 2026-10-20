@@ -186,8 +186,13 @@ fn literal_path(path: &str) -> bool {
 }
 
 /// What `dirname` prints for an absolute path: the text before its last
-/// component, without trailing slashes, or `/`.
+/// component, without trailing slashes, or `/`. The shell sets `$PWD` to a
+/// canonical spelling, so a path with a `.` component or a doubled slash,
+/// whose text differs from that spelling, has no known parent.
 fn parent(path: &str) -> Option<String> {
+    if path.split('/').any(|part| part == ".") || path.contains("//") {
+        return None;
+    }
     let trimmed = path.trim_end_matches('/');
     if trimmed.is_empty() {
         return Some("/".to_owned());
@@ -198,7 +203,8 @@ fn parent(path: &str) -> Option<String> {
 }
 
 /// The worktree root `git rev-parse --show-toplevel` prints for `cwd`: the
-/// real directory holding the nearest `.git`. `None` when there is none, or
+/// real directory holding the nearest `.git`, spelled without links, as Git
+/// prints it. `None` when there is none, or
 /// when the first `.git` found is anything Git could resolve to another root.
 fn repository_root(cwd: &str) -> Option<String> {
     let start = std::fs::canonicalize(cwd).ok()?;
@@ -227,23 +233,10 @@ fn repository_root(cwd: &str) -> Option<String> {
         if !plain_git_directory(&git_directory) {
             return None;
         }
-        let root = spelled_like(cwd, &start, directory)?;
+        let root = directory.to_str()?.to_owned();
         return literal_path(&root).then_some(root);
     }
     None
-}
-
-/// `root`, an ancestor of the real directory `real`, written as the same
-/// ancestor of `cwd` when that names the same directory, so the root reads
-/// in the session's own spelling (`/var/...` rather than `/private/var/...`).
-fn spelled_like(cwd: &str, real: &Path, root: &Path) -> Option<String> {
-    let depth = real.components().count() - root.components().count();
-    let spelled = Path::new(cwd).ancestors().nth(depth);
-    let same = spelled.is_some_and(|spelled| {
-        std::fs::canonicalize(spelled).is_ok_and(|resolved| resolved == root)
-    });
-    let chosen = if same { spelled? } else { root };
-    chosen.to_str().map(str::to_owned)
 }
 
 /// The Git directory a `.git` file names with `gitdir: PATH`.

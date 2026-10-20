@@ -146,6 +146,10 @@ fn the_parent_is_the_text_before_the_last_component() {
     assert_eq!(super::parent("/a/b/").as_deref(), Some("/a"));
     assert_eq!(super::parent("/a").as_deref(), Some("/"));
     assert_eq!(super::parent("/").as_deref(), Some("/"));
+    // The shell's `$PWD` would read `/a/b` here, whose parent is `/a`.
+    assert_eq!(super::parent("/a/b/."), None);
+    assert_eq!(super::parent("/a/./b"), None);
+    assert_eq!(super::parent("/a//b"), None);
 }
 
 #[cfg(unix)]
@@ -193,7 +197,7 @@ fn a_toplevel_substitution_takes_the_root_holding_the_git_directory() {
         project(TOPLEVEL_STATUS, r).as_deref(),
         Some(expected.as_str())
     );
-    // The root keeps the session's spelling of the working directory.
+    // Git prints the root without links, whatever the session's spelling.
     let alias = std::env::temp_dir().join(format!(
         "guard-chain-pwd-{}-toplevel-alias",
         std::process::id()
@@ -203,7 +207,7 @@ fn a_toplevel_substitution_takes_the_root_holding_the_git_directory() {
     let a = alias.to_str().unwrap();
     assert_eq!(
         project(TOPLEVEL_STATUS, &format!("{a}/sub")).as_deref(),
-        Some(format!("cd \"{a}\" && git status --short").as_str())
+        Some(expected.as_str())
     );
     let _ = std::fs::remove_file(&alias);
 }
