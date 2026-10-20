@@ -1,8 +1,10 @@
-"""The merge freeze blocks every pull request except the documented exemptions, and fails closed."""
+"""The merge freeze blocks every pull request except admin-listed ones, and fails closed."""
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -17,71 +19,52 @@ REPO = "hashgraph-online/hol-guard"
 RELEASE_BRANCH = "release-please--branches--main--components--hol-guard"
 
 
-def pull(number: int = 7, ref: str = "feature", repo: str | None = REPO, sha: str = "a" * 40) -> freeze.Pull:
-    return freeze.Pull(number=number, head_sha=sha, head_ref=ref, head_repo=repo)
+def pull(number: int = 7, sha: str = "a" * 40) -> freeze.Pull:
+    return freeze.Pull(number=number, head_sha=sha)
 
 
 @pytest.mark.parametrize("raw", [None, "", "  ", "false", "False", " FALSE "])
 def test_unset_empty_or_false_never_blocks(raw: str | None) -> None:
-    assert not freeze.decide(raw, None, pull(), REPO).blocked
+    assert not freeze.decide(raw, None, pull()).blocked
 
 
 @pytest.mark.parametrize("raw", ["true", "True", " true\n"])
 def test_true_blocks_an_ordinary_pull_request(raw: str) -> None:
-    verdict = freeze.decide(raw, None, pull(), REPO)
+    verdict = freeze.decide(raw, None, pull())
     assert verdict.blocked
     assert verdict.reason.startswith("Merge freeze active")
 
 
 @pytest.mark.parametrize("raw", ["1", "yes", "on", "tru", "true false", "null", "enabled"])
 def test_any_other_value_fails_closed_with_a_clear_message(raw: str) -> None:
-    verdict = freeze.decide(raw, None, pull(), REPO)
+    verdict = freeze.decide(raw, None, pull())
     assert verdict.blocked
     assert "must be exactly true or false" in verdict.reason
 
 
 def test_invalid_value_gets_no_exemptions() -> None:
-    release = pull(ref=RELEASE_BRANCH)
-    assert freeze.decide("maybe", "7", release, REPO).blocked
-    assert freeze.decide("maybe", "7", pull(number=7), REPO).blocked
-
-
-def test_release_please_branch_in_this_repository_is_exempt() -> None:
-    assert not freeze.decide("true", None, pull(ref=RELEASE_BRANCH), REPO).blocked
-
-
-@pytest.mark.parametrize(
-    "candidate",
-    [
-        pull(ref=RELEASE_BRANCH, repo="someone/hol-guard"),
-        pull(ref=RELEASE_BRANCH, repo=None),
-        pull(ref="release-please-fake"),
-        pull(ref="feature/release-please--branches--main"),
-    ],
-)
-def test_release_exemption_needs_a_same_repository_release_please_branch(candidate: freeze.Pull) -> None:
-    assert freeze.decide("true", None, candidate, REPO).blocked
+    assert freeze.decide("maybe", "7", pull(number=7)).blocked
 
 
 @pytest.mark.parametrize("allow", ["7", "#7", "1, 7 ,9", "1,7\n9"])
 def test_allowlist_exempts_listed_numbers_only(allow: str) -> None:
-    assert not freeze.decide("true", allow, pull(number=7), REPO).blocked
-    assert freeze.decide("true", allow, pull(number=8), REPO).blocked
+    assert not freeze.decide("true", allow, pull(number=7)).blocked
+    assert freeze.decide("true", allow, pull(number=8)).blocked
 
 
 @pytest.mark.parametrize("allow", ["7,x", "0", "-3", "7.5", "7;8", "seven"])
 def test_malformed_allowlist_is_ignored_wholesale_and_reported(allow: str) -> None:
-    verdict = freeze.decide("true", allow, pull(number=7), REPO)
+    verdict = freeze.decide("true", allow, pull(number=7))
     assert verdict.blocked
     assert freeze.ALLOW_VARIABLE in verdict.reason
 
 
 def test_allowlist_is_not_consulted_when_not_frozen() -> None:
-    assert not freeze.decide("false", "garbage", pull(), REPO).blocked
+    assert not freeze.decide("false", "garbage", pull()).blocked
 
 
 def test_operator_text_cannot_inject_workflow_commands() -> None:
-    verdict = freeze.decide("x\n::error::boom", None, pull(), REPO)
+    verdict = freeze.decide("x\n::error::boom", None, pull())
     assert "\n" not in verdict.reason
 
 
@@ -90,8 +73,6 @@ def gate_env(**overrides: str) -> dict[str, str]:
         "EVENT_NAME": "pull_request",
         "REPOSITORY": REPO,
         "PR_NUMBER": "7",
-        "HEAD_REF": "feature",
-        "HEAD_REPO": REPO,
         "MERGE_FREEZE": "true",
     }
     env.update(overrides)
@@ -116,7 +97,6 @@ def test_gate_fails_with_the_freeze_message_and_the_lift_command(
 def test_gate_passes_when_not_frozen_or_exempt(tmp_path: Path) -> None:
     summary = tmp_path / "summary.md"
     assert freeze.run_gate(gate_env(MERGE_FREEZE=""), str(summary)) == 0
-    assert freeze.run_gate(gate_env(HEAD_REF=RELEASE_BRANCH), str(summary)) == 0
     assert freeze.run_gate(gate_env(MERGE_FREEZE_ALLOW="7"), str(summary)) == 0
     assert not summary.exists()
 
@@ -126,8 +106,30 @@ def test_gate_only_applies_to_pull_requests(event: str) -> None:
     assert freeze.run_gate(gate_env(EVENT_NAME=event), None) == 0
 
 
-def test_gate_fork_with_release_please_branch_is_blocked() -> None:
-    assert freeze.run_gate(gate_env(HEAD_REF=RELEASE_BRANCH, HEAD_REPO="fork/hol-guard"), None) == 1
+def test_gate_ignores_a_release_please_branch_name() -> None:
+    """A writer can name any branch, so only the admin allowlist exempts a pull request."""
+    assert freeze.run_gate(gate_env(HEAD_REF=RELEASE_BRANCH, HEAD_REPO=REPO), None) == 1
+
+
+def run_gate_step(tmp_path: Path, merge_freeze: str) -> subprocess.CompletedProcess[str]:
+    """Run the gate step's shell exactly as written, from a base with no policy file."""
+    gate = next(
+        step for step in load("ci.yml")["jobs"]["required"]["steps"] if step.get("name") == freeze.GATE_STEP_NAME
+    )
+    env = {"PATH": os.environ["PATH"], **gate_env(MERGE_FREEZE=merge_freeze)}
+    return subprocess.run(["bash", "-c", gate["run"]], cwd=tmp_path, env=env, capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("raw", ["", "false", "FALSE"])
+def test_a_base_without_the_policy_passes_only_when_unfrozen(tmp_path: Path, raw: str) -> None:
+    assert run_gate_step(tmp_path, raw).returncode == 0
+
+
+@pytest.mark.parametrize("raw", ["true", "maybe", " false"])
+def test_a_base_without_the_policy_holds_any_other_flag(tmp_path: Path, raw: str) -> None:
+    result = run_gate_step(tmp_path, raw)
+    assert result.returncode == 1
+    assert "::error title=Merge freeze active::" in result.stdout
 
 
 def test_gate_tolerates_a_missing_pull_request_number() -> None:
@@ -145,15 +147,19 @@ def test_aggregate_runs_the_gate_after_the_existing_evaluation() -> None:
     assert steps[0]["name"] == "Evaluate planned required results"
     gate = next(step for step in steps if step.get("name") == freeze.GATE_STEP_NAME)
     assert steps.index(gate) > 0
-    assert gate["run"] == "python3 scripts/ci/merge_freeze.py gate"
     assert gate["if"] == "${{ !cancelled() }}"
     assert gate["env"]["MERGE_FREEZE"] == "${{ vars.MERGE_FREEZE }}"
     assert gate["env"]["MERGE_FREEZE_ALLOW"] == "${{ vars.MERGE_FREEZE_ALLOW }}"
-    assert gate["env"]["HEAD_REPO"] == "${{ github.event.pull_request.head.repo.full_name }}"
+    assert "${{" not in gate["run"]
     checkout = steps[steps.index(gate) - 1]
     assert checkout["uses"].startswith("actions/checkout@")
     assert checkout["with"]["sparse-checkout"] == "scripts/ci/merge_freeze.py"
     assert checkout["with"]["persist-credentials"] is False
+    # The pull request must not supply the policy that judges it.
+    assert checkout["with"]["ref"] == "${{ github.event.pull_request.base.sha || github.sha }}"
+    policy = f"{checkout['with']['path']}/scripts/ci/merge_freeze.py"
+    assert 'exec python3 "$policy" gate' in gate["run"]
+    assert f"policy={policy}" in gate["run"]
 
 
 def test_the_aggregate_is_the_check_the_ruleset_names() -> None:
@@ -344,7 +350,7 @@ def test_an_aggregate_that_already_fails_is_left_alone() -> None:
     assert api.mutations() == []
 
 
-def test_exempt_pull_requests_are_untouched_while_frozen() -> None:
+def test_only_allowlisted_pull_requests_are_untouched_while_frozen() -> None:
     api = FakeApi(
         [
             api_pull(1, SHA_A, ref=RELEASE_BRANCH),
@@ -355,22 +361,50 @@ def test_exempt_pull_requests_are_untouched_while_frozen() -> None:
     for sha in (SHA_A, SHA_B, SHA_C):
         api.add_real(sha, "success")
     plan = run(api, "true", "3")
-    assert {o.number: o.action for o in plan.outcomes} == {1: "unchanged", 2: "blocked", 3: "unchanged"}
+    assert {o.number: o.action for o in plan.outcomes} == {1: "blocked", 2: "blocked", 3: "unchanged"}
 
 
-def test_unfreezing_reruns_the_real_aggregate_then_resolves_the_overlay() -> None:
+def test_a_pull_request_sharing_a_blocked_head_commit_cannot_release_it() -> None:
+    api = FakeApi([api_pull(1, SHA_A), api_pull(2, SHA_A)])
+    api.add_real(SHA_A, "success")
+    plan = run(api, "true", "1")
+    assert [o.action for o in plan.outcomes] == ["blocked", "blocked"]
+    assert "shares its head commit with #1" in plan.outcomes[1].detail
+    api.writes.clear()
+    plan = run(api, "true", "1")
+    assert [o.action for o in plan.outcomes] == ["held", "held"]
+    assert api.mutations() == []
+    assert newest_state(api, SHA_A) == ("completed", "failure")
+
+
+def test_freezing_while_ci_is_in_flight_asks_for_another_pass() -> None:
+    api = FakeApi([api_pull(1, SHA_A)])
+    api.add_real(SHA_A, "success")
+    api.add_real(SHA_A, None, run_id=101)
+    plan = run(api, "true")
+    assert [o.action for o in plan.outcomes] == ["blocked"]
+    assert plan.failed
+    assert plan.outcomes[0].detail == freeze.IN_FLIGHT_WHILE_FROZEN
+    api.writes.clear()
+    plan = run(api, "true")
+    assert [o.action for o in plan.outcomes] == ["held"]
+    assert plan.failed
+    assert api.mutations() == []
+
+
+def test_unfreezing_reruns_the_real_aggregate_whose_result_replaces_the_overlay() -> None:
     api = FakeApi([api_pull(1, SHA_A)])
     api.add_real(SHA_A, "success")
     run(api, "true")
     api.writes.clear()
     plan = run(api, "false")
     assert [o.action for o in plan.outcomes] == ["released"]
-    methods = api.mutations()
-    rerun = methods.index(("POST", "actions/jobs/100/rerun"))
-    patch = next(i for i, (m, _) in enumerate(methods) if m == "PATCH")
-    assert rerun < patch
+    # The freeze check run is never turned green by hand; only CI's own result passes.
+    assert api.mutations() == [("POST", "actions/jobs/100/rerun")]
     assert newest_state(api, SHA_A) == ("completed", "success")
-    assert all(r["conclusion"] == "success" for r in api.runs[SHA_A])
+    api.writes.clear()
+    assert [o.action for o in run(api, "false").outcomes] == ["unchanged"]
+    assert api.mutations() == []
 
 
 def test_unfreezing_reruns_a_gate_failure_that_has_no_overlay() -> None:
@@ -402,25 +436,29 @@ def test_a_rerun_failure_keeps_the_block_and_fails_the_dispatch() -> None:
     assert not any(m == "PATCH" for m, _ in api.mutations())
 
 
-def test_unfreezing_while_ci_is_in_flight_just_resolves_the_overlay() -> None:
+def test_unfreezing_while_ci_is_in_flight_waits_for_its_result() -> None:
     api = FakeApi([api_pull(1, SHA_A)])
     api.add_real(SHA_A, "success")
     run(api, "true")
     api.add_real(SHA_A, None, run_id=101)
     api.writes.clear()
     plan = run(api, "false")
-    assert [o.action for o in plan.outcomes] == ["released"]
-    assert not any(p.endswith("/rerun") for _, p in api.mutations())
+    assert [o.action for o in plan.outcomes] == ["waiting"]
+    assert not plan.failed
+    assert api.mutations() == []
+    assert [r["conclusion"] for r in api.runs[SHA_A] if r["external_id"]] == ["failure"]
 
 
-def test_unfreezing_with_no_real_aggregate_resolves_the_overlay_only() -> None:
+def test_unfreezing_with_no_real_aggregate_keeps_the_block_until_ci_reports() -> None:
     api = FakeApi([api_pull(1, SHA_A)])
     run(api, "true")
-    assert [o.action for o in run(api, "false").outcomes] == ["released"]
-    assert newest_state(api, SHA_A) == ("completed", "success")
+    api.writes.clear()
+    assert [o.action for o in run(api, "false").outcomes] == ["waiting"]
+    assert api.mutations() == []
+    assert newest_state(api, SHA_A) == ("completed", "failure")
 
 
-def test_an_invalid_value_blocks_everything_including_release_please() -> None:
+def test_an_invalid_value_blocks_everything() -> None:
     api = FakeApi([api_pull(1, SHA_A, ref=RELEASE_BRANCH), api_pull(2, SHA_B)])
     api.add_real(SHA_A, "success")
     api.add_real(SHA_B, "success")

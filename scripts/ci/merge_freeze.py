@@ -11,8 +11,12 @@ paths keep that result honest:
   re-evaluates pull requests whose CI already finished. A finished check cannot
   be changed by flipping a variable, and a re-run reuses the workflow file the
   run started with, so reconcile posts a failing check run with the aggregate's
-  own name while frozen. When the freeze lifts it re-runs the real aggregate
-  and resolves its own check run.
+  own name while frozen. When the freeze lifts it re-runs the real aggregate,
+  whose newer result replaces that check run. The failing check run is never
+  turned green by hand, so a pull request only passes on a real CI result.
+
+The gate runs the copy of this file from the pull request's base revision, so a
+pull request cannot change the policy that decides whether it may merge.
 """
 
 from __future__ import annotations
@@ -33,9 +37,6 @@ from typing import Any
 FREEZE_VARIABLE = "MERGE_FREEZE"
 ALLOW_VARIABLE = "MERGE_FREEZE_ALLOW"
 TOGGLE_WORKFLOW = "merge-freeze.yml"
-# Release Please branches are produced by the release automation; hotfix
-# releases must still ship during a freeze.
-RELEASE_BRANCH_PREFIX = "release-please--branches--"
 # The name and app of the required check the rulesets enforce.
 AGGREGATE_CHECK = "hol-guard / required"
 ACTIONS_APP_ID = 15368
@@ -88,8 +89,6 @@ def parse_allowlist(raw: str | None) -> tuple[frozenset[int], str | None]:
 class Pull:
     number: int
     head_sha: str
-    head_ref: str
-    head_repo: str | None
 
 
 @dataclass(frozen=True)
@@ -98,17 +97,18 @@ class Verdict:
     reason: str
 
 
-def decide(freeze_raw: str | None, allow_raw: str | None, pull: Pull, repository: str) -> Verdict:
-    """Decide whether the freeze blocks one pull request."""
+def decide(freeze_raw: str | None, allow_raw: str | None, pull: Pull) -> Verdict:
+    """Decide whether the freeze blocks one pull request.
+
+    The only exemption is an admin-set ``MERGE_FREEZE_ALLOW`` entry. Anything a
+    pull request author controls, such as a branch name, could be chosen to
+    claim an exemption, so none of it is consulted.
+    """
     freeze = parse_freeze(freeze_raw)
     if freeze.error is not None:
         return Verdict(True, freeze.error)
     if not freeze.active:
         return Verdict(False, "Merge freeze is not active.")
-    # A fork can pick any branch name, so the exemption needs a same-repository head.
-    same_repository = pull.head_repo is not None and pull.head_repo.casefold() == repository.casefold()
-    if same_repository and pull.head_ref.startswith(RELEASE_BRANCH_PREFIX):
-        return Verdict(False, "Release Please pull request; exempt from the merge freeze.")
     allowed, allow_error = parse_allowlist(allow_raw)
     if pull.number in allowed:
         return Verdict(False, f"Pull request #{pull.number} is in {ALLOW_VARIABLE}; exempt from the merge freeze.")
@@ -143,13 +143,8 @@ def run_gate(env: Mapping[str, str], summary_path: str | None) -> int:
         return 0
     repository = env.get("REPOSITORY", "")
     number = env.get("PR_NUMBER", "")
-    pull = Pull(
-        number=int(number) if number.isdecimal() else 0,
-        head_sha="",
-        head_ref=env.get("HEAD_REF", ""),
-        head_repo=env.get("HEAD_REPO") or None,
-    )
-    verdict = decide(env.get(FREEZE_VARIABLE), env.get(ALLOW_VARIABLE), pull, repository)
+    pull = Pull(number=int(number) if number.isdecimal() else 0, head_sha="")
+    verdict = decide(env.get(FREEZE_VARIABLE), env.get(ALLOW_VARIABLE), pull)
     print(verdict.reason)
     if not verdict.blocked:
         return 0
@@ -243,6 +238,29 @@ def _newest(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
     return max(runs, key=lambda run: (run.get("completed_at") or run.get("started_at") or "", run["id"]), default=None)
 
 
+@dataclass(frozen=True)
+class Aggregate:
+    """The aggregate check runs on one head commit, split the way GitHub ranks them."""
+
+    # The newest finished run, which is the result GitHub's required check reads.
+    result: dict[str, Any] | None
+    # The newest finished run from CI itself, never a freeze check run.
+    real: dict[str, Any] | None
+    # CI runs still going. Each one finishes later than any check run posted now,
+    # so its result will replace whatever the required check shows today.
+    in_flight: bool
+
+
+def _aggregate(api: Api, sha: str) -> Aggregate:
+    runs = api.pages(_aggregate_path(sha, "all"), key="check_runs")
+    finished = [run for run in runs if run.get("status") == "completed"]
+    return Aggregate(
+        result=_newest(finished),
+        real=_newest([run for run in finished if not _is_overlay(run)]),
+        in_flight=any(run.get("status") != "completed" and not _is_overlay(run) for run in runs),
+    )
+
+
 def _gate_failed(api: Api, job_id: int) -> bool:
     job = api.call("GET", f"actions/jobs/{job_id}")
     return any(
@@ -250,10 +268,16 @@ def _gate_failed(api: Api, job_id: int) -> bool:
     )
 
 
+IN_FLIGHT_WHILE_FROZEN = (
+    "CI is still running and could finish green after the freeze took effect; re-run this workflow once it finishes"
+)
+
+
 def _hold(api: Api, pull: Pull, reason: str, repository: str, dry_run: bool) -> Outcome:
-    runs = api.pages(_aggregate_path(pull.head_sha, "all"), key="check_runs")
-    newest = _newest(runs)
-    if newest is not None and _finished_failing(newest):
+    aggregate = _aggregate(api, pull.head_sha)
+    if aggregate.result is not None and _finished_failing(aggregate.result):
+        if aggregate.in_flight:
+            return Outcome(pull.number, "held", IN_FLIGHT_WHILE_FROZEN, error=True)
         return Outcome(pull.number, "held", "newest aggregate result already fails")
     if dry_run:
         return Outcome(pull.number, "would block", "post a failing aggregate check run")
@@ -272,38 +296,41 @@ def _hold(api: Api, pull: Pull, reason: str, repository: str, dry_run: bool) -> 
     latest = api.pages(_aggregate_path(pull.head_sha, "latest"), key="check_runs")
     if not latest or any(_passes(run) for run in latest):
         return Outcome(pull.number, "blocked", "the latest aggregate check run still passes", error=True)
+    if aggregate.in_flight:
+        return Outcome(pull.number, "blocked", IN_FLIGHT_WHILE_FROZEN, error=True)
     return Outcome(pull.number, "blocked", "posted a failing aggregate check run")
 
 
 def _release(api: Api, pull: Pull, dry_run: bool) -> Outcome:
-    runs = api.pages(_aggregate_path(pull.head_sha, "all"), key="check_runs")
-    overlays = [run for run in runs if _is_overlay(run) and run.get("conclusion") == "failure"]
-    real = _newest([run for run in runs if not _is_overlay(run)])
-    needs_rerun = False
-    if real is not None and real.get("status") == "completed":
-        # The aggregate failed only because of the freeze when its gate step did.
-        needs_rerun = bool(overlays) or (_finished_failing(real) and _gate_failed(api, real["id"]))
-    if not overlays and not needs_rerun:
+    aggregate = _aggregate(api, pull.head_sha)
+    result, real = aggregate.result, aggregate.real
+    if result is None:
+        return Outcome(pull.number, "unchanged", "")
+    if _is_overlay(result):
+        if not _finished_failing(result):
+            return Outcome(pull.number, "unchanged", "")
+        if aggregate.in_flight:
+            # The running aggregate reads the lifted flag and its result replaces
+            # the freeze check run. If it had already passed its gate while
+            # frozen it fails there, and the next dispatch re-runs it.
+            return Outcome(pull.number, "waiting", "CI is still running; its result replaces the freeze check run")
+        if real is None:
+            # A fork awaiting approval or a pull request whose CI never started
+            # stays blocked until CI reports; nothing here may stand in for it.
+            return Outcome(pull.number, "waiting", "no CI result yet; the freeze check run stays until CI reports")
+    elif aggregate.in_flight or not (_finished_failing(result) and _gate_failed(api, result["id"])):
+        # A genuine CI failure, a pass, or a run still going needs nothing here.
+        return Outcome(pull.number, "unchanged", "")
+    if real is None:
         return Outcome(pull.number, "unchanged", "")
     if dry_run:
-        return Outcome(pull.number, "would release", "re-run the aggregate" if needs_rerun else "resolve the overlay")
-    if needs_rerun and real is not None:
-        try:
-            api.call("POST", f"actions/jobs/{real['id']}/rerun")
-        except ApiError as exc:
-            # Keep the block: a pull request must never go green on a stale result.
-            return Outcome(pull.number, "release failed", f"could not re-run the aggregate ({exc})", error=True)
-    for run in overlays:
-        api.call(
-            "PATCH",
-            f"check-runs/{run['id']}",
-            {
-                "status": "completed",
-                "conclusion": "success",
-                "output": {"title": "Merge freeze lifted", "summary": "The merge freeze is no longer active."},
-            },
-        )
-    return Outcome(pull.number, "released", "re-ran the aggregate" if needs_rerun else "resolved the overlay")
+        return Outcome(pull.number, "would release", "re-run the aggregate")
+    try:
+        api.call("POST", f"actions/jobs/{real['id']}/rerun")
+    except ApiError as exc:
+        # Keep the block: a pull request must never go green on a stale result.
+        return Outcome(pull.number, "release failed", f"could not re-run the aggregate ({exc})", error=True)
+    return Outcome(pull.number, "released", "re-ran the aggregate; its result replaces the freeze check run")
 
 
 def reconcile(
@@ -315,20 +342,35 @@ def reconcile(
     dry_run: bool = False,
     log: Callable[[str], None] = print,
 ) -> Plan:
-    """Bring every open pull request's aggregate result in line with the flag."""
+    """Bring every open pull request's aggregate result in line with the flag.
+
+    Check runs belong to a commit, not a pull request, so pull requests that
+    share a head commit share one decision: the commit stays blocked while any
+    of them is blocked.
+    """
     plan = Plan()
-    for item in api.pages("pulls?state=open"):
-        head = item["head"]
-        pull = Pull(item["number"], head["sha"], head["ref"], (head.get("repo") or {}).get("full_name"))
-        verdict = decide(freeze_raw, allow_raw, pull, repository)
-        try:
-            outcome = (
-                _hold(api, pull, verdict.reason, repository, dry_run)
-                if verdict.blocked
-                else _release(api, pull, dry_run)
-            )
-        except ApiError as exc:
-            outcome = Outcome(pull.number, "error", str(exc), error=True)
+    pulls = [Pull(item["number"], item["head"]["sha"]) for item in api.pages("pulls?state=open")]
+    blocking: dict[str, Verdict] = {}
+    for pull in pulls:
+        verdict = decide(freeze_raw, allow_raw, pull)
+        if verdict.blocked:
+            blocking.setdefault(pull.head_sha, verdict)
+    decided: dict[str, Outcome] = {}
+    for pull in pulls:
+        first = decided.get(pull.head_sha)
+        if first is not None:
+            outcome = Outcome(pull.number, first.action, f"shares its head commit with #{first.number}", first.error)
+        else:
+            verdict = blocking.get(pull.head_sha)
+            try:
+                outcome = (
+                    _hold(api, pull, verdict.reason, repository, dry_run)
+                    if verdict is not None
+                    else _release(api, pull, dry_run)
+                )
+            except ApiError as exc:
+                outcome = Outcome(pull.number, "error", str(exc), error=True)
+            decided[pull.head_sha] = outcome
         plan.outcomes.append(outcome)
         if outcome.action != "unchanged":
             log(f"#{outcome.number}: {outcome.action} {outcome.detail}".rstrip())
