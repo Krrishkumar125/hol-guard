@@ -170,7 +170,9 @@ fn verdict(
                     // filter setting, so no configured helper runs. The
                     // probe cannot answer for that read either: there is no
                     // repository configuration to read, and the directory
-                    // may not be there to probe in at all.
+                    // may not be there to probe in at all. Operations that
+                    // keep running without a repository, and inline `-c`
+                    // settings, are not such a route and stay probed.
                     if super::git_helper_context::routes_to_no_repository(
                         segments[index],
                         read_context,

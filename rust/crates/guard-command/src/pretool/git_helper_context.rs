@@ -31,6 +31,12 @@ pub(super) fn git_helper_context_required(
 /// mistaken for a route, and a segment carrying more than one `-C` keeps the
 /// helper screen: the second is resolved against the first, which this does
 /// not model.
+///
+/// The route only says Git finds no repository. Git still reads its global
+/// and system configuration, and an inline `-c` adds to it, so the segment
+/// counts only when it carries no `-c` and its operation is one the
+/// inspection proof admits without a repository: `diff` on paths, `grep`,
+/// `apply` and `hash-object` keep running there and open files.
 pub(super) fn routes_to_no_repository(
     segment: &crate::CommandSegmentV1,
     context: PathContext<'_>,
@@ -51,8 +57,7 @@ pub(super) fn routes_to_no_repository(
             continue;
         }
         if argument == "-c" {
-            index += 2;
-            continue;
+            return false;
         }
         if !argument.starts_with('-') {
             break;
@@ -60,6 +65,11 @@ pub(super) fn routes_to_no_repository(
         index += 1;
     }
     route.is_some_and(|target| super::git_routes::git_route_without_repository(target, context))
+        && segment
+            .executable
+            .as_deref()
+            .is_some_and(|executable| executable_basename(executable) == "git")
+        && crate::command_compatibility::git_inspection_arguments(arguments, context).is_some()
 }
 
 /// Whether a Git segment's operation can start a configured helper.

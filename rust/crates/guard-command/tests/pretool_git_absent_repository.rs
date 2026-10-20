@@ -200,3 +200,22 @@ fn git_read_that_opens_files_without_a_repository_is_reviewed() {
         assert_decision(&workspace, &home, &command, false);
     }
 }
+
+/// Git reads its global and system configuration before it looks for a
+/// repository, so an inline `-c` can name a pager or an alias that runs
+/// whatever the route. The route alone does not clear such a read.
+#[test]
+fn git_read_with_inline_configuration_without_a_repository_is_reviewed() {
+    let scratch = scratch("inline-config");
+    let home = directory(&scratch.root, "home");
+    let workspace = directory(&scratch.root, "home/Code/app-portal");
+    repository(&workspace);
+    let plain = directory(&scratch.root, "home/Code/scratch-notes");
+    let route = fixture::shell_word(&plain);
+    for command in [
+        format!("git -C {route} -c core.pager=cat log --oneline -3"),
+        format!("git -c core.pager=cat -C {route} status --short"),
+    ] {
+        assert_decision(&workspace, &home, &command, false);
+    }
+}
