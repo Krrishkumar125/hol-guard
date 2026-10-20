@@ -29,6 +29,9 @@ from .native_runtime_resilience import native_record_resident_failure, native_re
 
 MCP_PROXY_DECISION_FEATURE = "mcp-proxy-decision-v1"
 MCP_PROXY_ARCHIVE_VERIFY_FEATURE = "mcp-proxy-archive-verify-v1"
+# The resident also classifies the answer to an inline approval prompt. An older
+# resident rejects that query as an unknown check, so a caller asks for it by name.
+MCP_PROXY_INLINE_APPROVAL_REPLY_FEATURE = "mcp-proxy-inline-approval-reply-v1"
 _REQUEST_SCHEMA = "guard-mcp-proxy-decision-request.v1"
 _RESULT_SCHEMA = "guard-mcp-proxy-decision-result.v1"
 _OPERATION = "mcp_proxy_decide"
@@ -223,3 +226,49 @@ def native_package_reason_signals(reasons: Sequence[object], *, guard_home: Path
     if not isinstance(signals, list):
         raise _fail("native_mcp_proxy_decision_payload_invalid")
     return tuple(signals)
+
+
+def native_inline_approval_reply(
+    payload: object,
+    *,
+    tool_name: str,
+    server_name: str,
+    guard_home: Path,
+) -> dict[str, Any]:
+    """What the client's answer to one inline approval prompt means.
+
+    The resident owns the classification and the block a refused or malformed
+    answer produces, so the proxy reads neither a second time. It answers with
+    the ``inline_approval`` fact the route consumes and, for a block, the
+    decision source, event decision and reason that name it.
+    """
+
+    answer = native_mcp_proxy_decide(
+        {
+            "check": "inline_approval_reply",
+            "payload": payload,
+            "tool_name": tool_name,
+            "server_name": server_name,
+        },
+        guard_home=guard_home,
+        required_feature=MCP_PROXY_INLINE_APPROVAL_REPLY_FEATURE,
+    )
+    classified = answer.get("inline_approval")
+    block = answer.get("block")
+    if not isinstance(classified, str) or not _named_block(block):
+        raise _fail("native_mcp_proxy_decision_payload_invalid")
+    return {"inline_approval": classified, "block": block}
+
+
+def _named_block(block: object) -> bool:
+    """Whether ``block`` names a block completely, or names none at all.
+
+    A half-named block is no answer: the caller would raise reading the keys it
+    is missing, where an answer the resident did not give must fail closed.
+    """
+
+    if block is None:
+        return True
+    return isinstance(block, dict) and all(
+        isinstance(block.get(field), str) for field in ("decision_source", "event_decision", "reason")
+    )

@@ -199,3 +199,22 @@ fn a_rewritten_decision_carries_the_action_it_enforces() {
     assert_eq!(packaged["route"]["tool_source"], "native-approved");
     assert_eq!(packaged["route"]["decision_policy_action"], "allow");
 }
+
+#[test]
+fn an_inline_approval_answer_reaches_the_classifier_over_the_op() {
+    let answered = reply(&request(
+        MCP_PROXY_DECISION_REQUEST_SCHEMA,
+        json!({
+            "check": "inline_approval_reply",
+            "payload": {"action": "accept", "content": {"decision": "deny"}},
+            "tool_name": "demo",
+            "server_name": "files",
+        }),
+    ));
+    assert_eq!(answered["status"], "ok");
+    assert_eq!(answered["payload"]["inline_approval"], "denied");
+    assert_eq!(
+        answered["payload"]["block"]["decision_source"],
+        "inline-denied"
+    );
+}

@@ -88,6 +88,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::LOCAL_MCP_GRANT_FEATURE,
     guard_contracts::MCP_PROXY_DECISION_FEATURE,
     guard_contracts::MCP_PROXY_ARCHIVE_VERIFY_FEATURE,
+    guard_contracts::MCP_PROXY_INLINE_APPROVAL_REPLY_FEATURE,
     guard_contracts::CISCO_PREFLIGHT_FEATURE,
     guard_contracts::DAEMON_LIFECYCLE_FEATURE,
     guard_contracts::CONTRIBUTED_MCP_DECISION_FEATURE,
