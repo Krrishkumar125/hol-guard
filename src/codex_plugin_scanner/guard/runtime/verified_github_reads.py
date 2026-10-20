@@ -19,7 +19,7 @@ from typing import IO, Final, cast
 from ..mdm.contracts import ManagedNetworkPolicy
 from ..mdm.network import active_network_policy, managed_opener
 from ..mdm.network_urlopen import ManagedOpener
-from ..native_verified_read_decision import github_public_read_decision
+from ..native_verified_read_decision import NativeVerifiedReadDecisionError, github_public_read_decision
 from .effect_contract import ProofRequirement, ProofRoute
 from .effect_decision import EffectDecision, FinalDisposition, PositiveProof
 from .verified_read_common import verified_read_digest
@@ -115,7 +115,10 @@ def try_read_verified_public_github_pull_request(
         pull_payload=pull_payload,
         stdout=stdout,
     )
-    decision = _decision(proof)
+    try:
+        decision = _decision(proof)
+    except NativeVerifiedReadDecisionError:
+        return None
     if decision.disposition is not FinalDisposition.SILENT_VERIFIED:
         return None
     return VerifiedGitHubReadResult(stdout, proof, decision)

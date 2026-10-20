@@ -7,8 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 from . import native_execution
 from .native_context import _canonical_request_sha256, _resolve_digest_home, ensure_resident_prerequisite
+from .native_runtime import native_runtime_status
+from .native_runtime_resilience import native_record_resident_failure, native_record_resident_success
 
 if TYPE_CHECKING:
+    from .native_runtime_values import NativeRuntimeIdentity
     from .runtime.effect_decision import EffectDecision
 
 _FEATURE = "verified-read-decision-v1"
@@ -77,6 +80,9 @@ def _request_decision(
         if not ensure_resident_prerequisite(home):
             raise NativeVerifiedReadDecisionError("native_verified_read_decision_unavailable")
         request_sha256 = _canonical_request_sha256(wire)
+        # Resolved once: the transport and the health record below must name
+        # the same binary, and the lookup walks the runtime on disk.
+        status = native_runtime_status()
         decoded = native_execution._resident_request(
             operation="verified_read_decision",
             request=wire,
@@ -85,11 +91,24 @@ def _request_decision(
             required_feature=_FEATURE,
             response_schema=_RESULT_SCHEMA,
             max_request_bytes=_MAX_WIRE_BYTES,
+            # Success is recorded below, once the reply is known to be usable.
+            record_success=False,
+            status=status,
         )
     except (OSError, TypeError, ValueError) as error:
         raise NativeVerifiedReadDecisionError("native_verified_read_decision_unavailable") from error
     if decoded is None:
         raise NativeVerifiedReadDecisionError("native_verified_read_decision_unavailable")
+    try:
+        decision = _validated_decision(decoded, wire, request_sha256)
+    except NativeVerifiedReadDecisionError:
+        _record(home, status.identity, success=False)
+        raise
+    _record(home, status.identity, success=True)
+    return decision
+
+
+def _validated_decision(decoded: dict[str, Any], wire: dict[str, object], request_sha256: str) -> EffectDecision:
     if set(decoded) != _RESULT_KEYS or decoded.get("code") != "ok":
         raise NativeVerifiedReadDecisionError("native_verified_read_decision_invalid_result")
     if decoded.get("request_id") != wire["request_id"] or decoded.get("request_sha256") != request_sha256:
@@ -99,5 +118,16 @@ def _request_decision(
         raise NativeVerifiedReadDecisionError("native_verified_read_decision_invalid_result")
     try:
         return native_execution._effect_decision(payload)
-    except (TypeError, ValueError) as error:
+    except (AttributeError, TypeError, ValueError) as error:
+        # The shared decoder reads each reason with ``.get``, so a reason that
+        # is not an object surfaces as AttributeError.
         raise NativeVerifiedReadDecisionError("native_verified_read_decision_invalid_result") from error
+
+
+def _record(home: Path, identity: NativeRuntimeIdentity | None, *, success: bool) -> None:
+    if identity is None:
+        return
+    if success:
+        native_record_resident_success(identity.sha256, home)
+    else:
+        native_record_resident_failure(identity.sha256, home, reason="native_verified_read_decision_result")
