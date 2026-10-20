@@ -205,6 +205,8 @@ pub(crate) enum ResidentOperationV1 {
     ApprovalResolutionPlan(ApprovalResolutionPlanRequestV1),
     ApprovalScope(ApprovalScopeRequestV1),
     ApprovalScopeSelect(guard_contracts::ApprovalScopeSelectRequestV1),
+    ApprovalResolutionEligibility(guard_contracts::ApprovalResolutionEligibilityRequestV1),
+    ApprovalPersistSelect(guard_contracts::ApprovalPersistSelectRequestV1),
     HookRender(guard_contracts::HookRenderRequestV1),
     GuardStore(GuardStoreRequestV1),
     HookEvidenceWriter(crate::hook_evidence_writer_op::HookEvidenceWriterRequestV1),
@@ -224,6 +226,8 @@ pub(crate) enum ResidentOperationV1 {
     ContainedWorkspaceWriteExecute(ContainedWorkspaceWriteExecuteRequestV1),
     #[allow(dead_code)]
     ContainedExecute(ContainedExecuteRequestV1),
+    #[allow(dead_code)]
+    ContainmentHealthProbe(guard_contracts::ContainmentHealthProbeRequestV1),
     ShimAdmin(ShimAdminRequestV2),
     PackageContextBuild(PackageContextBuildRequestV1),
     McpStdioProbe(McpStdioProbeRequestV1),
@@ -267,6 +271,7 @@ pub(crate) enum ResidentOperationV1 {
     DaemonHandler(DaemonHandlerRequestV1),
     HookAdapter(HookAdapterRequestV1),
     HookArtifactCompose(HookArtifactComposeRequestV1),
+    HookArtifactFacts(guard_contracts::HookArtifactFactsRequestV1),
     ConsumerArtifactCompose(ConsumerArtifactComposeRequestV1),
     ConsumerArtifactProject(ConsumerArtifactProjectRequestV1),
     McpToolEvidence(McpToolEvidenceRequestV1),

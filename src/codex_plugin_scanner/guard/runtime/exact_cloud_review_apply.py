@@ -103,7 +103,9 @@ def apply_exact_cloud_review(
     action = _exact_action(envelope.get("decision"))
     if action is None:
         raise _reject(store, "remote_exact_decision_invalid", now=current)
-    if approval_resolution_block_reason(request) is not None or request.get("policy_action") not in {
+    if approval_resolution_block_reason(request, guard_home=store.guard_home) is not None or request.get(
+        "policy_action"
+    ) not in {
         "review",
         "require-reapproval",
     }:

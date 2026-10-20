@@ -1,5 +1,5 @@
-//! Oracle payloads taken from the live Python `evaluate_effect_decision` on the
-//! factors `verified_read_execution._decision` and
+//! Oracle payloads recorded from the retired Python `evaluate_effect_decision`
+//! on the factors `verified_read_execution._decision` and
 //! `verified_github_reads._decision` built, before either caller moved here.
 
 use serde_json::json;

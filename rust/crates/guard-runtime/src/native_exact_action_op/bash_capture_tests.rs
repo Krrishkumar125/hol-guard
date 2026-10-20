@@ -47,7 +47,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, NativeBashCaptureV1) {
         },
         environment: BTreeMap::new(),
         file_creation_mask: Some(0o022),
-        budget_ms: 1000,
+        budget_ms: super::super::ANALYSIS_BUDGET_CAP_MS,
     };
     (root, request)
 }

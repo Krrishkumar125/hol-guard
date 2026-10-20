@@ -270,10 +270,15 @@ def _write_path(args: dict[str, Any]) -> str:
 def _profile_temp_path(text: str) -> str | None:
     """Return a Windows profile-temp path in forward-slash form, or None.
 
-    Only paths strictly below the redacted profile temp folder qualify; a
-    parent step, a stream or drive colon, or mixed separators are refused.
+    Git Bash prints this path with backslashes and the host's file tools spell
+    the same directory with forward slashes, so either separator is accepted and
+    both normalise to one spelling before the comparison. Only paths strictly
+    below the redacted profile temp folder qualify; a parent step, a stream or
+    drive colon, or mixed separators are refused.
     """
-    if "/" in text or not text.startswith("{{home}}\\"):
+    if "\\" in text and "/" in text:
+        return None
+    if not text.startswith(("{{home}}\\", "{{home}}/")):
         return None
     spelled = text.replace("\\", "/")
     rest = spelled.removeprefix(WINDOWS_TEMP_ROOT)
