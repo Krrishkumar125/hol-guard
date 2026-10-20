@@ -51,10 +51,17 @@ PERSISTENT_PREPARATION_FAILURES = 2
 # handle codes above, so a test that stubs this module keeps its behaviour.
 PREPARATION_FAILING = "native discovery preparation failing"
 PREPARING = "native discovery preparing"
+# A resident that is restarting or was replaced mid-attempt fails preparation
+# without saying anything about the installed release, so these never count
+# toward a failing preparation.
+_RETRYABLE_FAILURES = frozenset({"native discovery transport unavailable", "native discovery runtime changed"})
 _failures = 0
 _MAX_FAILURE_DETAIL = 160
 # Preparation wraps arbitrary OS errors, whose text carries the file that
-# failed. daemon.log is a support artifact, so every path-shaped run goes.
+# failed. daemon.log is a support artifact, so every path-shaped run goes. A
+# quoted path may contain spaces, so a quoted run goes whole before the
+# unquoted runs are matched.
+_QUOTED_PATH = re.compile(r"'[^']*[/\\][^']*'|\"[^\"]*[/\\][^\"]*\"")
 _PATH_LIKE = re.compile(r"[^\s'\"]*[/\\][^\s'\"]*")
 _UNPRINTABLE = re.compile(r"[^\x20-\x7e]")
 
@@ -62,7 +69,13 @@ _UNPRINTABLE = re.compile(r"[^\x20-\x7e]")
 def _failure_detail(error: BaseException) -> str:
     """One bounded, path-free line naming a preparation failure."""
 
-    message = sanitize_secret(_PATH_LIKE.sub("<path>", _UNPRINTABLE.sub(" ", str(error)))).strip()
+    if isinstance(error, OSError) and (error.filename is not None or error.filename2 is not None):
+        # The file names are the only part of an OS error that could leak.
+        text = f"[Errno {error.errno}] {error.strerror}"
+    else:
+        text = str(error)
+    text = _UNPRINTABLE.sub(" ", text)
+    message = sanitize_secret(_PATH_LIKE.sub("<path>", _QUOTED_PATH.sub("<path>", text))).strip()
     if len(message) > _MAX_FAILURE_DETAIL:
         message = message[:_MAX_FAILURE_DETAIL] + "..."
     return f"error={type(error).__name__}" + (f" detail={message}" if message else "")
@@ -240,11 +253,13 @@ def _prepare_discovery(guard_home: Path, authority, *, fetch=None) -> DiscoveryH
 def _prepare_ready(home):
     global _handle, _worker, _retry_after, _failures
     handle = None
+    retryable = False
     try:
         from .installed_bundle import load_installed_bundle
 
         handle = prepare_discovery(home, load_installed_bundle())
     except (ImportError, OSError, ValueError, KeyError, TypeError) as error:
+        retryable = type(error) is ValueError and str(error) in _RETRYABLE_FAILURES
         # A permanent fault here used to leave no line anywhere while every
         # catalog read answered 503, so a broken installed runtime could only
         # be found by probing the bundle. The thread stays non-fatal and the
@@ -255,14 +270,17 @@ def _prepare_ready(home):
             if _home == home:
                 if _handle is None:
                     _handle = handle
-                _failures = 0 if handle is not None else _failures + 1
+                if handle is not None:
+                    _failures = 0
+                elif not retryable:
+                    _failures += 1
             _worker = None
             _retry_after = time.monotonic() + (1.0 if handle is None else 0.0)
         request_refresh(home)
 
 
 def _refresh(home, store):
-    global _handle, _refresh_worker
+    global _handle, _refresh_worker, _failures
     try:
         from .current_refresh import refresh, restore
 
@@ -279,6 +297,10 @@ def _refresh(home, store):
         with _ready_lock:
             if _home == home:
                 _handle = handle
+                if handle is not None:
+                    # A published view proves preparation works again, so an
+                    # older streak must not survive a later invalidation.
+                    _failures = 0
     except Exception as error:
         # Complete previous view and active protection remain independent, so
         # this stays non-fatal; it is recorded because a publication that never

@@ -106,6 +106,28 @@ def test_recorded_detail_carries_no_path(prepared, recorded, monkeypatch) -> Non
     assert str(Path.home()) not in detail
 
 
+def test_a_quoted_path_with_spaces_is_redacted_whole(prepared, recorded, monkeypatch) -> None:
+    secret = Path.home() / "Client Records" / "tax return 2025.pdf"
+    fail_preparation(monkeypatch, ValueError(f"installed bundle metadata unavailable: '{secret}' missing"))
+
+    discovery._prepare_ready(prepared)
+
+    (_event, detail) = recorded[0]
+    assert "Client" not in detail
+    assert "return" not in detail
+    assert detail.endswith("unavailable: <path> missing")
+
+
+def test_an_os_error_detail_never_carries_its_file_name(prepared, recorded, monkeypatch) -> None:
+    secret = Path.home() / "Client Records" / "tax return 2025.pdf"
+    fail_preparation(monkeypatch, FileNotFoundError(2, "No such file or directory", str(secret)))
+
+    discovery._prepare_ready(prepared)
+
+    (_event, detail) = recorded[0]
+    assert detail == "error=FileNotFoundError detail=[Errno 2] No such file or directory"
+
+
 def test_recorded_detail_is_bounded(prepared, recorded, monkeypatch) -> None:
     fail_preparation(monkeypatch, ValueError("x" * 4096))
 
@@ -192,6 +214,37 @@ def test_a_success_clears_the_failure_count(prepared, recorded, monkeypatch) -> 
 
     assert discovery._failures == 0
     assert discovery.installed_discovery(prepared) is handle
+
+
+@pytest.mark.parametrize("message", sorted(discovery._RETRYABLE_FAILURES))
+def test_a_restarting_resident_never_counts_as_a_failing_preparation(prepared, recorded, monkeypatch, message) -> None:
+    fail_preparation(monkeypatch, ValueError(message))
+
+    for _attempt in range(discovery.PERSISTENT_PREPARATION_FAILURES + 1):
+        discovery._prepare_ready(prepared)
+
+    assert discovery._failures == 0
+    monkeypatch.setattr(discovery, "_retry_after", time.monotonic() + 300.0)
+    with pytest.raises(ValueError) as raised:
+        discovery.installed_discovery(prepared)
+    assert str(raised.value) == discovery.PREPARING
+
+
+def test_a_refreshed_view_clears_an_older_failure_streak(prepared, recorded, monkeypatch) -> None:
+    fail_preparation(monkeypatch, ValueError("installed bundle container invalid"))
+    for _attempt in range(discovery.PERSISTENT_PREPARATION_FAILURES):
+        discovery._prepare_ready(prepared)
+    handle = object()
+    monkeypatch.setattr(current_refresh, "refresh", lambda _store: handle)
+
+    discovery._refresh(prepared, SimpleNamespace())
+    assert discovery._handle is handle
+    discovery.invalidate(prepared, handle)
+
+    monkeypatch.setattr(discovery, "_retry_after", time.monotonic() + 300.0)
+    with pytest.raises(ValueError) as raised:
+        discovery.installed_discovery(prepared)
+    assert str(raised.value) == discovery.PREPARING
 
 
 def test_the_read_path_matches_the_message_discovery_raises() -> None:
