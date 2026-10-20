@@ -88,6 +88,9 @@ pub(crate) fn compose(query: &HookArtifactComposeQueryV1) -> Result<Value, Strin
         HookArtifactComposeQueryV1::PromptRequestReason(query) => {
             prompt::prompt_request_reason(query)
         }
+        HookArtifactComposeQueryV1::RememberedRuleReason(query) => {
+            reuse::remembered_rule_reason(query)
+        }
         HookArtifactComposeQueryV1::PackageReuseSettle(query) => reuse::package_reuse_settle(query),
     })
 }

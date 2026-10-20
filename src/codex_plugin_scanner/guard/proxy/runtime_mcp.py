@@ -59,6 +59,8 @@ from ..native_mcp_proxy_decision import (
     NativeMcpProxyDecisionError,
     cursor_fact,
     native_external_archive_bind,
+    native_inline_approval_reply,
+    native_inline_approval_reply_available,
     native_mcp_proxy_decide,
     native_package_reason_signals,
     package_facts,
@@ -886,28 +888,26 @@ class RuntimeMcpGuardProxy:
             "approval_requests": [],
         }
 
+    @staticmethod
     def _inline_approval_deny_result(
-        self,
-        approval_result: object,
+        answer: object,
         deny_tool_call: Callable[..., tuple[dict[str, Any], dict[str, Any]]],
-        tool_name: str,
     ) -> tuple[dict[str, Any], dict[str, Any]] | None:
-        if _approval_denies(approval_result):
-            return deny_tool_call(
-                decision_source="inline-denied",
-                event_decision="deny-inline",
-                reason=f"HOL Guard blocked tool call {tool_name} from {self.server_name}.",
-            )
-        if _approval_invalid(approval_result):
-            return deny_tool_call(
-                decision_source="inline-invalid",
-                event_decision="deny-inline-invalid",
-                reason=(
-                    f"HOL Guard blocked tool call {tool_name} from {self.server_name} because inline "
-                    "approval returned an invalid response."
-                ),
-            )
-        return None
+        """The block the resident named for a refused or malformed answer.
+
+        The resident classified the answer and composed the block, so an answer
+        that names none leaves the call unblocked here; the route treats that as
+        an inline decision it never bound and fails closed on it.
+        """
+
+        block = answer.get("block") if isinstance(answer, Mapping) else None
+        if not isinstance(block, Mapping):
+            return None
+        return deny_tool_call(
+            decision_source=block["decision_source"],
+            event_decision=block["event_decision"],
+            reason=block["reason"],
+        )
 
     def _handle_message_serialized(
         self,
@@ -1054,7 +1054,15 @@ class RuntimeMcpGuardProxy:
             "mode": self.config.mode,
             "package_present": package_artifact is not None,
             "asks_for_approval": bool(asks_for_approval(self.config)),
-            "inline_available": bool(self._inline_prompt_available and approval_callback is not None),
+            # A prompt is only worth raising when the resident can classify the
+            # answer. Without the query every answer -- including an approval the
+            # user gave -- fails closed into the approval queue, so an older
+            # resident would interrupt the user for nothing.
+            "inline_available": bool(
+                self._inline_prompt_available
+                and approval_callback is not None
+                and native_inline_approval_reply_available()
+            ),
             "tool_name": tool_name,
         }
 
@@ -1092,8 +1100,14 @@ class RuntimeMcpGuardProxy:
             if approval_callback is None:
                 return {"inline_approval": "fallthrough"}
             result = approval_callback(self._inline_approval_request(tool_name, effective(need).summary))
-            held["approval_result"] = result
-            return {"inline_approval": _inline_approval_kind(result)}
+            answer = native_inline_approval_reply(
+                result,
+                tool_name=tool_name,
+                server_name=self.server_name,
+                guard_home=Path(self.store.guard_home),
+            )
+            held["inline_approval_answer"] = answer
+            return {"inline_approval": answer["inline_approval"]}
 
         return self._native_decide(
             {
@@ -1199,7 +1213,7 @@ class RuntimeMcpGuardProxy:
             return queue()
         if kind == "inline_denied":
             denied = self._inline_approval_deny_result(
-                held.get("approval_result"),
+                held.get("inline_approval_answer"),
                 deny_tool_call=partial(
                     self._deny_inline_tool_call,
                     message=message,
@@ -1210,7 +1224,6 @@ class RuntimeMcpGuardProxy:
                     decision=decision,
                     scanner_evidence=decision_scanner_evidence,
                 ),
-                tool_name=tool_name,
             )
             if denied is None:
                 raise NativeMcpProxyDecisionError("native_mcp_proxy_decision_inline_unbound")
@@ -3659,45 +3672,6 @@ class OpenCodeMcpGuardProxy(RuntimeMcpGuardProxy):
     def _inline_approval_request(self, tool_name: str, summary: str) -> dict[str, Any]:
         del tool_name, summary
         raise RuntimeError("OpenCode uses native permission prompts instead of Guard MCP inline approval.")
-
-
-def _approval_allows(payload: object) -> bool:
-    if not isinstance(payload, dict):
-        return False
-    if payload.get("action") != "accept":
-        return False
-    content = payload.get("content")
-    return isinstance(content, dict) and content.get("decision") == "approve"
-
-
-def _approval_denies(payload: object) -> bool:
-    if not isinstance(payload, dict):
-        return False
-    if payload.get("action") != "accept":
-        return False
-    content = payload.get("content")
-    return isinstance(content, dict) and content.get("decision") == "deny"
-
-
-def _approval_invalid(payload: object) -> bool:
-    if not isinstance(payload, dict):
-        return True
-    if payload.get("action") != "accept":
-        return False
-    content = payload.get("content")
-    if not isinstance(content, dict):
-        return True
-    return content.get("decision") not in {"approve", "deny"}
-
-
-def _inline_approval_kind(payload: object) -> str:
-    """Classify an inline approval reply for the resident; it decides what follows."""
-
-    if _approval_allows(payload):
-        return "allow"
-    if _approval_denies(payload) or _approval_invalid(payload):
-        return "denied"
-    return "fallthrough"
 
 
 def _approval_payload(payload: dict[str, Any]) -> dict[str, Any]:

@@ -23,6 +23,11 @@ pub const HOOK_ARTIFACT_COMPOSE_FEATURE: &str = "hook-artifact-compose-v1";
 /// caller requires this feature for that query alone.
 pub const HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE: &str =
     "hook-artifact-compose-prompt-reason-v1";
+/// Capability advertised when the `remembered_rule_reason` query is served.
+/// A runtime that predates the query rejects it as an unknown kind, so the
+/// caller requires this feature for that query alone.
+pub const HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE: &str =
+    "hook-artifact-compose-remembered-rule-v1";
 /// Capability advertised when the `package_reuse_settle` query is served. A
 /// runtime that predates the query rejects it as an unknown kind, so the
 /// caller requires this feature for that query alone.
@@ -68,6 +73,8 @@ pub enum HookArtifactComposeQueryV1 {
     DecisionBuildCopy(Box<DecisionBuildCopyQueryV1>),
     /// What a flagged prompt request tells the user, before any harness copy.
     PromptRequestReason(PromptRequestReasonQueryV1),
+    /// Why a remembered local rule was refused while local trust is degraded.
+    RememberedRuleReason(RememberedRuleReasonQueryV1),
     /// Settle a package request's saved-approval reuse from the reasons the
     /// evaluation carries, folding the saved-block reuse of the same request.
     PackageReuseSettle(Box<PackageReuseSettleQueryV1>),
@@ -130,9 +137,10 @@ pub struct PolicyArtifactFactsV1 {
     pub shell_local_script_review: bool,
     /// `guard_default_action` metadata; non-strings arrive as `""`.
     pub guard_default_action: Option<String>,
-    /// `str(confidence or "")` of the artifact risk confidence.
+    /// `str(confidence or "")` of the artifact risk confidence. Whether that
+    /// confidence is strong enough to stop a posture is read off this text
+    /// here, so no caller decides it.
     pub confidence_text: String,
-    pub confidence_strong: bool,
     /// A caller that already knows the artifact installs a boot or login
     /// item says so here; the resident reads `action_class` for the rest.
     pub writes_launch_agent: bool,
@@ -140,6 +148,36 @@ pub struct PolicyArtifactFactsV1 {
     #[serde(default)]
     pub action_class: Option<String>,
     pub skill_is_known_bad: bool,
+}
+
+impl PolicyArtifactFactsV1 {
+    /// The artifact risk confidence is one a protection posture stops on.
+    #[must_use]
+    pub fn confidence_strong(&self) -> bool {
+        self.confidence_text
+            .trim_matches(is_python_space)
+            .eq_ignore_ascii_case("strong")
+    }
+}
+
+/// What `str.strip()` removes. Rust's own `trim` leaves the C1 and the
+/// information separators in place, so confidence text padded with them would
+/// read as a weaker confidence than the one the artifact reported.
+fn is_python_space(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{09}'..='\u{0d}'
+            | ' '
+            | '\u{1c}'..='\u{1f}'
+            | '\u{85}'
+            | '\u{a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'..='\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -323,6 +361,17 @@ pub struct PromptRequestReasonQueryV1 {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
+pub struct RememberedRuleReasonQueryV1 {
+    /// Reported state of remembered local rules, `unknown` when absent.
+    pub remembered_rules: String,
+    /// Integrity detail to append to the reason, when one was reported.
+    pub integrity_message: Option<String>,
+    /// How the request is named in the reason.
+    pub artifact_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct DecisionBuildCopyQueryV1 {
     pub copy: DecisionCopyQueryV1,
     pub reason: String,
@@ -342,4 +391,62 @@ pub struct HookArtifactComposeResultV1 {
     pub code: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
+}
+
+#[cfg(test)]
+mod confidence_tests {
+    use super::PolicyArtifactFactsV1;
+    use serde_json::json;
+
+    fn facts(confidence_text: &str) -> PolicyArtifactFactsV1 {
+        serde_json::from_value(json!({
+            "hard_block": false,
+            "configured_override": null,
+            "command_action_floor": null,
+            "explicit_permission_allow": false,
+            "risk_classes": [],
+            "pytest_restricted_sandbox": false,
+            "shell_local_script_review": false,
+            "guard_default_action": null,
+            "confidence_text": confidence_text,
+            "writes_launch_agent": false,
+            "skill_is_known_bad": false,
+        }))
+        .expect("artifact facts decode")
+    }
+
+    #[test]
+    fn a_strong_confidence_is_read_off_the_confidence_text() {
+        assert!(facts("strong").confidence_strong());
+        assert!(facts("  Strong  ").confidence_strong());
+    }
+
+    #[test]
+    fn any_other_confidence_text_is_not_strong() {
+        for text in ["", "weak", "moderate", "strongly"] {
+            assert!(!facts(text).confidence_strong(), "{text:?} read as strong");
+        }
+    }
+
+    #[test]
+    fn padding_a_strong_confidence_does_not_weaken_it() {
+        // The reporting side strips with `str.strip()`, which also removes the
+        // information separators and the C1 space that Rust's `trim` keeps.
+        for text in [
+            "\u{1c}strong\u{1f}",
+            "\u{1d}\u{1e}Strong",
+            "\u{85}strong\u{a0}",
+            "\u{2028}strong\u{3000}",
+        ] {
+            assert!(facts(text).confidence_strong(), "{text:?} read as weaker");
+        }
+    }
+
+    #[test]
+    fn the_caller_may_not_send_its_own_strength() {
+        let mut value = serde_json::to_value(facts("strong")).expect("encode");
+        value["confidence_strong"] = json!(false);
+        serde_json::from_value::<PolicyArtifactFactsV1>(value)
+            .expect_err("a caller-sent strength must be rejected");
+    }
 }

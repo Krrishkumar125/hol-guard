@@ -401,6 +401,69 @@ fn another_harness_asking_for_secrets_keeps_the_prompt_copy() {
     );
 }
 
+fn remembered_rule_reason(remembered_rules: &str, integrity_message: Value) -> Value {
+    let query: HookArtifactComposeQueryV1 = serde_json::from_value(json!({
+        "kind": "remembered_rule_reason",
+        "remembered_rules": remembered_rules,
+        "integrity_message": integrity_message,
+        "artifact_summary": "git push",
+    }))
+    .unwrap();
+    compose(&query).unwrap()
+}
+
+#[test]
+fn a_reported_rule_state_other_than_degraded_names_no_reason() {
+    for state in ["enabled", "unknown", "disabled"] {
+        assert_eq!(
+            remembered_rule_reason(state, Value::Null)["reason"],
+            Value::Null,
+            "{state}"
+        );
+    }
+}
+
+#[test]
+fn a_degraded_rule_state_names_the_request_and_what_still_works() {
+    let reason = remembered_rule_reason("disabled_degraded", Value::Null);
+    let text = reason["reason"].as_str().unwrap();
+    assert!(
+        text.starts_with("HOL Guard kept git push in review because"),
+        "{text}"
+    );
+    assert!(text.contains("One-time approvals still work"), "{text}");
+    assert!(!text.contains("  "), "{text}");
+}
+
+#[test]
+fn an_integrity_detail_is_appended_as_its_own_sentence() {
+    let reason = remembered_rule_reason("disabled_degraded", json!("Store digest changed"));
+    let text = reason["reason"].as_str().unwrap();
+    assert!(
+        text.contains("degraded. Store digest changed. One-time"),
+        "{text}"
+    );
+}
+
+#[test]
+fn an_integrity_detail_that_ends_a_sentence_gains_no_second_period() {
+    let reason = remembered_rule_reason("disabled_degraded", json!("  Store digest changed.  "));
+    let text = reason["reason"].as_str().unwrap();
+    assert!(
+        text.contains("degraded. Store digest changed. One-time"),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_blank_integrity_detail_is_left_out() {
+    let blank = remembered_rule_reason("disabled_degraded", json!("   "));
+    assert_eq!(
+        blank,
+        remembered_rule_reason("disabled_degraded", Value::Null)
+    );
+}
+
 fn settle(query: Value) -> Value {
     compose(&serde_json::from_value(query).unwrap()).unwrap()
 }

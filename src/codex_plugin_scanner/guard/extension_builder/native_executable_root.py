@@ -7,22 +7,33 @@ a container on a default tmpfs, runs them from a private folder in the Guard
 home instead. That folder is used only while it, the Guard home and every
 directory above the Guard home are closed to other accounts, so no second
 account can swap the bytes between the write and the exec.
+
+Windows keeps an executable's image locked for a moment after its process
+exits, so the directory is removed again with a short backoff once that lock
+is released. A single attempt left every directory behind on Windows, one
+copy of the runtime per compiler run, until the disk filled.
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import shutil
 import stat
 import tempfile
+import time
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
 _PRIVATE_ROOT_NAME = "native-exec"
+_LOGGER = logging.getLogger(__name__)
 _EXECUTABLE_NAME = "hol-guard-runtime.exe" if os.name == "nt" else "hol-guard-runtime"
 # Every Guard home this process has opened, most recent first, so a store for
 # one home never takes the fallback away from a store for another.
 _private_roots: list[Path] = []
+# Seconds to wait between removal attempts while Windows still holds the image.
+_REMOVAL_BACKOFF = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6)
 
 
 class ExecutableMaterializationError(OSError):
@@ -118,6 +129,24 @@ def _candidate(raw: bytes, parent: Path | None) -> tuple[tempfile.TemporaryDirec
     return directory, path
 
 
+def _remove_released(directory: Path) -> None:
+    """Remove a directory whose executable may still be locked by the system."""
+    for delay in (*_REMOVAL_BACKOFF, None):
+        if not directory.exists():
+            return
+        try:
+            shutil.rmtree(directory)
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            if delay is None:
+                _LOGGER.warning("could not remove the source compiler directory %s: %s", directory, exc)
+                return
+            time.sleep(delay)
+        else:
+            return
+
+
 @contextmanager
 def verified_executable(raw: bytes) -> Generator[Path]:
     """Materialize exactly the verified bytes in a private execution directory."""
@@ -131,5 +160,8 @@ def verified_executable(raw: bytes) -> Generator[Path]:
     if candidate is None:
         raise ExecutableMaterializationError("no private directory can run the verified source compiler")
     directory, path = candidate
-    with directory:
+    try:
         yield path
+    finally:
+        directory.cleanup()
+        _remove_released(Path(directory.name))

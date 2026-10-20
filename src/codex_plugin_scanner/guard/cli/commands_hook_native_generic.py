@@ -106,11 +106,11 @@ if TYPE_CHECKING:
 from ..harness_posture import harness_is_recording_only
 from ..local_cli_hook import local_cli_grant_action
 from ..models import GuardAction, GuardArtifact, HarnessDetection
+from ..native_approval_proof import claimed_row_is_still_the_authority
 from ..native_hook_approval_context import generic_hook_approval_context_inputs, native_hook_approval_context_token
-from ..native_hook_decision import native_compose_current, native_finalize, native_post_claim_reuse
+from ..native_hook_decision import native_compose_current, native_finalize, native_post_claim_decision
 from ..retry_lineage import capture_retry_lineage
 from ..runtime.actions import _command_detail
-from ..runtime.approval_context import approval_context_tokens_validation_reason
 from ..runtime.approval_reuse import (
     APPROVAL_REUSE_CLAIM_FAILED,
     ApprovalReuseDecision,
@@ -705,50 +705,37 @@ def run_native_generic_payload(
             )
     if _claimed_saved_allow_hash is not None:
         claimed = _claimed_saved_approval or {}
-        # Native lookup re-authenticates the row. Unrelated authority writes
-        # advance global revision and integrity ledger counters, not the grant.
-        claim_row_invalid = _claimed_saved_approval is None or (
-            store.approval_reuse_claim_disposition(_claimed_saved_approval) != "consumed"
-            and (
-                stored_policy_decision is None
-                or any(
-                    stored_policy_decision.get(key) != value
-                    for key, value in _claimed_saved_approval.items()
-                    if key not in {"_approval_authority_revision", "integrity_generation"}
-                )
-            )
+        # Native lookup re-authenticates the row: the resident holds the claimed
+        # row beside the freshly selected one and says whether it is still the
+        # same authority, disposition included. An unreachable resident answers
+        # nothing, which this reads as an invalid row rather than a grant.
+        claim_row_invalid = not claimed_row_is_still_the_authority(
+            claimed_decision=_claimed_saved_approval,
+            current_decision=stored_policy_decision,
+            guard_home=store.guard_home,
         )
-        post_claim_action, post_claim_reason = native_post_claim_reuse(
+        # Naming the claimed approval's own context token lets the resident
+        # compare it with the recomputed one and compose what the re-evaluated
+        # claim means for reuse in the same request.  The claim was already
+        # consumed, so its saved authority is an allow by construction and
+        # nothing here has to name one; an unreachable resident raises rather
+        # than letting this path invent a grant.
+        _, _, post_claim_reuse = native_post_claim_decision(
             {
                 "current_policy_action": current_policy_action,
                 "reuse_action": approval_reuse.action,
                 "reuse_saved_action": approval_reuse.saved_action,
                 "post_claim_refresh_failed": bool(_post_claim_refresh_failed),
-                "context_changed": approval_context_tokens_validation_reason(
-                    _claimed_saved_allow_hash, runtime_artifact_hash
-                )
-                is not None,
+                "claimed_context_token": _claimed_saved_allow_hash,
+                "current_context_token": runtime_artifact_hash,
+                "fresh_local_approval": claimed.get("fresh_local_approval") is True,
+                "durable_exact_approval": claimed.get("durable_exact_approval") is True,
                 "has_ignored_integrity": ignored_integrity is not None,
                 "claim_row_invalid": claim_row_invalid,
             },
             guard_home=store.guard_home,
         )
-        post_claim_reuse = evaluate_approval_reuse(
-            post_claim_action,
-            "allow",
-            saved_decision_present=True,
-            validation_reason=cast(ApprovalReuseValidationFailure | None, post_claim_reason),
-            fresh_local_approval=claimed.get("fresh_local_approval") is True,
-            durable_exact_approval=claimed.get("durable_exact_approval") is True,
-        )
-        approval_reuse = with_saved_artifact_hash_provenance(
-            post_claim_reuse
-            if post_claim_reuse is not None
-            # Resident unreachable after the atomic claim: keep the consumed
-            # claim's projected action rather than inventing a new grant.
-            else approval_reuse_authority_unavailable(post_claim_action),
-            _claimed_saved_allow_hash,
-        )
+        approval_reuse = _decision_from_native_payload(post_claim_reuse)
     final = native_finalize(
         inputs,
         {
