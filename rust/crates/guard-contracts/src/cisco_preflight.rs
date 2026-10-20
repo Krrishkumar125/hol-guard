@@ -17,7 +17,7 @@ pub const CISCO_PREFLIGHT_REQUEST_SCHEMA: &str = "guard-cisco-preflight-request.
 /// Schema discriminator for the result.
 pub const CISCO_PREFLIGHT_RESULT_SCHEMA: &str = "guard-cisco-preflight-result.v1";
 /// Capability advertised by the runtime when this operation is available.
-pub const CISCO_PREFLIGHT_FEATURE: &str = "cisco-preflight-v1";
+pub const CISCO_PREFLIGHT_FEATURE: &str = "cisco-preflight-v2";
 /// Largest canonical request serialization the op will accept.
 pub const CISCO_PREFLIGHT_MAX_BYTES: usize = 4 * 1024 * 1024;
 /// Most targets, steps or findings one request may carry.

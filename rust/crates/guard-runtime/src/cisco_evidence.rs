@@ -1,6 +1,7 @@
 //! Maps Cisco scanner findings to runtime risk signals and resolves the
 //! policy action those signals carry.
 
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use guard_contracts::{
@@ -163,8 +164,11 @@ pub(crate) fn finding_signal(
 }
 
 /// Report a signal unless it was already reported.
-fn report(signals: &mut Vec<Value>, signal: Value) {
-    if !signals.contains(&signal) {
+///
+/// Objects keep their keys sorted, so two signals render to the same text
+/// exactly when they are equal; the set keeps this lookup constant-time.
+fn report(signals: &mut Vec<Value>, seen: &mut HashSet<String>, signal: Value) {
+    if seen.insert(signal.to_string()) {
         signals.push(signal);
     }
 }
@@ -175,11 +179,12 @@ fn report(signals: &mut Vec<Value>, signal: Value) {
 /// planned against, so a signal already reported is not reported again.
 pub(crate) fn evidence(steps: &[CiscoStepV1]) -> Result<Value, &'static str> {
     let mut signals: Vec<Value> = Vec::new();
+    let mut seen = HashSet::new();
     for step in steps {
         match step {
             CiscoStepV1::Signal { signal } => {
                 GuardRiskSignalV3::decode(signal).map_err(|_| "invalid signal step")?;
-                report(&mut signals, signal.clone());
+                report(&mut signals, &mut seen, signal.clone());
             }
             CiscoStepV1::Scan {
                 kind,
@@ -200,6 +205,7 @@ pub(crate) fn evidence(steps: &[CiscoStepV1]) -> Result<Value, &'static str> {
                 for finding in findings {
                     report(
                         &mut signals,
+                        &mut seen,
                         finding_signal(finding, status, name)?.to_value(),
                     );
                 }

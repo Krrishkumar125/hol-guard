@@ -29,7 +29,7 @@ from .native_context import _resolve_digest_home, ensure_resident_prerequisite
 from .native_execution import _resident_request
 from .native_store_policy import _payload
 
-CISCO_PREFLIGHT_FEATURE = "cisco-preflight-v1"
+CISCO_PREFLIGHT_FEATURE = "cisco-preflight-v2"
 _REQUEST_SCHEMA = "guard-cisco-preflight-request.v1"
 _RESULT_SCHEMA = "guard-cisco-preflight-result.v1"
 _TIMEOUT_SECONDS = 10.0

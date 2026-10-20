@@ -42,7 +42,16 @@ fn within_bounds(query: &CiscoPreflightQueryV1) -> bool {
 
 pub(crate) fn decide(query: &CiscoPreflightQueryV1) -> Result<Value, &'static str> {
     match query {
-        CiscoPreflightQueryV1::Plan(plan) => Ok(json!({ "steps": cisco_plan::plan(plan) })),
+        CiscoPreflightQueryV1::Plan(plan) => {
+            let steps = cisco_plan::plan(plan);
+            // The evidence request that carries these steps back is held to
+            // the same item bound. Refuse a plan it could never carry before
+            // the caller runs any scan for it.
+            if steps.len() > CISCO_PREFLIGHT_MAX_ITEMS {
+                return Err(INVALID);
+            }
+            Ok(json!({ "steps": steps }))
+        }
         CiscoPreflightQueryV1::Revalidate(query) => cisco_plan::revalidated(query)
             .map(|signal| json!({ "signal": signal.map(|signal| signal.to_value()) }))
             .map_err(|()| INVALID),
