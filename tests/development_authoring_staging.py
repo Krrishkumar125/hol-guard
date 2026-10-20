@@ -15,12 +15,17 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 # Compiling every command pack takes seconds, and each authoring request stages
 # them again into its own cache. The checkout does not change during a run, so
 # one staging per compiler binary is copied into each request's directory.
-_staged: dict[tuple[str, int, int, int], Path] = {}
+# Authoring runs a fresh private copy of the compiler for every request, so the
+# cache is keyed by the compiler's bytes rather than its path.
+_staged: dict[str, Path] = {}
 
 
 def _checkout_packs(compiler: Path) -> Path:
-    status = compiler.stat()
-    key = (str(compiler.resolve()), status.st_ino, status.st_size, status.st_mtime_ns)
+    digest = hashlib.sha256()
+    with compiler.open("rb") as handle:
+        while chunk := handle.read(1 << 20):
+            digest.update(chunk)
+    key = digest.hexdigest()
     staged = _staged.get(key)
     if staged is None:
         staged = Path(tempfile.mkdtemp(prefix="hol-guard-checkout-packs-")).resolve() / "packs"
