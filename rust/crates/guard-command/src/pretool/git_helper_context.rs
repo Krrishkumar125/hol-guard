@@ -31,7 +31,10 @@ pub(super) fn git_helper_context_required(
 /// mistaken for a route, and a segment carrying more than one `-C` keeps the
 /// helper screen: the second is resolved against the first, which this does
 /// not model.
-fn routes_to_no_repository(segment: &crate::CommandSegmentV1, context: PathContext<'_>) -> bool {
+pub(super) fn routes_to_no_repository(
+    segment: &crate::CommandSegmentV1,
+    context: PathContext<'_>,
+) -> bool {
     let arguments = &segment.arguments;
     let mut index = 0;
     let mut route = None;
