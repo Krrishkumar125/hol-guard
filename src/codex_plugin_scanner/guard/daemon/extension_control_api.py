@@ -19,6 +19,7 @@ from ..approval_gate import (
     input_from_mapping,
     require_extension_control,
 )
+from ..catalog_delivery import lifecycle
 from ..json_transport import escape_json_for_html
 from ..native_command_control_authority_io import NativeCommandControlAuthorityUnavailableError
 from ..runtime import command_inspection
@@ -332,7 +333,7 @@ class ExtensionControlApiService:
         return self.effective()
 
     def preview(self, payload: dict[str, object]) -> dict[str, object]:
-        with self._preview_lock:
+        with self._preview_lock, lifecycle.session():
             return self._preview_locked(payload)
 
     def _preview_locked(self, payload: dict[str, object]) -> dict[str, object]:
@@ -415,7 +416,9 @@ class ExtensionControlApiService:
     def apply(self, payload: dict[str, object]) -> dict[str, object]:
         with self._apply_lock:
             try:
-                return self._apply_locked(payload)
+                # One verified native executable serves every request of this mutation.
+                with lifecycle.session():
+                    return self._apply_locked(payload)
             except ExtensionControlApiError:
                 raise
             except Exception as exc:

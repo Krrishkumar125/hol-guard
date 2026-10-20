@@ -34,6 +34,7 @@ from ..approval_gate import (
 )
 from ..approval_gate import input_from_mapping as approval_gate_input_from_mapping
 from ..browser_opener import open_browser_url
+from ..catalog_delivery import lifecycle
 from ..codex_live_decision import complete_codex_live_decision, resolve_codex_live_allow_authority
 from ..codex_live_decision_revalidation import revalidate_codex_live_allow
 from ..config import (
@@ -4173,26 +4174,28 @@ class GuardDaemonServer:
         while not self._shutdown_started.wait(self._extension_control_refresh_interval_seconds):
             periodic = time.monotonic() >= next_security_refresh
             try:
-                if periodic:
-                    from ..catalog_delivery.active_security import observe
-                    from ..catalog_delivery.discovery import request_refresh
+                with lifecycle.session():
+                    if periodic:
+                        from ..catalog_delivery.active_security import observe
+                        from ..catalog_delivery.discovery import request_refresh
 
-                    next_security_refresh = time.monotonic() + 300.0
-                    # Security observation must not wait for complete discovery
-                    # traversal. The latter has its own bounded background slot.
-                    try:
-                        observe(self._server.store)
-                    finally:
-                        request_refresh(self._server.store.guard_home, store=self._server.store)
-                _ = self._server.refresh_extension_control_runtime()
+                        next_security_refresh = time.monotonic() + 300.0
+                        # Security observation must not wait for complete discovery
+                        # traversal. The latter has its own bounded background slot.
+                        try:
+                            observe(self._server.store)
+                        finally:
+                            request_refresh(self._server.store.guard_home, store=self._server.store)
+                    _ = self._server.refresh_extension_control_runtime()
             except Exception:
                 _LOGGER.exception("Failed to refresh resident extension-control authority")
             if periodic:
                 try:
                     from ..catalog_delivery.cache_io import cleanup
 
-                    self._server.extension_control_api.expire_prepared_cache_leases()
-                    cleanup(self._server.store)
+                    with lifecycle.session():
+                        self._server.extension_control_api.expire_prepared_cache_leases()
+                        cleanup(self._server.store)
                 except Exception:
                     _LOGGER.exception("Failed to clean the command-pack cache")
 

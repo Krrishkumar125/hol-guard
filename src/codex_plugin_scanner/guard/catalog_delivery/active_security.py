@@ -6,7 +6,11 @@ factories or a previously authenticated protected native observation.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import threading
 import time
+from collections import OrderedDict
 
 from ..native_command_control_authority_io import (
     hold_command_control_authority_lock,
@@ -23,8 +27,34 @@ FILE = "active-pack-security.v1.json"
 MAX_BYTES = 262144
 
 
+# Native answers these from the request alone: no files, clock or randomness.
+# The request names the key, the authenticated record and every other input, so
+# an identical request always gets the identical verdict.
+_PURE = frozenset({"scope", "check", "read", "change", "marker", "binding", "resume"})
+_ANSWERS: OrderedDict[bytes, str] = OrderedDict()
+_ANSWERS_LOCK = threading.Lock()
+_ANSWERS_LIMIT = 32
+
+
 def invoke(operation, store, **fields):
-    return lifecycle.invoke("active-security", operation=operation, key=_key(store).hex(), **fields)
+    request = {"operation": operation, "key": _key(store).hex(), **fields}
+    if operation not in _PURE:
+        return lifecycle.invoke("active-security", **request)
+    # Daemon polling repeats the same few requests every second. Answering
+    # them from memory avoids a verified native spawn per poll.
+    digest = hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).digest()
+    with _ANSWERS_LOCK:
+        answer = _ANSWERS.get(digest)
+        if answer is not None:
+            _ANSWERS.move_to_end(digest)
+    if answer is not None:
+        return json.loads(answer)
+    result = lifecycle.invoke("active-security", **request)
+    with _ANSWERS_LOCK:
+        _ANSWERS[digest] = json.dumps(result)
+        while len(_ANSWERS) > _ANSWERS_LIMIT:
+            _ANSWERS.popitem(last=False)
+    return result
 
 
 def read(store):
