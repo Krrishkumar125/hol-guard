@@ -539,3 +539,31 @@ fn a_stored_block_beside_package_reuse_keeps_the_package_source_and_adds_no_seco
     );
     assert_eq!(answer["settled_evidence_appends"], json!([]));
 }
+
+#[test]
+fn a_prompts_own_classes_decide_the_hard_block() {
+    let mut text = String::new();
+    GzDecoder::new(CONFIG_ACTION_VECTORS)
+        .read_to_string(&mut text)
+        .unwrap();
+    let vectors: Vec<Value> = serde_json::from_str(&text).unwrap();
+    let base = vectors
+        .iter()
+        .find(|vector| vector["query"]["artifact"]["hard_block"] == json!(false))
+        .expect("a recorded query the caller did not hard block");
+    let mut query = base["query"].clone();
+    query["kind"] = json!("config_action");
+
+    // The class that asks Guard to stand aside stops the request here, with
+    // no caller deciding that for the resident.
+    let mut bypass = query.clone();
+    bypass["artifact"]["prompt_request_classes"] = json!(["secret_read", "guard_bypass_intent"]);
+    let bypass: HookArtifactComposeQueryV1 = serde_json::from_value(bypass).unwrap();
+    assert_eq!(compose(&bypass).unwrap()["action"], json!("block"));
+
+    // Any other prompt keeps exactly the answer the recorded query had.
+    let mut ordinary = query;
+    ordinary["artifact"]["prompt_request_classes"] = json!(["secret_read"]);
+    let ordinary: HookArtifactComposeQueryV1 = serde_json::from_value(ordinary).unwrap();
+    assert_eq!(compose(&ordinary).unwrap(), base["expected"]);
+}

@@ -16,7 +16,7 @@ from ..harness_posture import harness_posture_override
 from ..models import GuardAction, GuardArtifact
 from ..native_hook_artifact_compose import native_hook_compose
 from ..protection_events import record_protection_event
-from .commands_support_prompts import _prompt_requires_hard_block
+from .commands_support_prompts import _prompt_request_classes
 from .commands_support_runtime_resolution import _canonical_harness_name
 
 
@@ -92,8 +92,12 @@ def runtime_policy_artifact_facts(config: GuardConfig, artifact: GuardArtifact, 
     metadata = artifact.metadata
     default_action = metadata.get("guard_default_action")
     confidence = _artifact_risk_confidence(artifact)
-    return {
-        "hard_block": _prompt_requires_hard_block(artifact),
+    # A prompt request carries its own classes and the resident reads the
+    # hard block out of them. Every other artifact sends no classes, so an
+    # older runtime still answers for it.
+    prompt_classes = sorted(_prompt_request_classes(artifact))
+    facts: dict[str, object] = {
+        "hard_block": False,
         "configured_override": _typed_text(
             config.resolve_action_override(_canonical_harness_name(harness), artifact.artifact_id, artifact.publisher)
         ),
@@ -112,6 +116,9 @@ def runtime_policy_artifact_facts(config: GuardConfig, artifact: GuardArtifact, 
         "action_class": _artifact_action_class(artifact),
         "skill_is_known_bad": _artifact_skill_is_known_bad(artifact),
     }
+    if prompt_classes:
+        facts["prompt_request_classes"] = prompt_classes
+    return facts
 
 
 def record_policy_auto_stops(config: GuardConfig, events: object) -> None:

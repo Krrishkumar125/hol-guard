@@ -68,3 +68,30 @@ def test_native_action_matches_recorded_python_actions(native_approval_reuse_run
             )
             == vector["expected"]["action"]
         ), vector["name"]
+
+
+def test_a_prompts_classes_travel_instead_of_a_python_hard_block(native_approval_reuse_runtime: Path) -> None:
+    recorder = _recorder()
+    home = native_approval_reuse_runtime
+    config = recorder.build_config(_vectors()[0]["spec"]["config"], home)
+    spec: dict[str, object] = {
+        "artifact_id": "omp:prompt:1",
+        "artifact_type": "prompt_request",
+        "metadata": {"prompt_request_classes": ["guard_bypass_intent", "secret_read"]},
+    }
+    facts = runtime_policy_artifact_facts(config, recorder.build_artifact(spec), recorder.HARNESS)
+    # Python stops answering the hard block and hands the classes it read over.
+    assert facts["hard_block"] is False
+    assert facts["prompt_request_classes"] == ["guard_bypass_intent", "secret_read"]
+    # The resident still stops the request, so the decision only changed hands.
+    action = _runtime_artifact_policy_action(config, recorder.build_artifact(spec), recorder.HARNESS, guard_home=home)
+    assert action == "block"
+
+    spec["metadata"] = {"prompt_request_classes": ["secret_read"]}
+    ordinary = runtime_policy_artifact_facts(config, recorder.build_artifact(spec), recorder.HARNESS)
+    assert ordinary["prompt_request_classes"] == ["secret_read"]
+
+    spec["metadata"] = {}
+    plain = runtime_policy_artifact_facts(config, recorder.build_artifact(spec), recorder.HARNESS)
+    # An artifact with no classes sends no key, so an older resident answers for it.
+    assert "prompt_request_classes" not in plain

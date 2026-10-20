@@ -290,3 +290,22 @@ def test_a_claimed_saved_allow_is_read_back_when_the_resident_cannot_settle() ->
     assert evaluation._claimed_saved_package_allow(unknown) == "retained"
     assert evaluation._claimed_saved_package_allow(other) is None
     assert evaluation._claimed_saved_package_allow([]) is None
+
+
+def test_only_a_request_carrying_prompt_classes_asks_for_the_prompt_feature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    required = _feature_recorder(monkeypatch, payload={"action": "block", "auto_stop_events": []})
+    plain: dict[str, Any] = {"policy_config": {}, "artifact": {"hard_block": False}}
+    compose.native_hook_compose("config_action", plain, guard_home=None)
+
+    classed: dict[str, Any] = {
+        "policy_config": {},
+        "artifact": {"hard_block": False, "prompt_request_classes": ["guard_bypass_intent"]},
+    }
+    compose.native_hook_compose("config_action", classed, guard_home=None)
+
+    assert required == [
+        compose.HOOK_ARTIFACT_COMPOSE_FEATURE,
+        compose.HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE,
+    ]

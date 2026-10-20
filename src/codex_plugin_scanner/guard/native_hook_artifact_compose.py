@@ -25,6 +25,10 @@ HOOK_ARTIFACT_COMPOSE_FEATURE = "hook-artifact-compose-v1"
 # kind, so each kind added after the op requires its own feature and only
 # for its own call.
 HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE = "hook-artifact-compose-package-reuse-v1"
+# A prompt request's hard block is decided by the resident from the prompt's
+# own classes. A runtime that predates the field rejects it as unknown, so a
+# request that carries it asks for this feature and nothing else does.
+HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE = "hook-artifact-compose-prompt-facts-v1"
 HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE = "hook-artifact-compose-remembered-rule-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-compose-request.v1"
 _RESULT_SCHEMA = "guard-hook-artifact-compose-result.v1"
@@ -161,6 +165,35 @@ _KIND_FEATURES: dict[str, str] = {
     "remembered_rule_reason": HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE,
 }
 
+# The artifact-facts fields of each query kind, in the order a caller sends
+# them. A prompt request's facts carry its classes; nothing else does.
+_ARTIFACT_FIELDS: tuple[str, ...] = ("artifact", "runtime", "approval_context")
+
+
+def _carries_prompt_classes(fields: Mapping[str, object]) -> bool:
+    return any(
+        isinstance(facts := fields.get(name), Mapping) and facts.get("prompt_request_classes") is not None
+        for name in _ARTIFACT_FIELDS
+    )
+
+
+def _required_feature(kind: str, fields: Mapping[str, object]) -> str:
+    """The capability this one request needs.
+
+    A kind added after the op names its own feature. Otherwise a request that
+    lets the resident decide a prompt's hard block needs the runtime that
+    reads the prompt classes, and an older one is unavailable rather than
+    silently answering without them.
+    """
+
+    feature = _KIND_FEATURES.get(kind)
+    if feature is not None:
+        return feature
+    if _carries_prompt_classes(fields):
+        return HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE
+    return HOOK_ARTIFACT_COMPOSE_FEATURE
+
+
 # The exact answer shape of each query kind. Spec letters: a action,
 # A action or null, b bool, s string, S string or null, d dict, D dict or null,
 # l list.
@@ -278,7 +311,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
         request=request,
         guard_home=home,
         timeout_seconds=_TIMEOUT_SECONDS,
-        required_feature=_KIND_FEATURES.get(kind, HOOK_ARTIFACT_COMPOSE_FEATURE),
+        required_feature=_required_feature(kind, fields),
         response_schema=_RESULT_SCHEMA,
     )
     if (
@@ -312,6 +345,7 @@ def native_hook_compose(kind: str, fields: Mapping[str, object], *, guard_home: 
 __all__ = [
     "HOOK_ARTIFACT_COMPOSE_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE",
+    "HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE",
     "HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE",
     "NativeHookComposeError",
     "NativeHookComposeValidationError",

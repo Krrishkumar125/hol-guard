@@ -15,10 +15,30 @@ use guard_contracts::{
     normalize_guard_action, GuardAction, PolicyArtifactFactsV1, PolicyConfigFactsV1,
 };
 use serde_json::{json, Value};
+use std::borrow::Cow;
 
 use crate::hook_artifact_compose_op::stricter;
 
 const DATA_FLOW_RISK: &str = "data_flow_exfiltration";
+/// The prompt class that asks the model to put Guard aside.
+const PROMPT_HARD_BLOCK_CLASS: &str = "guard_bypass_intent";
+
+/// The artifact's facts with the hard block this module owns.
+///
+/// A caller that sends the prompt request's own classes stops deciding the
+/// hard block for itself. One that still sends `hard_block` keeps the answer
+/// it had, so reading the classes here can only find a block, never drop one.
+fn with_prompt_facts(art: &PolicyArtifactFactsV1) -> Cow<'_, PolicyArtifactFactsV1> {
+    let Some(classes) = art.prompt_request_classes.as_ref() else {
+        return Cow::Borrowed(art);
+    };
+    if art.hard_block || !classes.iter().any(|item| item == PROMPT_HARD_BLOCK_CLASS) {
+        return Cow::Borrowed(art);
+    }
+    let mut resolved = art.clone();
+    resolved.hard_block = true;
+    Cow::Owned(resolved)
+}
 
 fn norm(action: &str, fallback: GuardAction) -> GuardAction {
     normalize_guard_action(&Value::String(action.to_owned()), fallback)
@@ -143,6 +163,8 @@ pub(crate) fn artifact_policy_action(
     art: &PolicyArtifactFactsV1,
     events: &mut Vec<Value>,
 ) -> GuardAction {
+    let art = with_prompt_facts(art);
+    let art = art.as_ref();
     if art.hard_block {
         return GuardAction::Block;
     }

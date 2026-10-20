@@ -28,6 +28,12 @@ pub const HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE: &str =
 /// caller requires this feature for that query alone.
 pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE: &str =
     "hook-artifact-compose-package-reuse-v1";
+/// Capability advertised when the resident decides a prompt request's hard
+/// block from the prompt's own classes. A runtime that predates the field
+/// rejects it as unknown, so the caller requires this feature for a prompt
+/// artifact alone.
+pub const HOOK_ARTIFACT_COMPOSE_PROMPT_FACTS_FEATURE: &str =
+    "hook-artifact-compose-prompt-facts-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -115,8 +121,15 @@ pub struct PolicyConfigFactsV1 {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyArtifactFactsV1 {
-    /// The prompt asks to bypass Guard.
+    /// The prompt asks to bypass Guard. A caller that sends
+    /// `prompt_request_classes` leaves this `false` and lets the resident
+    /// decide; a caller that still derives it keeps the answer it had.
     pub hard_block: bool,
+    /// The prompt request's own classes, for a `prompt_request` artifact
+    /// whose caller lets the resident decide the hard block. Absent for
+    /// every other artifact, so an older runtime still answers for them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_request_classes: Option<Vec<String>>,
     /// Artifact, publisher, or harness action override.
     pub configured_override: Option<String>,
     /// Normalized command-action floor.
