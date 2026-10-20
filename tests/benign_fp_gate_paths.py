@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import posixpath
 import re
+import shlex
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -25,6 +26,68 @@ _CREDENTIAL_NAME = re.compile(
 )
 _KNOWN_FILES = frozenset({"Makefile", "Dockerfile", "LICENSE", "README", "Procfile", "Gemfile", "Justfile"})
 _CODE_PARENTS = frozenset({"src", "lib", "scripts", "tools", "__tests__", "tests", "workers"})
+
+
+# Verbs whose last operand is where the result lands.
+_LAST_OPERAND_IS_DESTINATION = frozenset({"cp", "mv", "ln", "install", "rsync"})
+# Verbs that create every operand they are given.
+_EVERY_OPERAND_IS_CREATED = frozenset({"mkdir", "touch", "tee"})
+# Tool inputs that name a file the tool writes, for the tools that write.
+_WRITE_TOOL_KEYS = ("file_path", "notebook_path", "path")
+_WRITE_TOOLS = ("write", "edit", "notebook")
+_SEGMENT_BOUNDARY = re.compile(r"&&|\|\||[;|\n]")
+
+
+def _operands(words: list[str]) -> list[str]:
+    """The words that are not flags, in order."""
+    return [word for word in words if not word.startswith("-")]
+
+
+def _segment_targets(segment: str) -> set[str]:
+    """Paths this one command puts something at."""
+    targets: set[str] = set()
+    for match in re.finditer(r"(?:\d?>>?|&>)\s*(\S+)", segment):
+        targets.add(match.group(1))
+    try:
+        words = shlex.split(segment)
+    except ValueError:
+        words = segment.split()
+    words = [word for word in words if "=" not in word.split("/")[0] or word.startswith("/")]
+    if not words:
+        return targets
+    verb = Path(words[0]).name
+    operands = _operands(words[1:])
+    if verb in _EVERY_OPERAND_IS_CREATED:
+        targets.update(operands)
+    elif verb in _LAST_OPERAND_IS_DESTINATION and operands:
+        targets.add(operands[-1])
+    elif verb == "git":
+        # ``git -C <dir>`` reads that directory, so it is not a target; the
+        # subcommand's own operand is.
+        if "init" in operands:
+            targets.update(_first_path(operands[operands.index("init") + 1 :]))
+        if "worktree" in operands and "add" in operands:
+            targets.update(_first_path(_operands(words[words.index("add") + 1 :])))
+    return targets
+
+
+def _first_path(operands: list[str]) -> list[str]:
+    """The first operand that names a path rather than a branch or a flag's value."""
+    for operand in operands:
+        if "/" in operand or operand.startswith("${"):
+            return [operand]
+    return []
+
+
+def creation_targets(tool_name: str, tool_input: dict[str, object]) -> set[str]:
+    """Every path this case's own command or tool input creates."""
+    writes = any(verb in tool_name.lower() for verb in _WRITE_TOOLS)
+    targets = {str(tool_input[key]) for key in _WRITE_TOOL_KEYS if writes and isinstance(tool_input.get(key), str)}
+    command = tool_input.get("command")
+    if isinstance(command, str):
+        for segment in _SEGMENT_BOUNDARY.split(command):
+            targets.update(_segment_targets(segment))
+    return {target.rstrip("/") for target in targets}
 
 
 def _strings(value: object) -> Iterator[str]:
@@ -57,9 +120,13 @@ def benign_path_tokens(document: dict[str, object] | None = None) -> set[tuple[s
     """``(root token, relative path)`` pairs named by cases that expect ``allow``."""
     cases = (document or json.loads(CASES_PATH.read_text(encoding="utf-8")))["cases"]
     found: set[tuple[str, str]] = set()
+    created: set[tuple[str, str]] = set()
     for case in cases:
         if case.get("expect") != "allow":
             continue
+        for target in creation_targets(case.get("tool", ""), case.get("tool_input", {})):
+            for match in _PATH_TOKEN.finditer(target):
+                created.add((match.group(1), posixpath.normpath("/" + match.group(2).strip("/")).strip("/")))
         for text in _strings(case.get("tool_input", {})):
             for match in _PATH_TOKEN.finditer(text):
                 relative = posixpath.normpath("/" + match.group(2).strip("/")).strip("/")
@@ -69,7 +136,16 @@ def benign_path_tokens(document: dict[str, object] | None = None) -> set[tuple[s
                     relative = posixpath.dirname(relative)
                 if relative and ".git" not in relative.split("/"):
                     found.add((match.group(1), relative))
-    return found
+    # A path some case's own command creates must stay absent, or that case
+    # measures a destination that already exists rather than the one observed.
+    return {
+        (token, relative)
+        for token, relative in found
+        if not any(
+            token == made_token and (relative == made or relative.startswith(made + "/"))
+            for made_token, made in created
+        )
+    }
 
 
 def materialise(roots: dict[str, Path], document: dict[str, object] | None = None) -> list[tuple[str, str]]:
