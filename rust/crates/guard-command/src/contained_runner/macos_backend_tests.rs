@@ -157,7 +157,10 @@ fn the_system_configuration_cannot_be_read() {
 
 #[test]
 fn the_network_is_denied_even_for_loopback() {
-    let interpreter = Path::new("/usr/bin/python3");
+    // `/usr/bin/python3` is an xcrun shim when a full Xcode is selected, and
+    // the profile rightly refuses to read Xcode, so the interpreter never
+    // starts. The system Perl runs from `/usr` and `/System` alone.
+    let interpreter = Path::new("/usr/bin/perl");
     if !interpreter.is_file() {
         return;
     }
@@ -167,12 +170,14 @@ fn the_network_is_denied_even_for_loopback() {
         &request(
             &root,
             &[
-                "/usr/bin/python3",
-                "-c",
+                "/usr/bin/perl",
+                "-MSocket",
+                "-e",
                 // The socket is created before the guarded call so that exit
                 // code 42 can only mean the bind itself was refused, not that
-                // the interpreter failed to start or import.
-                "import socket, sys\ns = socket.socket()\ntry:\n    s.bind(('127.0.0.1', 0))\nexcept OSError:\n    sys.exit(42)\nsys.exit(0)",
+                // the interpreter failed to start or load Socket.
+                "socket(my $s, PF_INET, SOCK_STREAM, 0) or exit 3; \
+                 bind($s, pack_sockaddr_in(0, inet_aton('127.0.0.1'))) or exit 42; exit 0",
             ],
         ),
         60.0,

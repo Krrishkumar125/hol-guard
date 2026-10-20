@@ -36,6 +36,12 @@ pub const HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE: &str = "hook-decision-post-c
 /// hook's response directive; a resident that predates it rejects the query.
 pub const HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE: &str = "hook-decision-artifact-directive-v1";
 
+/// Advertised when the resident answers `artifact_review_route`, the route the
+/// artifact hook takes once its verdict needs review; a resident that predates
+/// it rejects the query.
+pub const HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE: &str =
+    "hook-decision-artifact-review-route-v1";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct HookDecisionRequestV1 {
@@ -70,6 +76,39 @@ pub enum HookDecisionQueryV1 {
     NativePermissionPersistPlan {
         inputs: Box<NativePermissionPersistInputsV1>,
     },
+    /// The artifact hook's review route: whether a review-tier or terminal
+    /// verdict is recorded without a prompt, observed, answered natively or
+    /// queued for approval.
+    ArtifactReviewRoute {
+        inputs: Box<ArtifactReviewRouteInputsV1>,
+    },
+}
+
+/// Facts the artifact hook's review route depends on. The transport gathers
+/// them; which branch they select is the resident's answer.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactReviewRouteInputsV1 {
+    /// The harness name as the hook was invoked.
+    pub harness: String,
+    /// The canonical adapter name the transport resolved for `harness`.
+    pub canonical_harness: String,
+    pub event: String,
+    pub policy_action: String,
+    /// The reviewed artifact's type, such as `tool_action_request`.
+    pub artifact_type: String,
+    /// The harness's posture records only (Watch).
+    pub observe_mode: bool,
+    /// Blocked requests are offered for approval (`blocked_request_mode`).
+    pub asks_for_approval: bool,
+    /// `--json` was passed.
+    pub json: bool,
+    /// The response is written to a caller-owned stream, not stdout.
+    pub output_stream_present: bool,
+    /// The prompt asks to bypass Guard, so it is never offered for approval.
+    pub prompt_hard_block: bool,
+    /// The prompt asks for local secrets.
+    pub prompt_secret_read: bool,
 }
 
 /// Facts the artifact hook's response directive depends on. The verdict is
@@ -365,6 +404,7 @@ pub enum HookDecisionPayloadV1 {
     Finalize(Box<HookFinalV1>),
     ArtifactDirective(Box<HookResponseDirectiveV1>),
     NativePermissionPersistPlan(Box<NativePermissionPersistPlanV1>),
+    ArtifactReviewRoute(Box<ArtifactReviewRouteV1>),
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.
         needs_facts: Vec<String>,
@@ -482,6 +522,32 @@ pub struct HookFinalV1 {
     pub record_receipt: bool,
     pub activity: HookActivityV1,
     pub directive: HookResponseDirectiveV1,
+}
+
+/// Which branch the artifact hook takes for a verdict, and what each branch
+/// is told. The transport runs the branch and decides nothing itself.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ArtifactReviewRouteV1 {
+    /// `continue`, `silent_review`, `silent_block`, `observe`,
+    /// `copilot_response`, `native_response` or `queue_approval`.
+    pub route: String,
+    /// How a terminal verdict's response copy is closed: `none`, `enforce` or
+    /// `observe` (Watch records the terminal verdict it did not enforce).
+    pub terminalize: String,
+    /// Claude's permission notice is recorded (and, when answered natively,
+    /// printed) for this review.
+    pub record_claude_notice: bool,
+    /// Cursor's native prompt carries the queued approval request ids.
+    pub attach_cursor_request_ids: bool,
+    /// `none`, `claude_punctuated`, `claude_prompt_secret` or
+    /// `claude_prompt_sensitive`.
+    pub system_message: String,
+    /// `none`, `claude_prompt_secret` or `claude_prompt_sensitive`.
+    pub additional_context: String,
+    /// Present on the silent routes: the action converted to a block and the
+    /// lead sentence of what the agent is told. `silent_review` records the
+    /// review-tier denial in the inbox; `silent_block` records nothing.
+    pub silent_review: Option<HookSilentReviewV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

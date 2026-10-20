@@ -78,6 +78,7 @@ Changing any of these produces a new command, and Guard asks again.
 | Saved allows on the direct hook path | `rust/crates/guard-runtime/src/hook_direct_saved_decision.rs` (`approvable`) |
 | Approval scopes offered to the user | `rust/crates/guard-runtime/src/approval_scope_contract.rs` (`allow_is_non_overridable` excludes only non-review verdicts) |
 | Saved allows on the Python daemon path | `src/codex_plugin_scanner/guard/daemon/hook_native_saved_approval.py` (`_native_review_is_approvable`) |
+| Routing of a review-tier artifact verdict (queued for approval, never terminal unless the operator chose not to be asked) | `rust/crates/guard-runtime/src/hook_decision_artifact_review_route.rs` (`artifact_review_route`), executed by `src/codex_plugin_scanner/guard/cli/commands_hook_native_review.py` |
 | Review card choices | `dashboard/src/approval-retry-guidance.ts`, `dashboard/src/review-decision-card.tsx` |
 
 ## Regression tests
@@ -92,6 +93,8 @@ Changing any of these produces a new command, and Guard asks again.
 - `tests/test_native_exact_action_benign_offers.py`
 - `tests/test_script_approval_reproduction.py`
 - `tests/test_guard_approval_scope_contract.py`
+- `rust/crates/guard-runtime/src/hook_decision_artifact_review_route_tests.rs` (`review_tier_verdicts_keep_allow_once_and_always_allow`)
+- `tests/test_artifact_review_route_parity.py` (`test_review_tier_verdicts_keep_allow_once_and_always_allow`)
 - `dashboard/src/approval-retry-ux.test.ts`, `dashboard/e2e/approval-scope-ui.spec.ts`
 
 If one of these fails after a change, fix the change. Do not relax the test.

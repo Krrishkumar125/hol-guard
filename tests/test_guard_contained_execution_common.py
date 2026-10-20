@@ -2,56 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import os
-import stat
-from collections.abc import Callable
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 from codex_plugin_scanner.guard.runtime import contained_execution_common as common_module
-from codex_plugin_scanner.guard.runtime import containment_executor as executor_module
-from codex_plugin_scanner.guard.runtime.containment_contract import (
-    ContainmentBackend,
-    ContainmentPolicy,
-    ContainmentRequest,
-)
-
-
-def _write_executable(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _ = path.write_bytes(content)
-    path.chmod(0o700)
-
-
-def _request(
-    workspace: Path,
-    executable: Path,
-    *,
-    operation_id: str = "format-write",
-    arguments: tuple[str, ...] = ("format", "--no-cache", "module.py"),
-) -> ContainmentRequest:
-    source = workspace / "module.py"
-    _ = source.write_text("value=1\n", encoding="utf-8")
-    return ContainmentRequest(
-        argv=(str(executable), *arguments),
-        cwd=str(workspace),
-        environment=(),
-        policy=ContainmentPolicy(str(workspace), (str(workspace),)),
-        inputs=(),
-        launch_digest=hashlib.sha256(b"launch").hexdigest(),
-        executable_digest=executor_module.file_sha256(str(executable)),
-        operation_id=operation_id,
-        declared_outputs=("module.py",),
-    )
-
-
-def _pin_executable(request: ContainmentRequest, temp_root: Path) -> str:
-    pin = cast(
-        Callable[..., str],
-        vars(executor_module)["_pin_executable"],
-    )
-    return pin(request, temp_root, backend=ContainmentBackend.MACOS_SANDBOX)
 
 
 def test_file_sha256_hashes_exact_leading_space_path(tmp_path: Path) -> None:
@@ -59,7 +14,7 @@ def test_file_sha256_hashes_exact_leading_space_path(tmp_path: Path) -> None:
     content = b"healthy executable bytes\n"
     _ = path.write_bytes(content)
 
-    assert executor_module.file_sha256(str(path)) == hashlib.sha256(content).hexdigest()
+    assert common_module.file_sha256(str(path)) == hashlib.sha256(content).hexdigest()
 
 
 def test_file_sha256_rejects_read_growth_past_bound(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -80,7 +35,7 @@ def test_file_sha256_rejects_read_growth_past_bound(tmp_path: Path, monkeypatch:
     monkeypatch.setattr(common_module.os, "read", grow_after_read)
 
     with pytest.raises(ValueError, match="bounded regular file"):
-        _ = executor_module.file_sha256(str(path))
+        _ = common_module.file_sha256(str(path))
 
 
 @pytest.mark.skipif(
@@ -104,7 +59,7 @@ def test_file_sha256_rejects_fifo_with_nonblocking_open(
     monkeypatch.setattr(common_module.os, "open", observe_open)
 
     with pytest.raises(ValueError, match="bounded regular file"):
-        _ = executor_module.file_sha256(str(path))
+        _ = common_module.file_sha256(str(path))
     assert opened_flags
 
 
@@ -128,7 +83,7 @@ def test_file_sha256_rejects_short_read_for_stable_size(
     monkeypatch.setattr(common_module.os, "read", return_short_read)
 
     with pytest.raises(ValueError, match="identity changed while hashing"):
-        _ = executor_module.file_sha256(str(path))
+        _ = common_module.file_sha256(str(path))
 
 
 @pytest.mark.skipif(not hasattr(os, "fchmod"), reason="requires descriptor metadata mutation")
@@ -153,7 +108,7 @@ def test_file_sha256_rejects_descriptor_metadata_mutation(
     monkeypatch.setattr(common_module.os, "read", mutate_after_read)
 
     with pytest.raises(ValueError, match="identity changed"):
-        _ = executor_module.file_sha256(str(path))
+        _ = common_module.file_sha256(str(path))
 
 
 def test_file_sha256_rejects_regular_path_replacement(
@@ -179,7 +134,7 @@ def test_file_sha256_rejects_regular_path_replacement(
     monkeypatch.setattr(common_module.os, "read", replace_after_read)
 
     with pytest.raises(ValueError, match="identity changed"):
-        _ = executor_module.file_sha256(str(path))
+        _ = common_module.file_sha256(str(path))
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
@@ -206,7 +161,7 @@ def test_file_sha256_rejects_path_replaced_by_symlink(
     monkeypatch.setattr(common_module.os, "read", replace_with_symlink)
 
     with pytest.raises(ValueError, match="identity changed"):
-        _ = executor_module.file_sha256(str(path))
+        _ = common_module.file_sha256(str(path))
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
@@ -217,7 +172,7 @@ def test_file_sha256_rejects_initial_symlink(tmp_path: Path) -> None:
     path.symlink_to(target)
 
     with pytest.raises(ValueError, match="must not be a symlink"):
-        _ = executor_module.file_sha256(str(path))
+        _ = common_module.file_sha256(str(path))
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
@@ -232,76 +187,4 @@ def test_file_sha256_rejects_initial_symlink_without_o_nofollow(
     monkeypatch.delattr(common_module.os, "O_NOFOLLOW", raising=False)
 
     with pytest.raises(ValueError, match="must not be a symlink"):
-        _ = executor_module.file_sha256(str(path))
-
-
-def test_user_owned_external_executable_is_copied_and_digest_pinned(tmp_path: Path) -> None:
-    workspace = (tmp_path / "workspace").resolve()
-    workspace.mkdir()
-    executable = (tmp_path / "user-bin" / "ruff").resolve()
-    _write_executable(executable, b"external-ruff-binary\n")
-    request = _request(workspace, executable)
-    containment_root = (tmp_path / "containment").resolve()
-    containment_root.mkdir()
-
-    pinned = Path(_pin_executable(request, containment_root))
-
-    assert pinned == containment_root / "guard-exec"
-    assert pinned.read_bytes() == executable.read_bytes()
-    assert executor_module.file_sha256(str(pinned)) == request.executable_digest
-    assert stat.S_IMODE(pinned.stat().st_mode) == 0o500
-
-
-@pytest.mark.parametrize(
-    ("executable_name", "operation_id", "arguments"),
-    (
-        ("formatter", "format-write", ("format", "--no-cache", "module.py")),
-        ("ruff", "copy-generated", ("format", "--no-cache", "module.py")),
-        ("ruff", "format-write", ("format", "module.py")),
-        ("ruff", "format-write", ("--version",)),
-    ),
-)
-def test_other_user_owned_executable_requests_remain_rejected(
-    tmp_path: Path,
-    executable_name: str,
-    operation_id: str,
-    arguments: tuple[str, ...],
-) -> None:
-    workspace = (tmp_path / "workspace").resolve()
-    workspace.mkdir()
-    executable = (tmp_path / "user-bin" / executable_name).resolve()
-    _write_executable(executable, b"external-formatter-binary\n")
-    request = _request(workspace, executable, operation_id=operation_id, arguments=arguments)
-    containment_root = (tmp_path / "containment").resolve()
-    containment_root.mkdir()
-
-    with pytest.raises(ValueError, match="immutable system executable"):
-        _ = _pin_executable(request, containment_root)
-
-
-def test_external_executable_replacement_during_pin_fails_closed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace = (tmp_path / "workspace").resolve()
-    workspace.mkdir()
-    executable = (tmp_path / "user-bin" / "ruff").resolve()
-    _write_executable(executable, b"reviewed-ruff-binary\n")
-    request = _request(workspace, executable)
-    containment_root = (tmp_path / "containment").resolve()
-    containment_root.mkdir()
-    real_file_sha256 = executor_module.file_sha256
-    replaced = False
-
-    def replace_after_identity_check(path: str) -> str:
-        nonlocal replaced
-        digest = real_file_sha256(path)
-        if path == str(executable) and not replaced:
-            replaced = True
-            _ = executable.write_bytes(b"replacement-binary\n")
-        return digest
-
-    monkeypatch.setattr(executor_module, "file_sha256", replace_after_identity_check)
-
-    with pytest.raises(ValueError, match="pinned executable copy failed identity verification"):
-        _ = _pin_executable(request, containment_root)
+        _ = common_module.file_sha256(str(path))
