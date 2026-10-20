@@ -39,6 +39,7 @@ def test_refresh_shares_unchanged_authority_and_excludes_readers_only_for_mutati
                 store=store,
                 extension_control_runtime=ExtensionControlRuntime(initial),
                 _installed_authority_pending=False,
+                _extension_control_on_core_registry=False,
             ),
         ),
     )
@@ -113,7 +114,13 @@ def test_busy_refresh_retains_the_installed_authority_even_during_migration(
     server = cast(
         _GuardDaemonHttpServer,
         cast(
-            object, SimpleNamespace(store=store, extension_control_runtime=runtime, _installed_authority_pending=False)
+            object,
+            SimpleNamespace(
+                store=store,
+                extension_control_runtime=runtime,
+                _installed_authority_pending=False,
+                _extension_control_on_core_registry=False,
+            ),
         ),
     )
     attempts = []
