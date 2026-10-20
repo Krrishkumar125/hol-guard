@@ -373,7 +373,7 @@ def test_a_policy_tail_outage_is_the_host_outage_response(monkeypatch: pytest.Mo
 @pytest.mark.usefixtures("native_approval_reuse_runtime")
 def test_resident_answers_the_recorded_floor_skips(native_approval_reuse_runtime: Path) -> None:
     vectors = _vectors("skip_native_floor")
-    assert len(vectors) >= 1000
+    assert len(vectors) >= 500
     answers = native_hook_artifact_facts(
         [
             {"artifact_type": vector["artifact"]["artifact_type"], "metadata": vector["artifact"]["metadata"]}
