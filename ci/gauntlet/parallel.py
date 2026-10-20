@@ -273,6 +273,7 @@ def run_scheduled(
     order: Sequence[int] | None = None,
     should_stop: Callable[[int, Any], bool] | None = None,
     retry: Callable[[int, Any], bool] | None = None,
+    cancel_retry: Callable[[int, Any], None] | None = None,
     admit: Callable[[], bool] | None = None,
     slots: HostSlots | None = None,
     poll_interval: float = 0.2,
@@ -295,7 +296,9 @@ def run_scheduled(
     the tail, so nothing is recorded for it and ``on_complete`` is not called;
     the caller owns the budget and must eventually answer false. Requeuing stops
     once ``should_stop`` has fired, because an item scheduled after that point
-    would never run.
+    would never run. A queued re-run that a stop in the same completion batch
+    cancels is published from the run it already made, after ``cancel_retry``
+    lets the caller release what it banked for the re-run that will not happen.
     """
     validate_jobs(jobs)
     if order is None:
@@ -306,6 +309,7 @@ def run_scheduled(
     running: dict[int, CaseWorkerHandle] = {}
     leases: dict[int, Lease] = {}
     results: dict[int, Any] = {}
+    requeued: dict[int, Any] = {}
     with terminate_as_exit():
         try:
             stop = False
@@ -335,7 +339,9 @@ def run_scheduled(
                         lease.release()
                     if not stop and retry is not None and retry(index, result):
                         pending.append(index)
+                        requeued[index] = result
                         continue
+                    requeued.pop(index, None)
                     results[index] = result
                     if on_complete is not None:
                         on_complete(index, results[index])
@@ -345,6 +351,16 @@ def run_scheduled(
                     # Drain: already-running workers finish their own cleanup and
                     # keep complete evidence; only never-started items are skipped.
                     pending.clear()
+                    # A stop decided later in this batch cancels re-runs queued earlier in
+                    # it. Those items did run once, so their first result is published
+                    # rather than lost; a requeued item already respawned keeps running.
+                    for dropped in [index for index in requeued if index not in running]:
+                        result = requeued.pop(dropped)
+                        if cancel_retry is not None:
+                            cancel_retry(dropped, result)
+                        results[dropped] = result
+                        if on_complete is not None:
+                            on_complete(dropped, result)
                 if not finished:
                     sleep(poll_interval)
         finally:

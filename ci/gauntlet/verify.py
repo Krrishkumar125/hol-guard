@@ -299,6 +299,26 @@ def verify_contained_report(
     }
 
 
+def _reconcile_case_retries(report: dict[str, Any], directory: Path, ids: set[str]) -> None:
+    """Check every superseded attempt the report declares against the bytes it shipped.
+
+    The published case file is what proves the outcome, so a re-run can never turn a
+    product failure into a pass. What this adds is that a declared history is honest:
+    each banked attempt names a scenario of this profile and still digests to what the
+    runner recorded. A producer who rewrites `summary.json` wholesale is outside what
+    any field of it can catch; this catches an edited or substituted banked attempt.
+    """
+    for entry in report.get("case_retries") or []:
+        if not isinstance(entry, dict) or entry.get("id") not in ids:
+            raise ValueError("a superseded attempt names a scenario outside this profile")
+        name = entry.get("evidence")
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,79}\.attempt-[1-9]\.json", name):
+            raise ValueError("a superseded attempt does not name its evidence")
+        path = directory / "superseded" / name
+        if not path.is_file() or digest_file(path) != entry.get("evidence_sha256"):
+            raise ValueError("superseded attempt evidence is missing or changed")
+
+
 def verify_report(
     directory: Path,
     *,
@@ -402,6 +422,7 @@ def verify_report(
         if result["outcome"] != "pass":
             raise ValueError("a required scenario did not pass")
         results.append(result)
+    _reconcile_case_retries(report, directory, {scenario.id for scenario in expected})
     latency = summarize_hook_latency(observations)
     if "hook_latency" in report and report["hook_latency"] != latency:
         raise ValueError("claimed aggregate hook latency does not match observed evidence")

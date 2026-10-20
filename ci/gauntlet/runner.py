@@ -534,6 +534,16 @@ def run_suite(
     def route_failed() -> bool:
         return record_route_failure(report, route_health)
 
+    def want_retry(scenario_id: str, case: dict[str, Any]) -> bool:
+        """A dead provider route makes every case look retryable; stop instead of re-running.
+
+        ``record_route_failure`` exists so the first case that sees a dead route
+        ends the run cheaply. Without this check that case, and every case in
+        flight beside it, would spend its whole budget against the same dead
+        route before the stop ever landed.
+        """
+        return not route_failed() and retries.should_retry(scenario_id, case)
+
     def record(scenario: Scenario, case: dict[str, Any]) -> None:
         """Publish progress in catalog order, whatever order cases finish in."""
         completed[scenario.id] = {"id": scenario.id, **case}
@@ -548,7 +558,9 @@ def run_suite(
         ]
         report["hook_latency"] = summarize_hook_latency([o for row in ordered for o in row["guard_observations"]])
         report["inference_usage"] = inference_usage(
-            output / "cases", [scenario.id for scenario in selected if scenario.id in completed]
+            output / "cases",
+            [scenario.id for scenario in selected if scenario.id in completed],
+            superseded=output / "superseded",
         )
         report["case_coverage"] = case_coverage(selected, catalog, completed)
         report["case_retries"] = retries.history
@@ -571,7 +583,7 @@ def run_suite(
                         timeout=model_timeout,
                         attempt=retries.attempt(scenario.id),
                     )
-                if not retries.should_retry(scenario.id, case):
+                if not want_retry(scenario.id, case):
                     break
             record(scenario, case)
             if route_failed():
@@ -619,14 +631,15 @@ def run_suite(
                 if fail_fast or route_health is not None
                 else None
             ),
-            retry=((lambda index, result: retries.should_retry(selected[index].id, result)) if case_retries else None),
+            retry=((lambda index, result: want_retry(selected[index].id, result)) if case_retries else None),
+            cancel_retry=((lambda index, _result: retries.restore(selected[index].id)) if case_retries else None),
             admit=gate,
             slots=slot_pool,
         )
     # A route that died after the last case still explains that case's failure.
     route_failed()
     report["finished_at"] = datetime.now(timezone.utc).isoformat()
-    report.setdefault("inference_usage", inference_usage(output / "cases", ()))
+    report.setdefault("inference_usage", inference_usage(output / "cases", (), superseded=output / "superseded"))
     report["case_coverage"] = case_coverage(selected, catalog, completed)
     report["stopped_early"] = len(report["cases"]) < len(selected)
     report.update(report_sections(report["cases"]))

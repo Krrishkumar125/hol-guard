@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from . import lane_preflight, qualify_setup
+from .case_retry import MAX_CASE_RETRIES
 from .extension_adapters import RELEASE_ASSETS_ENV
 from .fixtures import create_numbered_dir
 from .lane_coverage import lane_coverage
@@ -183,6 +184,11 @@ def summarize_attempt(
                 if case.get("outcome") != "pass"
             ],
             "inference_usage": summary.get("inference_usage"),
+            # Which cases this round had to re-run, and how many re-runs it was
+            # allowed. A record that shows only the final outcomes reads a pass
+            # that took three tries exactly like one that took a single try.
+            "case_retries": summary.get("case_retries", []),
+            "case_retries_allowed": summary.get("case_retries_allowed"),
             # How much of the catalog this attempt reached. A truncated attempt
             # that reports only its pass count reads as a clean record of the
             # whole profile, which is how 59% of the catalog went unrun through
@@ -329,6 +335,11 @@ def main(args: Any) -> int:
         raise ValueError("--attempts must be from 1 to 3")
     if not 1 <= args.jobs <= 8:
         raise ValueError("--jobs must be from 1 to 8")
+    # Checked here as well as in the child run: an out-of-range value otherwise
+    # survives wheel resolution, SDK setup and worktree creation before the first
+    # attempt rejects it, and qualification then reports only a missing summary.
+    if not 0 <= args.case_retries <= MAX_CASE_RETRIES:
+        raise ValueError(f"--case-retries must be an integer from 0 to {MAX_CASE_RETRIES}")
     if not 1 <= args.host_slots <= 64:
         raise ValueError("--host-slots must be from 1 to 64")
     if not math.isfinite(args.max_load) or not args.max_load > 0:

@@ -15,8 +15,8 @@ from typing import Any
 import pytest
 
 from ci.gauntlet import parallel
-from ci.gauntlet.case_retry import CaseRetries, case_fixture_name, interrupted, retryable
-from ci.gauntlet.fixtures import scenario_fixture_name
+from ci.gauntlet.case_retry import MAX_CASE_RETRIES, CaseRetries, case_fixture_name, interrupted, retryable
+from ci.gauntlet.fixtures import digest_file, scenario_fixture_name
 
 
 def _assessment(outcome: str, **extra: Any) -> dict[str, Any]:
@@ -95,8 +95,31 @@ def test_a_superseded_attempt_keeps_its_evidence(tmp_path: Path) -> None:
             "outcome": "not-exercised",
             "reason": "not-exercised happened",
             "evidence": "a.attempt-1.json",
+            "evidence_sha256": digest_file(kept),
         }
     ]
+
+
+def test_a_cancelled_retry_gives_the_banked_attempt_back(tmp_path: Path) -> None:
+    # The re-run never happened, so the attempt it displaced is this case's only run.
+    cases = tmp_path / "cases"
+    cases.mkdir()
+    (cases / "a.json").write_text('{"attempt": 1}')
+    budget = _budget(tmp_path)
+    assert budget.should_retry("a", _assessment("not-exercised"))
+    budget.restore("a")
+    assert json.loads((cases / "a.json").read_text()) == {"attempt": 1}
+    assert not (tmp_path / "superseded" / "a.attempt-1.json").exists()
+    assert budget.history == []
+    # The budget is given back too, so a later honest retry still has it.
+    assert budget.attempt("a") == 1
+    assert budget.should_retry("a", _assessment("not-exercised"))
+
+
+def test_restoring_a_case_that_never_retried_does_nothing(tmp_path: Path) -> None:
+    budget = _budget(tmp_path)
+    budget.restore("a")
+    assert budget.history == [] and budget.attempt("a") == 1
 
 
 def test_history_is_empty_when_nothing_was_rerun(tmp_path: Path) -> None:
@@ -150,10 +173,12 @@ def test_the_scheduler_requeues_a_retried_item_and_records_only_its_last_run() -
     assert results == ["a2", "b1"]
 
 
-def test_a_requeued_item_is_dropped_once_the_run_is_stopping() -> None:
-    # Scheduling an item after a stop would never run it, so it is not requeued.
+def test_a_cancelled_requeue_publishes_the_run_the_item_already_made() -> None:
+    # `a` is queued again, then `b` stops the run in the same completion batch. The
+    # re-run will never happen, so dropping `a1` would erase a case that did run.
     queued = {"a": ["a1", "a2"], "b": ["stop"]}
     spawned: list[str] = []
+    cancelled: list[tuple[int, str]] = []
 
     results = parallel.run_scheduled(
         ["a", "b"],
@@ -161,10 +186,12 @@ def test_a_requeued_item_is_dropped_once_the_run_is_stopping() -> None:
         spawn=lambda name: (spawned.append(name), _Worker(queued[name]))[1],
         should_stop=lambda _index, result: result == "stop",
         retry=lambda _index, result: result == "a1",
+        cancel_retry=lambda index, result: cancelled.append((index, result)),
         sleep=_no_sleep,
     )
     assert spawned == ["a", "b"]
-    assert results == [None, "stop"]
+    assert cancelled == [(0, "a1")]
+    assert results == ["a1", "stop"]
 
 
 def _run_argv(tmp_path: Path, *extra: str) -> list[str]:
@@ -243,7 +270,14 @@ def test_the_budget_defaults_to_off_for_an_ordinary_run(
     assert seen["case_retries"] == 0
 
 
-def _retry_suite(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, jobs: int) -> dict[str, Any]:
+def _retry_suite(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    jobs: int,
+    *,
+    route_health: Any = None,
+    expected_attempts: list[int] | None = None,
+) -> dict[str, Any]:
     """Run one case that refuses once and complies on its re-run, over either scheduler."""
     from ci.gauntlet import parallel as scheduler
     from ci.gauntlet import runner
@@ -258,7 +292,11 @@ def _retry_suite(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, jobs: int) -> 
     def result(public: Path, attempt: int) -> dict[str, Any]:
         case = _fake_result(case_id, public)
         if attempt == 1:
-            case["assessment"] = {"outcome": "not-exercised", "reason": "the model made no tool attempt"}
+            case["assessment"] = {
+                "outcome": "not-exercised",
+                "reason": "the model made no tool attempt",
+                "tool_calls": 0,
+            }
         return case
 
     def fake_run_case(scenario: Any, *, public: Path, attempt: int = 1, **_kw: Any) -> dict[str, Any]:
@@ -292,8 +330,9 @@ def _retry_suite(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, jobs: int) -> 
         selected_ids=[case_id],
         jobs=jobs,
         case_retries=2,
+        route_health=route_health,
     )
-    assert attempts == [1, 2]
+    assert attempts == (expected_attempts if expected_attempts is not None else [1, 2])
     return report
 
 
@@ -312,3 +351,129 @@ def test_a_rerun_case_is_recorded_once_with_its_superseded_attempt_kept(
     kept = tmp_path / f"evidence-{jobs}" / "superseded" / history[0]["evidence"]
     # The discarded attempt is still on disk; a pass that took two tries cannot read as one.
     assert kept.is_file() and json.loads(kept.read_text())
+
+
+@pytest.mark.parametrize("jobs", [1, 4])
+def test_a_dead_route_stops_the_run_instead_of_spending_a_budget_against_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, jobs: int
+) -> None:
+    # A dead route makes every case look retryable. Re-running against it buys no
+    # coverage and burns the budget the next live run would need.
+    report = _retry_suite(
+        monkeypatch,
+        tmp_path,
+        jobs,
+        route_health=lambda: "adapter exited 1: route is gone",
+        expected_attempts=[1],
+    )
+    assert report["provider_route_failure"] == "adapter exited 1: route is gone"
+    assert report["case_retries"] == []
+    # The one run it made is published, not discarded into `superseded/`.
+    assert [row["outcome"] for row in report["cases"]] == ["not-exercised"]
+    assert not (tmp_path / f"evidence-{jobs}" / "superseded").exists()
+
+
+def test_a_superseded_attempt_can_be_exported(tmp_path: Path) -> None:
+    from ci.gauntlet.bundle import allowed_name, pack
+
+    assert allowed_name("superseded/secret-file-read.attempt-1.json")
+    assert not allowed_name("superseded/secret-file-read.attempt-0.json")
+    assert not allowed_name("superseded/secret-file-read.json")
+    assert not allowed_name("superseded/../cases/a.json")
+    evidence = tmp_path / "evidence"
+    (evidence / "cases").mkdir(parents=True)
+    (evidence / "superseded").mkdir()
+    (evidence / "summary.json").write_text("{}")
+    (evidence / "cases" / "a.json").write_text("{}")
+    (evidence / "superseded" / "a.attempt-1.json").write_text("{}")
+    # Without the superseded entry in the allowlist a retried run cannot be submitted.
+    assert pack(evidence, tmp_path / "evidence.zip")
+
+
+def test_a_superseded_attempt_still_counts_towards_what_the_run_cost(tmp_path: Path) -> None:
+    from ci.gauntlet.summary import inference_usage
+
+    cases = tmp_path / "cases"
+    superseded = tmp_path / "superseded"
+    cases.mkdir()
+    superseded.mkdir()
+
+    def _case(path: Path, tokens: int) -> None:
+        path.write_text(json.dumps({"inference": {"live_rounds": [{"usage": {"total_tokens": tokens}}]}}))
+
+    _case(cases / "a.json", 30)
+    _case(superseded / "a.attempt-1.json", 12)
+    usage = inference_usage(cases, ["a"], superseded=superseded)
+    # The refused round was billed, so leaving it out understates the run.
+    assert usage["rounds"] == 2 and usage["rounds_with_usage"] == 2 and usage["total_tokens"] == 42
+    assert inference_usage(cases, ["a"])["total_tokens"] == 30
+
+
+def _history(tmp_path: Path) -> tuple[dict[str, Any], Path]:
+    kept = tmp_path / "superseded" / "a.attempt-1.json"
+    kept.parent.mkdir(parents=True)
+    kept.write_text('{"attempt": 1}')
+    report = {
+        "case_retries": [
+            {"id": "a", "attempt": 1, "evidence": kept.name, "evidence_sha256": digest_file(kept)},
+        ]
+    }
+    return report, kept
+
+
+def test_the_verifier_accepts_a_declared_superseded_attempt(tmp_path: Path) -> None:
+    from ci.gauntlet.verify import _reconcile_case_retries
+
+    report, _kept = _history(tmp_path)
+    _reconcile_case_retries(report, tmp_path, {"a"})
+    _reconcile_case_retries({}, tmp_path, {"a"})
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda report, kept: kept.unlink(), "missing or changed"),
+        (lambda report, kept: kept.write_text('{"attempt": 2}'), "missing or changed"),
+        (lambda report, kept: report["case_retries"][0].update(id="elsewhere"), "outside this profile"),
+        (lambda report, kept: report["case_retries"][0].update(evidence="../cases/a.json"), "does not name"),
+        (lambda report, kept: report["case_retries"][0].update(evidence=None), "does not name"),
+    ],
+)
+def test_the_verifier_rejects_a_superseded_attempt_it_cannot_reconcile(
+    tmp_path: Path, mutate: Any, message: str
+) -> None:
+    from ci.gauntlet.verify import _reconcile_case_retries
+
+    report, kept = _history(tmp_path)
+    mutate(report, kept)
+    with pytest.raises(ValueError, match=message):
+        _reconcile_case_retries(report, tmp_path, {"a"})
+
+
+@pytest.mark.parametrize("value", [-1, MAX_CASE_RETRIES + 1])
+def test_qualification_rejects_an_out_of_range_budget_before_it_builds_anything(tmp_path: Path, value: int) -> None:
+    # The child `run` rejects it too, but only after wheel resolution, SDK setup and
+    # worktree creation, leaving qualification to report a missing summary.
+    from ci.gauntlet import qualify
+
+    from .test_guard_gauntlet_qualify import _args
+
+    with pytest.raises(ValueError, match="--case-retries must be an integer from 0"):
+        qualify.main(_args(tmp_path, case_retries=value))
+
+
+def test_a_qualification_attempt_record_shows_what_it_re_ran() -> None:
+    # Without this a qualified attempt reads the same whether its cases complied
+    # on the first try or on the third.
+    from ci.gauntlet import qualify
+
+    history = [{"id": "a", "attempt": 1, "outcome": "not-exercised", "reason": "no tool attempt"}]
+    record = qualify.summarize_attempt(
+        1,
+        Path("evidence"),
+        0,
+        1.0,
+        {"cases": [], "case_retries": history, "case_retries_allowed": 2},
+    )
+    assert record["case_retries"] == history and record["case_retries_allowed"] == 2
+    assert qualify.summarize_attempt(1, Path("evidence"), 0, 1.0, {"cases": []})["case_retries"] == []

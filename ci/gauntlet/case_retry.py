@@ -28,7 +28,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .fixtures import scenario_fixture_name
+from .fixtures import digest_file, scenario_fixture_name
 
 # A case that needs more than a few tries is not noisy, it is broken; the budget is
 # there to absorb model refusals, not to grind a failing case into a pass.
@@ -93,21 +93,45 @@ class CaseRetries:
                 "attempt": attempt,
                 "outcome": assessment.get("outcome"),
                 "reason": assessment.get("reason"),
-                "evidence": self._archive(scenario_id, attempt),
+                **self._archive(scenario_id, attempt),
             }
         )
         self._spent[scenario_id] = attempt
         return True
 
-    def _archive(self, scenario_id: str, attempt: int) -> str | None:
-        """Move this attempt's published evidence aside; the next run writes the same name."""
+    def _archive(self, scenario_id: str, attempt: int) -> dict[str, Any]:
+        """Move this attempt's published evidence aside; the next run writes the same name.
+
+        The digest travels with the history row so a reader — the independent
+        verifier included — can tell a banked attempt from a substituted one.
+        """
         source = self._cases / f"{scenario_id}.json"
         if not source.is_file():
-            return None
+            return {"evidence": None, "evidence_sha256": None}
         self._superseded.mkdir(mode=0o700, parents=True, exist_ok=True)
         target = self._superseded / f"{scenario_id}.attempt-{attempt}.json"
         shutil.move(str(source), target)
-        return target.name
+        return {"evidence": target.name, "evidence_sha256": digest_file(target)}
+
+    def restore(self, scenario_id: str) -> None:
+        """Give back the last banked attempt when its re-run was cancelled before it ran.
+
+        A stop decided later in the same completion batch drops the queued re-run,
+        and the banked attempt is then the only run this case made: publishing it
+        is the truthful record, and silently losing it is not.
+        """
+        for position in range(len(self._history) - 1, -1, -1):
+            if self._history[position]["id"] == scenario_id:
+                entry = self._history.pop(position)
+                break
+        else:
+            return
+        if entry["attempt"] > 1:
+            self._spent[scenario_id] = entry["attempt"] - 1
+        else:
+            self._spent.pop(scenario_id, None)
+        if entry["evidence"]:
+            shutil.move(str(self._superseded / entry["evidence"]), self._cases / f"{scenario_id}.json")
 
     @property
     def history(self) -> list[dict[str, Any]]:
