@@ -28,6 +28,11 @@ pub const HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE: &str =
 /// caller requires this feature for that query alone.
 pub const HOOK_ARTIFACT_COMPOSE_PACKAGE_REUSE_FEATURE: &str =
     "hook-artifact-compose-package-reuse-v1";
+/// Capability advertised when the `signal_composition` query is served. A
+/// runtime that predates the query rejects it as an unknown kind, so the
+/// caller requires this feature for that query alone.
+pub const HOOK_ARTIFACT_COMPOSE_SIGNAL_COMPOSITION_FEATURE: &str =
+    "hook-artifact-compose-signal-composition-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -71,6 +76,19 @@ pub enum HookArtifactComposeQueryV1 {
     /// Settle a package request's saved-approval reuse from the reasons the
     /// evaluation carries, folding the saved-block reuse of the same request.
     PackageReuseSettle(Box<PackageReuseSettleQueryV1>),
+    /// Calibrate a base policy action against a detector run's risk and
+    /// false-positive signals.
+    SignalComposition(Box<SignalCompositionQueryV1>),
+}
+
+/// The detector run a composition is calibrated from. `signals` are
+/// `RiskSignalV2` payloads exactly as the detector registry emits them, and
+/// `base_action` is the policy action the composition starts from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct SignalCompositionQueryV1 {
+    pub signals: Vec<Value>,
+    pub base_action: Value,
 }
 
 /// The package-request facts the reuse settlement reads. `reasons` is the

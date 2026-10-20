@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from itertools import product
+from types import SimpleNamespace
 from typing import get_args
 
 import pytest
@@ -24,7 +26,6 @@ from codex_plugin_scanner.guard.config import (
 from codex_plugin_scanner.guard.mdm.policy import _merge_strongest_actions, _strongest_security_value
 from codex_plugin_scanner.guard.models import GUARD_ACTION_VALUES, GuardAction
 from codex_plugin_scanner.guard.policy.engine import decide_action
-from codex_plugin_scanner.guard.runtime.composition_rules import compose_action_from_signals
 from codex_plugin_scanner.guard.runtime.package_request_evaluation import PackageRequestEvaluation
 
 EXPECTED_LATTICE: tuple[GuardAction, ...] = (
@@ -162,7 +163,10 @@ def test_present_invalid_action_map_values_do_not_disappear(invalid_value: objec
 
 
 @pytest.mark.parametrize("protected_action", ("require-reapproval", "sandbox-required"))
-def test_false_positive_composition_never_lowers_protected_actions(protected_action: GuardAction) -> None:
+def test_false_positive_composition_never_lowers_protected_actions(
+    protected_action: GuardAction,
+    native_signal_composition: Callable[[Sequence[object], object], SimpleNamespace],
+) -> None:
     from codex_plugin_scanner.guard.runtime.signals import RiskSignalV2
 
     false_positive = RiskSignalV2(
@@ -180,11 +184,13 @@ def test_false_positive_composition_never_lowers_protected_actions(protected_act
         advisory_id=None,
     )
 
-    assert compose_action_from_signals((false_positive,), protected_action).action == protected_action
+    assert native_signal_composition((false_positive,), protected_action).action == protected_action
 
 
-def test_signal_composition_normalizes_unknown_base_and_preserves_diagnostics() -> None:
-    result = compose_action_from_signals((), "future-action")
+def test_signal_composition_normalizes_unknown_base_and_preserves_diagnostics(
+    native_signal_composition: Callable[[Sequence[object], object], SimpleNamespace],
+) -> None:
+    result = native_signal_composition((), "future-action")
 
     assert result.action == "block"
     assert result.normalization_reason_code == UNKNOWN_GUARD_ACTION_REASON

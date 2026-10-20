@@ -8,9 +8,10 @@
 //! Every query is pure and fails closed: unknown actions normalize to review.
 
 use guard_contracts::{
-    normalize_guard_action, normalize_guard_action_result, GrantSettleQueryV1, GuardAction,
-    HookArtifactComposeQueryV1, HookArtifactComposeRequestV1, HookArtifactComposeResultV1,
-    HookNativeEdgeV1, NativeEdgeFactsV1, ObserveExecutableActionQueryV1, PolicyStackQueryV1,
+    compose_action_from_signals, normalize_guard_action, normalize_guard_action_result,
+    GrantSettleQueryV1, GuardAction, HookArtifactComposeQueryV1, HookArtifactComposeRequestV1,
+    HookArtifactComposeResultV1, HookNativeEdgeV1, NativeEdgeFactsV1,
+    ObserveExecutableActionQueryV1, PolicyStackQueryV1, RiskSignalV2, SignalCompositionQueryV1,
     HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA, HOOK_ARTIFACT_COMPOSE_RESULT_SCHEMA,
 };
 use serde_json::{json, Map, Value};
@@ -87,7 +88,29 @@ pub(crate) fn compose(query: &HookArtifactComposeQueryV1) -> Result<Value, Strin
             reuse::remembered_rule_reason(query)
         }
         HookArtifactComposeQueryV1::PackageReuseSettle(query) => reuse::package_reuse_settle(query),
+        HookArtifactComposeQueryV1::SignalComposition(query) => signal_composition(query)?,
     })
+}
+
+/// `compose_action_from_signals` over a detector run. The signals decode
+/// strictly: a payload the detector contract rejects refuses the request
+/// rather than composing over a signal this side guessed at.
+fn signal_composition(query: &SignalCompositionQueryV1) -> Result<Value, String> {
+    let mut signals = Vec::with_capacity(query.signals.len());
+    for (index, payload) in query.signals.iter().enumerate() {
+        let signal = RiskSignalV2::decode(payload)
+            .map_err(|error| format!("signals[{index}] is not a risk signal: {}", error.0))?;
+        signals.push(signal);
+    }
+    let composed = compose_action_from_signals(&signals, &query.base_action);
+    Ok(json!({
+        "action": composed.action.as_str(),
+        "reason": composed.reason,
+        "downgraded": composed.downgraded,
+        "upgraded": composed.upgraded,
+        "normalization_reason_code": composed.normalization_reason_code,
+        "original_action": composed.original_action,
+    }))
 }
 
 pub(crate) fn act(value: &Value) -> GuardAction {

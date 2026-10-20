@@ -539,3 +539,38 @@ fn a_stored_block_beside_package_reuse_keeps_the_package_source_and_adds_no_seco
     );
     assert_eq!(answer["settled_evidence_appends"], json!([]));
 }
+
+#[test]
+fn a_signal_the_contract_rejects_refuses_the_composition() {
+    // A payload this side cannot decode is not composed over a guessed-at
+    // signal: the request is refused and the caller fails closed.
+    let reply = resident(envelope(
+        HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA,
+        json!({
+            "kind": "signal_composition",
+            "base_action": "allow",
+            "signals": [{"signal_id": "risk:x", "category": "not-a-category"}],
+        }),
+    ))
+    .unwrap();
+    assert_eq!(reply["status"], "error");
+    assert_eq!(
+        reply["code"],
+        "native_hook_artifact_compose_validation_refused"
+    );
+    assert!(reply["payload"]["message"]
+        .as_str()
+        .unwrap()
+        .starts_with("signals[0] is not a risk signal:"));
+}
+
+#[test]
+fn signal_composition_requires_both_fields() {
+    let missing = json!({"kind": "signal_composition", "base_action": "allow"});
+    assert!(resident(envelope(HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA, missing)).is_err());
+
+    let surprise = json!({
+        "kind": "signal_composition", "base_action": "allow", "signals": [], "surprise": true,
+    });
+    assert!(resident(envelope(HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA, surprise)).is_err());
+}
