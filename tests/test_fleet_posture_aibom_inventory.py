@@ -114,6 +114,34 @@ def test_inventory_table_rows_win_over_the_same_aibom_item(
     assert sorted(item["name"] for item in items) == ["chrome-devtools", "other"]
 
 
+def test_a_removed_table_row_does_not_hide_the_item_found_installed_again(
+    store: GuardStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    removed = {
+        "artifact_name": "chrome-devtools",
+        "artifact_type": "mcp_server",
+        "harness": "codex",
+        "config_path": str(home / ".codex" / "chrome-devtools"),
+        "first_seen_at": "2026-10-01T00:00:00Z",
+        "last_seen_at": "2026-10-05T00:00:00Z",
+        "present": 0,
+        "removed_at": "2026-10-05T00:00:00Z",
+    }
+    monkeypatch.setattr(store, "list_inventory", lambda harness=None: [removed])
+    remember_aibom_items(
+        store,
+        [
+            _snapshot(
+                "codex", "2026-10-20T11:00:00Z", _item("codex:global:chrome-devtools", "mcp_server", "chrome-devtools")
+            )
+        ],
+        now="2026-10-20T11:00:00Z",
+        home_dir=home,
+    )
+    assert [item["name"] for item in inventory_items(store, hash_key=b"k" * 32)] == ["chrome-devtools"]
+
+
 def test_a_workspace_scan_keeps_the_project_items_of_other_workspaces(store: GuardStore, tmp_path: Path) -> None:
     home = tmp_path / "home"
     alpha = home / "code" / "alpha"

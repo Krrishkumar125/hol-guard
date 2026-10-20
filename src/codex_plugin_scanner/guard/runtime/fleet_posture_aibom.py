@@ -64,6 +64,10 @@ def _row_key(row: Mapping[str, object]) -> str:
     return "\0".join((str(row.get("harness") or ""), kind, name, _path_identity(row.get("config_path"))))
 
 
+def _installed(row: Mapping[str, object]) -> bool:
+    return not row.get("removed_at") and row.get("present") not in (0, False, "0")
+
+
 def _source_scope(item_id: str, harness: str, config_path: str | None, workspace_dir: Path | None) -> str | None:
     """The item's scope from its id when the id names one, else from where its file lives."""
 
@@ -166,5 +170,6 @@ def fleet_inventory_rows(store: GuardStore) -> list[dict[str, object]]:
     """Local inventory rows followed by the AIBOM-detected rows the table does not already hold."""
 
     table_rows = store.list_inventory()
-    known = {_row_key(row) for row in table_rows}
+    # A row Guard marked removed does not hide the same item found installed again.
+    known = {_row_key(row) for row in table_rows if _installed(row)}
     return [*table_rows, *(row for row in _stored_rows(store) if _row_key(row) not in known)]
