@@ -4078,6 +4078,31 @@
   },
   {
     "expected": {
+      "approval_reuse": null,
+      "approval_reuse_source": null,
+      "claim_disposition": null,
+      "evidence_appends": [],
+      "policy_action": "warn",
+      "reuse_applied": false,
+      "reuse_evidence": null,
+      "revalidate_required": false,
+      "saved_allow_applied": false,
+      "settled_evidence_appends": []
+    },
+    "name": "package_reuse_settle_no_saved_reason",
+    "query": {
+      "approval_reuse_source": null,
+      "claim_saved_approval": false,
+      "current_action": "warn",
+      "evaluation_policy_action": "allow",
+      "kind": "package_reuse_settle",
+      "reasons": [],
+      "stored_artifact_hash": null,
+      "stored_policy_action": null
+    }
+  },
+  {
+    "expected": {
       "reason": "HOL Guard kept git push origin main in review because a remembered local rule was ignored while local trust is degraded. Local approval store integrity could not be verified. One-time approvals still work, but broader remembered rules stay limited until local trust is protected."
     },
     "name": "remembered_rule_reason_degraded_with_integrity_detail",
@@ -4086,6 +4111,36 @@
       "integrity_message": "Local approval store integrity could not be verified",
       "kind": "remembered_rule_reason",
       "remembered_rules": "disabled_degraded"
+    }
+  },
+  {
+    "expected": {
+      "approval_reuse": null,
+      "approval_reuse_source": "saved_package_policy",
+      "claim_disposition": "consumed",
+      "evidence_appends": [],
+      "policy_action": "allow",
+      "reuse_applied": true,
+      "reuse_evidence": null,
+      "revalidate_required": true,
+      "saved_allow_applied": true,
+      "settled_evidence_appends": []
+    },
+    "name": "package_reuse_settle_claimed_saved_allow_revalidates",
+    "query": {
+      "approval_reuse_source": null,
+      "claim_saved_approval": true,
+      "current_action": "block",
+      "evaluation_policy_action": "allow",
+      "kind": "package_reuse_settle",
+      "reasons": [
+        {
+          "approval_claim_disposition": "consumed",
+          "code": "saved_package_approval"
+        }
+      ],
+      "stored_artifact_hash": null,
+      "stored_policy_action": null
     }
   }
 ]

@@ -120,6 +120,10 @@ unsafe fn propagate(status: i32) -> ! {
 /// The caller is already the sandboxed foreign child with its final cwd,
 /// descriptors, limits and output files. It becomes a small native owner for
 /// one suspended hardened image and mirrors that image's terminal status.
+///
+/// Returns the suspended child, or the negated failure code: `1000 + errno`
+/// when `posix_spawn` fails, 12 when the deadline passes, and otherwise the
+/// [`dynamic_mismatch`](crate::macos_code_image::dynamic_mismatch) code.
 pub(super) unsafe fn spawn(
     path: &CString,
     argv: &[*const libc::c_char],
@@ -128,6 +132,8 @@ pub(super) unsafe fn spawn(
     binding: Binding,
     deadline: &super::launch::LaunchDeadline,
 ) -> libc::pid_t {
+    // This process exits with the child, so the request reaches nothing else.
+    unsafe { crate::macos_code_image::harden_next_exec() };
     let mut child = 0;
     let spawned = unsafe {
         libc::posix_spawn(
@@ -140,17 +146,20 @@ pub(super) unsafe fn spawn(
         )
     };
     if spawned != 0 {
-        return -1;
+        return -(1000 + spawned);
     }
-    if unsafe { deadline.expired() }
-        || !unsafe { crate::macos_code_image::dynamic_matches(child, binding) }
-    {
+    let mismatch = if unsafe { deadline.expired() } {
+        12
+    } else {
+        unsafe { crate::macos_code_image::dynamic_mismatch(child, binding) }
+    };
+    if mismatch != 0 {
         unsafe {
             libc::kill(child, libc::SIGKILL);
             let mut status = 0;
             while libc::waitpid(child, &mut status, 0) < 0 && *libc::__error() == libc::EINTR {}
         }
-        return -1;
+        return -mismatch;
     }
     child
 }
@@ -164,7 +173,8 @@ pub(super) unsafe fn release_and_wait(
     #[cfg(test)] resume_probe: bool,
 ) -> ! {
     if child <= 0 {
-        unsafe { fail(error_fd, 0, 12) };
+        // Report the failed check so a refused launch names its cause.
+        unsafe { fail(error_fd, 0, if child < 0 { -child } else { 12 }) };
     }
     let initialized = 0i32.to_ne_bytes();
     if unsafe { libc::write(error_fd, initialized.as_ptr().cast(), initialized.len()) }
