@@ -9,6 +9,11 @@ import { ExtensionControlApiError } from "../extension-controls-api";
  */
 
 const KEPT = "Guard could not save this protection change, so your current protection is unchanged.";
+// Some failures happen after the daemon may already have committed, or lose
+// the response to a commit that succeeded. Those must not claim the change was
+// dropped; they send the operator to the settings the daemon actually holds.
+const UNCERTAIN =
+  "Guard could not confirm this protection change, so it may or may not have been saved. Reload the page to see the settings Guard is holding now.";
 
 type Recovery = { command: string; terminal: string };
 
@@ -18,10 +23,12 @@ function preparationSentence(cause: string | undefined, recovery: Recovery): str
       return `${KEPT} It could not reach the protection release service. Check this machine's connection and try again.`;
     case "release_unavailable":
       return `${KEPT} The protection release it needs is not available yet. Try again shortly.`;
-    case "authority_unavailable":
-      return `${KEPT} The local protection authority could not be opened. Run \`${recovery.command}\` in ${recovery.terminal}, then try again.`;
+    case "pack_authority_unavailable":
+      return `${KEPT} This install has no protection release it can verify yet. Update Guard, or reconnect this machine so it can fetch one, then try again.`;
     case "installed_runtime_incomplete":
       return `${KEPT} This Guard installation is missing part of its runtime, so it cannot read its own protection bundle. Reinstall or update Guard, then try again.`;
+    case "installed_runtime_unresponsive":
+      return `${KEPT} Guard's packaged compiler did not answer in time. Try again; if it keeps failing, restart Guard.`;
     case "pack_revoked":
       return `${KEPT} A protection pack it needs was withdrawn. Reload this page to pick up the current catalog, then try again.`;
     case "local_storage":
@@ -37,7 +44,7 @@ function codeSentence(code: string, recovery: Recovery): string | undefined {
     case "approval_required":
       return `${KEPT} It needs your approval password before it can apply.`;
     case "authority_apply_failed":
-      return `${KEPT} Guard could not write the change to its protection authority. Try again; if it keeps failing, ${repairAuthority}`;
+      return `${UNCERTAIN} If the change is not there, ${repairAuthority}`;
     case "authority_conflict":
     case "revision_conflict":
     case "invalid_previous_revision":
@@ -92,6 +99,26 @@ function codeSentence(code: string, recovery: Recovery): string | undefined {
   }
 }
 
+// Preparation runs before the daemon commits anything, and each of these
+// clears on its own: a fetch that missed, a release that had not landed, a busy
+// local cache, a compiler that did not answer. Retrying once in the dashboard
+// turns the common case back into a save that just works, instead of a sentence
+// the operator has to act on.
+const RETRYABLE_PREPARATION_CAUSES = new Set([
+  "installed_runtime_unresponsive",
+  "local_storage",
+  "offline",
+  "release_unavailable",
+]);
+
+export function isRetryableProtectionChangeError(error: unknown): boolean {
+  return (
+    error instanceof ExtensionControlApiError &&
+    error.code === "pack_preparation_unavailable" &&
+    RETRYABLE_PREPARATION_CAUSES.has(error.cause ?? "")
+  );
+}
+
 export function protectionChangeErrorMessage(
   error: unknown,
   recoveryCommand?: string,
@@ -105,9 +132,10 @@ export function protectionChangeErrorMessage(
     if (error.code === "pack_preparation_unavailable") return preparationSentence(error.cause, recovery);
     const sentence = error.code ? codeSentence(error.code, recovery) : undefined;
     if (sentence) return sentence;
-    // An unmapped code is still a failed save, and the operator is told so in
-    // words. The protocol token stays in the daemon log, not on the screen.
-    return `${KEPT} Try again; if it keeps failing, the Guard daemon log records the exact cause.`;
+    // An unmapped code says nothing about whether the daemon committed first,
+    // so the outcome is described as unknown rather than as a dropped change.
+    // The protocol token stays in the daemon log, not on the screen.
+    return `${UNCERTAIN} If it is not there, try again; the Guard daemon log records the exact cause.`;
   }
   return error instanceof Error && error.message ? error.message : "Protection change failed";
 }

@@ -6,7 +6,12 @@ Both call sites used to collapse every ``ValueError``/``OSError`` from that
 work into one bare code with nothing written to the daemon log, so an operator
 who hit it saw a protocol token and had nothing to act on and no record to
 read. Keep the public code stable, attach the classified cause and its
-recovery action, and record the real exception once at error level.
+recovery action, and record the real failure in the daemon's own log.
+
+Neither call site holds a daemon handle, so the record goes through the
+module-level background sink the daemon installs. That sink takes one bounded,
+path-free line, which is also why nothing here quotes an exception message
+back to the caller.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ import ssl
 import urllib.error
 from collections.abc import Iterator
 
+from .background_diagnostics import failure_detail, record_background_event
 from .extension_control_errors import ExtensionControlApiError
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,11 +31,27 @@ PACK_PREPARATION_UNAVAILABLE = "pack_preparation_unavailable"
 
 # The authority wording raised by preparation when no publication can be
 # authenticated locally. Matched on the message because the runtime raises a
-# plain ValueError for each of them.
-_AUTHORITY_MARKERS = (
+# plain ValueError for each of them. This is the pack-lifecycle publication
+# authority, never the control authority both call sites have already found
+# protected, so it must not be reported as one the operator can recover.
+_PACK_AUTHORITY_MARKERS = (
     "authority is unavailable",
     "pack_lifecycle_pack_authority_unavailable",
     "requires an existing activation",
+)
+
+# Guard's storage layer raises a bare ``TimeoutError`` with this wording when a
+# query passes its deadline. ``socket.timeout`` is ``TimeoutError`` on every
+# supported Python, so the type alone cannot tell a slow database from an
+# unreachable network.
+_STORAGE_DEADLINE = "Guard storage operation deadline expired."
+
+# The packaged compiler raises one exception type for a bundle it cannot verify
+# and for a process that would not start or did not answer. Only the first is a
+# broken install; the rest are transient and must not ask for a reinstall.
+_COMPILER_EXECUTION_MARKERS = (
+    "could not be started",
+    "timed out",
 )
 
 
@@ -56,10 +78,13 @@ def _named_cause(exc: BaseException) -> str | None:
             return "pack_revoked"
         if isinstance(error, (MissingReleaseError, ExpiredDistributionError, UnavailablePackError)):
             return "release_unavailable"
-        # An install whose packaged compiler or its manifest is missing cannot
-        # read its own bundle metadata. That is a broken install, not a
-        # transient failure, so never tell the operator to simply try again.
         if isinstance(error, NativeSourceCompilerError):
+            if any(marker in str(error) for marker in _COMPILER_EXECUTION_MARKERS):
+                return "installed_runtime_unresponsive"
+            # An install whose packaged compiler or its manifest is missing or
+            # fails verification cannot read its own bundle metadata. That is a
+            # broken install, not a transient failure, so never tell the
+            # operator to simply try again.
             return "installed_runtime_incomplete"
     return None
 
@@ -73,14 +98,16 @@ def classify(exc: BaseException) -> str:
     for error in _causes(exc):
         if isinstance(error, urllib.error.HTTPError):
             return "release_unavailable"
+        if type(error) is TimeoutError and _STORAGE_DEADLINE in str(error):
+            return "local_storage"
         if isinstance(error, _UNREACHABLE):
             return "offline"
     named = _named_cause(exc)
     if named is not None:
         return named
     if isinstance(exc, ValueError):
-        if any(marker in str(exc) for marker in _AUTHORITY_MARKERS):
-            return "authority_unavailable"
+        if any(marker in str(exc) for marker in _PACK_AUTHORITY_MARKERS):
+            return "pack_authority_unavailable"
         return "internal"
     if isinstance(exc, OSError):
         return "local_storage"
@@ -91,11 +118,9 @@ def preparation_unavailable(exc: BaseException, *, stage: str) -> ExtensionContr
     """Record the real failure and return the classified 503 for the caller."""
 
     cause = classify(exc)
-    _LOGGER.error(
-        "Extension-control pack preparation failed at %s (cause=%s): %s",
-        stage,
-        cause,
-        type(exc).__name__,
-        exc_info=exc,
-    )
+    detail = f"stage={stage} cause={cause} {failure_detail(exc)}"
+    record_background_event("extension_control_preparation_failed", detail)
+    # The daemon discards standard error, so this reaches a foreground process
+    # and a test run; daemon.log is served by the record above.
+    _LOGGER.error("Extension-control pack preparation failed: %s", detail, exc_info=exc)
     return ExtensionControlApiError(503, PACK_PREPARATION_UNAVAILABLE, cause=cause)

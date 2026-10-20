@@ -136,9 +136,12 @@ test("a rejected save from the real daemon reads as a sentence, never a protocol
     return { status: response.status, body: await response.json() as Record<string, unknown> };
   }, permissionId);
 
-  expect(rejection.status).toBeGreaterThanOrEqual(400);
+  // A bad session header or an unknown route would also answer >= 400, and
+  // this case is only worth anything if the daemon rejected the stale revision
+  // itself. Pin the envelope to the conflict codes that mutation can answer.
+  expect(rejection.status).toBe(409);
   const code = rejection.body.error;
-  expect(typeof code).toBe("string");
+  expect(["authority_conflict", "catalog_conflict", "revision_conflict"]).toContain(code);
   const rendered = protectionChangeErrorMessage(
     new ExtensionControlApiError(
       code as string,

@@ -13,13 +13,29 @@ from codex_plugin_scanner.guard.catalog_delivery.authority import ExpiredDistrib
 from codex_plugin_scanner.guard.catalog_delivery.preparation import UnavailablePackError
 from codex_plugin_scanner.guard.catalog_delivery.revocations import RevokedPackError
 from codex_plugin_scanner.guard.catalog_delivery.transport import MissingReleaseError
-from codex_plugin_scanner.guard.daemon.extension_control_errors import ExtensionControlApiError
+from codex_plugin_scanner.guard.daemon import background_diagnostics
+from codex_plugin_scanner.guard.daemon.extension_control_errors import (
+    _CAUSE_RECOVERY_ACTIONS,
+    ExtensionControlApiError,
+)
 from codex_plugin_scanner.guard.extension_builder.native_source_compiler import (
     NativeSourceCompilerError,
 )
 from codex_plugin_scanner.guard.daemon.extension_control_preparation_failure import (
     classify,
     preparation_unavailable,
+)
+
+
+_CAUSES = (
+    "installed_runtime_incomplete",
+    "installed_runtime_unresponsive",
+    "internal",
+    "local_storage",
+    "offline",
+    "pack_authority_unavailable",
+    "pack_revoked",
+    "release_unavailable",
 )
 
 
@@ -42,6 +58,10 @@ def _wrapped(error: BaseException) -> ValueError:
         (ssl.SSLError("handshake failed"), "offline"),
         (ConnectionResetError("reset"), "offline"),
         (TimeoutError("timed out"), "offline"),
+        # Guard storage raises a bare TimeoutError, which socket.timeout also
+        # is, so only the wording tells a slow database from a dead network.
+        (TimeoutError("Guard storage operation deadline expired."), "local_storage"),
+        (_wrapped(TimeoutError("Guard storage operation deadline expired.")), "local_storage"),
         (urllib.error.HTTPError("https://example.invalid", 404, "missing", None, None), "release_unavailable"),
         (MissingReleaseError("no such release"), "release_unavailable"),
         (ExpiredDistributionError("expired"), "release_unavailable"),
@@ -51,9 +71,23 @@ def _wrapped(error: BaseException) -> ValueError:
             _wrapped(NativeSourceCompilerError("source compiler manifest is unavailable")),
             "installed_runtime_incomplete",
         ),
-        (ValueError("installed preparation authority is unavailable"), "authority_unavailable"),
-        (ValueError("pack_lifecycle_pack_authority_unavailable"), "authority_unavailable"),
-        (ValueError("committed subset requires an existing activation"), "authority_unavailable"),
+        (
+            _wrapped(NativeSourceCompilerError("source compiler hash does not match its manifest")),
+            "installed_runtime_incomplete",
+        ),
+        # The same exception type covers a process that would not start and one
+        # that ran out of time. Neither is a broken install.
+        (
+            _wrapped(NativeSourceCompilerError("source compiler could not be started")),
+            "installed_runtime_unresponsive",
+        ),
+        (
+            _wrapped(NativeSourceCompilerError("source compiler timed out")),
+            "installed_runtime_unresponsive",
+        ),
+        (ValueError("installed preparation authority is unavailable"), "pack_authority_unavailable"),
+        (ValueError("pack_lifecycle_pack_authority_unavailable"), "pack_authority_unavailable"),
+        (ValueError("committed subset requires an existing activation"), "pack_authority_unavailable"),
         (ValueError("target catalog shape invalid"), "internal"),
         (OSError("cache read failed"), "local_storage"),
         (RuntimeError("not a preparation failure"), "internal"),
@@ -80,8 +114,22 @@ def test_an_unclassified_failure_still_offers_a_next_step():
     assert error.to_payload() == {
         "error": "pack_preparation_unavailable",
         "cause": "internal",
-        "recovery": {"action": "retry_pack_preparation"},
+        "recovery": {"action": "inspect_daemon_log"},
     }
+
+
+@pytest.mark.parametrize("cause", _CAUSES)
+def test_every_cause_carries_its_own_recovery_action(cause):
+    """The code-level fallback would tell a client to retry a withdrawn pack."""
+
+    payload = ExtensionControlApiError(503, "pack_preparation_unavailable", cause=cause).to_payload()
+    assert cause in _CAUSE_RECOVERY_ACTIONS
+    assert payload["recovery"] == {"action": _CAUSE_RECOVERY_ACTIONS[cause]}
+
+
+def test_a_withdrawn_pack_is_never_answered_with_a_retry():
+    payload = ExtensionControlApiError(503, "pack_preparation_unavailable", cause="pack_revoked").to_payload()
+    assert payload["recovery"] == {"action": "refresh_catalog"}
 
 
 def test_the_real_exception_is_recorded_once_with_its_traceback(caplog):
@@ -93,9 +141,42 @@ def test_the_real_exception_is_recorded_once_with_its_traceback(caplog):
     records = [record for record in caplog.records if record.levelno >= logging.ERROR]
     assert len(records) == 1
     assert "candidate-preparation" in records[0].getMessage()
-    assert "cause=authority_unavailable" in records[0].getMessage()
+    assert "cause=pack_authority_unavailable" in records[0].getMessage()
     assert "ValueError" in records[0].getMessage()
     assert records[0].exc_info is not None
+
+
+def _recorded(error: BaseException) -> list[tuple[str, str]]:
+    """Run one failure through the sink the managed daemon installs."""
+
+    taken: list[tuple[str, str]] = []
+
+    def sink(event: str, detail: str) -> None:
+        taken.append((event, detail))
+
+    background_diagnostics.install_sink(sink)
+    try:
+        preparation_unavailable(error, stage="candidate-preparation")
+    finally:
+        background_diagnostics.release_sink(sink)
+    return taken
+
+
+def test_the_failure_reaches_the_daemon_log_not_only_python_logging():
+    """The managed daemon discards stderr, so the record must go to its sink."""
+
+    taken = _recorded(OSError("cache read failed"))
+    assert len(taken) == 1
+    event, detail = taken[0]
+    assert event == "extension_control_preparation_failed"
+    assert "stage=candidate-preparation" in detail
+    assert "cause=local_storage" in detail
+    assert "error=OSError" in detail
+
+
+def test_the_daemon_record_carries_no_path():
+    taken = _recorded(OSError("/Users/someone/.hol-guard/command-packs is unreadable"))
+    assert "/Users" not in taken[0][1]
 
 
 def test_the_cause_never_quotes_the_exception_message():

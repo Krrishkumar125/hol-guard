@@ -9877,16 +9877,19 @@ function ReviewModal(props) {
   ] }) });
 }
 const KEPT = "Guard could not save this protection change, so your current protection is unchanged.";
+const UNCERTAIN = "Guard could not confirm this protection change, so it may or may not have been saved. Reload the page to see the settings Guard is holding now.";
 function preparationSentence(cause, recovery) {
   switch (cause) {
     case "offline":
       return `${KEPT} It could not reach the protection release service. Check this machine's connection and try again.`;
     case "release_unavailable":
       return `${KEPT} The protection release it needs is not available yet. Try again shortly.`;
-    case "authority_unavailable":
-      return `${KEPT} The local protection authority could not be opened. Run \`${recovery.command}\` in ${recovery.terminal}, then try again.`;
+    case "pack_authority_unavailable":
+      return `${KEPT} This install has no protection release it can verify yet. Update Guard, or reconnect this machine so it can fetch one, then try again.`;
     case "installed_runtime_incomplete":
       return `${KEPT} This Guard installation is missing part of its runtime, so it cannot read its own protection bundle. Reinstall or update Guard, then try again.`;
+    case "installed_runtime_unresponsive":
+      return `${KEPT} Guard's packaged compiler did not answer in time. Try again; if it keeps failing, restart Guard.`;
     case "pack_revoked":
       return `${KEPT} A protection pack it needs was withdrawn. Reload this page to pick up the current catalog, then try again.`;
     case "local_storage":
@@ -9901,7 +9904,7 @@ function codeSentence(code, recovery) {
     case "approval_required":
       return `${KEPT} It needs your approval password before it can apply.`;
     case "authority_apply_failed":
-      return `${KEPT} Guard could not write the change to its protection authority. Try again; if it keeps failing, ${repairAuthority}`;
+      return `${UNCERTAIN} If the change is not there, ${repairAuthority}`;
     case "authority_conflict":
     case "revision_conflict":
     case "invalid_previous_revision":
@@ -9956,6 +9959,15 @@ function codeSentence(code, recovery) {
       return void 0;
   }
 }
+const RETRYABLE_PREPARATION_CAUSES = /* @__PURE__ */ new Set([
+  "installed_runtime_unresponsive",
+  "local_storage",
+  "offline",
+  "release_unavailable"
+]);
+function isRetryableProtectionChangeError(error) {
+  return error instanceof ExtensionControlApiError && error.code === "pack_preparation_unavailable" && RETRYABLE_PREPARATION_CAUSES.has(error.cause ?? "");
+}
 function protectionChangeErrorMessage(error, recoveryCommand, recoveryShell) {
   const recovery = {
     command: recoveryCommand ?? "hol-guard command controls recover-authority",
@@ -9965,10 +9977,11 @@ function protectionChangeErrorMessage(error, recoveryCommand, recoveryShell) {
     if (error.code === "pack_preparation_unavailable") return preparationSentence(error.cause, recovery);
     const sentence = error.code ? codeSentence(error.code, recovery) : void 0;
     if (sentence) return sentence;
-    return `${KEPT} Try again; if it keeps failing, the Guard daemon log records the exact cause.`;
+    return `${UNCERTAIN} If it is not there, try again; the Guard daemon log records the exact cause.`;
   }
   return error instanceof Error && error.message ? error.message : "Protection change failed";
 }
+const RETRY_PREPARATION_DELAY_MS = 1200;
 const DEFAULT_AUTHORITY_RECOVERY_COMMAND = "hol-guard command controls recover-authority";
 function currentExtensionRouteState() {
   return {
@@ -10142,7 +10155,7 @@ function ProtectionCenterWorkspace(props) {
     if (state.kind !== "ready" || !pending) return;
     setBusy(true);
     setMutationError(null);
-    try {
+    const submit = async () => {
       const payload = buildExtensionMutation(state, pending);
       Object.assign(payload, credentials);
       payload.session_nonce = randomToken();
@@ -10150,6 +10163,15 @@ function ProtectionCenterWorkspace(props) {
       if (typeof preview.proof_id !== "string") throw new Error("Guard did not issue a one-use proof for this protection change.");
       payload.proof_id = preview.proof_id;
       await applyExtensionMutation(payload);
+    };
+    try {
+      try {
+        await submit();
+      } catch (error) {
+        if (!isRetryableProtectionChangeError(error)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, RETRY_PREPARATION_DELAY_MS));
+        await submit();
+      }
       setPending(null);
       await load();
     } catch (error) {

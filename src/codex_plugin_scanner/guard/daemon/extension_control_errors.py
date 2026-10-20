@@ -25,11 +25,20 @@ _RECOVERY_ACTIONS = {
 
 # A classified, non-sensitive cause narrows a generic failure code to the step
 # that actually failed. It never carries a path, a URL or an exception message.
+# Every cause the classifier can return needs an entry: the code-level fallback
+# below is `retry_pack_preparation`, and a client that acts on it would retry a
+# withdrawn pack or a broken install forever.
 _CAUSE_RECOVERY_ACTIONS = {
-    "authority_unavailable": "enroll_or_repair_authority",
     "installed_runtime_incomplete": "repair_guard_installation",
+    "installed_runtime_unresponsive": "retry_pack_preparation",
+    "internal": "inspect_daemon_log",
     "local_storage": "repair_local_cache",
     "offline": "retry_when_reachable",
+    # The control authority is already protected when preparation runs, so
+    # `recover-authority` answers `authority_not_recoverable` here. What is
+    # missing is a publication this install can authenticate.
+    "pack_authority_unavailable": "update_guard_or_reconnect",
+    "pack_revoked": "refresh_catalog",
     "release_unavailable": "retry_when_reachable",
 }
 

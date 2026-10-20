@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { ExtensionControlApiError } from "../extension-controls-api";
-import { protectionChangeErrorMessage } from "./protection-change-error";
+import { isRetryableProtectionChangeError, protectionChangeErrorMessage } from "./protection-change-error";
 
 // Every code the daemon's extension-control API can answer a mutation with.
 const CODES = [
@@ -43,14 +43,18 @@ const CODES = [
   "a_code_this_build_has_never_seen",
 ];
 
+// Every cause `classify` in the daemon can attach, plus one this build has
+// never seen.
 const CAUSES = [
   undefined,
-  "offline",
-  "release_unavailable",
-  "authority_unavailable",
   "installed_runtime_incomplete",
-  "pack_revoked",
+  "installed_runtime_unresponsive",
+  "internal",
   "local_storage",
+  "offline",
+  "pack_authority_unavailable",
+  "pack_revoked",
+  "release_unavailable",
   "surprise",
 ];
 
@@ -67,7 +71,8 @@ for (const code of CODES) {
   assert.ok(message.endsWith("."), `message for ${code} is not a sentence: ${message}`);
 }
 
-// A failed save always says the existing protection survived and what to do.
+// Preparation runs before the daemon commits anything, so every one of its
+// causes can say the existing protection survived, and each says what to do.
 for (const cause of CAUSES) {
   const message = protectionChangeErrorMessage(apiError("pack_preparation_unavailable", cause));
   assert.match(message, /current protection is unchanged/);
@@ -90,6 +95,13 @@ assert.match(
   protectionChangeErrorMessage(apiError("pack_preparation_unavailable", "installed_runtime_incomplete")),
   /Reinstall or update Guard/,
 );
+// A compiler that would not start or ran out of time is not a broken install,
+// so it must not ask for a reinstall.
+const unresponsive = protectionChangeErrorMessage(
+  apiError("pack_preparation_unavailable", "installed_runtime_unresponsive"),
+);
+assert.match(unresponsive, /did not answer in time/);
+assert.ok(!/Reinstall/.test(unresponsive));
 assert.match(
   protectionChangeErrorMessage(apiError("pack_preparation_unavailable", "local_storage")),
   /local protection cache/,
@@ -97,16 +109,32 @@ assert.match(
 
 // The authority recovery command and its shell come from the daemon.
 const authority = protectionChangeErrorMessage(
-  apiError("pack_preparation_unavailable", "authority_unavailable"),
+  apiError("authority_unavailable"),
   "hol-guard command controls recover-authority --home C:\\Guard",
   "powershell",
 );
 assert.match(authority, /hol-guard command controls recover-authority --home C:\\Guard/);
 assert.match(authority, /in PowerShell/);
-assert.match(
-  protectionChangeErrorMessage(apiError("pack_preparation_unavailable", "authority_unavailable")),
-  /in your terminal/,
+assert.match(protectionChangeErrorMessage(apiError("authority_unavailable")), /in your terminal/);
+
+// Preparation reaches the pack-lifecycle authority, which `recover-authority`
+// refuses to touch while the control authority is protected. That cause must
+// not send anyone to that command.
+const packAuthority = protectionChangeErrorMessage(
+  apiError("pack_preparation_unavailable", "pack_authority_unavailable"),
+  "hol-guard command controls recover-authority",
 );
+assert.ok(!packAuthority.includes("recover-authority"), packAuthority);
+assert.match(packAuthority, /Update Guard, or reconnect this machine/);
+
+// A write that may already have committed, and an answer this build cannot
+// read, must not claim the change was dropped.
+for (const code of ["authority_apply_failed", "a_code_this_build_has_never_seen"]) {
+  const message = protectionChangeErrorMessage(apiError(code));
+  assert.ok(!message.includes("current protection is unchanged"), `${code}: ${message}`);
+  assert.match(message, /may or may not have been saved/);
+  assert.match(message, /Reload the page/);
+}
 
 // Managed settings and stale pages say what is actually wrong.
 assert.match(protectionChangeErrorMessage(apiError("managed_layer_mutation")), /managed for you by your organization/);
@@ -119,5 +147,19 @@ assert.equal(
   "Guard did not issue a one-use proof.",
 );
 assert.equal(protectionChangeErrorMessage("not an error"), "Protection change failed");
+
+// The dashboard retries the save itself for the causes that clear on their
+// own, so the common failure never becomes a sentence the operator must act on.
+for (const cause of ["offline", "release_unavailable", "local_storage", "installed_runtime_unresponsive"]) {
+  assert.ok(isRetryableProtectionChangeError(apiError("pack_preparation_unavailable", cause)), cause);
+}
+// A withdrawn pack, a broken install and a protected authority never clear by
+// themselves, so retrying them would only hide the real next step.
+for (const cause of [undefined, "pack_revoked", "installed_runtime_incomplete", "pack_authority_unavailable", "internal"]) {
+  assert.ok(!isRetryableProtectionChangeError(apiError("pack_preparation_unavailable", cause)), String(cause));
+}
+// A conflict is a different save, not the same one, so it is never retried.
+assert.ok(!isRetryableProtectionChangeError(apiError("revision_conflict", "offline")));
+assert.ok(!isRetryableProtectionChangeError(new Error("offline")));
 
 console.log("protection-change-error ok");
