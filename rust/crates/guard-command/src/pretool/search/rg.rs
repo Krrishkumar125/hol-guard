@@ -406,15 +406,31 @@ fn rg_arguments_pass(
 /// directory the names-only walk stepped over. A literal glob can pass the
 /// name screen and so never reach the glob-scope proof on its own; under a
 /// names-only root every inclusion glob is proven by what it selects.
+///
+/// The scope proof reads a relative root against the working directory, so
+/// each root is expanded first as the names-only walk expanded it: `~/scratch`
+/// is the home directory's `scratch`, not a `~` folder below the cwd.
 fn names_only_globs_proven(arguments: &[String], roots: &[&str], context: ReadContext<'_>) -> bool {
     let globs = inclusion_globs(arguments);
-    globs.is_empty()
-        || super::super::search_scope::rg_glob_scope_proven(
-            roots,
-            &globs,
-            context.home_dir,
-            context.cwd,
-        )
+    if globs.is_empty() {
+        return true;
+    }
+    let Some(expanded) = roots
+        .iter()
+        .map(|root| {
+            tree::expanded_operand(root, context).and_then(|path| path.to_str().map(str::to_owned))
+        })
+        .collect::<Option<Vec<String>>>()
+    else {
+        return false;
+    };
+    let expanded: Vec<&str> = expanded.iter().map(String::as_str).collect();
+    super::super::search_scope::rg_glob_scope_proven(
+        &expanded,
+        &globs,
+        context.home_dir,
+        context.cwd,
+    )
 }
 
 /// Every `-g`, `--glob` or `--iglob` value that selects rather than excludes.

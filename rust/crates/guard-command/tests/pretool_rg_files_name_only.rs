@@ -141,12 +141,14 @@ fn a_listing_that_re_includes_a_hidden_entry_keeps_its_review() {
     write(f.home.join("ledger/.aws/credentials"), "[default]\n");
     write(f.home.join("ledger/.ignore"), "!.aws/\n");
     check(&f, "rg --files ~/vault", true);
+    // A glob that names both the hidden directory and the key in it walks
+    // into `.ssh` and prints the key, past the hidden filter.
     for command in [
-        "rg --files -g .ssh ~/vault",
-        "rg --files --glob=.ssh ~/vault",
+        "rg --files -g '{.ssh,id_ed25519}' ~/vault",
+        "rg --files --glob='{.ssh,id_ed25519}' ~/vault",
         // `--` here is the separator's value, so the `-g` after it still
         // selects the hidden entry.
-        "rg --files --context-separator -- -g .ssh ~/vault",
+        "rg --files --context-separator -- -g '{.ssh,id_ed25519}' ~/vault",
         "rg --files ~/ledger",
     ] {
         check(&f, command, false);
