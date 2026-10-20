@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from ci.gauntlet import qualify, qualify_setup
+from ci.gauntlet import lane_preflight, qualify, qualify_setup
 
 SHA = "a" * 40
 
@@ -237,6 +237,11 @@ def _fake_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, summaries: list
         },
     )
     monkeypatch.setattr(qualify_setup, "ensure_commit", lambda *_a: None)
+    monkeypatch.setattr(
+        lane_preflight,
+        "check_lane",
+        lambda *_a, **_k: {"identity": "test-lane", "delivered": 2, "total_tokens": 1},
+    )
     monkeypatch.setattr(qualify_setup, "git_show", lambda *_a, **_k: b'{"lockfileVersion": 3}')
     wheel = tmp_path / "hol_guard-1.0.0-any.whl"
     wheel.write_bytes(b"wheel")
@@ -313,6 +318,7 @@ def test_qualifying_attempt_verifies_and_returns_zero(tmp_path: Path, monkeypatc
     assert set(result["phase_seconds"]) == {
         "preflight",
         "source",
+        "lane",
         "wheel",
         "install",
         "live_cases",
