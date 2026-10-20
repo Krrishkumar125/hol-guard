@@ -331,6 +331,10 @@ pub fn evaluate(request: &Value) -> Result<Value> {
         return Ok(json!({}));
     }
     if request["action"] == "observe" {
+        // Publication evicts views under the exclusive cache lock, so a shared
+        // lock keeps every view this read verifies in place until it returns.
+        let lock = lock_file(&root.join("cache.lock"))?;
+        fs2::FileExt::lock_shared(&lock)?;
         for path in views(&root)? {
             let value = record(&path)?;
             if value["manifest"]["catalogDigest"] == request["view_digest"]
