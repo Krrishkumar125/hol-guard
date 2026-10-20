@@ -408,7 +408,7 @@ fn target_safe(value: &str, workspace: &Path, context: super::PathContext<'_>) -
     let Ok(metadata) = std::fs::symlink_metadata(&joined) else {
         return false;
     };
-    if !metadata.is_file() || executable(&metadata) {
+    if !metadata.is_file() || executable(&joined, &metadata) {
         return false;
     }
     let Ok(canonical) = std::fs::canonicalize(&joined) else {
@@ -434,14 +434,33 @@ fn plain_parts(path: &Path) -> bool {
 }
 
 #[cfg(unix)]
-fn executable(metadata: &std::fs::Metadata) -> bool {
+fn executable(_path: &Path, metadata: &std::fs::Metadata) -> bool {
     use std::os::unix::fs::PermissionsExt;
     metadata.permissions().mode() & 0o111 != 0
 }
 
+/// Windows has no execute bit: the extension decides what runs on launch, so
+/// that is what an in-place edit has to be read against there.
 #[cfg(not(unix))]
-fn executable(_metadata: &std::fs::Metadata) -> bool {
-    false
+fn executable(path: &Path, _metadata: &std::fs::Metadata) -> bool {
+    executable_extension(path)
+}
+
+/// Extensions Windows runs directly. `.js` is in the default `PATHEXT` and is
+/// left out on purpose: it is ordinary repository source far more often than it
+/// is a script, and `sed -i` over source has to stay silent.
+#[cfg(any(not(unix), test))]
+const EXECUTABLE_EXTENSIONS: [&str; 11] = [
+    "bat", "cmd", "com", "exe", "msi", "ps1", "psm1", "scr", "vbe", "vbs", "wsf",
+];
+
+#[cfg(any(not(unix), test))]
+fn executable_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(|extension| {
+            EXECUTABLE_EXTENSIONS.contains(&extension.to_ascii_lowercase().as_str())
+        })
 }
 
 #[cfg(test)]

@@ -54,6 +54,11 @@ AppContainer profile — plus the path and network denials the macOS profile
 expresses. That is a port of the whole containment layer, not a configuration
 change, and it is not in the current release.
 
+Containment is the largest platform difference but not the only one. Every
+other `#[cfg(not(unix))]` arm in the Rust tree is listed, with a verdict and a
+reason, in [the platform arm inventory](platform-arm-inventory.md), and CI
+fails when a new one arrives unreviewed.
+
 ## How to state this in release notes
 
 Say that Guard reviews and blocks on Windows with the same catalog and runtime,
