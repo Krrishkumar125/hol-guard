@@ -1453,10 +1453,10 @@
   {
    "file": "rust/crates/guard-runtime/src/restricted_pytest_op.rs",
    "item": "fn evaluate -- non-Unix block",
-   "verdict": "windows-unsupported",
-   "note": "Only `contained_argv`, `normalized_command` and the Windows inline and Node-build planners answer off Unix. There is no pytest backend, which is why `source .venv/bin/activate && pytest -q` cannot be routed into a sink on Windows.",
+   "verdict": "windows-equivalent",
+   "note": "Off Unix only `contained_argv`, `normalized_command` and the Windows planners answer: inline scripts, Node builds and pytest each get a read-only AppContainer plan (`windows_readonly`, `windows_node_build`, `windows_pytest`). Any other operation, and every operation on a non-Windows platform without the Unix backend, answers `pytest_restricted_sandbox_unavailable` and nothing is started.",
    "cfg": "not(unix)",
-   "body": "fa16bec3bb42"
+   "body": "21a1afbb5f71"
   },
   {
    "file": "rust/crates/guard-runtime/src/shell_request_inspection_host.rs",
