@@ -387,7 +387,13 @@ def main(args: Any) -> int:
                 progress(f"lane {lane['identity']} total_tokens={lane['total_tokens']}")
             with timings.measure("wheel"):
                 wheel_info = qualify_setup.ensure_wheel(
-                    args.cache_root, REPO, sha, run_root, wheel=args.wheel, release_profile=args.release_profile_wheel
+                    args.cache_root,
+                    REPO,
+                    sha,
+                    run_root,
+                    wheel=args.wheel,
+                    release_assets=args.wheel_release_assets,
+                    release_profile=args.release_profile_wheel,
                 )
             progress(f"wheel {wheel_info['sha256'][:12]} cached={wheel_info['cached']} profile={wheel_info['profile']}")
             candidate = run_root / "candidate"

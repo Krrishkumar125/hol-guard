@@ -633,3 +633,43 @@ def test_an_interrupted_attempt_still_counts_as_driven(tmp_path: Path, monkeypat
             on_started=lambda: started.append(1),
         )
     assert started == [1]
+
+
+def test_a_cache_without_the_exported_packs_is_a_miss(tmp_path: Path) -> None:
+    """A cache filled before the export existed must not skip the rebuild."""
+    store = tmp_path / "store"
+    store.mkdir()
+    wheel = store / "hol_guard-1.0.0-any.whl"
+    wheel.write_bytes(b"wheel")
+    (store / "wheel.sha256").write_text(qualify_setup.digest_file(wheel) + "\n")
+    assert qualify_setup._cached_wheel(store, assets_required=True) is None
+    reused = qualify_setup._cached_wheel(store, assets_required=False)
+    assert reused is not None and reused["release_assets"] is None
+    (store / qualify_setup.RELEASE_ASSETS_DIRECTORY).mkdir()
+    rebuilt = qualify_setup._cached_wheel(store, assets_required=True)
+    assert rebuilt is not None
+    assert rebuilt["release_assets"] == str(store / qualify_setup.RELEASE_ASSETS_DIRECTORY)
+
+
+def test_a_supplied_wheel_carries_the_packs_its_build_exported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--wheel`` on an exporting candidate needs its matching asset directory."""
+    monkeypatch.setattr(qualify_setup, "git_show", lambda *_a, **_k: qualify_setup.ASSET_OUTPUT_MARKER.encode())
+    wheel = tmp_path / "hol_guard-1.0.0-any.whl"
+    wheel.write_bytes(b"wheel")
+    with pytest.raises(RuntimeError, match="--wheel-release-assets"):
+        qualify_setup.ensure_wheel(tmp_path / "cache", tmp_path / "repo", SHA, tmp_path / "run", wheel=wheel)
+    with pytest.raises(RuntimeError, match="not a directory"):
+        qualify_setup.ensure_wheel(
+            tmp_path / "cache",
+            tmp_path / "repo",
+            SHA,
+            tmp_path / "run",
+            wheel=wheel,
+            release_assets=tmp_path / "missing",
+        )
+    assets = tmp_path / "packs"
+    assets.mkdir()
+    result = qualify_setup.ensure_wheel(
+        tmp_path / "cache", tmp_path / "repo", SHA, tmp_path / "run", wheel=wheel, release_assets=assets
+    )
+    assert result["release_assets"] == str(assets)

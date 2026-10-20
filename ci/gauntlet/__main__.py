@@ -217,6 +217,11 @@ def main(argv: list[str] | None = None) -> int:
         "--wheel", type=Path, help="Prebuilt native wheel; required on hosts other than macOS and Linux x86_64"
     )
     qualify.add_argument(
+        "--wheel-release-assets",
+        type=Path,
+        help="Directory of command packs that --wheel's build exported, served to the extension-control cases",
+    )
+    qualify.add_argument(
         "--release-profile-wheel",
         action="store_true",
         help="Build the tested wheel with the production release profile (fat LTO) "
