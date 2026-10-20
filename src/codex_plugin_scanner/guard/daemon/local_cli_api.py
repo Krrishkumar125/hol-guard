@@ -880,8 +880,10 @@ class LocalCliApiService:
         """Record the exception being handled under ``event`` in daemon.log."""
 
         _LOGGER.warning("%s", event, exc_info=True)
-        if self._record_exception is not None:
-            self._record_exception(event, detail=type(sys.exc_info()[1]).__name__)
+        # A service built without `__init__` (as some tests do) has no recorder.
+        record_exception = getattr(self, "_record_exception", None)
+        if record_exception is not None:
+            record_exception(event, detail=type(sys.exc_info()[1]).__name__)
 
     def _observe_harness_mcp_servers(self, *, strict: bool = False, fresh: bool = False) -> dict[str, str]:
         try:
