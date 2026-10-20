@@ -62,7 +62,7 @@ pub(super) fn is_developer_tool(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{forwarded_tool, is_developer_tool};
+    use super::{forwarded_tool, is_developer_tool, path_is_within_any};
     use std::path::Path;
 
     #[test]
@@ -92,5 +92,38 @@ mod tests {
     #[test]
     fn an_ordinary_system_path_is_not_a_developer_tool() {
         assert!(!is_developer_tool(Path::new("/bin/ls")));
+    }
+
+    /// The shim resolution moved `/usr/bin/python3` into the developer
+    /// directory, which is not a trusted root, so the gate that admits a
+    /// contained interpreter has to make the same exemption the executable
+    /// check makes. Without it this host's `python3 -m pytest` is refused at
+    /// plan time and never reaches containment.
+    #[test]
+    fn a_shimmed_interpreter_is_admitted_for_a_contained_pytest_run() {
+        let Some(resolved) = forwarded_tool(Path::new("/usr/bin/python3")) else {
+            // No sealed developer directory on this host, so `/usr/bin/python3`
+            // stays under a trusted root and this gate was never in question.
+            return;
+        };
+        assert!(!path_is_within_any(
+            &resolved,
+            &super::super::TRUSTED_EXECUTABLE_ROOTS
+        ));
+        let workspace = std::env::temp_dir().canonicalize().unwrap();
+        let command = vec![
+            "/usr/bin/python3".to_owned(),
+            "-m".to_owned(),
+            "pytest".to_owned(),
+        ];
+        let (launch, executable) = super::super::validation::resolve_pytest_executable(
+            &command,
+            &workspace,
+            &workspace,
+            "/usr/bin",
+        )
+        .expect("a shimmed system interpreter is a valid contained pytest launcher");
+        assert_eq!(executable, resolved);
+        assert!(launch.ends_with("python3"));
     }
 }
