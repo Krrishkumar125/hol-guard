@@ -74,6 +74,12 @@ pub(super) fn bounded_substitutions(text: &str) -> Option<BoundedSubstitutions> 
                 .iter()
                 .skip_while(|word| SHELL_PREFIXES.contains(&word.as_str()))
                 .find(|word| !is_assignment(word))?;
+            // `env NAME=$(...)` and `make NAME=$(...)` set a variable the
+            // program reads. A word shaped like a setting is never read as
+            // printed output, whatever program receives it.
+            if is_assignment(&word) {
+                return None;
+            }
             let close = closing_parenthesis(&chars, index + 2)?;
             let inner: String = chars[index + 2..close].iter().collect();
             programs.extend(inner_programs(&inner)?);

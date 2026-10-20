@@ -330,8 +330,9 @@ impl CompiledNativeCommandControls {
     }
 
     /// An active extension that is not required lists a program in
-    /// `programs`. An unknown or empty name set is not that list: such an
-    /// extension owns every command and supplies its floor as an owner.
+    /// `programs`, or has rules that can match without naming a known
+    /// program. Such rules may judge the words a substitution prints, so the
+    /// unknown set fails closed. An empty set names no program here.
     fn contributed_owner_names_a_program(&self, programs: &BTreeSet<String>) -> bool {
         self.candidate_index
             .extension_indices()
@@ -347,7 +348,7 @@ impl CompiledNativeCommandControls {
                     .map(|(_, executables)| *executables);
                 self.program
                     .extension_names(index, compatibility)
-                    .is_some_and(|names| !names.is_empty() && !names.is_disjoint(programs))
+                    .is_none_or(|names| !names.is_empty() && !names.is_disjoint(programs))
             })
     }
 

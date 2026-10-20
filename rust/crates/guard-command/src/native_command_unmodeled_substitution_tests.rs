@@ -45,6 +45,8 @@ fn a_substitution_that_could_run_or_write_anything_is_not_bounded() {
         "TARGET=$(cat id); gh pr view $TARGET",
         "GH_HOST=$(cat host.txt) gh pr list",
         "time $(echo rm) -rf build",
+        "env SERVICE_TOKEN=$(echo x) echo done",
+        "make VERSION=$(cat VERSION) build",
         // A redirect target the floor cannot read.
         "git status > \"$(cat target)\"",
         "git status >$(cat target)",
