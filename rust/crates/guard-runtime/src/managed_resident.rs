@@ -451,6 +451,11 @@ const SKILL_SCAN_TIMEOUT_CEILING_MS: u64 = 60_000;
 /// package-shim admin op shares it: a probe runs each installed shim under its
 /// own per-shim timeout.
 const CONTAINED_RUNNER_TIMEOUT_CEILING_MS: u64 = 670_000;
+/// The containment self-probe runs a real contained process under a five
+/// second timeout and may spend another five seconds reaping it, so the
+/// nine-second default would abort a probe that is still finishing and report
+/// containment as unavailable while the backend is in fact healthy.
+const CONTAINMENT_HEALTH_PROBE_TIMEOUT_CEILING_MS: u64 = 15_000;
 /// A Codex resume retry waits up to a minute for the app server to accept
 /// the turn and up to its busy timeout for the store; the caller adds five
 /// seconds of transport grace.
@@ -472,6 +477,7 @@ pub(crate) fn client_timeout(payload: &[u8]) -> Duration {
             | "contained_package_script_execute"
             | "shim_admin",
         ) => CONTAINED_RUNNER_TIMEOUT_CEILING_MS,
+        Some("containment_health_probe") => CONTAINMENT_HEALTH_PROBE_TIMEOUT_CEILING_MS,
         Some("codex_request_resume") => CODEX_REQUEST_RESUME_TIMEOUT_CEILING_MS,
         Some("native_bash_execute") => guard_contracts::NATIVE_BASH_EXECUTE_MAX_TIMEOUT_MS + 1_000,
         Some("daemon_lifecycle_decide") => DAEMON_LIFECYCLE_TIMEOUT_CEILING_MS,

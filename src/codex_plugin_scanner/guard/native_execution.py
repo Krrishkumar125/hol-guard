@@ -407,6 +407,41 @@ def contained_workspace_write_execute_native(
 
 
 # ---------------------------------------------------------------------------
+# Containment health probe op
+# ---------------------------------------------------------------------------
+
+# The resident runs a real contained process under a five second timeout and
+# may spend another five seconds reaping it.
+_CONTAINMENT_HEALTH_PROBE_SECONDS = 12.0
+
+
+def containment_health_probe_native(
+    *,
+    daemon_fingerprint: str,
+    guard_home: Path,
+) -> dict[str, object] | None:
+    """Ask the resident for current containment health evidence."""
+
+    request: dict[str, object] = {
+        "schema": "guard-containment-health-probe-request.v1",
+        "request_id": _request_id("containment_health_probe"),
+        "daemon_fingerprint": daemon_fingerprint,
+        "guard_home": str(guard_home),
+    }
+    decoded = _resident_request(
+        operation="containment_health_probe",
+        request=request,
+        guard_home=guard_home,
+        timeout_seconds=_CONTAINMENT_HEALTH_PROBE_SECONDS,
+        required_feature=_CONTAINED_EXECUTION_FEATURE,
+    )
+    if decoded is None:
+        return None
+    result = decoded.get("result")
+    return result if isinstance(result, dict) else None
+
+
+# ---------------------------------------------------------------------------
 # MCP stdio probe op
 # ---------------------------------------------------------------------------
 

@@ -103,7 +103,10 @@ test('contained runtime boundaries', async () => {
         include_inputs=True,
     )
     fingerprint = current_guard_daemon_runtime_fingerprint()
-    health = probe_containment_health(daemon_fingerprint=fingerprint)
+    health = probe_containment_health(
+        daemon_fingerprint=fingerprint,
+        guard_home=tmp_path / "guard-home",
+    )
     assert health.probe_enforced, health.to_dict()
     try:
         result = execute_contained(request, timeout_seconds=90)
