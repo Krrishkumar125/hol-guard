@@ -16,7 +16,11 @@ import pytest
 
 from ci.gauntlet import parallel
 from ci.gauntlet.case_retry import MAX_CASE_RETRIES, CaseRetries, case_fixture_name, interrupted, retryable
+from ci.gauntlet.catalog import Scenario
+from ci.gauntlet.evidence import assess_case
 from ci.gauntlet.fixtures import digest_file, scenario_fixture_name
+
+from .test_guard_gauntlet import observed_case
 
 
 def _assessment(outcome: str, **extra: Any) -> dict[str, Any]:
@@ -409,10 +413,38 @@ def test_a_superseded_attempt_still_counts_towards_what_the_run_cost(tmp_path: P
     assert inference_usage(cases, ["a"])["total_tokens"] == 30
 
 
-def _history(tmp_path: Path) -> tuple[dict[str, Any], Path]:
+def _rewrite(kept: Path, report: dict[str, Any], changes: dict[str, Any]) -> None:
+    """Edit a banked attempt and re-declare its digest, as a dishonest runner would."""
+    kept.write_text(json.dumps({**json.loads(kept.read_text()), **changes}))
+    report["case_retries"][0]["evidence_sha256"] = digest_file(kept)
+
+
+BANKED = Scenario("a", "allow", "commands", "Use the tool", ("echo fixture",))
+
+
+def _banked(case: dict[str, Any]) -> dict[str, Any]:
+    """Name the case this evidence belongs to, as the runner writes it."""
+    return {**case, "id": BANKED.id, "expectation": BANKED.expectation}
+
+
+def _declined() -> dict[str, Any]:
+    """A case the model never exercised: no call, no Guard observation, nothing to judge."""
+    case = _banked(observed_case())
+    case["events"] = [
+        {"type": "model_turn", "calls": [], "stop_reason": "stop"},
+        {"type": "agent_end", "terminal": True},
+    ]
+    case["guard_observations"] = []
+    case["native_routes"] = {}
+    case["assessment"] = assess_case(BANKED, case)
+    assert case["assessment"]["outcome"] == "not-exercised"
+    return case
+
+
+def _history(tmp_path: Path, case: dict[str, Any] | None = None) -> tuple[dict[str, Any], Path]:
     kept = tmp_path / "superseded" / "a.attempt-1.json"
-    kept.parent.mkdir(parents=True)
-    kept.write_text('{"attempt": 1}')
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    kept.write_text(json.dumps(case if case is not None else _declined()))
     report = {
         "case_retries": [
             {"id": "a", "attempt": 1, "evidence": kept.name, "evidence_sha256": digest_file(kept)},
@@ -425,8 +457,24 @@ def test_the_verifier_accepts_a_declared_superseded_attempt(tmp_path: Path) -> N
     from ci.gauntlet.verify import _reconcile_case_retries
 
     report, _kept = _history(tmp_path)
-    _reconcile_case_retries(report, tmp_path, {"a"})
-    _reconcile_case_retries({}, tmp_path, {"a"})
+    _reconcile_case_retries(report, tmp_path, [BANKED])
+    _reconcile_case_retries({}, tmp_path, [BANKED])
+
+
+def test_the_verifier_rejects_a_banked_attempt_that_was_never_eligible(tmp_path: Path) -> None:
+    """A runner that buried a product failure behind a re-run is judged here, not trusted.
+
+    The runner that granted the re-run is candidate code; if a regression lets it
+    retry a false negative until it passes, only this side can catch it.
+    """
+    from ci.gauntlet.verify import _reconcile_case_retries
+
+    passed = _banked(observed_case())
+    passed["assessment"] = assess_case(BANKED, passed)
+    assert passed["assessment"]["outcome"] == "pass"
+    report, _kept = _history(tmp_path, passed)
+    with pytest.raises(ValueError, match="never eligible"):
+        _reconcile_case_retries(report, tmp_path, [BANKED])
 
 
 @pytest.mark.parametrize(
@@ -437,6 +485,10 @@ def test_the_verifier_accepts_a_declared_superseded_attempt(tmp_path: Path) -> N
         (lambda report, kept: report["case_retries"][0].update(id="elsewhere"), "outside this profile"),
         (lambda report, kept: report["case_retries"][0].update(evidence="../cases/a.json"), "does not name"),
         (lambda report, kept: report["case_retries"][0].update(evidence=None), "does not name"),
+        (lambda report, kept: report["case_retries"][0].update(attempt=2), "another case's evidence"),
+        (lambda report, kept: _rewrite(kept, report, {"id": "elsewhere"}), "another case's evidence"),
+        (lambda report, kept: _rewrite(kept, report, {"expectation": "block"}), "another case's evidence"),
+        (lambda report, kept: _rewrite(kept, report, {"assessment": {"outcome": "pass"}}), "does not match"),
     ],
 )
 def test_the_verifier_rejects_a_superseded_attempt_it_cannot_reconcile(
@@ -447,7 +499,7 @@ def test_the_verifier_rejects_a_superseded_attempt_it_cannot_reconcile(
     report, kept = _history(tmp_path)
     mutate(report, kept)
     with pytest.raises(ValueError, match=message):
-        _reconcile_case_retries(report, tmp_path, {"a"})
+        _reconcile_case_retries(report, tmp_path, [BANKED])
 
 
 @pytest.mark.parametrize("value", [-1, MAX_CASE_RETRIES + 1])
