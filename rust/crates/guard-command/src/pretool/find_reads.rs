@@ -10,7 +10,8 @@
 //! `~/.agent` root may be one when its tree clears the walk `ls -R` needs.
 //! Another home dot-directory may be one when `-maxdepth 1` keeps the walk to
 //! its own entries, or when the expression prints only the paths an ordinary
-//! name pattern selects. A project-metadata directory such as `.github` in a
+//! name pattern selects, whether that pattern is the name itself, a document
+//! suffix, or a glob built around a word someone chose. A project-metadata directory such as `.github` in a
 //! repository may be one when every entry below it clears the recursive
 //! listing screen, and a root that does not exist prints only an error, as
 //! the same probe does for `ls`.
@@ -140,6 +141,12 @@ fn match_bounded(expression: &[String]) -> bool {
 /// credential, key or login file this screen refuses carries such a suffix.
 const DOCUMENT_SUFFIXES: [&str; 3] = [".md", ".markdown", ".rst"];
 
+/// How much of a glob has to be literal before it names a word rather than a
+/// kind of file. `.rst`, the shortest suffix prose is written under, is four
+/// characters, and so is the shortest name a session is likely to have
+/// chosen.
+const CHOSEN_WORD_LETTERS: usize = 4;
+
 /// Whether `pattern` names entries specifically enough that the walk prints
 /// only what the agent already named, and can name nothing a secret is kept
 /// in.
@@ -169,14 +176,38 @@ fn selects_ordinary_names(pattern: &str) -> bool {
         return false;
     }
     if lowered.contains(['*', '?', '[', ']', '{', '}']) {
-        return DOCUMENT_SUFFIXES
+        return (DOCUMENT_SUFFIXES
             .iter()
             .any(|suffix| lowered.ends_with(suffix))
+            || names_a_chosen_word(&lowered))
             && !crate::credential_store_names::pattern_can_select_secret(&lowered);
     }
     lowered.chars().count() >= 3
         && !lowered.contains("env")
         && !crate::credential_store_names::secret_bearing_file_name(&lowered)
+}
+
+/// Whether a glob is built around a word someone chose rather than around the
+/// wildcard itself.
+///
+/// `find ~/.codex -name "*release-notes*"` prints what a session's own notes
+/// are called: the literal run is the name, and the wildcards only say the
+/// agent does not know what sits either side of it. `*.json` is the opposite
+/// shape — the literal run is an extension every file of a kind carries, so
+/// what gets printed is whatever the tree happens to hold, `auth.json` among
+/// it. A run long enough to be a chosen name, and not an extension, is what
+/// separates them. The whole pattern is still read through
+/// [`crate::credential_store_names::pattern_can_select_secret`], so a chosen
+/// word that spells a store (`*credential-notes*`) is refused with the name
+/// it reaches.
+///
+/// A bracket stands for a set of letters that reading the run cannot see, so
+/// `[ac]uth.json` is not read this way and keeps the document-suffix rule.
+fn names_a_chosen_word(pattern: &str) -> bool {
+    !pattern.contains(['[', ']', '{', '}'])
+        && pattern
+            .split(['*', '?'])
+            .any(|run| run.chars().count() >= CHOSEN_WORD_LETTERS && !run.starts_with('.'))
 }
 
 fn safe_expression(expression: &[String]) -> bool {
