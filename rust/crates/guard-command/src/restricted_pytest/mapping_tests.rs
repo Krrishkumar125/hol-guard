@@ -246,3 +246,36 @@ fn the_mapping_budget_fails_closed() {
         json!({"max_mapping_bytes": size - 1}),
     ));
 }
+
+#[test]
+fn an_unresolved_symlink_cannot_be_admitted_as_a_program() {
+    let (_directory, root) = root();
+    let runner = image(&root.join("runner"), Image::default());
+    let alias = root.join("alias");
+    std::os::unix::fs::symlink(&runner, &alias).unwrap();
+    refused(&evidence(&root, &[&alias], &[], json!({})));
+}
+
+#[test]
+fn a_dependency_on_an_already_approved_loader_is_not_reclassified_as_library() {
+    let (_directory, root) = root();
+    let loader = image(
+        &root.join("aaa-loader.so"),
+        Image {
+            entry: 4096,
+            ..Image::default()
+        },
+    );
+    let runner = image(
+        &root.join("zzz-runner"),
+        Image {
+            needed: &["aaa-loader.so"],
+            ..Image::default()
+        },
+    );
+    let result = evidence(&root, &[&loader, &runner], &[&loader], json!({}));
+    assert_eq!(
+        mapped(&result),
+        [loader.to_str().unwrap(), runner.to_str().unwrap()]
+    );
+}

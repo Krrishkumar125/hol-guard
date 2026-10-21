@@ -6597,10 +6597,10 @@
    "base_commit": "e309ad05c1bad4069f8ab4aa0a056c73bad5052f",
    "source_sha256": "dfbb008ff4393a5e818a5138b1f40589d6f253b52ccf53bb1465aa62cd467342",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/restricted_pytest/contained_tests.rs::recorded_original_contained_execution_outcomes"
+    "rust/crates/guard-command/src/restricted_pytest/mapping_tests.rs::a_dependency_on_an_already_approved_loader_is_not_reclassified_as_library"
    ],
    "status": "native_behavior_ported_requires_ci",
-   "rationale": "Dependency-closure mapping evidence is computed and bounded in the native restricted-pytest mapping crate, which replays the recorded original contained-execution outcomes."
+   "rationale": "Native mapping keeps an already approved loader classified as a program when another image needs it by name."
   },
   {
    "old_node": "tests/test_guard_restricted_linux_mapping_plan.py::test_large_export_string_table_reads_only_bounded_dependency_names",
@@ -6687,10 +6687,10 @@
    "base_commit": "e309ad05c1bad4069f8ab4aa0a056c73bad5052f",
    "source_sha256": "dfbb008ff4393a5e818a5138b1f40589d6f253b52ccf53bb1465aa62cd467342",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/restricted_pytest/contained_tests.rs::recorded_original_contained_execution_outcomes"
+    "rust/crates/guard-command/src/restricted_pytest/mapping_tests.rs::an_unresolved_symlink_cannot_be_admitted_as_a_program"
    ],
    "status": "native_behavior_ported_requires_ci",
-   "rationale": "Dependency-closure mapping evidence is computed and bounded in the native restricted-pytest mapping crate, which replays the recorded original contained-execution outcomes."
+   "rationale": "Native mapping refuses an image path that is still a symlink, so the owner must resolve it before admission."
   },
   {
    "old_node": "tests/test_guard_restricted_linux_mapping_plan.py::test_mapping_budget_fails_closed",
