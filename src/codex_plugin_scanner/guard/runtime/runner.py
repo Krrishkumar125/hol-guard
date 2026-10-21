@@ -1451,8 +1451,9 @@ def sync_network_protection_bundle(
     )
     saved = store.get_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY)
     cached_bundle_version = None
-    if isinstance(saved, dict) and isinstance(saved.get("bundle"), dict):
-        existing_version = saved["bundle"].get("bundleVersion")
+    saved_bundle = saved.get("bundle") if isinstance(saved, dict) else None
+    if isinstance(saved_bundle, dict):
+        existing_version = saved_bundle.get("bundleVersion")
         if isinstance(existing_version, str) and existing_version:
             cached_bundle_version = existing_version
     request = _guard_sync_request(

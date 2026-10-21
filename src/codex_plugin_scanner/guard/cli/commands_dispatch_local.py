@@ -647,7 +647,7 @@ def _run_guard_network_check(args: argparse.Namespace, *, guard_home: Path | Non
     except NativeRunnerAuthorityError as error:
         _emit("network-check", {"url": url, "error": str(error)}, getattr(args, "json", False))
         return 1
-    payload = {"url": url, **verdict}
+    payload: dict[str, object] = {"url": url, **verdict}
     _emit("network-check", payload, getattr(args, "json", False))
     if not verdict.get("valid_url", False):
         return 2
