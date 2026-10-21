@@ -16,8 +16,8 @@ use serde_json::{Map, Value};
 
 use crate::{
     ArtifactBrowserOutcomeInputsV1, ArtifactBrowserOutcomeV1, ArtifactFinalizeInputsV1,
-    ArtifactFinalizeV1, CodexToolOutputFactsV1, NativeExtensionControlLayerV1,
-    NativePermissionPersistInputsV1, NativePermissionPersistPlanV1,
+    ArtifactFinalizeV1, CodexToolOutputFactsV1, HookRouteInputsV1, HookRouteV1,
+    NativeExtensionControlLayerV1, NativePermissionPersistInputsV1, NativePermissionPersistPlanV1,
 };
 
 /// Schema discriminator for the request.
@@ -93,6 +93,9 @@ pub enum HookDecisionQueryV1 {
     ArtifactBrowserOutcome {
         inputs: Box<ArtifactBrowserOutcomeInputsV1>,
     },
+    /// The hook pipeline's dispatch route: which handlers answer a prepared
+    /// payload, in what order.
+    HookRoute { inputs: Box<HookRouteInputsV1> },
 }
 
 /// Facts the artifact hook's review route depends on. The transport gathers
@@ -418,6 +421,7 @@ pub enum HookDecisionPayloadV1 {
     ArtifactReviewRoute(Box<ArtifactReviewRouteV1>),
     ArtifactFinalize(Box<ArtifactFinalizeV1>),
     ArtifactBrowserOutcome(Box<ArtifactBrowserOutcomeV1>),
+    HookRoute(Box<HookRouteV1>),
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.
         needs_facts: Vec<String>,

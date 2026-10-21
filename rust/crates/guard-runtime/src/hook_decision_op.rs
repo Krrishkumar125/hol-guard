@@ -7,10 +7,11 @@
 //! (`copilot_settle`), picks the artifact hook's response
 //! (`artifact_directive`), the route its review-tier verdicts take
 //! (`artifact_review_route`), the final action it settles on
-//! (`artifact_finalize`, `artifact_browser_outcome`) and what a native approval
-//! saves (`native_permission_persist_plan`). Every query is pure and fails
-//! closed: a malformed request yields a `native_hook_decision_*` error, never a
-//! default verdict.
+//! (`artifact_finalize`, `artifact_browser_outcome`), what a native approval
+//! saves (`native_permission_persist_plan`) and the route the hook pipeline
+//! dispatches a prepared payload through (`hook_route`). Every query is pure
+//! and fails closed: a malformed request yields a `native_hook_decision_*`
+//! error, never a default verdict.
 
 use guard_contracts::{
     HookCompositionV1, HookDecisionPayloadV1, HookDecisionQueryV1, HookDecisionRequestV1,
@@ -23,6 +24,7 @@ use crate::hook_decision_artifact_finalize::{artifact_browser_outcome, artifact_
 use crate::hook_decision_artifact_review_route::artifact_review_route;
 use crate::hook_decision_compose::{compose, Composed};
 use crate::hook_decision_finalize::{finalize, post_claim, post_claim_reuse};
+use crate::hook_decision_hook_route::hook_route;
 use crate::hook_decision_native_facts::{verdict_handoff, VerdictHandoff};
 use crate::hook_decision_native_permission_persist::native_permission_persist_plan;
 use crate::hook_decision_settle::settle;
@@ -128,6 +130,9 @@ pub(crate) fn decide(query: &HookDecisionQueryV1) -> Result<HookDecisionPayloadV
                 artifact_browser_outcome(inputs),
             )))
         }
+        HookDecisionQueryV1::HookRoute { inputs } => Ok(HookDecisionPayloadV1::HookRoute(
+            Box::new(hook_route(inputs)?),
+        )),
     }
 }
 
