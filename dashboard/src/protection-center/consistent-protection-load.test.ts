@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { REFRESH_DEADLINE_MS, refreshEffectiveExtensionControls } from "../extension-controls-api";
 import {
   CONSISTENT_LOAD_RETRY_DELAYS_MS,
   loadConsistentProtectionData,
@@ -79,4 +80,39 @@ assert.ok(CONSISTENT_LOAD_RETRY_DELAYS_MS.reduce((total, ms) => total + ms, 0) >
   });
   assert.equal(repairs, 2);
   assert.equal(result.catalog.catalog_digest, "new");
+}
+
+// The repair request is bounded. The daemon waits on its authority lease for
+// far longer than a page should hold a load on, and an unbounded repair stalls
+// the retry ladder on a single attempt instead of reading again.
+assert.ok(REFRESH_DEADLINE_MS > 0 && REFRESH_DEADLINE_MS <= 5000);
+{
+  const storage = new Map<string, string>();
+  const shim = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => { storage.set(key, value); },
+    removeItem: (key: string) => { storage.delete(key); },
+  };
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      location: { origin: "http://127.0.0.1:4174", pathname: "/", search: "", hash: "" },
+      sessionStorage: shim,
+      localStorage: shim,
+    },
+  });
+  const originalFetch = globalThis.fetch;
+  let seenSignal: AbortSignal | undefined;
+  globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    seenSignal = init?.signal ?? undefined;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => { reject(new Error("aborted")); });
+    });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(refreshEffectiveExtensionControls(5));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.ok(seenSignal?.aborted);
 }

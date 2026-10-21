@@ -31507,12 +31507,20 @@ async function fetchEffectiveExtensionControls() {
   }
   return { ...normalized, projection };
 }
-async function refreshEffectiveExtensionControls() {
-  await request("/v1/extension-controls/refresh", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}"
-  });
+const REFRESH_DEADLINE_MS = 5e3;
+async function refreshEffectiveExtensionControls(timeoutMs = REFRESH_DEADLINE_MS) {
+  const deadline = new AbortController();
+  const expired = setTimeout(() => deadline.abort(), timeoutMs);
+  try {
+    await request("/v1/extension-controls/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      signal: deadline.signal
+    });
+  } finally {
+    clearTimeout(expired);
+  }
 }
 async function fetchExtensionControlHistory() {
   const raw = await request("/v1/extension-controls/history");

@@ -159,11 +159,17 @@ class ExtensionControlApiService:
             raise ExtensionControlApiError(413, "catalog_payload_limit_exceeded")
         return payload
 
-    def effective(self) -> dict[str, object]:
+    def effective(self, *, reread: bool = True) -> dict[str, object]:
         # Reading the controls must stay a read. Committing a catalog migration
         # here would move the stored revision under every draft the dashboard
         # has open, which is the conflict this endpoint is polled to report.
-        return effective_controls_payload(self._registry, self._live_snapshot(read_only=True), self._store)
+        #
+        # `reread=False` is for a caller that has just refreshed the runtime
+        # itself. Re-reading durable authority there would take the authority
+        # lease a second time for an answer the caller already installed, and
+        # that second wait is the one a dashboard repair pays for.
+        snapshot = self._runtime.current() if not reread else self._live_snapshot(read_only=True)
+        return effective_controls_payload(self._registry, snapshot, self._store)
 
     def _live_snapshot(self, *, read_only: bool = False) -> ExtensionControlRuntimeSnapshot:
         """The snapshot a draft is built on, re-read from durable authority.
@@ -192,9 +198,10 @@ class ExtensionControlApiService:
         migration on the operator's behalf.
         """
 
+        registry = self._registry
         current = self._runtime.current()
         try:
-            view = self._store.read_extension_control_authority_for_registry(self._registry, read_only=read_only)
+            view = self._store.read_extension_control_authority_for_registry(registry, read_only=read_only)
             if view.health is not AuthorityHealth.PROTECTED:
                 return current
             if view.catalog_digest == current.catalog_digest and (view.revision, view.managed_revision) <= (
@@ -202,7 +209,17 @@ class ExtensionControlApiService:
                 current.managed_revision,
             ):
                 return current
-            return self._runtime.refresh(view)
+            with self._apply_lock:
+                # The read above runs without the apply lock, so an apply or a
+                # daemon refresh can install a newer snapshot, or rebind this
+                # service to another registry, while it is in flight. Installing
+                # this view anyway would roll the runtime back under the work
+                # that just landed, and `rebind_registry` would then refuse the
+                # rebind because the snapshot it installed is no longer current.
+                # A reader that lost the race serves what the writer installed.
+                if self._registry is not registry or self._runtime.current() is not current:
+                    return self._runtime.current()
+                return self._runtime.refresh(view)
         except (ExtensionControlAuthorityError, ValueError, OSError):
             # Authority that cannot be re-read or installed keeps serving the
             # snapshot the runtime already holds; mutations still fail closed.
