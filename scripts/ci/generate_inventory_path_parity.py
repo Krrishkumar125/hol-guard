@@ -25,9 +25,15 @@ Rust default:
 
 The `tree` section is recorded by the platform that runs this generator; the
 fixture names it so a Windows parity corpus is a visible gap rather than a
-silent one. Run it from the repository root:
+silent one.
 
-    python scripts/ci/generate_inventory_path_parity.py
+Run it from the repository root on the interpreter the project targets.
+`pathlib` is not frozen across releases: 3.14 reports `PureWindowsPath("//")`
+as absolute where 3.12 does not, so a newer interpreter rewrites recorded
+cases the port was written against.
+
+    uv run --python 3.12 --no-project python \
+        scripts/ci/generate_inventory_path_parity.py
 """
 
 from __future__ import annotations
@@ -73,6 +79,12 @@ PURE_PATHS = [
     "C:\\Users\\me\\x",
     "C:/Users/me/x",
     "\\\\server\\share\\dir\\f.txt",
+    # `ntpath.splitroot` upper-cases before comparing the device UNC prefix, so
+    # the lower-case spelling must keep `share` inside the drive instead of
+    # leaving it as the file name.
+    "\\\\?\\UNC\\server\\share",
+    "\\\\?\\unc\\server\\share",
+    "\\\\?\\Unc\\server\\share\\dir\\f.txt",
 ]
 
 RELATIVE_TO = [
@@ -85,6 +97,7 @@ RELATIVE_TO = [
     ("C:\\USERS\\ME\\x", "C:\\Users\\me"),
     ("C:\\Users\\me\\x", "D:\\Users\\me"),
     ("\\\\server\\share\\dir\\f.txt", "\\\\server\\share"),
+    ("\\\\?\\unc\\server\\share\\dir\\f.txt", "\\\\?\\UNC\\server\\share"),
 ]
 
 TREE_DIRS = [

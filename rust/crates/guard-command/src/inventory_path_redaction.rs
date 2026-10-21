@@ -24,6 +24,14 @@
 //!   port of the command-value patterns leaks `--token\u{1d}abc` and
 //!   `ap\u{131}_key=abc`.
 //!
+//! One divergence is deliberate. [`crate::codex_output_fs::resolve`] does not
+//! model the POSIX double-slash root, so a `//`-rooted candidate resolves to
+//! `None` here and takes the bare-name fallback where CPython would have kept
+//! the `{home}/` or `{workspace}/` form. That drops context rather than
+//! exporting a private prefix, which is the safe direction for this caller;
+//! `double_slash_root_falls_back_to_the_bare_name` pins it so the fallback
+//! cannot quietly turn into an export.
+//!
 //! `scripts/ci/generate_inventory_path_parity.py` records the corpus in
 //! `testdata/inventory_path_parity.json` that pins every case below.
 
@@ -181,7 +189,14 @@ fn split_root(text: &str) -> (String, String, String) {
             return (String::new(), "\\".to_owned(), normalized[1..].to_owned());
         }
         // `\\?\UNC\server\share` keeps the whole prefix as the drive.
-        let start = if bytes.starts_with(br"\\?\UNC\") {
+        // `ntpath.splitroot` upper-cases the first eight characters before
+        // comparing, so `\\?\unc\server\share` is the same prefix. Matching
+        // only the upper-case spelling would leave `share` as the file name,
+        // and the name fallback in this module exports a file name.
+        let start = if normalized
+            .get(..8)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(r"\\?\UNC\"))
+        {
             8
         } else {
             2

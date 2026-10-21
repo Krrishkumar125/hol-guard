@@ -6,8 +6,9 @@
 //! `PureWindowsPath` from one host, so each platform checks the flavour its
 //! `pathlib.Path` would use. The filesystem corpus needs a materialized tree
 //! and is recorded by whichever platform ran the generator; the fixture names
-//! that platform and [`tree_parity_is_posix_only`] fails on Windows while no
-//! Windows corpus exists, so the gap stays visible instead of compiling out.
+//! that platform and [`tree_parity_is_posix_only`] is an ignored, failing test
+//! on Windows while no Windows corpus exists, so a Windows run reports the gap
+//! by name instead of compiling it out or reporting a pass.
 
 use serde_json::Value;
 
@@ -85,16 +86,20 @@ fn relative_to_matches_cpython() {
 
 /// Windows has no recorded filesystem corpus yet: `Path.resolve()` and the
 /// symlink cases below would have to be generated on Windows. Until they are,
-/// the native path parsing above is the only Windows coverage, and this test
-/// says so out loud rather than letting `#[cfg(unix)]` hide it.
+/// the native path parsing above is the only Windows coverage.
+///
+/// Asserting that the fixture says `posix` would pass, which is how a missing
+/// corpus reads as a green parity check. Failing under `#[ignore]` keeps the
+/// gap named in every Windows run's ignored list without turning an absent
+/// corpus into a red build; removing the attribute is what the Windows corpus
+/// landing looks like.
 #[cfg(windows)]
 #[test]
+#[ignore = "no Windows tree corpus: regenerate testdata/inventory_path_parity.json on Windows, then enable the tree module there"]
 fn tree_parity_is_posix_only() {
-    let document = document();
-    assert_eq!(
-        document["tree"]["platform"].as_str(),
-        Some("posix"),
-        "a Windows tree corpus needs the resolve cases below enabled for Windows",
+    panic!(
+        "no Windows filesystem parity corpus: fixture platform is {:?}",
+        document()["tree"]["platform"].as_str(),
     );
 }
 
@@ -258,5 +263,19 @@ mod tree {
             &fixture.cwd,
         );
         assert_eq!(actual, "{home}/project/app.py");
+    }
+
+    /// A `//`-rooted candidate is the one shape where this port deliberately
+    /// diverges: the shared POSIX resolver does not model that root, so the
+    /// path takes the bare-name fallback instead of CPython's `{home}/` form.
+    /// The fallback is the safe direction, and this pins it there: what must
+    /// never happen is the private prefix reaching the output.
+    #[test]
+    fn double_slash_root_falls_back_to_the_bare_name() {
+        let fixture = Fixture::new();
+        let doubled = format!("/{}", fixture.place("{root}/home/project/app.py"));
+        let actual = redact_local_path(&doubled, Some(fixture.home.as_path()), &fixture.cwd);
+        assert_eq!(actual, "app.py");
+        assert!(!actual.contains(&fixture.place("{root}")));
     }
 }

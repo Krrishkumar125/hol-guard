@@ -179,6 +179,30 @@
     "\\\\server\\share\\dir\\f.txt"
    ],
    "path": "\\\\server\\share\\dir\\f.txt"
+  },
+  {
+   "is_absolute": false,
+   "name": "\\\\?\\UNC\\server\\share",
+   "parts": [
+    "\\\\?\\UNC\\server\\share"
+   ],
+   "path": "\\\\?\\UNC\\server\\share"
+  },
+  {
+   "is_absolute": false,
+   "name": "\\\\?\\unc\\server\\share",
+   "parts": [
+    "\\\\?\\unc\\server\\share"
+   ],
+   "path": "\\\\?\\unc\\server\\share"
+  },
+  {
+   "is_absolute": false,
+   "name": "\\\\?\\Unc\\server\\share\\dir\\f.txt",
+   "parts": [
+    "\\\\?\\Unc\\server\\share\\dir\\f.txt"
+   ],
+   "path": "\\\\?\\Unc\\server\\share\\dir\\f.txt"
   }
  ],
  "pure_windows": [
@@ -368,6 +392,32 @@
     "f.txt"
    ],
    "path": "\\\\server\\share\\dir\\f.txt"
+  },
+  {
+   "is_absolute": true,
+   "name": "",
+   "parts": [
+    "\\\\?\\UNC\\server\\share\\"
+   ],
+   "path": "\\\\?\\UNC\\server\\share"
+  },
+  {
+   "is_absolute": true,
+   "name": "",
+   "parts": [
+    "\\\\?\\unc\\server\\share\\"
+   ],
+   "path": "\\\\?\\unc\\server\\share"
+  },
+  {
+   "is_absolute": true,
+   "name": "f.txt",
+   "parts": [
+    "\\\\?\\Unc\\server\\share\\",
+    "dir",
+    "f.txt"
+   ],
+   "path": "\\\\?\\Unc\\server\\share\\dir\\f.txt"
   }
  ],
  "relative_to_posix": [
@@ -422,6 +472,11 @@
    "base": "\\\\server\\share",
    "parts": null,
    "path": "\\\\server\\share\\dir\\f.txt"
+  },
+  {
+   "base": "\\\\?\\UNC\\server\\share",
+   "parts": null,
+   "path": "\\\\?\\unc\\server\\share\\dir\\f.txt"
   }
  ],
  "relative_to_windows": [
@@ -483,6 +538,14 @@
     "f.txt"
    ],
    "path": "\\\\server\\share\\dir\\f.txt"
+  },
+  {
+   "base": "\\\\?\\UNC\\server\\share",
+   "parts": [
+    "dir",
+    "f.txt"
+   ],
+   "path": "\\\\?\\unc\\server\\share\\dir\\f.txt"
   }
  ],
  "tree": {
