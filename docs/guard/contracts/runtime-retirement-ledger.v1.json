@@ -85,7 +85,8 @@
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_start_wait.py",
   "src/codex_plugin_scanner/guard/runtime/npm_source_spec.py",
   "src/codex_plugin_scanner/guard/runtime/github_pr_body_file.py",
-  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_body_safety.py"
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_body_safety.py",
+  "src/codex_plugin_scanner/guard/runtime/executable_flag_contract.py"
  ],
  "retired_tests": [
   {

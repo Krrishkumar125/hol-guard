@@ -1260,6 +1260,17 @@
     "rust/crates/guard-command/src/sfrs_credential_exfil.rs",
     "rust/crates/guard-command/src/sfrs_interpreter_heredoc.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/executable_flag_contract.py",
+   "module": "codex_plugin_scanner.guard.runtime.executable_flag_contract",
+   "source_sha256": "99934d90e91fc08970ba0d4215b6b0e2446debe2dded11698400de732d5c176d",
+   "forbidden_symbols": [
+    "_ExecutableContractBase"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/executable_flag_contract.rs"
+   ]
   }
  ],
  "retired_test_paths": [
