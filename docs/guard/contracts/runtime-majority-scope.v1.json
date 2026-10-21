@@ -690,12 +690,8 @@
           "src/codex_plugin_scanner/guard/runtime/embedded_script_evidence.py",
           "src/codex_plugin_scanner/guard/runtime/extension_contribution.py",
           "src/codex_plugin_scanner/guard/runtime/extension_trust.py",
-          "src/codex_plugin_scanner/guard/runtime/js_semver.py",
-          "src/codex_plugin_scanner/guard/runtime/lockfile_evaluation_support.py",
-          "src/codex_plugin_scanner/guard/runtime/manifest_dependency_targets.py",
           "src/codex_plugin_scanner/guard/runtime/mcp_connection_identity.py",
           "src/codex_plugin_scanner/guard/runtime/mcp_server_contribution.py",
-          "src/codex_plugin_scanner/guard/runtime/npm_policy_range.py",
           "src/codex_plugin_scanner/guard/runtime/oci_isolation_provider.py",
           "src/codex_plugin_scanner/guard/runtime/oci_mount_security.py",
           "src/codex_plugin_scanner/guard/runtime/package_json_scripts.py",
@@ -706,7 +702,6 @@
       {
         "path": [
           "src/codex_plugin_scanner/guard/business_policy_document_import.py",
-          "src/codex_plugin_scanner/guard/capabilities.py",
           "src/codex_plugin_scanner/guard/consumer/service.py",
           "src/codex_plugin_scanner/guard/consumer/native_decision_projection.py",
           "src/codex_plugin_scanner/guard/store_approval_projection.py",

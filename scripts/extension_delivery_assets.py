@@ -17,7 +17,10 @@ from codex_plugin_scanner.guard.catalog_delivery.containers import (
     location,
 )
 
-ASSETS_PER_RELEASE = 256
+# Two slots of the 256-asset release inventory are reserved for the signed
+# distribution root and its provenance bundle, which every data release
+# carries so the release itself can be verified.
+ASSETS_PER_RELEASE = 254
 PUBLICATION = re.compile(r"[0-9]{1,20}\.[0-9]{1,10}")
 
 

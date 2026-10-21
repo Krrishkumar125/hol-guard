@@ -71,8 +71,12 @@ def _stub_effects(monkeypatch: pytest.MonkeyPatch) -> None:
         assert inputs == now.facts
         return route_module.NativeHookRoute(*now.route)
 
-    def unavailable(_args: object, *, event_name: object, reason_code: object, recording_only: object, **_k: object):
-        return now.recorder.unavailable(event_name, reason_code, recording_only)
+    def unavailable(_args: object, *, event_name: object, reason_code: object, **_k: object):
+        # A route that never resolved has no edge, so no recording-only posture.
+        return now.recorder.unavailable(event_name, reason_code, False)
+
+    def run_unavailable(run: route_run.NativeHookRun, reason_code: str) -> int:
+        return now.recorder.unavailable(run.event_name, reason_code, run.recording_only)
 
     def artifact_flow(_args: object, **kw: Any) -> int:
         return now.recorder.artifact_flow(
@@ -112,7 +116,7 @@ def _stub_effects(monkeypatch: pytest.MonkeyPatch) -> None:
             "_normalize_hook_payload": lambda payload, *, harness: payload,
             "_run_native_artifact_hook_flow": artifact_flow,
         },
-        route_run: {"_emit_native_unavailable": unavailable},
+        route_run.NativeHookRun: {"unavailable": run_unavailable},
         handlers: {
             "_load_single_claude_pending_permission": lambda _store, _payload: now.recorder.pending_pair(),
             "_claude_guard_question_verdict": lambda _payload, _pending: now.recorder.question_verdict(),

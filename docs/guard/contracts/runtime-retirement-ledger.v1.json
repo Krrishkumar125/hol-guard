@@ -104,7 +104,11 @@
   "src/codex_plugin_scanner/guard/runtime/source_paths.py",
   "src/codex_plugin_scanner/guard/adapters/_modules/codex/codex_hook_response.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
-  "src/codex_plugin_scanner/guard/runtime/sandbox.py"
+  "src/codex_plugin_scanner/guard/runtime/sandbox.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py",
+  "src/codex_plugin_scanner/guard/runtime/containment_outputs.py"
  ],
  "retired_tests": [
   {
@@ -7314,6 +7318,29 @@
    "replacement_nodes": [],
    "status": "obsolete_implementation_assertion",
    "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_contained_workspace_write_contract.py::test_capture_rejects_undeclared_change_and_link",
+   "source_sha256": "c1bc6f347f122d830283942dfac541d7bda3e7af676138a0b9fa17cf875675f5",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Drives capture_declared_outputs in runtime/containment_outputs.py, a declared-output capture walk no production caller ever imported. The module is deleted as dead code rather than replaced: the native contained-execution path captures only stdout.bin and stderr.bin from its own run directory and never walks a declared output tree, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_contained_workspace_write_contract.py::test_capture_rejects_file_count_over_budget",
+   "source_sha256": "c1bc6f347f122d830283942dfac541d7bda3e7af676138a0b9fa17cf875675f5",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Drives capture_declared_outputs in runtime/containment_outputs.py, a declared-output capture walk no production caller ever imported. The module is deleted as dead code rather than replaced: the native contained-execution path captures only stdout.bin and stderr.bin from its own run directory and never walks a declared output tree, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_contained_workspace_write_contract.py::test_output_discovery_stops_at_entry_budget",
+   "source_sha256": "c1bc6f347f122d830283942dfac541d7bda3e7af676138a0b9fa17cf875675f5",
+   "replacement_nodes": [
+    "rust/crates/guard-contained-process/src/tests.rs::directory_entry_budget_rejects_overflow_without_consuming_future_scans"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The budget assertion itself is ported: bound_fs::Directory::entries refuses an overflowing scan and leaves later scans intact, which the native test proves with real directory entries instead of the fake scandir iterator this test installed. The declared-output capture walk the assertion ran through is gone with runtime/containment_outputs.py; the native contained-execution path captures only stdout.bin and stderr.bin from its own run directory."
   }
  ],
  "preserved_tests": [

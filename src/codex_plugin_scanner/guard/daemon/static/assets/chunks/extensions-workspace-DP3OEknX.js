@@ -1,4 +1,4 @@
-import { r as reactExports, bt as fetchExtensionCatalog, bu as normalizeExtensionCatalogSummary, bv as normalizeExtensionPermission, bw as ExtensionControlProtocolError, bx as ExtensionControlApiError, by as normalizeExtensionCatalogItem, bz as guardApiCacheScope, bA as fetchExtensionCatalogV2Api, bB as localPermissionDraftState, bC as setLocalPermissionDraftState, bD as extensionPolicyAuthorityUnchanged, bE as newExtensionPolicyDraftIdentity, bF as extensionPolicyDraftIsDirty, bG as setLocalPermissionDraftStates, bH as buildExtensionPolicyDraftMutation, bI as fetchEffectiveExtensionControls, bJ as previewExtensionMutation, bK as isCurrentExtensionPolicyDraft, bL as applyExtensionMutation, bM as fetchExtensionControlHistory, j as jsxRuntimeExports, bN as managedPermissionState, Z as HiMiniSparkles, s as HiMiniCheckCircle, g as HiMiniNoSymbol, v as HiMiniLockClosed, a4 as HiMiniExclamationTriangle, bO as controlProvenance, bP as treatmentLabel, aR as isApprovalProofSubmitDisabled, _ as HiMiniXMark, aQ as ApprovalProofFieldInputs, bQ as useResolvedApprovalGate, bR as groupPermissionsByFamily, d as HiMiniArrowPath, R as HiMiniShieldCheck, bS as HiMiniInformationCircle, aS as buildApprovalProofCredentials, bT as approvalProofRecentlySatisfied, p as HiMiniMagnifyingGlass, bU as bulkCommandState, H as HiMiniChevronRight, bV as fetchLocalCliApi, bW as ExtensionBrandMark, c as HiMiniChevronDown, bX as fetchMcpProviderActions, bY as previewLocalCliMutation, bZ as applyLocalCliMutation, b_ as LocalCliApiError, b$ as LOCAL_CLI_CAPABILITIES, c0 as readJson, c1 as enrollablePackageScriptCommands, c2 as seenSuggestionMeta, c3 as HiMiniPlus, c4 as looksLikeProjectRelocatePaste, c5 as packageScriptFilterNeedle, e as HiMiniCheck, c6 as suggestedPackageScriptExtensions, c7 as filterExtensionSuggestions, c8 as suggestedHarnessExtensions, c9 as suggestedSeenExtensions, ca as keepsPackageScriptCatalog, cb as recognizeLocalCli, cc as preferredPackageScriptExtension, cd as looksLikePackageScriptPaste, ce as enrollmentCommandStates, cf as isBulkApproveGateReady, cg as HiMiniArrowLeft, ch as fetchLocalCliList, ci as normalizeLocalCliList, cj as refreshMcpInventory, ck as startGuardCloudConnect, cl as extensionEffectiveState, cm as permissionEffectiveState, cn as HiMiniArrowTopRightOnSquare, a0 as HiMiniCloud, co as fetchExtensionControlApi, cp as permissionForRule, cq as refreshEffectiveExtensionControls, aD as HiMiniClipboardDocumentCheck, aE as HiMiniClipboard, aG as ApprovalProofModal, cr as fetchExtensionDiscoveryApi, t as HiMiniArrowRight, cs as HiMiniClock, B as createCommandActivityClient, C as fetchCommandActivityApi, ct as startCancelableDiscoveryJob, cu as waitForMcpDiscoveryJob, cv as isLocalCliId, bc as guardAwareHref, cw as localCliHref, cx as filterCodexHostApps, cy as connectorWorkspaceItems, cz as customExtensionNeedsReview, aM as HiMiniAdjustmentsHorizontal, cA as extensionDisplayName, cB as catalogRowSecondLine, cC as extensionStateLabel, cD as HiMiniGlobeAlt, cE as HiMiniFunnel, ba as WorkspacePageHeader, cF as refreshCodexHostInventory, cG as loadCurrentDashboardBuild, cH as canonicalExtensionId, cI as extensionDetailHref, cJ as DEFAULT_EXTENSION_DETAIL_URL_STATE, cK as acknowledgeDegradedExtensionControlAuthority, cL as recoverExtensionControlAuthority, cM as readExtensionDetailUrlState, cN as parseProtectionRoute, cO as addCustomExtensionHref } from "../guard-dashboard.js";
+import { r as reactExports, bt as fetchExtensionCatalog, bu as ExtensionControlApiError, bv as normalizeExtensionCatalogSummary, bw as normalizeExtensionPermission, bx as ExtensionControlProtocolError, by as normalizeExtensionCatalogItem, bz as guardApiCacheScope, bA as fetchExtensionCatalogV2Api, bB as localPermissionDraftState, bC as setLocalPermissionDraftState, bD as extensionPolicyAuthorityUnchanged, bE as newExtensionPolicyDraftIdentity, bF as extensionPolicyDraftIsDirty, bG as setLocalPermissionDraftStates, bH as buildExtensionPolicyDraftMutation, bI as fetchEffectiveExtensionControls, bJ as previewExtensionMutation, bK as isCurrentExtensionPolicyDraft, bL as applyExtensionMutation, bM as fetchExtensionControlHistory, j as jsxRuntimeExports, bN as managedPermissionState, Z as HiMiniSparkles, s as HiMiniCheckCircle, g as HiMiniNoSymbol, v as HiMiniLockClosed, a4 as HiMiniExclamationTriangle, bO as controlProvenance, bP as treatmentLabel, aR as isApprovalProofSubmitDisabled, _ as HiMiniXMark, aQ as ApprovalProofFieldInputs, bQ as useResolvedApprovalGate, bR as groupPermissionsByFamily, d as HiMiniArrowPath, R as HiMiniShieldCheck, bS as HiMiniInformationCircle, aS as buildApprovalProofCredentials, bT as approvalProofRecentlySatisfied, p as HiMiniMagnifyingGlass, bU as bulkCommandState, H as HiMiniChevronRight, bV as fetchLocalCliApi, bW as ExtensionBrandMark, c as HiMiniChevronDown, bX as fetchMcpProviderActions, bY as previewLocalCliMutation, bZ as applyLocalCliMutation, b_ as LocalCliApiError, b$ as LOCAL_CLI_CAPABILITIES, c0 as readJson, c1 as enrollablePackageScriptCommands, c2 as seenSuggestionMeta, c3 as HiMiniPlus, c4 as looksLikeProjectRelocatePaste, c5 as packageScriptFilterNeedle, e as HiMiniCheck, c6 as suggestedPackageScriptExtensions, c7 as filterExtensionSuggestions, c8 as suggestedHarnessExtensions, c9 as suggestedSeenExtensions, ca as keepsPackageScriptCatalog, cb as recognizeLocalCli, cc as preferredPackageScriptExtension, cd as looksLikePackageScriptPaste, ce as enrollmentCommandStates, cf as isBulkApproveGateReady, cg as HiMiniArrowLeft, ch as fetchLocalCliList, ci as normalizeLocalCliList, cj as refreshMcpInventory, ck as startGuardCloudConnect, cl as extensionEffectiveState, cm as permissionEffectiveState, cn as HiMiniArrowTopRightOnSquare, a0 as HiMiniCloud, co as fetchExtensionControlApi, cp as permissionForRule, cq as refreshEffectiveExtensionControls, aD as HiMiniClipboardDocumentCheck, aE as HiMiniClipboard, aG as ApprovalProofModal, cr as fetchExtensionDiscoveryApi, t as HiMiniArrowRight, cs as HiMiniClock, B as createCommandActivityClient, C as fetchCommandActivityApi, ct as startCancelableDiscoveryJob, cu as waitForMcpDiscoveryJob, cv as isLocalCliId, bc as guardAwareHref, cw as localCliHref, cx as filterCodexHostApps, cy as connectorWorkspaceItems, cz as customExtensionNeedsReview, aM as HiMiniAdjustmentsHorizontal, cA as extensionDisplayName, cB as catalogRowSecondLine, cC as extensionStateLabel, cD as HiMiniGlobeAlt, cE as HiMiniFunnel, ba as WorkspacePageHeader, cF as refreshCodexHostInventory, cG as loadCurrentDashboardBuild, cH as canonicalExtensionId, cI as extensionDetailHref, cJ as DEFAULT_EXTENSION_DETAIL_URL_STATE, cK as acknowledgeDegradedExtensionControlAuthority, cL as recoverExtensionControlAuthority, cM as readExtensionDetailUrlState, cN as parseProtectionRoute, cO as addCustomExtensionHref } from "../guard-dashboard.js";
 import { u as useConfirmDialog } from "./confirm-dialog-DKs42E8c.js";
 const PROFILE_SETUP_COMMANDS = { wrangler: "npx wrangler" };
 const PROFILE_COMMAND_PARAM = "command";
@@ -333,7 +333,7 @@ async function loadV2() {
     }
   };
 }
-function catalogReadModelFromCatalog(catalog) {
+function catalogReadModelFromCatalog(catalog, degraded) {
   const byId = new Map(catalog.extensions.map((item) => [item.extension_id, item]));
   const localSearch = (query) => {
     const terms = searchTerms(query);
@@ -354,6 +354,7 @@ function catalogReadModelFromCatalog(catalog) {
   };
   return {
     protocol: "v1",
+    ...degraded ? { degraded } : {},
     catalog_digest: catalog.catalog_digest,
     extensions: sortedByName(catalog.extensions),
     detail(extensionId) {
@@ -369,6 +370,13 @@ async function loadCatalogReadModel() {
     return await loadV2();
   } catch (error) {
     if (error instanceof CatalogV2UnsupportedError) return catalogReadModelFromCatalog(await fetchExtensionCatalog());
+    if (error instanceof ExtensionControlApiError && error.code === CATALOG_PREPARATION_FAILED) {
+      try {
+        return catalogReadModelFromCatalog(await fetchExtensionCatalog(), CATALOG_PREPARATION_FAILED);
+      } catch {
+        throw error;
+      }
+    }
     throw error;
   }
 }
@@ -6058,7 +6066,15 @@ function CatalogExtensionDetail(props) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx(ProtectionModuleDetail, { ...detailProps, extension: state.extension });
 }
-const PROTECTION_DATA_CHANGED_MESSAGE = "Protection data changed while Guard was loading. Check again before making changes.";
+const PROTECTION_DATA_UNSETTLED_MESSAGE = "Guard is still settling a protection update, so a few extensions may read as out of date and changes cannot be saved yet. Reload this page in a few seconds.";
+const CATALOG_PREPARATION_DEGRADED_MESSAGE = "Guard could not rebuild its extension list, so this page is showing the list Guard already had. It may not have every extension, and a policy change can still be refused until Guard rebuilds. Updating HOL Guard restores the rebuilt list; Guard writes the reason to its log at ~/.hol-guard/logs/daemon.log.";
+const PROTECTION_SAVE_UNSETTLED_MESSAGE = "Guard could not save this protection change, so your current protection is unchanged. Guard is still settling a protection update; reload this page in a few seconds, then make the change again.";
+function reusableCatalogModel(previous, fresh) {
+  if (previous && previous.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol && previous.degraded === fresh.degraded) {
+    return previous;
+  }
+  return fresh;
+}
 const CONSISTENT_LOAD_RETRY_DELAYS_MS = [250, 1e3, 2e3, 4e3];
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function loadConsistentProtectionData(loadCatalog, loadEffective, options = {}) {
@@ -6067,9 +6083,11 @@ async function loadConsistentProtectionData(loadCatalog, loadEffective, options 
   const repair = options.repair ?? refreshEffectiveExtensionControls;
   for (let attempt = 0; ; attempt += 1) {
     const [catalog, effective] = await Promise.all([loadCatalog(), loadEffective()]);
-    if (catalog.catalog_digest === effective.catalog_digest) return { catalog, effective };
+    if (catalog.catalog_digest === effective.catalog_digest) {
+      return { catalog, effective, consistent: true };
+    }
     const delay = delays[attempt];
-    if (delay === void 0) throw new Error(PROTECTION_DATA_CHANGED_MESSAGE);
+    if (delay === void 0) return { catalog, effective, consistent: false };
     await repair().catch(() => void 0);
     await sleep(delay);
   }
@@ -9424,7 +9442,7 @@ function codeSentence(code, recovery) {
     case "authority_conflict":
     case "revision_conflict":
     case "invalid_previous_revision":
-      return `${KEPT} Your protection settings changed while this page was open. Reload the page and make the change again.`;
+      return `${KEPT} Your protection settings changed while this page was open. ${recovery.reloaded ? "This page now shows the current settings; make the change again." : "Reload the page and make the change again."}`;
     case "authority_unavailable":
     case "authority_unread":
     case "authority_history_unavailable":
@@ -9438,7 +9456,7 @@ function codeSentence(code, recovery) {
       return `Guard could not finish recovering the protection authority. ${repairAuthority}`;
     case "catalog_conflict":
     case "catalog_payload_limit_exceeded":
-      return `${KEPT} Guard's protection catalog moved underneath this page. Reload the page and make the change again.`;
+      return `${KEPT} Guard's protection catalog moved underneath this page. ${recovery.reloaded ? "This page now shows the current catalog; make the change again." : "Reload the page and make the change again."}`;
     case "control_limit_exceeded":
     case "layer_control_limit_exceeded":
     case "layer_limit_exceeded":
@@ -9455,7 +9473,7 @@ function codeSentence(code, recovery) {
     case "invalid_extension":
     case "unknown_extension":
     case "unknown_permission":
-      return `${KEPT} Guard no longer recognizes the setting this page asked to change. Reload the page and try again.`;
+      return `${KEPT} Guard no longer recognizes the setting this page asked to change. ${recovery.reloaded ? "This page now shows what Guard recognizes; try again." : "Reload the page and try again."}`;
     case "invalid_layers":
     case "invalid_mutation":
       return `${KEPT} Guard rejected the change as malformed. Reload the page and make the change again; if it keeps failing, the Guard daemon log records the exact cause.`;
@@ -9481,13 +9499,26 @@ const RETRYABLE_PREPARATION_CAUSES = /* @__PURE__ */ new Set([
   "offline",
   "release_unavailable"
 ]);
+const STALE_DATA_CODES = /* @__PURE__ */ new Set([
+  "authority_conflict",
+  "catalog_conflict",
+  "invalid_extension",
+  "invalid_previous_revision",
+  "revision_conflict",
+  "unknown_extension",
+  "unknown_permission"
+]);
+function isStaleProtectionDataError(error) {
+  return error instanceof ExtensionControlApiError && STALE_DATA_CODES.has(error.code ?? "");
+}
 function isRetryableProtectionChangeError(error) {
   return error instanceof ExtensionControlApiError && error.code === "pack_preparation_unavailable" && RETRYABLE_PREPARATION_CAUSES.has(error.cause ?? "");
 }
-function protectionChangeErrorMessage(error, recoveryCommand, recoveryShell) {
+function protectionChangeErrorMessage(error, recoveryCommand, recoveryShell, options = {}) {
   const recovery = {
     command: recoveryCommand ?? "hol-guard command controls recover-authority",
-    terminal: recoveryShell === "powershell" ? "PowerShell" : "your terminal"
+    terminal: recoveryShell === "powershell" ? "PowerShell" : "your terminal",
+    reloaded: options.reloaded === true
   };
   if (error instanceof ExtensionControlApiError) {
     if (error.code === "pack_preparation_unavailable") return preparationSentence(error.cause, recovery);
@@ -9543,19 +9574,20 @@ function ProtectionCenterWorkspace(props) {
   const aliasRedirected = reactExports.useRef(null);
   const overviewKeepAlive = reactExports.useRef(false);
   const loadInFlightRef = reactExports.useRef(null);
+  const unsettledRef = reactExports.useRef(false);
   const catalogRef = reactExports.useRef(null);
   const refreshInFlightRef = reactExports.useRef(null);
   const localClis = useLocalCliCatalog();
-  const load = reactExports.useCallback(() => {
-    if (loadInFlightRef.current !== null) return loadInFlightRef.current;
+  const startLoad = reactExports.useCallback(() => {
     const request2 = (async () => {
       setState((current) => current.kind === "ready" ? current : { kind: "loading" });
       try {
-        const { catalog: fresh, effective } = await loadConsistentProtectionData(loadCatalogReadModel, fetchEffectiveExtensionControls);
+        const { catalog: fresh, effective, consistent } = await loadConsistentProtectionData(loadCatalogReadModel, fetchEffectiveExtensionControls);
         const previous = catalogRef.current;
-        const catalog = previous?.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol ? previous : fresh;
+        const catalog = reusableCatalogModel(previous, fresh);
         catalogRef.current = catalog;
-        setState({ kind: "ready", catalog, effective });
+        unsettledRef.current = !consistent;
+        setState({ kind: "ready", catalog, effective, unsettled: !consistent });
         return effective;
       } catch (error) {
         setState((current) => current.kind === "ready" ? current : { kind: "error", message: error instanceof Error ? error.message : "Extensions are unavailable" });
@@ -9573,6 +9605,13 @@ function ProtectionCenterWorkspace(props) {
     );
     return request2;
   }, []);
+  const load = reactExports.useCallback(async (options = {}) => {
+    const inFlight = loadInFlightRef.current;
+    if (inFlight === null) return startLoad();
+    if (!options.fresh) return inFlight;
+    await inFlight;
+    return loadInFlightRef.current ?? startLoad();
+  }, [startLoad]);
   reactExports.useEffect(() => {
     void load();
   }, [load]);
@@ -9669,6 +9708,10 @@ function ProtectionCenterWorkspace(props) {
   }, [requestChange]);
   const confirm = reactExports.useCallback(async (credentials) => {
     if (state.kind !== "ready" || !pending) return;
+    if (state.unsettled) {
+      setMutationError(PROTECTION_SAVE_UNSETTLED_MESSAGE);
+      return;
+    }
     setBusy(true);
     setMutationError(null);
     const submit = async () => {
@@ -9691,6 +9734,13 @@ function ProtectionCenterWorkspace(props) {
       setPending(null);
       await load();
     } catch (error) {
+      if (isStaleProtectionDataError(error)) {
+        const reloaded = await load({ fresh: true }) !== null;
+        setMutationError(
+          reloaded && unsettledRef.current ? PROTECTION_SAVE_UNSETTLED_MESSAGE : protectionChangeErrorMessage(error, recoveryCommand, recoveryShell, { reloaded })
+        );
+        return;
+      }
       setMutationError(protectionChangeErrorMessage(error, recoveryCommand, recoveryShell));
     } finally {
       setBusy(false);
@@ -9774,6 +9824,8 @@ function ProtectionCenterWorkspace(props) {
   const loadError = state.kind === "error" ? protectionCenterLoadError(state.message) : null;
   const status = state.kind === "ready" ? deriveProtectionStatus(state.effective) : null;
   const healthBroken = state.kind === "ready" && state.effective.health !== "protected";
+  const dataUnsettled = state.kind === "ready" && state.unsettled;
+  const catalogDegraded = state.kind === "ready" && state.catalog.degraded === CATALOG_PREPARATION_FAILED;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full", "data-testid": "extensions-workspace", children: [
     state.kind === "loading" ? /* @__PURE__ */ jsxRuntimeExports.jsx(ExtensionsLoadingState, { label: "Loading Extensions" }) : null,
     state.kind === "error" && loadError ? /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -9796,6 +9848,24 @@ function ProtectionCenterWorkspace(props) {
         onAction: handleAuthorityAction,
         onCheckAgain: handleCheckAgain,
         onOpenApprovalSettings: handleOpenApprovalSettings
+      }
+    ) : null,
+    catalogDegraded ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "p",
+      {
+        role: "status",
+        "data-testid": "catalog-preparation-degraded",
+        className: "mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900",
+        children: CATALOG_PREPARATION_DEGRADED_MESSAGE
+      }
+    ) : null,
+    dataUnsettled ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "p",
+      {
+        role: "status",
+        "data-testid": "protection-data-unsettled",
+        className: "mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900",
+        children: PROTECTION_DATA_UNSETTLED_MESSAGE
       }
     ) : null,
     state.kind === "ready" && recoveryStatus && !healthBroken && !showOverview ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "mb-3 text-sm font-medium text-emerald-800", children: recoveryStatus }) : null,

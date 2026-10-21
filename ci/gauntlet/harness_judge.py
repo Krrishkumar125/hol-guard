@@ -24,7 +24,7 @@ from .proofs import BLOCK_REASONS, block_reasons, required_checks
 
 _PRE_EVENTS = frozenset({"PreToolUse", "preToolUse", "beforeShellExecution", "beforeReadFile", "beforeMCPExecution"})
 _PROMPT_EVENTS = frozenset({"UserPromptSubmit", "beforeSubmitPrompt"})
-# Lifecycle callbacks Guard only observes (its LIFECYCLE_OBSERVE_EVENTS, plus
+# Lifecycle callbacks Guard only observes (its _LIFECYCLE_OBSERVE_EVENTS, plus
 # Cursor's lowercase stop). The resident worker answers them with no receipt and
 # counts that answer under the native_fail_safe route.
 _LIFECYCLE_EVENTS = frozenset(
