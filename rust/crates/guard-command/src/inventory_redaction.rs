@@ -14,8 +14,9 @@
 //! * `isinstance(candidate, int)` accepts `bool`, and `str(True)` is `"True"`.
 //!
 //! The path half of the seam (`redact_local_path`, `_redact_known_path`,
-//! `_redact_command_value`, `redact_url`) still lives in Python, so this module
-//! exports free functions rather than an `InventoryRedactionApi` implementor.
+//! `_redact_command_value`) still lives in Python, so this module exports free
+//! functions rather than an `InventoryRedactionApi` implementor. The URL half
+//! below leans on [`crate::python_url`] for CPython's `urllib.parse`.
 //!
 //! `scripts/ci/generate_inventory_redaction_parity.py` records the corpus in
 //! `testdata/inventory_redaction_parity.json` that pins every case below.
@@ -27,6 +28,8 @@ use regex::Regex;
 use serde_json::{Map, Value};
 
 use crate::inventory_fingerprints::{python_float_repr, python_json, DEFAULT_SEPARATORS};
+use crate::python_netloc::ip_address_is_private;
+use crate::python_url::{parse_qsl_keep_blank, urlencode, urlsplit, urlunsplit};
 
 /// CPython `re` `\s`: Unicode `White_Space` plus the C0 separators Rust omits.
 const PYTHON_SPACE_CLASS: &str = r"\s\x{1c}-\x{1f}";
@@ -261,6 +264,99 @@ fn python_string_repr(value: &str) -> String {
     }
     rendered.push(quote);
     rendered
+}
+
+/// `_MALFORMED_URL`, the value every `urlsplit` rejection collapses to.
+const MALFORMED_URL_REDACTED: &str = "malformed_url_redacted";
+
+/// `redact_headers(headers)` — the Python function reads only the keys, so the
+/// port takes them directly.
+///
+/// Two keys that differ only in case collapse into one entry, as they do in
+/// the Python dict comprehension. The sensitivity test is case-insensitive, so
+/// the surviving value is the same either way.
+pub fn redact_headers(header_names: &[String]) -> Vec<(String, String)> {
+    let mut redacted: Vec<(String, String)> = Vec::new();
+    for name in header_names {
+        let key = name.to_lowercase();
+        if redacted.iter().any(|(seen, _)| *seen == key) {
+            continue;
+        }
+        let presence = if SENSITIVE_KEY_RE.is_match(name) {
+            "present_redacted"
+        } else {
+            "present"
+        };
+        redacted.push((key, presence.to_string()));
+    }
+    redacted
+}
+
+/// `redact_url(value)`.
+///
+/// The result keeps the scheme, host, port, path and fragment, drops userinfo
+/// entirely (because the netloc is rebuilt from `hostname` and `port` alone),
+/// and rewrites every query value whose name looks sensitive. A URL `urlsplit`
+/// or `.port` rejects degrades to `malformed_url_redacted`, never to the
+/// original text.
+pub fn redact_url(value: &str) -> String {
+    let Ok(parsed) = urlsplit(value) else {
+        return MALFORMED_URL_REDACTED.to_string();
+    };
+    let hostname = parsed.hostname().unwrap_or_default();
+    let mut netloc = if hostname.contains(':') && !hostname.starts_with('[') {
+        format!("[{hostname}]")
+    } else {
+        hostname
+    };
+    // Python swallows the `ValueError` from `.port` and keeps the host, so an
+    // out-of-range port drops off the export rather than redacting the URL.
+    if let Ok(Some(port)) = parsed.port() {
+        netloc = format!("{netloc}:{port}");
+    }
+    // `;` is a legacy query separator that `parse_qsl` no longer splits on, so
+    // the caller rewrites it before parsing.
+    let redacted_pairs: Vec<(String, String)> =
+        parse_qsl_keep_blank(&parsed.query.replace(';', "&"))
+            .into_iter()
+            .map(|(key, item)| {
+                let item = if SENSITIVE_KEY_RE.is_match(&key) {
+                    "redacted".to_string()
+                } else {
+                    item
+                };
+                (key, item)
+            })
+            .collect();
+    urlunsplit(
+        &parsed.scheme,
+        &netloc,
+        &parsed.path,
+        &urlencode(&redacted_pairs),
+        &parsed.fragment,
+    )
+}
+
+/// `classify_endpoint_host(value)`.
+///
+/// A URL `urlsplit` rejects is classified `remote_public`, the conservative
+/// answer: an endpoint nobody can prove is local is treated as leaving the
+/// machine.
+pub fn classify_endpoint_host(value: Option<&str>) -> &'static str {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return "none";
+    };
+    let Ok(parsed) = urlsplit(value) else {
+        return "remote_public";
+    };
+    let host = parsed.hostname().unwrap_or_default().to_lowercase();
+    if matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1") {
+        return "local_loopback";
+    }
+    if ip_address_is_private(&host) == Some(true) {
+        return "local_private";
+    }
+    "remote_public"
 }
 
 #[cfg(test)]
