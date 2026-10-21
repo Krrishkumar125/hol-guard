@@ -102,6 +102,20 @@ def verified_preparation():
         yield invoke_pinned
 
 
+def record(operation, purpose, *, key: bytes, **fields) -> dict[str, Any]:
+    """Seal or verify one authenticated command-pack record in the runtime.
+
+    A record that does not authenticate is reported as tampered; one that
+    authenticates outside its schema is refused by name.
+    """
+    from ..runtime.extension_control_authority import ExtensionControlAuthorityError
+
+    result = invoke("record", operation=operation, purpose=purpose, key=key.hex(), **fields)
+    if "fault" in result:
+        raise ExtensionControlAuthorityError(str(result.get("reason")))
+    return result
+
+
 def transfer(**fields):
     # Rust bounds each copied file; the longer deadline covers a full catalog copy.
     return _invoke("offline", fields, 900)

@@ -23,7 +23,7 @@ mod managed_tests;
 mod plans;
 #[cfg(test)]
 mod plans_tests;
-mod records;
+pub(crate) mod records;
 #[cfg(test)]
 mod tests;
 mod view;

@@ -8,15 +8,13 @@ from pathlib import Path
 from typing import cast
 
 from ..native_command_control_binding import NativeCommandProgramMetadata
-from ..runtime.extension_control_authority import authenticated_record, verify_authenticated_record
 from . import lifecycle
 from .activation_types import ActivationHeader
-from .authority import DIGEST, SHA
+from .authority import DIGEST
 from .located_store import LocatedStore
 from .metadata_objects import ObjectStore, encoded, validate_reference
 from .pack_store import PackReader, decode
 from .preparation import IDENTITY, MAX_SELECTED, PreparedCommandPacks
-from .selection import PUBLICATION
 
 PURPOSE = "command-pack-activation.v1"
 SCHEMA = "guard.command-pack-activation.v1"
@@ -119,10 +117,9 @@ def seal(prepared, *, key: bytes, revision: int, previous_digest=None, now=None)
         "distribution": local.put(prepared._publication),
     }
     payload["authority_profile"] = profile
-    result = authenticated_record(payload, key=key, purpose=PURPOSE)
-    if len(result[0].encode()) > MAX_RECORD_BYTES:
-        raise ValueError("activation record exceeds byte budget")
-    return result
+    # The runtime seals only a record its reader accepts, within the byte budget.
+    sealed = lifecycle.record("seal", "activation", key=key, payload=payload)
+    return sealed["record"], sealed["digest"], sealed["mac"]
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -151,97 +148,9 @@ class CommittedCommandPacks:
 
 
 def verify_header(data, expected_digest, expected_mac, *, key) -> ActivationHeader:
-    if not isinstance(data, str) or not 0 < len(data.encode()) <= MAX_RECORD_BYTES:
-        raise ValueError("activation record byte bounds invalid")
-    decode(data.encode())  # Duplicate/nonfinite fields fail before the authority decoder.
-    value = verify_authenticated_record(
-        data, expected_digest=expected_digest, expected_mac=expected_mac, key=key, purpose=PURPOSE
-    )
-    fields = {
-        "authority_schema_version",
-        "purpose",
-        "schema",
-        "revision",
-        "previous_digest",
-        "program_digest",
-        "catalog_digest",
-        "trust_digest",
-        "engine",
-        "source_sha",
-        "publication_id",
-        "root_digest",
-        "authority_epoch",
-        "revocation_epoch",
-        "selection",
-        "selected_count",
-        "registry",
-        "registry_count",
-        "executables",
-        "executable_count",
-        "distribution",
-        "issued_at",
-        "expires_at",
-    }
-    if value.get("schema") == SCHEMA_V2:
-        fields.add("authority_profile")
-        if value.get("authority_profile") not in {"installed", "committed-subset", "remote"}:
-            raise ValueError("activation authority profile invalid")
-    if set(value) != fields or value["schema"] not in {SCHEMA, SCHEMA_V2}:
-        raise ValueError("activation record schema invalid")
-    for field in ("program_digest", "catalog_digest", "trust_digest", "engine", "root_digest"):
-        candidate = value[field]
-        if not isinstance(candidate, str) or DIGEST.fullmatch(candidate) is None:
-            raise ValueError("activation digest invalid")
-    installed = value["issued_at"] is None and value["expires_at"] is None
-    if installed and (value["schema"] != SCHEMA_V2 or value["publication_id"] != "0.0"):
-        raise ValueError("activation installed authority invalid")
-    if value.get("authority_profile") == "installed" and not installed:
-        raise ValueError("installed activation cannot claim remote freshness")
-    if value.get("authority_profile") == "committed-subset" and value["previous_digest"] is None:
-        raise ValueError("offline subset requires a committed predecessor")
-    if (
-        not isinstance(value["source_sha"], str)
-        or SHA.fullmatch(value["source_sha"]) is None
-        or not isinstance(value["publication_id"], str)
-        or PUBLICATION.fullmatch(value["publication_id"]) is None
-    ):
-        raise ValueError("activation source identity invalid")
-    for field, minimum in [("revision", 1), ("authority_epoch", 1), ("revocation_epoch", 0)]:
-        candidate = value[field]
-        if type(candidate) is not int or not minimum <= candidate < 2**64:
-            raise ValueError("activation epoch or revision invalid")
-    if not installed and (
-        type(value["issued_at"]) is not int
-        or type(value["expires_at"]) is not int
-        or not 0 <= value["issued_at"] < value["expires_at"]
-    ):
-        raise ValueError("activation validity interval invalid")
-    if value["previous_digest"] is not None and (
-        not isinstance(value["previous_digest"], str) or DIGEST.fullmatch(value["previous_digest"]) is None
-    ):
-        raise ValueError("activation predecessor invalid")
-    for field, minimum, maximum in [
-        ("selected_count", 1, MAX_SELECTED),
-        ("registry_count", 1, MAX_SELECTED),
-        ("executable_count", 0, MAX_EXECUTABLES),
-    ]:
-        candidate = value[field]
-        if type(candidate) is not int or not minimum <= candidate <= maximum:
-            raise ValueError("activation metadata count invalid")
-    for field, count in [
-        ("selection", value["selected_count"]),
-        ("registry", value["registry_count"]),
-        ("executables", value["executable_count"]),
-    ]:
-        if (value[field] is None) != (count == 0):
-            raise ValueError("activation metadata reference missing")
-        if value[field] is not None:
-            validate_reference(value[field])
-    validate_reference(value["distribution"])
-    # Every scalar and reference above has been validated. Keep that typed
-    # contract across the decoder boundary without treating arbitrary JSON
-    # dictionaries as activation headers elsewhere.
-    return cast(ActivationHeader, cast(object, value))
+    """The authenticated activation header; the runtime checks every field."""
+    verified = lifecycle.record("verify", "activation", key=key, record=data, digest=expected_digest, mac=expected_mac)
+    return cast(ActivationHeader, verified["value"])
 
 
 def admission_is_current(header: ActivationHeader, now: int) -> bool:
@@ -257,7 +166,6 @@ def admission_is_current(header: ActivationHeader, now: int) -> bool:
 def open_record(data, expected_digest, expected_mac, *, key, directory):
     value = verify_header(data, expected_digest, expected_mac, key=key)
     reader = PackReader(directory / "objects")
-    validate_reference(value["distribution"])
     if (
         value["distribution"]["expanded_length"] > MAX_RECORD_BYTES
         or value["distribution"]["sha256"] != value["root_digest"]
