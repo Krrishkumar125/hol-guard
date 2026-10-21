@@ -53,12 +53,14 @@ class ExtensionControlAuthorityCommitMixin:
 
         installed = load_installed_bundle()
         if installed is None:
-            # Without a verified installed release there is nothing to admit,
-            # but the floor then stays absent and every later pack-lifecycle
-            # read fails. Record it; a silent return left no trace at all.
+            # `None` means this install advertises no bundle at all (a legacy
+            # or source install); a bundle that is advertised but fails
+            # verification raises instead. There is nothing to admit, but the
+            # floor then stays absent and every later pack-lifecycle read
+            # fails, so record the absence; a silent return left no trace.
             from .daemon.background_diagnostics import record_background_event
 
-            record_background_event("installed_authority_release_unavailable", "detail=installed bundle unverified")
+            record_background_event("installed_authority_release_absent", "detail=installed bundle not advertised")
             return
         with self._extension_control_authority_lock(shared=True):
             if lifecycle_store.migration_retained(self):

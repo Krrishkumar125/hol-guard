@@ -5,7 +5,7 @@ no legacy controls to admit, so startup migration produced nothing and wrote
 nothing. Every later discovery and publication refresh then failed the floor
 gate with ``pack_lifecycle_protected_floor_missing``, and neither half of the
 startup path left a trace: a packaged daemon has no stderr for ``_LOGGER``, and
-an unverified installed bundle returned without a word. These tests pin the two
+an install that advertises no bundle returned without a word. These tests pin the two
 records that make that state diagnosable.
 """
 
@@ -35,7 +35,7 @@ def recorded():
     background_diagnostics.release_sink(sink)
 
 
-def test_an_unverified_installed_release_is_recorded(tmp_path, recorded, monkeypatch) -> None:
+def test_an_absent_installed_release_is_recorded(tmp_path, recorded, monkeypatch) -> None:
     from codex_plugin_scanner.guard.catalog_delivery import preparation_authority
 
     store = GuardStore(tmp_path / "guard-home")
@@ -43,7 +43,7 @@ def test_an_unverified_installed_release_is_recorded(tmp_path, recorded, monkeyp
 
     store.migrate_installed_command_pack_authority()
 
-    assert recorded == [("installed_authority_release_unavailable", "detail=installed bundle unverified")]
+    assert recorded == [("installed_authority_release_absent", "detail=installed bundle not advertised")]
 
 
 def test_a_failed_startup_migration_is_recorded(recorded) -> None:
