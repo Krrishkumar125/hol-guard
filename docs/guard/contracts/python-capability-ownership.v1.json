@@ -1471,6 +1471,20 @@
    ]
   },
   {
+   "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
+   "module": "codex_plugin_scanner.guard.runtime.shell_command_wrappers",
+   "source_sha256": "b328f048cc1b0e167dd1c57aeb1eaff84e5db25b6ed582dd3ecf91e0dd44f87e",
+   "forbidden_symbols": [
+    "ShellCommandNormalization",
+    "is_trusted_absolute_command_path",
+    "normalize_transparent_shell_command"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/shell_command_wrappers.rs",
+    "rust/crates/guard-command/src/shell_command_wrappers_paths.rs"
+   ]
+  },
+  {
    "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/read_only_filters.py",
    "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.read_only_filters",
    "source_sha256": "63ba263eb7a1f0e873a89fdf9f472f5e0da08f2eccde9bd030a55586c097e4ef",
@@ -1491,20 +1505,6 @@
    "native_replacements": [
     "rust/crates/guard-command/src/sfrs_read_only_filters.rs",
     "rust/crates/guard-command/src/sfrs_search_filters.rs"
-   ]
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
-   "module": "codex_plugin_scanner.guard.runtime.shell_command_wrappers",
-   "source_sha256": "b328f048cc1b0e167dd1c57aeb1eaff84e5db25b6ed582dd3ecf91e0dd44f87e",
-   "forbidden_symbols": [
-    "ShellCommandNormalization",
-    "is_trusted_absolute_command_path",
-    "normalize_transparent_shell_command"
-   ],
-   "native_replacements": [
-    "rust/crates/guard-command/src/shell_command_wrappers.rs",
-    "rust/crates/guard-command/src/shell_command_wrappers_paths.rs"
    ]
   }
  ],

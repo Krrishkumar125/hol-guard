@@ -101,8 +101,8 @@
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
-  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/read_only_filters.py",
-  "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py"
+  "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/read_only_filters.py"
  ],
  "retired_tests": [
   {
