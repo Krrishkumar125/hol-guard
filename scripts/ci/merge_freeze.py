@@ -145,6 +145,12 @@ def freeze_summary(reason: str, repository: str) -> str:
 # Runs that only ever check a commit already on a protected branch.
 _UNGATED_EVENTS = frozenset({"push", "schedule"})
 
+# Maintenance branches CI builds on push, besides the default branch. A
+# dispatched run on one of them feeds the release publish workflows. Keep this
+# in step with the push branches in ci.yml; a prefix such as release/ would also
+# match pull request branches.
+_MAINTENANCE_BRANCHES = frozenset({"release/3.0", "release/3.1", "release/3.2"})
+
 
 def _default_branch_ref(env: Mapping[str, str]) -> str | None:
     try:
@@ -163,10 +169,14 @@ def _gate_applies(env: Mapping[str, str]) -> bool:
         return False
     # A dispatched run on a pull request branch reports the same required check
     # on the pull request's head commit, so it must not turn green during a
-    # freeze. Only a run on the default branch is exempt; if that cannot be
-    # read, the gate applies.
+    # freeze. Only a run on the default branch or a maintenance branch is
+    # exempt; if the default branch cannot be read, the gate applies.
     ref = env.get("GITHUB_REF")
-    return ref is None or ref != _default_branch_ref(env)
+    if ref is None:
+        return True
+    if ref.startswith("refs/heads/") and ref.removeprefix("refs/heads/") in _MAINTENANCE_BRANCHES:
+        return False
+    return ref != _default_branch_ref(env)
 
 
 def run_gate(env: Mapping[str, str], summary_path: str | None) -> int:

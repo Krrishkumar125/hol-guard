@@ -127,6 +127,22 @@ def test_a_dispatched_run_on_the_default_branch_is_not_held(tmp_path: Path) -> N
     assert freeze.run_gate(dispatch_env(tmp_path, "refs/heads/main"), None) == 0
 
 
+@pytest.mark.parametrize("branch", ["release/3.0", "release/3.1", "release/3.2"])
+def test_a_dispatched_run_on_a_maintenance_branch_is_not_held(tmp_path: Path, branch: str) -> None:
+    """The release publish workflows follow a dispatched CI run on these branches."""
+    assert freeze.run_gate(dispatch_env(tmp_path, f"refs/heads/{branch}"), None) == 0
+
+
+@pytest.mark.parametrize("ref", ["refs/heads/release/sync-repository-version", "refs/tags/release/3.0"])
+def test_a_dispatched_run_on_another_release_ref_is_held(tmp_path: Path, ref: str) -> None:
+    assert freeze.run_gate(dispatch_env(tmp_path, ref), None) == 1
+
+
+def test_maintenance_branches_match_the_ci_push_branches() -> None:
+    triggers = load("ci.yml")[True]
+    assert set(triggers["push"]["branches"]) - {"main"} == freeze._MAINTENANCE_BRANCHES
+
+
 def test_a_dispatched_run_with_an_unreadable_event_is_held(tmp_path: Path) -> None:
     env = gate_env(
         EVENT_NAME="workflow_dispatch", GITHUB_REF="refs/heads/main", GITHUB_EVENT_PATH=str(tmp_path / "missing")
