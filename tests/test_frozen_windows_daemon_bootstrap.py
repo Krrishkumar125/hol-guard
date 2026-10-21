@@ -166,7 +166,10 @@ def _full_diagnostics(env: dict[str, str]) -> str:
         for entry in sorted(logs.rglob("*")):
             if entry.is_file():
                 sections.append(f"--- {entry.name} ---\n{_safe_read(entry)}")
-    sections.extend(_resident_state_diagnostics(guard_home))
+    try:
+        sections.extend(_resident_state_diagnostics(guard_home))
+    except Exception as error:  # evidence collection must never replace the original failure
+        sections.append(f"resident state diagnostics failed: {error!r}")
     return "\n".join(sections)
 
 
@@ -215,7 +218,11 @@ def _runtime_tree(guard_home: Path) -> list[str]:
     lines = []
     if not runtime_dir.is_dir():
         return [f"{runtime_dir} missing"]
-    for entry in sorted(runtime_dir.rglob("*")):
+    try:
+        entries = sorted(runtime_dir.rglob("*"))
+    except OSError as error:
+        return [f"{runtime_dir} walk={error!r}"]
+    for entry in entries:
         relative = entry.relative_to(runtime_dir)
         try:
             stat = entry.stat()
