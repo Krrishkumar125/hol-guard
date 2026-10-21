@@ -91,7 +91,12 @@ def claude_guard_question(run: NativeHookRun) -> int | None:
     verdict = _claude_guard_question_verdict(run.payload, pending_pair[1])
     if not verdict.is_question:
         return None
-    _persist_claude_guard_question_decision(run.store, run.payload, pending_pair=pending_pair, verdict=verdict)
+    try:
+        _persist_claude_guard_question_decision(run.store, run.payload, pending_pair=pending_pair, verdict=verdict)
+    except NativeHookDecisionError as error:
+        # The resident decides what is saved; without its answer nothing is
+        # persisted and the host gets the same outage shape as everywhere else.
+        return run.unavailable(error.code)
     return 0
 
 

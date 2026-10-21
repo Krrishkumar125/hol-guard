@@ -18,6 +18,7 @@ import {
   formatQueueRequestDate,
   bulkApprovalRiskTier,
   isBulkApprovableGroup,
+  queueCommandExtensionId,
 } from "./queue-state";
 
 function assert(condition: boolean, message: string): void {
@@ -470,6 +471,40 @@ const paginatedGitHubItem: GuardApprovalRequest = {
 assert(
   resolveQueueCategory(paginatedGitHubItem).label === "GitHub command",
   "T-QS-31d: lightweight queue metadata preserves the command category"
+);
+
+const categorizedKubernetesItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-categorized-kubernetes",
+  action_envelope_json: { ...shellEnvelope, command: "opaque-wrapper action", command_category: "command.kubernetes-secrets" },
+};
+
+assert(
+  resolveQueueCategory(categorizedKubernetesItem).id === "container_or_deploy",
+  "T-QS-31e: Kubernetes extension metadata drives the deploy category"
+);
+assert(
+  queueCommandExtensionId(categorizedKubernetesItem) === "command.kubernetes-secrets",
+  "T-QS-31e: any command extension id is exposed for the queue brand mark"
+);
+
+const categorizedRemoteItem: GuardApprovalRequest = {
+  ...BASE_REQUEST,
+  request_id: "req-categorized-remote",
+  action_envelope_json: { ...shellEnvelope, command: "opaque-wrapper action", command_category: "command.remote.ssh" },
+};
+
+assert(
+  resolveQueueCategory(categorizedRemoteItem).id === "network",
+  "T-QS-31f: remote extension metadata drives the network category"
+);
+assert(
+  queueCommandExtensionId(categorizedRemoteItem) === "command.remote.ssh",
+  "T-QS-31f: remote extension id is exposed for the queue brand mark"
+);
+assert(
+  queueCommandExtensionId(BASE_REQUEST) === null,
+  "T-QS-31g: requests without extension metadata expose no extension id"
 );
 
 const persistenceItem: GuardApprovalRequest = {

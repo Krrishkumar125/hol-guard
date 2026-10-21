@@ -664,21 +664,6 @@ pub(crate) fn _platform() -> &'static str {
     }
 }
 
-/// `file_sha256` (containment_executor.py :37-44).
-pub fn file_sha256(path: &Path) -> Option<String> {
-    let mut file = File::open(path).ok()?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 1024 * 1024];
-    loop {
-        let read = file.read(&mut buf).ok()?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buf[..read]);
-    }
-    Some(format!("sha256:{}", hex::encode(hasher.finalize())))
-}
-
 /// `write_manifest_atomically` (containment_executor.py :47-58).
 fn write_manifest_atomically(path: &Path, payload: &Value) -> Result<(), String> {
     let parent = path.parent().ok_or_else(|| "manifest_parent".to_owned())?;

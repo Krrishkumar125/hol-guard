@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from ..daemon.hook_request_parsing import runtime_hook_event_name
 from ..daemon.runtime_hook_deadline import RuntimeHookDeadline
+from ..native_hook_artifact_compose import NativeHookComposeError
 from ..native_hook_artifact_facts import HookArtifactFactsUnavailableError
 from ..native_hook_decision import NativeHookDecisionError
 from ..native_hook_route import native_hook_route
@@ -89,8 +90,9 @@ def _artifact_flow(run: NativeHookRun) -> int | None:
     except HookArtifactFactsUnavailableError:
         # The resident owns these facts, so an outage is a host outage.
         return run.unavailable(HookArtifactFactsUnavailableError.code)
-    except NativeHookDecisionError as error:
-        # No resident directive means no rendered verdict: the outage shape.
+    except (NativeHookComposeError, NativeHookDecisionError) as error:
+        # No resident directive or composition means no rendered verdict:
+        # the outage shape.
         return run.unavailable(error.code)
 
 

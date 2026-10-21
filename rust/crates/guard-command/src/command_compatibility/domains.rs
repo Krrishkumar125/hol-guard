@@ -216,7 +216,7 @@ fn plain_non_secret_read(arguments: &[String]) -> bool {
 /// Output formats that render the fetched objects only. The `*-file` formats
 /// (`go-template-file`, `jsonpath-file`, `custom-columns-file`, `template-file`)
 /// read a local file and would print it, so they stay on review.
-fn output_format_reads_no_file(value: &str) -> bool {
+pub(super) fn output_format_reads_no_file(value: &str) -> bool {
     matches!(value, "json" | "yaml" | "name" | "wide")
         || [
             "jsonpath=",
