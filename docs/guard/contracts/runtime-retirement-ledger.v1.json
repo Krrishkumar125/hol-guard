@@ -107,8 +107,8 @@
   "src/codex_plugin_scanner/guard/runtime/sandbox.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py",
-  "src/codex_plugin_scanner/guard/runtime/github_command_capabilities.py",
-  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py"
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py",
+  "src/codex_plugin_scanner/guard/runtime/github_command_capabilities.py"
  ],
  "retired_tests": [
   {
