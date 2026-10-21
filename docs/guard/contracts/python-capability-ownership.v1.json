@@ -1398,14 +1398,14 @@
    ]
   },
   {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
-   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_mappings",
-   "source_sha256": "83c1af1a284ca1f4a3fd861ffd6565f086e9110e98b83e1ef9c5edd17ff04c3f",
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_elf",
+   "source_sha256": "a9579f072979877dc86c7733fe3d2102381e4970339a20133da8ef43f69cf98d",
    "forbidden_symbols": [
-    "validate_records",
-    "mount_targets"
+    "resolve_linux_elf_loader"
    ],
    "native_replacements": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/elf.rs",
     "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
    ]
   },
@@ -1418,18 +1418,22 @@
     "collect_linux_read_grants"
    ],
    "native_replacements": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/read.rs",
     "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
    ]
   },
   {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
-   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_elf",
-   "source_sha256": "a9579f072979877dc86c7733fe3d2102381e4970339a20133da8ef43f69cf98d",
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_mappings",
+   "source_sha256": "83c1af1a284ca1f4a3fd861ffd6565f086e9110e98b83e1ef9c5edd17ff04c3f",
    "forbidden_symbols": [
-    "resolve_linux_elf_loader"
+    "mount_targets",
+    "validate_records"
    ],
    "native_replacements": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mappings.rs",
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mounts.rs",
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mapping_records.rs"
    ]
   },
   {
@@ -1440,9 +1444,7 @@
     "collect_mapping_evidence"
    ],
    "native_replacements": [
-    "rust/crates/guard-command/src/restricted_pytest/mapping.rs",
-    "rust/crates/guard-command/src/restricted_pytest/mapping_elf.rs",
-    "rust/crates/guard-runtime/src/restricted_pytest_op.rs"
+    "rust/crates/guard-command/src/restricted_pytest/mapping.rs"
    ]
   }
  ],
@@ -1476,11 +1478,7 @@
   "tests/test_npm_source_spec.py",
   "tests/test_guard_github_pr_body_file.py",
   "tests/test_native_command_options.py",
-  "tests/test_guard_node_semver.py",
-  "tests/test_guard_restricted_linux_elf.py",
-  "tests/test_guard_restricted_linux_mapping_plan.py",
-  "tests/test_guard_restricted_linux_mappings.py",
-  "tests/test_guard_restricted_linux_paths.py"
+  "tests/test_guard_node_semver.py"
  ],
  "retired_bodies": [
   {

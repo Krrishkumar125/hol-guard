@@ -102,6 +102,30 @@ def test_mapping_codec_preserves_full_index_without_python_inspection(monkeypatc
     assert not Path(observed[0]["body"]["input"]["mapping_snapshot"]).exists()
 
 
+def test_large_mapping_response_reaches_namespace_preparation_caller(monkeypatch, tmp_path):
+    from tests.restricted_linux_test_support import native_mapping_evidence
+
+    records = [
+        {"path": "/workspace/" + "module-" * 430 + str(i), "identity": [1, i, 1, 1, 0o100500], "sha256": "0" * 64}
+        for i in range(1024)
+    ]
+    raw = json.dumps(records, separators=(",", ":")).encode()
+    assert len(raw) > 2 * 1024 * 1024
+    outputs = []
+
+    def call(action, **kwargs):
+        assert len(json.dumps(action).encode()) < 2 * 1024 * 1024
+        output = Path(action["body"]["input"]["mapping_snapshot"]).with_name("mapping-result.json")
+        output.write_bytes(raw)
+        output.chmod(0o600)
+        outputs.append(output)
+        return {"value": {"decoded_bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}}
+
+    monkeypatch.setattr(transport, "_call", call)
+    assert native_mapping_evidence(images=set(), read_files=set(), runtime_roots=(), workspace=tmp_path) == records
+    assert not outputs[0].exists()
+
+
 @pytest.mark.parametrize("corruption", ["digest", "length", "budget", "permissions"])
 def test_mapping_result_transport_corruption_fails_closed(monkeypatch, corruption):
     def call(action, **kwargs):
