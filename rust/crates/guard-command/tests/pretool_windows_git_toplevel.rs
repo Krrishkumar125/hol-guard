@@ -16,7 +16,7 @@
 #[path = "support/git_helper_fixture.rs"]
 mod git_helper_fixture;
 
-use git_helper_fixture::{canonical_spelling, FixtureCleanup};
+use git_helper_fixture::canonical_spelling;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
@@ -40,7 +40,11 @@ fn spelled(path: &Path) -> String {
 }
 
 struct Layout {
-    _cleanup: FixtureCleanup,
+    /// Kept so the fixture outlives the test. It is a system temporary
+    /// directory, deliberately not the build tree: everything under the
+    /// checkout has this repository's own `.git` above it, so a case about a
+    /// directory under no repository could not be built there.
+    _root: tempfile::TempDir,
     home: PathBuf,
     /// The repository root `git rev-parse --show-toplevel` prints.
     repository: PathBuf,
@@ -51,14 +55,18 @@ struct Layout {
 }
 
 fn layout(name: &str) -> Layout {
-    let parent = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-    std::fs::create_dir_all(&parent).unwrap();
-    let root = parent
-        .canonicalize()
-        .unwrap()
-        .join(format!("guard-win-toplevel-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    let cleanup = FixtureCleanup(root.clone());
+    let holder = tempfile::Builder::new()
+        .prefix(&format!("guard-win-toplevel-{name}-"))
+        .tempdir()
+        .unwrap();
+    // The walk compares canonical paths, and the temporary root is reached
+    // through a link on some hosts.
+    let root = holder.path().canonicalize().unwrap();
+    assert!(
+        !root.ancestors().any(|folder| folder.join(".git").exists()),
+        "the fixture root has a repository above it: {}",
+        root.display(),
+    );
     let home = root.join("home");
     let repository = home.join("work");
     let inside = repository.join("src/deep");
@@ -77,7 +85,7 @@ fn layout(name: &str) -> Layout {
     git(&repository, &["commit", "--quiet", "-m", "fixture"]);
     std::fs::write(plain.join("a.md"), "notes\n").unwrap();
     Layout {
-        _cleanup: cleanup,
+        _root: holder,
         home,
         repository,
         inside,
@@ -141,6 +149,14 @@ fn returning_to_the_repository_root_is_read_as_the_path_it_names() {
             &format!("cd $(git rev-parse --show-toplevel) && {after}"),
         );
         let literal = action(&layout, &layout.inside, &format!("cd {root} && {after}"));
+        // Equality alone would pass with both forms reviewed, which is the
+        // state this test exists to rule out. The spelled-out `cd` has to
+        // reach a verdict the pass actually resolved before the substitution
+        // is held to it.
+        assert!(
+            !literal.starts_with("review") && !literal.starts_with("ask"),
+            "`cd {root} && {after}` was not resolved, so it cannot stand in for the substitution: {literal}",
+        );
         assert_eq!(
             substituted, literal,
             "`{after}` after the substitution reads differently from `cd {root}`",
@@ -162,6 +178,10 @@ fn the_root_itself_resolves_to_the_same_directory() {
         &layout,
         &layout.repository,
         &format!("cd {root} && cat README.md"),
+    );
+    assert!(
+        !literal.starts_with("review") && !literal.starts_with("ask"),
+        "`cd {root} && cat README.md` was not resolved: {literal}",
     );
     assert_eq!(substituted, literal);
 }
