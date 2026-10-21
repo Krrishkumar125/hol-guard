@@ -100,6 +100,12 @@ def _configure_guard_local_parsers(
     )
     _add_guard_common_args(network_status_parser, suppress_defaults=True)
     network_status_parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    network_sync_parser = network_subparsers.add_parser(
+        "sync",
+        help="Fetch the workspace's signed network rules and known-bad URL indicators",
+    )
+    _add_guard_common_args(network_sync_parser, suppress_defaults=True)
+    network_sync_parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
 
     dashboard_parser = guard_subparsers.add_parser(
         "dashboard",

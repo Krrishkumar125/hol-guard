@@ -608,10 +608,30 @@ def _run_guard_network_command(
     input_text: str | None = None,
     output_stream: TextIO | None = None,
 ) -> int:
+    from ..runtime.network_protection_bundle import NETWORK_PROTECTION_SYNC_STATE_KEY, network_protection_status
+
     command = getattr(args, "network_command", None) or "status"
+    if command == "sync":
+        store = _require_guard_store(store)
+        try:
+            summary = sync_network_protection_bundle(store)
+        except RuntimeError as error:
+            from .commands_support_service import _guard_sync_failure_message
+
+            message = str(error)
+            if isinstance(error, GuardSyncNotConfiguredError):
+                message = _guard_sync_failure_message(error)
+            _emit("network-sync", {"synced": False, "error": message}, getattr(args, "json", False))
+            return 1
+        _emit("network-sync", {"synced": True, **summary}, getattr(args, "json", False))
+        return 0
     if command != "status":
         raise ValueError(f"unsupported network command: {command}")
-    payload = load_network_status_payload(guard_home=guard_home, config=config)
+    payload = dict(load_network_status_payload(guard_home=guard_home, config=config))
+    if store is not None:
+        payload["protection_bundle"] = network_protection_status(
+            store.get_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY)
+        )
     _emit("network", payload, getattr(args, "json", False))
     return 0
 

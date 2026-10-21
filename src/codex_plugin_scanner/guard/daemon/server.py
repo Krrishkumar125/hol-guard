@@ -101,6 +101,7 @@ from ..runtime.runner import (
     GuardSyncAuthorizationExpiredError,
     GuardSyncNotConfiguredError,
     _resolve_guard_sync_auth_context,
+    sync_network_protection_bundle_best_effort,
     sync_supply_chain_bundle,
 )
 from ..runtime.surface_server import GuardSurfaceRuntime
@@ -4153,6 +4154,7 @@ class GuardDaemonServer:
                     {**summary, "status": "synced"},
                     refreshed_at,
                 )
+                sync_network_protection_bundle_best_effort(self._server.store)
                 wait_seconds = interval_seconds
             except GuardSyncAuthorizationExpiredError as error:
                 self._server.store.set_sync_payload(

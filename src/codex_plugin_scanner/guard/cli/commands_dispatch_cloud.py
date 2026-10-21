@@ -403,6 +403,7 @@ def _run_guard_cloud_command(
                 print(str(error), file=sys.stderr)
             return 1
         payload["supply_chain"] = build_local_supply_chain_posture(store, config, now=_now())
+        payload["network_protection"] = sync_network_protection_bundle_best_effort(store)
         _emit("cloud-sync-intel", payload, getattr(args, "json", False))
         return 0
     if cloud_command == "status":

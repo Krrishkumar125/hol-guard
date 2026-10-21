@@ -366,6 +366,11 @@ fn evaluate_validated_envelope(
                 policy_snapshot,
                 evaluated,
             );
+            let evaluated = crate::network_protection::apply(
+                std::path::Path::new(&envelope.source.guard_home),
+                &envelope.raw_payload,
+                evaluated,
+            );
             let value = serde_json::to_value(evaluated)
                 .map_err(|_| "native_hook_edge_response_invalid".to_owned())?;
             validate_pre_tool_result(&value)?;

@@ -153,6 +153,7 @@ pub mod native_command_extension_evidence;
 #[cfg(test)]
 mod native_command_extension_evidence_tests;
 pub mod native_command_program;
+pub mod network_url;
 pub mod npm_source_spec;
 pub mod ordered_json;
 #[cfg(unix)]

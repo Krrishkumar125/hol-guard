@@ -573,6 +573,7 @@ mod native_hook_receipt;
 mod native_review_link;
 mod native_runtime_admission;
 mod native_runtime_resilience;
+mod network_protection;
 mod oauth_refresh;
 mod oauth_secret_authority;
 mod oci_bundle_evidence;

@@ -1382,6 +1382,10 @@ def sync_supply_chain_cloud_state(
     )
     payload["workspace_audits"] = workspace_audits
     payload.setdefault("synced_at", workspace_audits.get("synced_at"))
+    payload["network_protection"] = _runtime_runner_module().sync_network_protection_bundle_best_effort(
+        store,
+        auth_context=resolved_auth_context,
+    )
     return payload
 
 
