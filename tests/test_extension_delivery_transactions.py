@@ -44,6 +44,7 @@ def test_only_complete_publication_advances_pointer(modules, monkeypatch, tmp_pa
     data = b"prepared root bytes"
     (tmp_path / "extension-distribution.v2.json").write_bytes(data)
     (tmp_path / "extension-distribution.intoto.jsonl").write_bytes(b"unit proof")
+    (tmp_path / "extension-data.intoto.jsonl").write_bytes(b"unit data proof")
     root = {"publication_id": publication, "legacy": {"status": "unsupported-oversize", "code": "program-bytes"}}
     legacy_directory = tmp_path / "legacy"
     legacy_directory.mkdir()
@@ -59,6 +60,11 @@ def test_only_complete_publication_advances_pointer(modules, monkeypatch, tmp_pa
         return verified
 
     def upload(tag, *args, **kwargs):
+        if tag.startswith("extension-data-"):
+            paths, expected = args[1:3]
+            proof = "extension-data.intoto.jsonl"
+            assert paths[proof].read_bytes() == b"unit data proof"
+            assert expected[proof]["sha256"] == hashlib.sha256(b"unit data proof").hexdigest()
         kind = (
             "root"
             if tag.startswith("extension-distribution-")
