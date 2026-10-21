@@ -1220,6 +1220,7 @@
    "source_sha256": "3ce77bdfa45cdd1296b2d85286daf964cbbe61cbee8a280e01cd584a307a3ccf",
    "forbidden_symbols": [
     "ArgumentSemantics",
+    "argument_semantics",
     "matches_subcommands_conservatively",
     "flags_present_in_all_option_parses",
     "known_option_advance",
