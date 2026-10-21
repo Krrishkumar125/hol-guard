@@ -585,6 +585,76 @@
       "expected_sha256": "5ad5c46ef7fe7bb4d20b7c006a43c83357ea993937fa041aafe52ad8894fc647"
     },
     {
+      "case": "url_data_before_bracket_is_unchanged",
+      "covers": "url redaction round-tripping data before bracket is unchanged",
+      "artifact": {
+        "artifact_id": "mcp:server:data_before_bracket_is_unchanged",
+        "name": "remote server",
+        "harness": "claude-code",
+        "artifact_type": "mcp_server",
+        "source_scope": "project",
+        "config_path": "/w/.mcp.json",
+        "url": "http://a[::1]/p?token=x"
+      },
+      "expected_sha256": "0aed85f79f3f630d733e918bca99a91f7ab9fc9ae3ef9e2949f7a223b7acd18a"
+    },
+    {
+      "case": "url_data_after_bracket_is_unchanged",
+      "covers": "url redaction round-tripping data after bracket is unchanged",
+      "artifact": {
+        "artifact_id": "mcp:server:data_after_bracket_is_unchanged",
+        "name": "remote server",
+        "harness": "claude-code",
+        "artifact_type": "mcp_server",
+        "source_scope": "project",
+        "config_path": "/w/.mcp.json",
+        "url": "http://[::1]x/p?token=x"
+      },
+      "expected_sha256": "3dba4b1e30f6c5a7a15e64443abbdddb2e2afc41e10a69e2085641d849ce8b5d"
+    },
+    {
+      "case": "url_bracketed_userinfo_before_ipv6_host",
+      "covers": "url redaction round-tripping bracketed userinfo before ipv6 host",
+      "artifact": {
+        "artifact_id": "mcp:server:bracketed_userinfo_before_ipv6_host",
+        "name": "remote server",
+        "harness": "claude-code",
+        "artifact_type": "mcp_server",
+        "source_scope": "project",
+        "config_path": "/w/.mcp.json",
+        "url": "http://u[x]@[::1]/p?token=x"
+      },
+      "expected_sha256": "e23002d5543f7355e44ad1db539e232e47ab3ffa36bcc228983f79c65c51a886"
+    },
+    {
+      "case": "url_bracketed_userinfo_before_named_host_is_unchanged",
+      "covers": "url redaction round-tripping bracketed userinfo before named host is unchanged",
+      "artifact": {
+        "artifact_id": "mcp:server:bracketed_userinfo_before_named_host_is_unchanged",
+        "name": "remote server",
+        "harness": "claude-code",
+        "artifact_type": "mcp_server",
+        "source_scope": "project",
+        "config_path": "/w/.mcp.json",
+        "url": "http://u[x]@example.test/p?token=x"
+      },
+      "expected_sha256": "1ca888cb7b92bd2208c3158b09d5d40dd96f25bf8396e6d50d0d03461fe2a6d1"
+    },
+    {
+      "case": "url_empty_authority_double_slash_path",
+      "covers": "url redaction round-tripping empty authority double slash path",
+      "artifact": {
+        "artifact_id": "mcp:server:empty_authority_double_slash_path",
+        "name": "remote server",
+        "harness": "claude-code",
+        "artifact_type": "mcp_server",
+        "source_scope": "project",
+        "config_path": "/w/.mcp.json",
+        "url": "https:////example.test/p?token=abc"
+      },
+      "expected_sha256": "91fd65eeaa1a3762f4f3c48be108bd67c75807bc67310e09a64e38268db00266"
+    },
+    {
       "case": "url_nfkc_netloc_is_unchanged",
       "covers": "url redaction round-tripping nfkc netloc is unchanged",
       "artifact": {

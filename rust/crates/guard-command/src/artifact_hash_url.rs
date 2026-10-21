@@ -81,14 +81,8 @@ pub(crate) fn urlsplit(url: &str) -> Option<SplitUrl> {
         if open != close {
             return None;
         }
-        if open && close {
-            let after_open = netloc.split_once('[').map_or("", |(_, tail)| tail);
-            let bracketed = after_open
-                .split_once(']')
-                .map_or(after_open, |(host, _)| host);
-            if !bracketed_host_is_valid(bracketed) {
-                return None;
-            }
+        if open && close && !bracketed_netloc_is_valid(&netloc) {
+            return None;
         }
         rest = tail;
     }
@@ -111,6 +105,28 @@ pub(crate) fn urlsplit(url: &str) -> Option<SplitUrl> {
         query,
         fragment,
     })
+}
+
+/// `_check_bracketed_netloc`: the host after any userinfo, with nothing
+/// before its `[` and only a port after its `]`.
+fn bracketed_netloc_is_valid(netloc: &str) -> bool {
+    let host_and_port = netloc.rsplit_once('@').map_or(netloc, |(_, tail)| tail);
+    let hostname = match host_and_port.split_once('[') {
+        Some((before, bracketed)) => {
+            if !before.is_empty() {
+                return false;
+            }
+            let (hostname, port) = bracketed.split_once(']').unwrap_or((bracketed, ""));
+            if !port.is_empty() && !port.starts_with(':') {
+                return false;
+            }
+            hostname
+        }
+        None => host_and_port
+            .split_once(':')
+            .map_or(host_and_port, |(hostname, _)| hostname),
+    };
+    bracketed_host_is_valid(hostname)
 }
 
 /// `_check_bracketed_host`: IPvFuture by shape, otherwise IPv6 only.
