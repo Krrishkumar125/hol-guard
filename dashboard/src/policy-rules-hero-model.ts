@@ -94,8 +94,7 @@ export function buildRulesHeroModel(input: {
       tone: "setup",
       badge: "Nothing remembered yet",
       headline: "Guard asks before it repeats anything",
-      subheadline:
-        "Approve a request in Inbox and choose how broadly to remember it — the decision lands here.",
+      subheadline: "approve in Inbox and it lands here.",
       facts,
     };
   }
@@ -105,17 +104,14 @@ export function buildRulesHeroModel(input: {
       tone: "review",
       badge: "Worth a second look",
       headline: n === 1 ? "1 broad allow deserves a second look" : `${n} broad allows deserve a second look`,
-      subheadline:
-        "These let an action through everywhere it matches. If one is wider than you meant, remove it and Guard asks again.",
+      subheadline: "remove one and Guard asks again.",
       facts,
     };
   }
   const provenance =
-    counts.cloud === 0
-      ? "Each one says where it came from and how to undo it."
-      : counts.local === 0
-        ? "Synced from Guard Cloud and read-only here — change them in Guard Cloud or their governing Extension."
-        : "Each one says where it came from and how it can be changed.";
+    counts.local === 0 && counts.cloud > 0
+      ? "read-only here — change them in Guard Cloud."
+      : "";
   return {
     tone: "clear",
     badge: "Memory is tidy",

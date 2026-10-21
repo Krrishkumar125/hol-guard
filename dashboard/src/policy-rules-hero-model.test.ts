@@ -83,7 +83,7 @@ const clear = buildRulesHeroModel({
 });
 assert.equal(clear.tone, "clear");
 assert.match(clear.headline, /repeat for you/);
-assert.match(clear.subheadline, /how to undo it/);
+assert.equal(clear.subheadline, "");
 
 const cloudOnly = buildRulesHeroModel({
   counts: countPolicyRules([policy({ source: "cloud-sync", scope: "workspace" })]),
@@ -93,6 +93,5 @@ const cloudOnly = buildRulesHeroModel({
   pendingCount: 0,
 });
 assert.match(cloudOnly.subheadline, /read-only here/);
-assert.ok(!cloudOnly.subheadline.includes("how to undo it"));
 
 console.log("policy-rules-hero-model.test.ts: all assertions passed");
