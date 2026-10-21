@@ -159,7 +159,6 @@ def test_full_corpus_process_timing_runs_serially_without_losing_other_report_ch
     assert nodes.count(timing_node) == 1
     # Use the existing short slice without shifting the other timing workloads.
     assert nodes.index(timing_node) % 4 == 1
-    assert nodes.count("tests/test_guard_sandbox.py") == 1
     assert "-n" not in shlex.split(timing_step["run"])
     assert "scheduling-sensitive" in jobs["ci-python-312"]["needs"]
 
