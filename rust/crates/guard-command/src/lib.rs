@@ -5,6 +5,8 @@ pub mod artifact_hash;
 #[cfg(test)]
 mod artifact_hash_tests;
 mod artifact_hash_url;
+#[cfg(test)]
+mod artifact_hash_url_tests;
 pub mod artifact_risk;
 pub mod bash_approval;
 pub mod benign_request_api;

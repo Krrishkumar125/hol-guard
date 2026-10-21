@@ -182,6 +182,12 @@ pub(crate) fn urlencode(pairs: &[(String, String)]) -> String {
 /// `urlunsplit((scheme, netloc, path, query, fragment))`.
 pub(crate) fn urlunsplit(split: &SplitUrl, query: &str) -> String {
     let mut url = split.path.clone();
+    // Two of these arms are the same statement on purpose: 3.12's urlunsplit
+    // prepends `//` both for a path that is already network-relative and for a
+    // netloc-using scheme whose path is empty or rooted. Collapsing them into
+    // one condition changes which paths get a separator, so the duplication is
+    // the contract rather than an oversight.
+    #[allow(clippy::if_same_then_else)]
     if !split.netloc.is_empty() {
         if !url.is_empty() && !url.starts_with('/') {
             url.insert(0, '/');
