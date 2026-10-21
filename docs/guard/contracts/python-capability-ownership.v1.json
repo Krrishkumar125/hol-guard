@@ -1381,6 +1381,23 @@
    "native_replacements": [
     "rust/crates/guard-command/src/direct_tool_semver.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.pytest_target_detection",
+   "source_sha256": "80050fe7831fd10c93fe8319a54662f17c83844fa22b5e8cb1f044a8fab23ded",
+   "forbidden_symbols": [
+    "_argument_sequence_targets_pytest",
+    "_inline_python_payload_runs_pytest",
+    "_python_inline_script_runs_pytest",
+    "_python_process_call_targets_pytest",
+    "_segment_targets_pytest",
+    "_shell_command_targets_pytest",
+    "_shell_token_has_active_glob"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/sfrs_pytest_target.rs"
+   ]
   }
  ],
  "retired_test_paths": [

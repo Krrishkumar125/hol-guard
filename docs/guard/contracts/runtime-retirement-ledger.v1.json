@@ -94,7 +94,8 @@
   "src/codex_plugin_scanner/guard/runtime/network_public_suffix.py",
   "src/codex_plugin_scanner/guard/runtime/remote_approval_execution.py",
   "src/codex_plugin_scanner/guard/runtime/resource_budget.py",
-  "src/codex_plugin_scanner/guard/runtime/node_semver.py"
+  "src/codex_plugin_scanner/guard/runtime/node_semver.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py"
  ],
  "retired_tests": [
   {

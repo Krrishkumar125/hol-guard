@@ -11,12 +11,10 @@ from codex_plugin_scanner.guard.runtime.secret_file_request_services.local_read_
     _local_read_operands_resolve_safely,
     _ripgrep_args_expand_hidden_files,
 )
-from codex_plugin_scanner.guard.runtime.secret_file_request_services.pytest_target_detection import (
-    _python_inline_script_runs_pytest,
-)
 from codex_plugin_scanner.guard.runtime.secret_file_request_services.read_only_filters import (
     _read_only_lookup_filter_grep_args_are_safe,
 )
+from codex_plugin_scanner.guard.runtime.secret_file_requests import extract_sensitive_tool_action_request
 
 
 def test_find_read_only_validation_checks_every_leading_path(tmp_path: Path) -> None:
@@ -50,8 +48,13 @@ def test_ripgrep_hidden_mode_parser_handles_clusters_and_option_values() -> None
     assert not _ripgrep_args_expand_hidden_files(["--", "-u", "."])
 
 
-def test_python_inline_pytest_scan_skips_option_values() -> None:
-    assert _python_inline_script_runs_pytest(["-W", "ignore", "-c", "import pytest; pytest.main()"])
+def test_python_inline_pytest_scan_skips_option_values(tmp_path: Path) -> None:
+    command = 'python -W ignore -c "import pytest; pytest.main()"'
+
+    match = extract_sensitive_tool_action_request("Bash", {"command": command}, cwd=tmp_path)
+
+    assert match is not None
+    assert match.reason_code == "pytest_restricted_profile_required"
 
 
 def test_grep_filter_rejects_dangling_value_options() -> None:
