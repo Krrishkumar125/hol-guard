@@ -491,32 +491,19 @@ pub mod false_positive_rules;
 #[path = "../../guard-command/src/guard_sync_transport.rs"]
 pub mod guard_sync_transport;
 
-#[path = "../../guard-command/src/adapters/hook/hook_adapter_cline_tables.rs"]
-mod hook_adapter_cline_tables;
+use guard_hook_payload::{
+    hook_adapter_cline_tables, hook_adapter_prepare_cursor, hook_adapter_pyjson,
+    hook_adapter_pytext,
+};
+pub use guard_hook_payload::{
+    hook_adapter_prepare, hook_adapter_prepare_cline, hook_adapter_value,
+};
 
 #[path = "../../guard-command/src/adapters/hook/hook_adapter_envelope_tables.rs"]
 mod hook_adapter_envelope_tables;
 
 #[path = "../../guard-command/src/adapters/hook/hook_adapter_envelope_text.rs"]
 mod hook_adapter_envelope_text;
-
-#[path = "../../guard-command/src/adapters/hook/hook_adapter_prepare.rs"]
-pub mod hook_adapter_prepare;
-
-#[path = "../../guard-command/src/adapters/hook/hook_adapter_prepare_cline.rs"]
-pub mod hook_adapter_prepare_cline;
-
-#[path = "../../guard-command/src/adapters/hook/hook_adapter_prepare_cursor.rs"]
-mod hook_adapter_prepare_cursor;
-
-#[path = "../../guard-command/src/adapters/hook/hook_adapter_pyjson.rs"]
-mod hook_adapter_pyjson;
-
-#[path = "../../guard-command/src/adapters/hook/hook_adapter_pytext.rs"]
-mod hook_adapter_pytext;
-
-#[path = "../../guard-command/src/adapters/hook/hook_adapter_value.rs"]
-pub mod hook_adapter_value;
 
 #[path = "../../guard-command/src/hook_responses/mod.rs"]
 pub mod hook_responses;

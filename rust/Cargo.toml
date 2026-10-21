@@ -13,6 +13,7 @@ members = [
     "crates/guard-seatbelt",
     "crates/guard-secure-fs",
     "crates/guard-hook-core",
+    "crates/guard-hook-payload",
     "crates/guard-policy-snapshot",
     "crates/guard-pack-compiler",
     "crates/guard-rule-contract",
