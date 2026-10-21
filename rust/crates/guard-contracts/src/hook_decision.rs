@@ -15,8 +15,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{
-    CodexToolOutputFactsV1, HookRouteInputsV1, HookRouteV1, NativeExtensionControlLayerV1,
-    NativePermissionPersistInputsV1, NativePermissionPersistPlanV1,
+    ArtifactReusePlanV1, ArtifactReuseStepInputsV1, CodexToolOutputFactsV1, HookRouteInputsV1,
+    HookRouteV1, NativeExtensionControlLayerV1, NativePermissionPersistInputsV1,
+    NativePermissionPersistPlanV1,
 };
 
 /// Schema discriminator for the request.
@@ -81,6 +82,11 @@ pub enum HookDecisionQueryV1 {
     /// queued for approval.
     ArtifactReviewRoute {
         inputs: Box<ArtifactReviewRouteInputsV1>,
+    },
+    /// The artifact hook's approval-reuse state machine: the plan of effects
+    /// (claim, revalidate) and the settlement the request reaches.
+    ArtifactReuseStep {
+        inputs: Box<ArtifactReuseStepInputsV1>,
     },
     /// The hook pipeline's dispatch route: which handlers answer a prepared
     /// payload, in what order.
@@ -408,6 +414,9 @@ pub enum HookDecisionPayloadV1 {
     ArtifactDirective(Box<HookResponseDirectiveV1>),
     NativePermissionPersistPlan(Box<NativePermissionPersistPlanV1>),
     ArtifactReviewRoute(Box<ArtifactReviewRouteV1>),
+    ArtifactReuseStep {
+        plan: Box<ArtifactReusePlanV1>,
+    },
     HookRoute(Box<HookRouteV1>),
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.
