@@ -1192,6 +1192,72 @@
     "rust/crates/guard-runtime/src/codex_hook_bridge_client.rs",
     "rust/crates/guard-runtime/src/codex_hook_bridge_restart.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py",
+   "module": "codex_plugin_scanner.guard.runtime.command_option_parsing",
+   "source_sha256": "3ce77bdfa45cdd1296b2d85286daf964cbbe61cbee8a280e01cd584a307a3ccf",
+   "forbidden_symbols": [
+    "ArgumentSemantics",
+    "argument_semantics",
+    "matches_subcommands_conservatively",
+    "flags_present_in_all_option_parses",
+    "known_option_advance",
+    "long_flag_assignment_is_enabled"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/command_option_parsing.rs",
+    "rust/crates/guard-command/src/command_argument_semantics.rs",
+    "rust/crates/guard-command/src/shell_helpers.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_mappings",
+   "source_sha256": "83c1af1a284ca1f4a3fd861ffd6565f086e9110e98b83e1ef9c5edd17ff04c3f",
+   "forbidden_symbols": [
+    "validate_records",
+    "mount_targets"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_paths.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_paths",
+   "source_sha256": "d6472b908b34eb0da25d303fdd6b77e2f86976e66f1dbe372479bdf3481a4a70",
+   "forbidden_symbols": [
+    "LinuxReadGrant",
+    "collect_linux_read_grants"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_elf",
+   "source_sha256": "a9579f072979877dc86c7733fe3d2102381e4970339a20133da8ef43f69cf98d",
+   "forbidden_symbols": [
+    "resolve_linux_elf_loader"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_mapping_plan",
+   "source_sha256": "ceac7b7dbb72afc51e47902313b3a1bea570640e06b63614374d644bcbf3f7c3",
+   "forbidden_symbols": [
+    "collect_mapping_evidence"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/restricted_pytest/mapping.rs",
+    "rust/crates/guard-command/src/restricted_pytest/mapping_elf.rs",
+    "rust/crates/guard-runtime/src/restricted_pytest_op.rs"
+   ]
   }
  ],
  "retired_test_paths": [
@@ -1202,7 +1268,10 @@
   "tests/test_claude_hook_completion_contract.py",
   "tests/test_claude_hook_exit_paths.py",
   "tests/test_cli_hook_source_ref.py",
+  "tests/test_codex_daemon_bridge_failure_reason.py",
+  "tests/test_codex_daemon_start_wait.py",
   "tests/test_codex_event_trace.py",
+  "tests/test_codex_managed_fallback_authentication.py",
   "tests/test_guard_codex_apply_patch_policy.py",
   "tests/test_guard_cursor_exact_action.py",
   "tests/test_guard_durable_exact_shell_approval_expiry.py",
@@ -1211,16 +1280,18 @@
   "tests/test_guard_policy_recipe.py",
   "tests/test_guard_remote_approval_execution.py",
   "tests/test_guard_resource_budget.py",
+  "tests/test_guard_restricted_linux_elf.py",
+  "tests/test_guard_restricted_linux_mapping_plan.py",
+  "tests/test_guard_restricted_linux_mappings.py",
+  "tests/test_guard_restricted_linux_paths.py",
   "tests/test_hook_content_scanner.py",
   "tests/test_hook_decision_cache.py",
   "tests/test_hook_review_engine.py",
   "tests/test_hook_security_regressions.py",
   "tests/test_hook_source_read_fast_path.py",
   "tests/test_native_approval_bridge.py",
-  "tests/test_structured_data_sensitivity.py",
-  "tests/test_codex_managed_fallback_authentication.py",
-  "tests/test_codex_daemon_start_wait.py",
-  "tests/test_codex_daemon_bridge_failure_reason.py"
+  "tests/test_native_command_options.py",
+  "tests/test_structured_data_sensitivity.py"
  ],
  "retired_bodies": [
   {
