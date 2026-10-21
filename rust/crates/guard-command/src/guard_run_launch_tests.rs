@@ -122,3 +122,51 @@ fn is_guard_action_canonical_lattice_only() {
     assert!(!guard_run_is_guard_action(&json!(1)));
     assert!(!guard_run_is_guard_action(&Value::Null));
 }
+
+#[test]
+fn authorized_prefixes_dedupe_in_first_seen_order() {
+    let plans = vec![
+        plan(&["cli", "--go"], &["/usr/bin/cli", "--go"], "s", true),
+        plan(&["cli", "--other"], &["/usr/bin/cli", "--other"], "s", true),
+        plan(&["cli", "--third"], &["/opt/cli", "--third"], "s", true),
+    ];
+    assert_eq!(
+        guard_run_authorized_executable_prefixes(&plans),
+        Some(vec![
+            vec!["/usr/bin/cli".to_string()],
+            vec!["/opt/cli".to_string()],
+        ])
+    );
+}
+
+#[test]
+fn authorized_prefixes_reject_empty_unreusable_or_split_environment() {
+    assert_eq!(guard_run_authorized_executable_prefixes(&[]), None);
+    assert_eq!(
+        guard_run_authorized_executable_prefixes(&[plan(
+            &["cli"],
+            &["/usr/bin/cli", "cli"],
+            "s",
+            false
+        )]),
+        None
+    );
+    assert_eq!(
+        guard_run_authorized_executable_prefixes(&[
+            plan(&["cli"], &["/usr/bin/cli", "cli"], "s", true),
+            plan(&["cli"], &["/usr/bin/cli", "cli"], "other", true),
+        ]),
+        None
+    );
+}
+
+#[test]
+fn authorized_prefixes_reject_a_plan_without_a_recoverable_prefix() {
+    assert_eq!(
+        guard_run_authorized_executable_prefixes(&[
+            plan(&["cli"], &["/usr/bin/cli", "cli"], "s", true),
+            plan(&["cli", "--go"], &["cli", "--go"], "s", true),
+        ]),
+        None
+    );
+}

@@ -7,9 +7,10 @@
 //! components and project the typed result, never a Python-built hash, into
 //! approval evidence.
 
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 use super::context_digest_json::{
@@ -730,6 +731,67 @@ fn evaluate_request(
                         launch_env_value.as_ref(),
                     )
                 }));
+        }
+        ContextDigestKindV1::GuardRunLaunchPlans {
+            adapter_commands,
+            environment,
+            launch_cwd,
+        } => {
+            let plans = observe_value(Phase::ContextGuardRunLaunchPlans, || {
+                let cwd = Path::new(launch_cwd.as_str());
+                let mut seen: Vec<Vec<String>> = Vec::new();
+                let mut built: Vec<Value> = Vec::new();
+                for adapter_command in adapter_commands {
+                    let Some(plan) = guard_command::guard_run_launch::guard_run_plan_for_command(
+                        adapter_command,
+                        environment,
+                        cwd,
+                    ) else {
+                        continue;
+                    };
+                    if seen.contains(&plan.adapter_command) {
+                        continue;
+                    }
+                    seen.push(plan.adapter_command.clone());
+                    built.push(json!({
+                        "adapter_command": plan.adapter_command,
+                        "execution_command": plan.execution_command,
+                        "environment_sha256": plan.environment_sha256,
+                        "identity": plan.identity,
+                        "launch_cwd": plan.launch_cwd.to_string_lossy(),
+                        "reusable": plan.reusable,
+                    }));
+                }
+                json!({ "plans": built })
+            });
+            result.guard_run_launch = Some(plans);
+        }
+        ContextDigestKindV1::GuardRunAuthorizedPrefixes { plans } => {
+            let prefixes = observe_value(Phase::ContextGuardRunLaunchPlans, || {
+                // The prefix prelude reads only the argv pair, the shared
+                // environment digest and reusability; the identity and cwd stay
+                // with the caller, so bind a single synthetic environment whose
+                // digest is the one the caller recorded.
+                let rebuilt: Vec<guard_command::guard_run_launch::GuardRunLaunchPlan> = plans
+                    .iter()
+                    .map(|plan| guard_command::guard_run_launch::GuardRunLaunchPlan {
+                        adapter_command: plan.adapter_command.clone(),
+                        execution_command: plan.execution_command.clone(),
+                        environment: BTreeMap::new(),
+                        environment_sha256: plan.environment_sha256.clone(),
+                        identity: Value::Null,
+                        launch_cwd: PathBuf::new(),
+                        reusable: plan.reusable,
+                    })
+                    .collect();
+                match guard_command::guard_run_launch::guard_run_authorized_executable_prefixes(
+                    &rebuilt,
+                ) {
+                    Some(prefixes) => json!({ "prefixes": prefixes }),
+                    None => Value::Null,
+                }
+            });
+            result.guard_run_launch = Some(prefixes);
         }
         ContextDigestKindV1::RuntimeLaunchIdentityMatches {
             expected_identity,

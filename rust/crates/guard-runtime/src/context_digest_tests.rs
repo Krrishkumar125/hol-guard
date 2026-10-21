@@ -438,3 +438,62 @@ fn oversized_component_fails() {
     assert_eq!(result.status, "error");
     assert_eq!(result.code, ERR_COMPONENT);
 }
+
+#[test]
+fn guard_run_launch_plans_dedupe_adapter_commands_and_share_one_environment_digest() {
+    let environment: std::collections::BTreeMap<String, String> =
+        [("PATH".to_string(), "/usr/bin".to_string())]
+            .into_iter()
+            .collect();
+    let result = evaluate(request_for(ContextDigestKindV1::GuardRunLaunchPlans {
+        adapter_commands: vec![
+            vec!["hol-guard-nonexistent".to_string(), "--go".to_string()],
+            vec!["hol-guard-nonexistent".to_string(), "--go".to_string()],
+            vec![],
+        ],
+        environment: environment.clone(),
+        launch_cwd: "/".to_string(),
+    }));
+    let payload = result.guard_run_launch.expect("plans kind must answer");
+    let plans = payload["plans"].as_array().expect("plans array");
+    assert_eq!(plans.len(), 1, "duplicate and empty commands drop out");
+    assert_eq!(
+        plans[0]["environment_sha256"].as_str().expect("digest"),
+        guard_command::guard_run_launch::guard_run_launch_environment_hash(&environment)
+    );
+    assert_eq!(plans[0]["launch_cwd"].as_str(), Some("/"));
+    assert!(
+        plans[0]["identity"].is_object(),
+        "identity is content-bound"
+    );
+}
+
+#[test]
+fn guard_run_authorized_prefixes_answers_null_when_the_set_does_not_bind() {
+    let bound = evaluate(request_for(
+        ContextDigestKindV1::GuardRunAuthorizedPrefixes {
+            plans: vec![guard_contracts::GuardRunLaunchPlanV1 {
+                adapter_command: vec!["cli".to_string()],
+                execution_command: vec!["/usr/bin/cli".to_string(), "cli".to_string()],
+                environment_sha256: "s".to_string(),
+                reusable: true,
+            }],
+        },
+    ));
+    assert_eq!(
+        bound.guard_run_launch,
+        Some(json!({"prefixes": [["/usr/bin/cli"]]}))
+    );
+
+    let unbound = evaluate(request_for(
+        ContextDigestKindV1::GuardRunAuthorizedPrefixes {
+            plans: vec![guard_contracts::GuardRunLaunchPlanV1 {
+                adapter_command: vec!["cli".to_string()],
+                execution_command: vec!["/usr/bin/cli".to_string(), "cli".to_string()],
+                environment_sha256: "s".to_string(),
+                reusable: false,
+            }],
+        },
+    ));
+    assert_eq!(unbound.guard_run_launch, Some(Value::Null));
+}

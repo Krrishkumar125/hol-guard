@@ -14,12 +14,10 @@
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-#[cfg(unix)]
 use serde_json::Map;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-#[cfg(unix)]
 use crate::launch_identity::{
     build_runtime_launch_identity, resolved_runtime_launch_argv,
     runtime_launch_identity_is_reusable,
@@ -45,7 +43,6 @@ pub struct GuardRunLaunchPlan {
 /// `sha256(b"hol.guard.guard-run-launch-environment:v1\x00" +
 ///   json.dumps(sorted(env.items()), ensure_ascii=True,
 ///              separators=(",", ":")).encode())`.
-#[allow(dead_code)]
 pub fn guard_run_launch_environment_hash(environment: &BTreeMap<String, String>) -> String {
     let sorted: Vec<(&String, &String)> = environment.iter().collect();
     // `ensure_ascii=True` escapes every non-ASCII char to `\uXXXX`; serde_json
@@ -82,14 +79,12 @@ fn ascii_escape_json(serialized: &str) -> String {
     out
 }
 
-#[cfg(unix)]
 /// `_guard_run_plan_for_command` (:503-531). Content-bind every launch argv
 /// without performing adapter setup: resolve the launch identity, recover the
 /// executable-pinned command, and stamp the plan reusable only when the identity
 /// proves a durable binding.
 ///
 /// `environment`/`launch_cwd` come from the caller's prepared launch context.
-#[allow(dead_code)]
 pub fn guard_run_plan_for_command(
     adapter_command: &[String],
     environment: &BTreeMap<String, String>,
@@ -141,7 +136,6 @@ pub fn guard_run_plan_for_command(
 /// argv prefix when the execution command extends the adapter command (e.g. a
 /// resolved absolute path prepended to a `cmd /c`-style wrapper). Returns `None`
 /// when no extra prefix exists.
-#[allow(dead_code)]
 pub fn guard_run_executable_prefix(launch_plan: &GuardRunLaunchPlan) -> Option<Vec<String>> {
     let adapter = &launch_plan.adapter_command;
     let exec = &launch_plan.execution_command;
@@ -153,6 +147,33 @@ pub fn guard_run_executable_prefix(launch_plan: &GuardRunLaunchPlan) -> Option<V
         return None;
     }
     Some(exec[..prefix_len].to_vec())
+}
+
+/// The pure prelude of `_guard_run_finalize_authorized_launch_plan` (:571-589):
+/// every authorized plan must be reusable and bound to one prepared
+/// environment, and every plan must yield an executable-resolved prefix.
+/// Returns those prefixes in first-seen order, or `None` when the authorized
+/// set does not bind.
+pub fn guard_run_authorized_executable_prefixes(
+    authorized_plans: &[GuardRunLaunchPlan],
+) -> Option<Vec<Vec<String>>> {
+    if authorized_plans.is_empty() || !authorized_plans.iter().all(|p| p.reusable) {
+        return None;
+    }
+    let first = &authorized_plans[0];
+    if authorized_plans[1..].iter().any(|p| {
+        p.environment_sha256 != first.environment_sha256 || p.environment != first.environment
+    }) {
+        return None;
+    }
+    let mut prefixes: Vec<Vec<String>> = Vec::new();
+    for plan in authorized_plans {
+        let prefix = guard_run_executable_prefix(plan)?;
+        if !prefixes.contains(&prefix) {
+            prefixes.push(prefix);
+        }
+    }
+    Some(prefixes)
 }
 
 /// Seam for the harness-adapter launch command used by
@@ -185,22 +206,8 @@ pub fn guard_run_finalize_authorized_launch_plan(
     context_home_dir: Option<&Path>,
     context_workspace_dir: Option<&Path>,
 ) -> Option<GuardRunLaunchPlan> {
-    if authorized_plans.is_empty() || !authorized_plans.iter().all(|p| p.reusable) {
-        return None;
-    }
+    let prefixes = guard_run_authorized_executable_prefixes(authorized_plans)?;
     let first = &authorized_plans[0];
-    if authorized_plans[1..].iter().any(|p| {
-        p.environment_sha256 != first.environment_sha256 || p.environment != first.environment
-    }) {
-        return None;
-    }
-    let mut prefixes: Vec<Vec<String>> = Vec::new();
-    for plan in authorized_plans {
-        let prefix = guard_run_executable_prefix(plan)?;
-        if !prefixes.contains(&prefix) {
-            prefixes.push(prefix);
-        }
-    }
     let actual = adapter.launch_command_from_authorized_plan(
         harness,
         &prefixes,
