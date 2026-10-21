@@ -13,30 +13,38 @@ use std::time::Instant;
 
 use super::ConfigFacts;
 
-/// The one `refs/remotes/<remote>/<name>` Git would start the new branch
-/// from, `Some(None)` when Git would find none or several, and `None` when the
-/// probe cannot tell.
+/// What Git does with a `<name>` that names no local branch or other ref.
+pub(super) enum Tracking {
+    /// Creates `<name>` tracking this `refs/remotes/<remote>/<name>`.
+    Unique(String),
+    /// Stops with "invalid reference" before writing anything.
+    Missing,
+    /// Something this proof does not model: several remotes have the branch,
+    /// or a remote maps its branches somewhere else.
+    Unproven,
+}
+
+/// The ref Git would start the new branch from, or `None` when the probe
+/// cannot tell.
 ///
 /// Only the standard fetch refspec is followed: any other mapping, or a remote
 /// defined outside the config in `remotes/` or `branches/`, could point Git at
 /// a ref this proof does not read, so the command stays reviewed.
-pub(super) fn unique_tracking_ref(
+pub(super) fn resolve(
     base: &Command,
     leading: &[String],
     name: &str,
     facts: &ConfigFacts,
     common_dir: &Path,
     deadline: Instant,
-) -> Option<Option<String>> {
-    if !super::super::worktree_add::valid_branch_name(name)
-        || !legacy_remotes_absent(common_dir)?
-    {
-        return Some(None);
+) -> Option<Tracking> {
+    if !super::super::worktree_add::valid_branch_name(name) || !legacy_remotes_absent(common_dir)? {
+        return Some(Tracking::Unproven);
     }
     let mut remotes: Vec<&str> = Vec::new();
     for (remote, refspec) in &facts.remote_fetch {
         if !standard_refspec(remote, refspec) {
-            return Some(None);
+            return Some(Tracking::Unproven);
         }
         if !remotes.contains(&remote.as_str()) {
             remotes.push(remote);
@@ -54,14 +62,14 @@ pub(super) fn unique_tracking_ref(
         )?;
         if status.success() {
             if found.is_some() {
-                return Some(None);
+                return Some(Tracking::Unproven);
             }
             found = Some(tracking);
         } else if status.code() != Some(1) || !output.is_empty() {
             return None;
         }
     }
-    Some(found)
+    Some(found.map_or(Tracking::Missing, Tracking::Unique))
 }
 
 /// `git remote add` writes `+refs/heads/*:refs/remotes/<remote>/*`.

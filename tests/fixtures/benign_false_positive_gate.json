@@ -9128,6 +9128,23 @@
       "expect": "allow"
     },
     {
+      "id": "git-worktree-add-unknown-branch",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add ${ORG}/app-portal-unknown-review feat/never-fetched-review"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "git-worktree-add-existing-branch-tail",
       "fix_area": "worktree-add",
       "harnesses": [

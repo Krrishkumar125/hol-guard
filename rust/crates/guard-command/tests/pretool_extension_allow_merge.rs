@@ -200,10 +200,8 @@ fn decide_in_session(
     std::fs::create_dir_all(&tools).unwrap();
     let path = format!("{}:{}", tools.display(), std::env::var("PATH").unwrap());
     let home = root.to_str().unwrap().to_owned();
-    let mut environment = std::collections::BTreeMap::from([
-        ("PATH", path.clone()),
-        ("HOME", home.clone()),
-    ]);
+    let mut environment =
+        std::collections::BTreeMap::from([("PATH", path.clone()), ("HOME", home.clone())]);
     if live_environment {
         environment.insert("GITHUB_TOKEN", "redacted".to_owned());
         environment.insert("PAGER", "less".to_owned());
@@ -215,9 +213,7 @@ fn decide_in_session(
     let context = guard_contracts::GuardExecutionEnvironmentV1 {
         path,
         environment_names: environment.keys().map(|key| (*key).to_owned()).collect(),
-        environment_digest: hex::encode(Sha256::digest(
-            serde_json::to_vec(&environment).unwrap(),
-        )),
+        environment_digest: hex::encode(Sha256::digest(serde_json::to_vec(&environment).unwrap())),
         home: Some(home.clone()),
         git_pager_disabled: false,
         pager_disabled: live_environment,

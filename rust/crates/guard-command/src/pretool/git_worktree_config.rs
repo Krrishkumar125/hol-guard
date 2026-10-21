@@ -46,7 +46,9 @@ pub(super) fn safe_worktree_config(output: &[u8], home: &Path) -> Option<Option<
         let record = records.next()?;
         let (key, value) = record.split_once('\n')?;
         if let Some(remote) = remote_fetch_name(key) {
-            facts.remote_fetch.push((remote.to_owned(), value.to_owned()));
+            facts
+                .remote_fetch
+                .push((remote.to_owned(), value.to_owned()));
         }
         let key = key.to_ascii_lowercase();
         match scope {

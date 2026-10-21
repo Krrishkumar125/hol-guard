@@ -2,7 +2,8 @@
 //! `git worktree add <path> <name>` for a branch that exists only on one
 //! remote creates `<name>` tracking that remote branch. Agents do this to check
 //! out a fetched branch, so it runs without review when the remote branch's
-//! tree is as inert as any other checkout.
+//! tree is as inert as any other checkout. A name no remote has makes Git stop
+//! before writing anything, so that runs without review too.
 
 use crate::git_helper_fixture as fixture;
 
@@ -112,10 +113,30 @@ fn a_branch_only_one_remote_has_is_checked_out_without_review() {
 }
 
 #[test]
-fn a_branch_no_remote_has_still_waits_for_review() {
+fn a_branch_no_remote_has_fails_without_review() {
     let (repository, _cleanup) = repository("missing");
-    let (_, command) = add_command(&repository, "feat/nowhere");
-    assert_ne!(decide(&repository, &command).minimum_action, "allow");
+    let (destination, command) = add_command(&repository, "feat/nowhere");
+    let result = decide(&repository, &command);
+    assert_eq!(result.minimum_action, "allow", "{}", result.reason_code);
+
+    // Git refuses the name before it writes anything.
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&repository)
+        .env_clear()
+        .env("PATH", std::env::var("PATH").unwrap())
+        .env("HOME", repository.parent().unwrap())
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .args([
+            "worktree",
+            "add",
+            destination.to_str().unwrap(),
+            "feat/nowhere",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(!destination.exists());
 }
 
 #[test]
@@ -132,7 +153,11 @@ fn a_branch_two_remotes_have_still_waits_for_review() {
     );
     git(
         &repository,
-        &["update-ref", "refs/remotes/upstream/feat/remote-only", "HEAD"],
+        &[
+            "update-ref",
+            "refs/remotes/upstream/feat/remote-only",
+            "HEAD",
+        ],
     );
     let (_, command) = add_command(&repository, "feat/remote-only");
     assert_ne!(decide(&repository, &command).minimum_action, "allow");

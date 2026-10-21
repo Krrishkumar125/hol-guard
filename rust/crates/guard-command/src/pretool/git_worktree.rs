@@ -124,6 +124,8 @@ pub(super) fn worktree_add_execution_free(
     // to, which the `rev-parse` below resolves the same way. A name that
     // resolves to nothing makes Git create a branch of that name from the one
     // remote-tracking branch that matches it, so that ref is proven instead.
+    // With no such branch Git stops before writing anything, unless a fetch
+    // earlier in the same command creates one first.
     if attach && reference != "HEAD" {
         branch_ref = format!("refs/heads/{reference}");
         let (status, output) = git_query_with_args(
@@ -149,18 +151,16 @@ pub(super) fn worktree_add_execution_free(
         WORKTREE_PROBE_LIMIT,
     )?;
     if attach && !local_branch && reference != "HEAD" && !status.success() {
-        let Some(found) = tracking::unique_tracking_ref(
-            &base,
-            leading,
-            reference,
-            &facts,
-            &common_dir,
-            deadline,
-        )?
-        else {
-            return Some(false);
-        };
-        tracking_ref = found;
+        tracking_ref =
+            match tracking::resolve(&base, leading, reference, &facts, &common_dir, deadline)? {
+                tracking::Tracking::Unique(found) => found,
+                tracking::Tracking::Missing => {
+                    return Some(
+                        !reference_may_move && status.code() == Some(1) && output.is_empty(),
+                    )
+                }
+                tracking::Tracking::Unproven => return Some(false),
+            };
         reference = tracking_ref.as_str();
         let commit_ref = format!("{reference}^{{commit}}");
         (status, output) = git_query_with_args(
