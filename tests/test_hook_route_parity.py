@@ -57,6 +57,7 @@ class _Current:
     recorder: Any = None
     route: tuple[tuple[str, ...], str] = ((), "")
     facts: Any = None
+    prepared: tuple[Any, ...] = ()
 
 
 def _stub_effects(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -106,6 +107,7 @@ def _stub_effects(monkeypatch: pytest.MonkeyPatch) -> None:
     patches: dict[Any, dict[str, Any]] = {
         pipeline: {
             "native_hook_route": route,
+            "prepare_native_hook_state": lambda *_a, **_k: _Current.prepared,
             "_emit_native_unavailable": unavailable,
             "_normalize_hook_payload": lambda payload, *, harness: payload,
             "_run_native_artifact_hook_flow": artifact_flow,
@@ -170,7 +172,7 @@ def _run_pipeline(case: Any, vector: dict[str, Any], world: Any) -> tuple[list[A
         case.copilot_stage or None,
         _TOOL_CALL if case.copilot_tool_call else None,
     )
-    pipeline.prepare_native_hook_state = lambda *_a, **_k: prepared  # type: ignore[method-assign]
+    now.prepared = prepared
     store = SimpleNamespace(
         add_event=now.recorder.add_event,
         read_extension_control_authority_for_registry=lambda _registry: None,
