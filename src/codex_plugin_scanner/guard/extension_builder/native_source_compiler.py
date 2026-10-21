@@ -27,7 +27,14 @@ from ..group_write_trust import writable_only_by_owner
 from ..runtime.extension_control_limits import MAX_NATIVE_COMMAND_PROGRAM_BYTES
 from .native_executable_root import ExecutableMaterializationError, verified_executable
 
-_MAX_REQUEST_BYTES = 8 * 1024 * 1024
+# Mirrors `MAX_NATIVE_REQUEST_BYTES` in rust/crates/guard-contracts, which is
+# what the runtime's own stdin reader enforces. It used to be 8 MiB here, so a
+# request between the two numbers passed the Python check and was then refused
+# by a process this side had already spawned.
+_MAX_REQUEST_BYTES = 6 * 1024 * 1024
+# The token the runtime writes to stderr, with an empty stdout, when the
+# request it was handed is past that bound.
+_REQUEST_TOO_LARGE_CODE = "native_request_too_large"
 _MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 _MAX_MANIFEST_BYTES = 64 * 1024
 _MAX_COMPILER_BYTES = 128 * 1024 * 1024
@@ -62,6 +69,19 @@ class NativeSourceCompilerError(RuntimeError):
         self.code = code
         self.pointer = pointer
         self.returncode = returncode
+
+
+class NativeRequestTooLargeError(NativeSourceCompilerError):
+    """The request Guard built is larger than the native runtime will read.
+
+    Carried as its own type so callers classify it structurally. Nothing about
+    the installed files is wrong here: the request is assembled from local
+    Guard state, so reinstalling the package cannot change its size and a
+    retry rebuilds the identical, identically oversized request.
+    """
+
+    def __init__(self, message: str, *, returncode: int | None = None) -> None:
+        super().__init__(message, code=_REQUEST_TOO_LARGE_CODE, returncode=returncode)
 
 
 def _read_regular(path: Path, *, limit: int, label: str) -> bytes:
@@ -234,8 +254,7 @@ def _canonical_request(request: Mapping[str, object]) -> bytes:
         )
     except (TypeError, ValueError) as exc:
         raise NativeSourceCompilerError("compiler request is not canonical JSON") from exc
-    if len(encoded) > _MAX_REQUEST_BYTES:
-        raise NativeSourceCompilerError("compiler request exceeds the native input bound")
+    _reject_oversized_request(encoded)
     return encoded
 
 
@@ -251,6 +270,13 @@ def _decode_output(
         value = json.loads(stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         detail = stderr[:512].decode("utf-8", errors="replace")
+        # A runtime that refused the request as oversized answers with an empty
+        # stdout and this token on stderr. Without it the failure reads as
+        # unparseable output, which a caller cannot tell from a broken install.
+        if _REQUEST_TOO_LARGE_CODE in detail:
+            raise NativeRequestTooLargeError(
+                "source compiler refused the request as too large", returncode=returncode
+            ) from exc
         raise NativeSourceCompilerError(
             f"source compiler returned invalid JSON{(': ' + detail) if detail else ''}", returncode=returncode
         ) from exc
@@ -278,12 +304,23 @@ def _verified_executable(raw: bytes):  # type: ignore[no-untyped-def]
         raise NativeSourceCompilerError("source compiler could not be started") from exc
 
 
+def _reject_oversized_request(payload: bytes) -> None:
+    """Refuse a request the runtime would refuse, before spawning it."""
+    if len(payload) > _MAX_REQUEST_BYTES:
+        raise NativeRequestTooLargeError("compiler request exceeds the native input bound")
+
+
 def _run_bounded(
     arguments: list[str],
     payload: bytes,
     *,
     timeout: float,
 ) -> tuple[int, bytes, bytes]:
+    # Every caller reaches the runtime through here, including the pack
+    # lifecycle adapter, which encodes its own JSON and never passes through
+    # `_canonical_request`. Checking the bytes here is the only place that
+    # covers all of them, and it happens before `Popen`.
+    _reject_oversized_request(payload)
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
         raise NativeSourceCompilerError("source compiler timeout must be positive and finite")
     try:
@@ -492,6 +529,7 @@ def validate_source(request: Mapping[str, object], *, compiler: Path | None = No
 
 
 __all__ = [
+    "NativeRequestTooLargeError",
     "NativeSourceCompilerError",
     "compile_source",
     "find_packaged_source_compiler",

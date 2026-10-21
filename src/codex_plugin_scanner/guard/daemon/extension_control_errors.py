@@ -33,6 +33,11 @@ _CAUSE_RECOVERY_ACTIONS = {
     "installed_runtime_unresponsive": "retry_pack_preparation",
     "internal": "inspect_daemon_log",
     "local_storage": "repair_local_cache",
+    # The request outgrew the one frame the runtime reads. The install is
+    # intact, so `repair_guard_installation` would be a lie, and the request is
+    # rebuilt byte-for-byte on a retry. What has grown is local Guard state, so
+    # the only surface that can shrink it is the local cache.
+    "native_request_too_large": "repair_local_cache",
     "offline": "retry_when_reachable",
     # The control authority is already protected when preparation runs, so
     # `recover-authority` answers `authority_not_recoverable` here. What is

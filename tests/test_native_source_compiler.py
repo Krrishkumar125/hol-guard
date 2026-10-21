@@ -301,3 +301,39 @@ def test_subprocess_output_and_timeout_are_bounded(tmp_path: Path, monkeypatch: 
     with pytest.raises(compiler.NativeSourceCompilerError, match="timed out"):
         compiler.run_source_compiler("validate", {"sources": ["x" * (1024 * 1024)]}, compiler=sleeper, timeout=0.05)
     assert time.monotonic() - started < 5
+
+
+def test_an_oversized_request_is_refused_before_a_process_is_spawned(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The runtime reads one bounded request; spawning it first only wastes it."""
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("an oversized request must not reach Popen")
+
+    monkeypatch.setattr(compiler.subprocess, "Popen", refuse)
+    oversized = b"x" * (compiler._MAX_REQUEST_BYTES + 1)
+    with pytest.raises(compiler.NativeRequestTooLargeError):
+        compiler._run_bounded(["/nonexistent/hol-guard-runtime"], oversized, timeout=5.0)
+
+
+def test_the_python_request_bound_matches_the_bound_the_runtime_enforces() -> None:
+    """`MAX_NATIVE_REQUEST_BYTES` in guard-contracts is what stdin is read against.
+
+    A larger number here passes requests the runtime then refuses, which is how
+    an oversized request used to be discovered only after a failed subprocess.
+    """
+
+    assert compiler._MAX_REQUEST_BYTES == 6 * 1024 * 1024
+
+
+def test_a_runtime_refusal_on_stderr_is_not_reported_as_unreadable_output() -> None:
+    """The runtime answers an oversized request with empty stdout and a token."""
+
+    with pytest.raises(compiler.NativeRequestTooLargeError) as raised:
+        compiler._decode_output(b"", returncode=1, stderr=b"native_request_too_large\n")
+    assert raised.value.code == "native_request_too_large"
+
+
+def test_other_unreadable_output_is_still_a_plain_compiler_failure() -> None:
+    with pytest.raises(compiler.NativeSourceCompilerError) as raised:
+        compiler._decode_output(b"not json", returncode=1, stderr=b"native_request_read_failed\n")
+    assert not isinstance(raised.value, compiler.NativeRequestTooLargeError)
