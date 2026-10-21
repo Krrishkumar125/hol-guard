@@ -2620,6 +2620,104 @@
         "directory_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "skillDirectoryIdentity": {
           "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entryCount": 1180591620717411303424,
+          "reusable": true,
+          "schemaVersion": "guard.skill-directory-identity.v1",
+          "status": "complete",
+          "totalBytes": 0
+        },
+        "versionInfo": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hashBasis": "skill-directory-v1"
+        }
+      },
+      "sanitized": {
+        "directory_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "skillDirectoryIdentity": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entryCount": 1180591620717411303424,
+          "reusable": true,
+          "schemaVersion": "guard.skill-directory-identity.v1",
+          "status": "complete",
+          "totalBytes": 0
+        },
+        "versionInfo": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hashBasis": "skill-directory-v1"
+        }
+      },
+      "validated": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "metadata": {
+        "directory_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "skillDirectoryIdentity": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entryCount": 3,
+          "reusable": true,
+          "schemaVersion": "guard.skill-directory-identity.v1",
+          "status": "complete",
+          "totalBytes": 1180591620717411303424
+        },
+        "versionInfo": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hashBasis": "skill-directory-v1"
+        }
+      },
+      "sanitized": {
+        "directory_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "skillDirectoryIdentity": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entryCount": 3,
+          "reusable": true,
+          "schemaVersion": "guard.skill-directory-identity.v1",
+          "status": "complete",
+          "totalBytes": 1180591620717411303424
+        },
+        "versionInfo": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hashBasis": "skill-directory-v1"
+        }
+      },
+      "validated": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "metadata": {
+        "directory_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "skillDirectoryIdentity": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entryCount": 1.0,
+          "reusable": true,
+          "schemaVersion": "guard.skill-directory-identity.v1",
+          "status": "complete",
+          "totalBytes": 0
+        },
+        "versionInfo": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hashBasis": "skill-directory-v1"
+        }
+      },
+      "sanitized": {
+        "skillDirectoryIdentity": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entryCount": 1.0,
+          "reusable": true,
+          "schemaVersion": "guard.skill-directory-identity.v1",
+          "status": "complete",
+          "totalBytes": 0
+        },
+        "versionInfo": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hashBasis": "skill-directory-v1"
+        }
+      },
+      "validated": null
+    },
+    {
+      "metadata": {
+        "directory_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "skillDirectoryIdentity": {
+          "contentHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "entryCount": 3,
           "reusable": true,
           "schemaVersion": "guard.skill-directory-identity.v1",

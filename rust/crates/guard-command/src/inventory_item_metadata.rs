@@ -123,10 +123,18 @@ fn canonical_sha256(value: Option<&Value>) -> Option<String> {
 }
 
 fn positive_int(value: Option<&Value>, minimum: i64) -> bool {
-    match value {
-        Some(Value::Number(number)) => number.as_i64().is_some_and(|parsed| parsed >= minimum),
-        _ => false,
+    let Some(Value::Number(number)) = value else {
+        return false;
+    };
+    if let Some(parsed) = number.as_i64() {
+        return parsed >= minimum;
     }
+    // CPython's `int` has no width, so an entry count or byte total wider than
+    // `i64` is still an integer there. `arbitrary_precision` keeps such a
+    // number as its literal text, and a literal of nothing but digits is a
+    // non-negative integer above every `minimum` this contract uses.
+    let literal = number.to_string();
+    !literal.is_empty() && literal.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// `validated_complete_skill_directory_hash(metadata)` — the v1 directory

@@ -122,6 +122,10 @@ IDENTITY_CASES: list[dict[str, object]] = [
     _complete(entryCount=0),
     _complete(entryCount=True),
     _complete(entryCount="3"),
+    # CPython's `int` has no width, so these stay valid counts there.
+    _complete(entryCount=2**70),
+    _complete(totalBytes=2**70),
+    _complete(entryCount=1.0),
     _complete(totalBytes=-1),
     _complete(totalBytes=False),
     _complete(contentHash=f"sha256:{OTHER_DIGEST}"),
