@@ -1,13 +1,28 @@
 use super::environment_program;
 use crate::pretool::PathContext;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-fn root(name: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("venv-program-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+/// The fixture's own root, removed when the test ends. It reads as a path, so
+/// the helpers below take the `&Path` they would take for any other place.
+struct Fixture(tempfile::TempDir);
+
+impl std::ops::Deref for Fixture {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+fn root(name: &str) -> Fixture {
+    let holder = tempfile::Builder::new()
+        .prefix(&format!("venv-program-{name}-"))
+        .tempdir()
+        .unwrap();
+    let root = holder.path();
     std::fs::create_dir_all(root.join("project/.venv/bin")).unwrap();
     std::fs::create_dir_all(root.join("base")).unwrap();
-    root
+    Fixture(holder)
 }
 
 fn mark(root: &Path) {
@@ -46,8 +61,12 @@ fn linked(root: &Path, marked: bool, name: &str, base: &Path) {
 }
 
 fn proven(root: &Path, executable: &str) -> bool {
+    proven_from(root, &root.join("project"), executable)
+}
+
+fn proven_from(root: &Path, cwd: &Path, executable: &str) -> bool {
     let home = root.to_str().unwrap().to_owned();
-    let cwd = root.join("project").to_str().unwrap().to_owned();
+    let cwd = cwd.to_str().unwrap().to_owned();
     environment_program(
         executable,
         PathContext {
@@ -182,4 +201,52 @@ fn a_context_without_absolute_roots_proves_nothing() {
             }
         ));
     }
+}
+
+/// The link is the environment's own shape, so only where it lands separates
+/// the interpreter it was built from any other program on the machine.
+#[cfg(unix)]
+#[test]
+fn a_link_that_reaches_another_program_is_refused() {
+    let root = root("other-program");
+    linked(&root, true, "python", &root.join("base/rm"));
+
+    assert!(!proven(&root, ".venv/bin/python"));
+}
+
+/// A session writes anywhere in its checkout without a review, so a link that
+/// leaves the working directory but stays in the tree still reaches a file
+/// this session chose.
+#[cfg(unix)]
+#[test]
+fn a_link_that_reaches_the_checkout_around_the_command_is_refused() {
+    let root = root("checkout-reach");
+    std::fs::create_dir_all(root.join("project/.git")).unwrap();
+    std::fs::create_dir_all(root.join("project/packages/api")).unwrap();
+    linked(&root, true, "python", &root.join("project/tools/python"));
+
+    let spelling = root.join("project/.venv/bin/python");
+    assert!(!proven_from(
+        &root,
+        &root.join("project/packages/api"),
+        spelling.to_str().unwrap(),
+    ));
+}
+
+/// The same checkout, with the link landing outside it: this is the ordinary
+/// environment a project builds against an interpreter installed elsewhere.
+#[cfg(unix)]
+#[test]
+fn a_link_that_leaves_the_checkout_is_still_the_environments_own() {
+    let root = root("checkout-leave");
+    std::fs::create_dir_all(root.join("project/.git")).unwrap();
+    std::fs::create_dir_all(root.join("project/packages/api")).unwrap();
+    linked(&root, true, "python", &root.join("base/python3.12"));
+
+    let spelling = root.join("project/.venv/bin/python");
+    assert!(proven_from(
+        &root,
+        &root.join("project/packages/api"),
+        spelling.to_str().unwrap(),
+    ));
 }

@@ -112,17 +112,46 @@ pub(super) fn environment_program(executable: &str, context: super::PathContext<
     if !resolved.is_file() || resolved.starts_with(root) {
         return false;
     }
-    // The working directory is the one place the session writes without
-    // review, so an interpreter the link reaches there is the planted file
-    // one step out. A working directory this screen cannot resolve leaves
-    // that question unanswered, which is the same answer. Where the link
-    // leads otherwise is not screened again: the location screen above has
-    // already read the name, and the places left are ones the session cannot
-    // write without a review of its own.
-    context
-        .cwd
-        .and_then(|cwd| std::fs::canonicalize(cwd).ok())
-        .is_some_and(|cwd| !resolved.starts_with(cwd))
+    // The name the link lands on has to be an interpreter too. A link spelled
+    // `python` that reaches another program would hand that program the
+    // interpreter's verdict, which is the whole of what this screen grants.
+    if !resolved
+        .file_name()
+        .is_some_and(|name| interpreter_name(&name.to_string_lossy()))
+    {
+        return false;
+    }
+    // The file that runs is screened at its own canonical place, not at the
+    // name that reached it: the system roots, another user's home, the
+    // sensitive families and the credential-named paths all read the target.
+    if !super::read_paths::resolved_location_allowed(
+        &resolved,
+        context.home_dir,
+        context.cwd,
+        false,
+    ) {
+        return false;
+    }
+    // The workspace is where the session writes without review, so an
+    // interpreter the link reaches inside it is the planted file one step out.
+    // The checkout around the working directory is that workspace, not just
+    // the directory a command happens to run from, or a link from a
+    // subdirectory would reach the rest of the tree unread. A working
+    // directory this screen cannot resolve leaves the question unanswered,
+    // which is the same answer.
+    let Some(cwd) = context.cwd.and_then(|cwd| std::fs::canonicalize(cwd).ok()) else {
+        return false;
+    };
+    let workspace = nearest_checkout(&cwd).unwrap_or(cwd);
+    !resolved.starts_with(workspace)
+}
+
+/// The checkout the working directory sits in, which the session writes
+/// without a review of its own.
+fn nearest_checkout(cwd: &Path) -> Option<std::path::PathBuf> {
+    cwd.ancestors()
+        .find(|directory| directory.join(".git").symlink_metadata().is_ok())
+        .map(Path::to_path_buf)
 }
 
 #[cfg(test)]
