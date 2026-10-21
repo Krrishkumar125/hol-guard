@@ -374,8 +374,7 @@ static COMMAND_URL_RE: LazyLock<FancyRegex> = LazyLock::new(|| {
 /// `(^|\s)(/[^\s]+)` — an absolute POSIX path argument.
 static COMMAND_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(^|[{space}])(/[^{space}]+)",
-        space = PYTHON_SPACE_CLASS,
+        r"(^|[{PYTHON_SPACE_CLASS}])(/[^{PYTHON_SPACE_CLASS}]+)",
     ))
     .expect("command path pattern")
 });
@@ -383,9 +382,7 @@ static COMMAND_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// `(?i)(authorization:\s*bearer\s+)\S+`.
 static COMMAND_BEARER_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(?i)(author{i}zat{i}on:[{space}]*bearer[{space}]+)[^{space}]+",
-        i = PYTHON_I,
-        space = PYTHON_SPACE_CLASS,
+        r"(?i)(author{PYTHON_I}zat{PYTHON_I}on:[{PYTHON_SPACE_CLASS}]*bearer[{PYTHON_SPACE_CLASS}]+)[^{PYTHON_SPACE_CLASS}]+",
     ))
     .expect("command bearer pattern")
 });
@@ -393,9 +390,7 @@ static COMMAND_BEARER_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// `(?i)((?:api[_-]?key|auth|password|secret|token)=)\S+`.
 static COMMAND_ASSIGNMENT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(?i)((?:ap{i}[_-]?key|auth|password|secret|token)=)[^{space}]+",
-        i = PYTHON_I,
-        space = PYTHON_SPACE_CLASS,
+        r"(?i)((?:ap{PYTHON_I}[_-]?key|auth|password|secret|token)=)[^{PYTHON_SPACE_CLASS}]+",
     ))
     .expect("command assignment pattern")
 });
@@ -403,9 +398,7 @@ static COMMAND_ASSIGNMENT_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// `(?i)((?:--)?(?:api[_-]?key|auth|password|secret|token)\s+)\S+`.
 static COMMAND_OPTION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(?i)((?:--)?(?:ap{i}[_-]?key|auth|password|secret|token)[{space}]+)[^{space}]+",
-        i = PYTHON_I,
-        space = PYTHON_SPACE_CLASS,
+        r"(?i)((?:--)?(?:ap{PYTHON_I}[_-]?key|auth|password|secret|token)[{PYTHON_SPACE_CLASS}]+)[^{PYTHON_SPACE_CLASS}]+",
     ))
     .expect("command option pattern")
 });

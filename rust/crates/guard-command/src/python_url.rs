@@ -85,7 +85,7 @@ pub(crate) struct SplitUrl {
 /// `urlsplit(url)` with the default `scheme` and `allow_fragments`.
 pub(crate) fn urlsplit(url: &str) -> Result<SplitUrl, UrlValueError> {
     // Only lstrip, as CPython does: a trailing space belongs to the URL.
-    let stripped = url.trim_start_matches(|value: char| value == ' ' || value < '\u{20}');
+    let stripped = url.trim_start_matches(|value: char| value <= ' ');
     let mut rest: String = stripped
         .chars()
         .filter(|value| !matches!(value, '\t' | '\r' | '\n'))
