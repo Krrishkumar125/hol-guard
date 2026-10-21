@@ -12,7 +12,7 @@
 #[path = "support/git_helper_fixture.rs"]
 mod git_helper_fixture;
 
-#[path = "pretool_windows_working_directory_projection.rs"]
+#[path = "pretool_windows_sibling_repository_writes/working_directory_projection.rs"]
 mod working_directory_projection;
 
 use git_helper_fixture::FixtureCleanup;
