@@ -10,13 +10,11 @@ import secrets
 from .native_extension_control_authority import view_to_wire
 from .runtime.command_extensions import CommandSafetyExtensionRegistry
 from .runtime.extension_control_authority import (
-    SNAPSHOT_PURPOSE,
     AuthorityAnchor,
     AuthorityHealth,
     AuthorityPhase,
     ExtensionControlAuthorityError,
     ExtensionControlAuthorityView,
-    authenticated_record,
     layers_to_json,
 )
 from .runtime.extension_control_contract import (
@@ -34,25 +32,11 @@ from .runtime.extension_control_proof import (
     validate_extension_control_proof,
 )
 from .store_extension_control_authority_schema import ensure_extension_control_authority_schema
-from .store_extension_control_authority_support import _now
+from .store_extension_control_authority_support import _now, _plan_int, _plan_map, _plan_record
 
 # A commit re-reads at most once to roll back another request's abandoned
 # transition and once after abandoning its own; the resident decides each round.
 _MAX_COMMIT_ROUNDS = 4
-
-
-def _plan_int(plan: dict[str, object], name: str) -> int:
-    value = plan.get(name)
-    if type(value) is not int:
-        raise ExtensionControlAuthorityError("invalid extension control authority plan")
-    return value
-
-
-def _plan_map(plan: dict[str, object], name: str) -> dict[str, object]:
-    value = plan.get(name)
-    if not isinstance(value, dict):
-        raise ExtensionControlAuthorityError("invalid extension control authority plan")
-    return value
 
 
 class ExtensionControlAuthorityCommitMixin:
@@ -426,25 +410,13 @@ class ExtensionControlAuthorityCommitMixin:
         if key is None:
             key = secrets.token_bytes(32)
             self._secret_store().set_secret(self._key_ref(), base64.urlsafe_b64encode(key).decode())
-        committed_at = _now()
-        layers_json = layers_to_json(())
-        snapshot_json, digest, mac = authenticated_record(
-            {
-                "revision": 0,
-                "catalog_digest": catalog_digest,
-                "layers_json": layers_json,
-                "previous_digest": None,
-                "committed_at": committed_at,
-            },
-            key=key,
-            purpose=SNAPSHOT_PURPOSE,
+        plan = _plan_map(
+            self._extension_control_authority_op("bootstrap_plan", key=key, catalog_digest=catalog_digest, now=_now()),
+            "plan",
         )
+        snapshot_json, digest, mac = _plan_record(plan, "snapshot")
+        layers_json, committed_at = str(plan["layers_json"]), str(plan["committed_at"])
         with self._connect() as connection:
-            existing = connection.execute(
-                "select 1 from extension_control_authority_snapshot where singleton = 1"
-            ).fetchone()
-            if existing is not None:
-                raise ExtensionControlAuthorityError("extension control authority already exists")
             connection.execute(
                 """
                 insert into extension_control_authority_snapshot (

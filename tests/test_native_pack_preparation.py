@@ -21,10 +21,11 @@ from codex_plugin_scanner.guard.catalog_delivery import (
 )
 from codex_plugin_scanner.guard.catalog_delivery.installed_bundle import MANIFEST, descriptor
 from codex_plugin_scanner.guard.catalog_delivery.located_store import LocatedStore
-from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import ObjectStore, encoded, entries
+from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import ObjectStore, encoded
 from codex_plugin_scanner.guard.catalog_delivery.pack_store import PackReader
-from codex_plugin_scanner.guard.catalog_delivery.revocations import RevokedPackError, revocation_key
+from codex_plugin_scanner.guard.catalog_delivery.revocations import RevokedPackError
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport
+from tests.delivery_scripts import script
 from tests.extension_builder_support import use_installed_native_source_compiler
 from tests.guard_extension_control_authority_fixtures import (
     _allow_local_terminal_confirmation as _allow_local_terminal_confirmation,
@@ -33,6 +34,10 @@ from tests.test_extension_delivery_authority import SOURCE, root_value
 from tests.test_native_command_control_binding_publisher import (
     _pinned_integrity_material_and_resident_key as _pinned_integrity_material_and_resident_key,
 )
+
+entries = script("extension_delivery_objects").entries
+revocation_key = script("extension_delivery_revocations").revocation_key
+
 
 BINARY = Path(os.environ.get("NATIVE_PREPARATION_BINARY") or os.environ.get("HOL_GUARD_NATIVE_BINARY", ""))
 

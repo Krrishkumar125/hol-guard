@@ -12,6 +12,7 @@ from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import ObjectS
 from codex_plugin_scanner.guard.extension_builder.metadata_index import exchange
 from codex_plugin_scanner.guard.extension_builder.native_source_compiler import NativeSourceCompilerError
 from tests import extension_builder_support as builder_support
+from tests.delivery_scripts import script
 
 ROOT = builder_support.REPOSITORY
 native = builder_support.native_authoring_index
@@ -135,13 +136,14 @@ def test_fixed_installed_bundle_uses_native_traversal_and_selected_archive(nativ
     from types import SimpleNamespace
 
     from codex_plugin_scanner.guard.catalog_delivery import installed_bundle
-    from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import lookup_entry
     from codex_plugin_scanner.guard.catalog_delivery.pack_archives import archive_bytes
     from codex_plugin_scanner.guard.catalog_delivery.pack_store import PackReader
     from codex_plugin_scanner.guard.extension_builder.bundle_baseline import validation_base
 
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
     from extension_delivery_located_store import LocatedStore
+
+    lookup_entry = script("extension_delivery_objects").lookup_entry
 
     store, request = release_for(native, tmp_path / "release", 1660)
     assets, fetched = {}, []

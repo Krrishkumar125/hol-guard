@@ -30,7 +30,7 @@ pub(super) fn catalog(byte: char) -> String {
 }
 
 pub(super) struct Home {
-    root: PathBuf,
+    pub(super) root: PathBuf,
     pub(super) db: Connection,
 }
 
