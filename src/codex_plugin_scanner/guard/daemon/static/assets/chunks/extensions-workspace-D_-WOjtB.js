@@ -6058,7 +6058,8 @@ function CatalogExtensionDetail(props) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx(ProtectionModuleDetail, { ...detailProps, extension: state.extension });
 }
-const PROTECTION_DATA_UNSETTLED_MESSAGE = "Guard is still settling a protection update, so a few extensions may read as out of date. Saving stays safe: Guard refuses any change that does not match what it has loaded.";
+const PROTECTION_DATA_UNSETTLED_MESSAGE = "Guard is still settling a protection update, so a few extensions may read as out of date and changes cannot be saved yet. Reload this page in a few seconds.";
+const PROTECTION_SAVE_UNSETTLED_MESSAGE = "Guard could not save this protection change, so your current protection is unchanged. Guard is still settling a protection update; reload this page in a few seconds, then make the change again.";
 const CONSISTENT_LOAD_RETRY_DELAYS_MS = [250, 1e3, 2e3, 4e3];
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function loadConsistentProtectionData(loadCatalog, loadEffective, options = {}) {
@@ -9426,7 +9427,7 @@ function codeSentence(code, recovery) {
     case "authority_conflict":
     case "revision_conflict":
     case "invalid_previous_revision":
-      return `${KEPT} Your protection settings changed while this page was open. This page now shows the current settings; make the change again.`;
+      return `${KEPT} Your protection settings changed while this page was open. ${recovery.reloaded ? "This page now shows the current settings; make the change again." : "Reload the page and make the change again."}`;
     case "authority_unavailable":
     case "authority_unread":
     case "authority_history_unavailable":
@@ -9440,7 +9441,7 @@ function codeSentence(code, recovery) {
       return `Guard could not finish recovering the protection authority. ${repairAuthority}`;
     case "catalog_conflict":
     case "catalog_payload_limit_exceeded":
-      return `${KEPT} Guard's protection catalog moved underneath this page. This page now shows the current catalog; make the change again.`;
+      return `${KEPT} Guard's protection catalog moved underneath this page. ${recovery.reloaded ? "This page now shows the current catalog; make the change again." : "Reload the page and make the change again."}`;
     case "control_limit_exceeded":
     case "layer_control_limit_exceeded":
     case "layer_limit_exceeded":
@@ -9457,7 +9458,7 @@ function codeSentence(code, recovery) {
     case "invalid_extension":
     case "unknown_extension":
     case "unknown_permission":
-      return `${KEPT} Guard no longer recognizes the setting this page asked to change. This page now shows what Guard recognizes; try again.`;
+      return `${KEPT} Guard no longer recognizes the setting this page asked to change. ${recovery.reloaded ? "This page now shows what Guard recognizes; try again." : "Reload the page and try again."}`;
     case "invalid_layers":
     case "invalid_mutation":
       return `${KEPT} Guard rejected the change as malformed. Reload the page and make the change again; if it keeps failing, the Guard daemon log records the exact cause.`;
@@ -9498,10 +9499,11 @@ function isStaleProtectionDataError(error) {
 function isRetryableProtectionChangeError(error) {
   return error instanceof ExtensionControlApiError && error.code === "pack_preparation_unavailable" && RETRYABLE_PREPARATION_CAUSES.has(error.cause ?? "");
 }
-function protectionChangeErrorMessage(error, recoveryCommand, recoveryShell) {
+function protectionChangeErrorMessage(error, recoveryCommand, recoveryShell, options = {}) {
   const recovery = {
     command: recoveryCommand ?? "hol-guard command controls recover-authority",
-    terminal: recoveryShell === "powershell" ? "PowerShell" : "your terminal"
+    terminal: recoveryShell === "powershell" ? "PowerShell" : "your terminal",
+    reloaded: options.reloaded === true
   };
   if (error instanceof ExtensionControlApiError) {
     if (error.code === "pack_preparation_unavailable") return preparationSentence(error.cause, recovery);
@@ -9557,11 +9559,11 @@ function ProtectionCenterWorkspace(props) {
   const aliasRedirected = reactExports.useRef(null);
   const overviewKeepAlive = reactExports.useRef(false);
   const loadInFlightRef = reactExports.useRef(null);
+  const unsettledRef = reactExports.useRef(false);
   const catalogRef = reactExports.useRef(null);
   const refreshInFlightRef = reactExports.useRef(null);
   const localClis = useLocalCliCatalog();
-  const load = reactExports.useCallback(() => {
-    if (loadInFlightRef.current !== null) return loadInFlightRef.current;
+  const startLoad = reactExports.useCallback(() => {
     const request2 = (async () => {
       setState((current) => current.kind === "ready" ? current : { kind: "loading" });
       try {
@@ -9569,6 +9571,7 @@ function ProtectionCenterWorkspace(props) {
         const previous = catalogRef.current;
         const catalog = previous?.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol ? previous : fresh;
         catalogRef.current = catalog;
+        unsettledRef.current = !consistent;
         setState({ kind: "ready", catalog, effective, unsettled: !consistent });
         return effective;
       } catch (error) {
@@ -9587,6 +9590,13 @@ function ProtectionCenterWorkspace(props) {
     );
     return request2;
   }, []);
+  const load = reactExports.useCallback(async (options = {}) => {
+    const inFlight = loadInFlightRef.current;
+    if (inFlight === null) return startLoad();
+    if (!options.fresh) return inFlight;
+    await inFlight;
+    return loadInFlightRef.current ?? startLoad();
+  }, [startLoad]);
   reactExports.useEffect(() => {
     void load();
   }, [load]);
@@ -9683,6 +9693,10 @@ function ProtectionCenterWorkspace(props) {
   }, [requestChange]);
   const confirm = reactExports.useCallback(async (credentials) => {
     if (state.kind !== "ready" || !pending) return;
+    if (state.unsettled) {
+      setMutationError(PROTECTION_SAVE_UNSETTLED_MESSAGE);
+      return;
+    }
     setBusy(true);
     setMutationError(null);
     const submit = async () => {
@@ -9705,7 +9719,13 @@ function ProtectionCenterWorkspace(props) {
       setPending(null);
       await load();
     } catch (error) {
-      if (isStaleProtectionDataError(error)) await load();
+      if (isStaleProtectionDataError(error)) {
+        const reloaded = await load({ fresh: true }) !== null;
+        setMutationError(
+          reloaded && unsettledRef.current ? PROTECTION_SAVE_UNSETTLED_MESSAGE : protectionChangeErrorMessage(error, recoveryCommand, recoveryShell, { reloaded })
+        );
+        return;
+      }
       setMutationError(protectionChangeErrorMessage(error, recoveryCommand, recoveryShell));
     } finally {
       setBusy(false);

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { REFRESH_DEADLINE_MS, refreshEffectiveExtensionControls } from "../extension-controls-api";
 import {
   CONSISTENT_LOAD_RETRY_DELAYS_MS,
+  PROTECTION_DATA_UNSETTLED_MESSAGE,
+  PROTECTION_SAVE_UNSETTLED_MESSAGE,
   loadConsistentProtectionData,
 } from "./consistent-protection-load";
 
@@ -121,3 +123,10 @@ assert.ok(REFRESH_DEADLINE_MS > 0 && REFRESH_DEADLINE_MS <= 5000);
   }
   assert.ok(seenSignal?.aborted);
 }
+
+// A split pair always builds a mutation the daemon refuses, so neither notice
+// may suggest that saving works while the page is unsettled.
+assert.match(PROTECTION_DATA_UNSETTLED_MESSAGE, /cannot be saved yet/);
+assert.ok(!/stays safe/.test(PROTECTION_DATA_UNSETTLED_MESSAGE));
+assert.match(PROTECTION_SAVE_UNSETTLED_MESSAGE, /current protection is unchanged/);
+assert.match(PROTECTION_SAVE_UNSETTLED_MESSAGE, /reload this page in a few seconds/);

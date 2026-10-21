@@ -1,11 +1,14 @@
 import { refreshEffectiveExtensionControls } from "../extension-controls-api";
 
 // Shown beside the extension list, never in place of it. The daemon refuses a
-// mutation whose catalog digest is not its own (409 `catalog_conflict`), so
-// disagreement here costs the page nothing but accuracy in what the controls
-// are read against.
+// mutation whose catalog digest is not its own (409 `catalog_conflict`), and a
+// split pair always carries one digest it does not hold, so the page reads
+// fine but cannot save until a reload lands a pair that agrees.
 export const PROTECTION_DATA_UNSETTLED_MESSAGE =
-  "Guard is still settling a protection update, so a few extensions may read as out of date. Saving stays safe: Guard refuses any change that does not match what it has loaded.";
+  "Guard is still settling a protection update, so a few extensions may read as out of date and changes cannot be saved yet. Reload this page in a few seconds.";
+
+export const PROTECTION_SAVE_UNSETTLED_MESSAGE =
+  "Guard could not save this protection change, so your current protection is unchanged. Guard is still settling a protection update; reload this page in a few seconds, then make the change again.";
 
 // The catalog read model and the effective controls describe one catalog only
 // once Guard has bound both to it. A pack activation or an upgrade settling its

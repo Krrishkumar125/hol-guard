@@ -137,7 +137,16 @@ for (const code of ["authority_apply_failed", "a_code_this_build_has_never_seen"
 
 // Managed settings and stale pages say what is actually wrong.
 assert.match(protectionChangeErrorMessage(apiError("managed_layer_mutation")), /managed for you by your organization/);
-assert.match(protectionChangeErrorMessage(apiError("revision_conflict")), /now shows the current settings/);
+// A stale page says it now shows current data only once that reload landed;
+// a reload that failed leaves the operator with the old instruction.
+for (const code of ["revision_conflict", "catalog_conflict", "unknown_extension"]) {
+  const reloaded = protectionChangeErrorMessage(apiError(code), undefined, undefined, { reloaded: true });
+  assert.match(reloaded, /This page now shows/, `${code}: ${reloaded}`);
+  assert.ok(!/Reload the page/.test(reloaded), `${code}: ${reloaded}`);
+  const notReloaded = protectionChangeErrorMessage(apiError(code));
+  assert.match(notReloaded, /Reload the page/, `${code}: ${notReloaded}`);
+  assert.ok(!/now shows/.test(notReloaded), `${code}: ${notReloaded}`);
+}
 assert.match(protectionChangeErrorMessage(apiError("approval_required")), /approval password/);
 
 // Errors that are not control-API failures keep their own message.
@@ -176,7 +185,7 @@ for (const code of [
   "unknown_permission",
 ]) {
   assert.ok(isStaleProtectionDataError(apiError(code)), code);
-  assert.doesNotMatch(protectionChangeErrorMessage(apiError(code)), /Reload (the|this) page/, code);
+  assert.doesNotMatch(protectionChangeErrorMessage(apiError(code), undefined, undefined, { reloaded: true }), /Reload (the|this) page/, code);
 }
 // A failure that says nothing about staleness must not trigger a reload: the
 // operator's unsaved state is worth more than a speculative refresh.
