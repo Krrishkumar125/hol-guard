@@ -105,6 +105,8 @@
   "src/codex_plugin_scanner/guard/adapters/_modules/codex/codex_hook_response.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
   "src/codex_plugin_scanner/guard/runtime/sandbox.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py",
   "src/codex_plugin_scanner/guard/runtime/containment_outputs.py"
  ],
  "retired_tests": [
