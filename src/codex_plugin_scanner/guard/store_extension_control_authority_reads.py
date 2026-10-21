@@ -24,6 +24,7 @@ from .runtime.extension_control_authority import (
     ExtensionControlAuthorityError,
     ExtensionControlAuthorityView,
 )
+from .runtime.extension_control_contract import ExtensionControlLayer
 from .store_extension_control_authority_schema import ensure_extension_control_authority_schema
 from .store_extension_control_authority_support import _row_int, _row_str
 
@@ -158,18 +159,37 @@ class ExtensionControlAuthorityReadsMixin:
         if key is None:
             return frozenset()
         try:
-            self._extension_control_authority_op(
-                "managed_activation",
-                key=key,
-                state=state,
-                catalog_digest=str(state.get("catalogDigest", "")),
-            )
+            self._managed_activation(state, key=key)
         except ExtensionControlAuthorityError:
             return frozenset()
         raw = state.get("negotiatedCapabilities")
         if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
             return frozenset()
         return frozenset(cast(list[str], raw))
+
+    def _managed_revision(self, state: object, *, key: bytes) -> int:
+        """The authenticated managed publication epoch in ``state``."""
+
+        revision = self._extension_control_authority_op("managed_revision", key=key, state=state).get("revision")
+        if type(revision) is not int:
+            raise ExtensionControlAuthorityError("invalid managed controls revision state")
+        return revision
+
+    def _managed_activation(
+        self, state: object, *, key: bytes, catalog_digest: str | None = None
+    ) -> tuple[tuple[ExtensionControlLayer, ...], int]:
+        """The authenticated signed Cloud layers and epoch in ``state``.
+
+        Without ``catalog_digest`` the state is checked against the catalog it names.
+        """
+
+        reply = self._extension_control_authority_op(
+            "managed_activation", key=key, state=state, catalog_digest=catalog_digest
+        )
+        revision = reply.get("revision")
+        if type(revision) is not int:
+            raise ExtensionControlAuthorityError("invalid managed controls activation revision")
+        return layers_from_wire(reply.get("layers")), revision
 
     def _extension_control_authority_op(self, op: str, *, key: bytes | None, **fields: object) -> dict[str, object]:
         """Ask the resident, record the migration events it found owed, raise its fault."""
