@@ -121,6 +121,8 @@ def edge_unavailable(run: NativeHookRun) -> int | None:
 
 
 def containment(run: NativeHookRun) -> int | None:
+    # A missing route answer raises NativeHookDecisionError; the hook authority
+    # answers it with the host outage response, as the recorded ladder did.
     return emit_native_containment_route(
         run.edge, run.payload, run.context, run.runtime_workspace, run.output_stream, run.store
     )
