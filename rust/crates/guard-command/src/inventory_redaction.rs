@@ -1,0 +1,268 @@
+//! `inventory_contract_redaction` serializer half — the string and payload
+//! safety net every exported inventory snapshot passes through.
+//!
+//! Three CPython behaviours decide the output and none is the Rust default:
+//!
+//! * `json.dumps(payload, sort_keys=True)` writes `", "`/`": "` separators and
+//!   escapes every non-ASCII character, so the text the safety assertion scans
+//!   is not `serde_json::to_string`. The quoting matters: `{"token": "abc"}`
+//!   is accepted because `"` sits between the key and the colon, while
+//!   `token = abc` inside one string is rejected.
+//! * CPython `re` treats `\s`/`\S` as `Py_UNICODE_ISSPACE`, which covers
+//!   U+001C..U+001F. Rust's `\s` follows Unicode `White_Space` and excludes
+//!   them, so `bearer\u{1d}secret` would slip past a naive port.
+//! * `isinstance(candidate, int)` accepts `bool`, and `str(True)` is `"True"`.
+//!
+//! The path half of the seam (`redact_local_path`, `_redact_known_path`,
+//! `_redact_command_value`, `redact_url`) still lives in Python, so this module
+//! exports free functions rather than an `InventoryRedactionApi` implementor.
+//!
+//! `scripts/ci/generate_inventory_redaction_parity.py` records the corpus in
+//! `testdata/inventory_redaction_parity.json` that pins every case below.
+
+use std::sync::LazyLock;
+
+use fancy_regex::Regex as FancyRegex;
+use regex::Regex;
+use serde_json::{Map, Value};
+
+use crate::inventory_fingerprints::{python_float_repr, python_json, DEFAULT_SEPARATORS};
+
+/// CPython `re` `\s`: Unicode `White_Space` plus the C0 separators Rust omits.
+const PYTHON_SPACE_CLASS: &str = r"\s\x{1c}-\x{1f}";
+
+/// `_SERIALIZER_REDACTED_VALUE`.
+pub const SERIALIZER_REDACTED_VALUE: &str = "[REDACTED]";
+
+/// `_SAFE_SERIALIZED_MARKERS` — values the serializer already produced.
+const SAFE_SERIALIZED_MARKERS: &[&str] = &[
+    SERIALIZER_REDACTED_VALUE,
+    "present_redacted",
+    "present",
+    "redacted",
+    "malformed_url_redacted",
+];
+
+/// `_SENSITIVE_KEY_RE`. `(?i)` folds the negated class the same way CPython
+/// does, so `api[^a-z0-9]?key` keeps rejecting `apiXkey`.
+static SENSITIVE_KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(auth|authorization|bearer|token|secret|password|credential|api[^a-z0-9]?key)")
+        .expect("sensitive key pattern")
+});
+
+/// `_SENSITIVE_VALUE_RE`, with `\s`/`\S` spelled out as `Py_UNICODE_ISSPACE`.
+static SENSITIVE_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r"(?i)(gh[pousr]_[a-z0-9_]+|sk-[a-z0-9_-]+|guard_live_[a-z0-9_-]+|bearer[{space}]+[^{space}]+)",
+        space = PYTHON_SPACE_CLASS,
+    ))
+    .expect("sensitive value pattern")
+});
+
+/// `_SERIALIZER_UNSAFE_PATH_RE` over `_UNSAFE_PATH_MARKERS`.
+static SERIALIZER_UNSAFE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r#"(?i)(?:^|[{space}"'=:({{])(?:/Users/|/home/|/root/|\\Users\\|/var/folders/|/workspace/|/tmp/|/etc/|/mnt/)"#,
+        space = PYTHON_SPACE_CLASS,
+    ))
+    .expect("unsafe path pattern")
+});
+
+/// `_SERIALIZER_SECRET_ASSIGNMENT_RE`. The `(?!redacted\b)` lookahead needs
+/// `fancy-regex`; the `regex` crate cannot express it.
+static SERIALIZER_SECRET_ASSIGNMENT_RE: LazyLock<FancyRegex> = LazyLock::new(|| {
+    FancyRegex::new(&format!(
+        r"(?i)\b(?:api[_-]?key|authorization|password|secret|token|access[_-]?token|refresh[_-]?token)\b[{space}]*[:=][{space}]*(?!redacted\b)[^{space}]+",
+        space = PYTHON_SPACE_CLASS,
+    ))
+    .expect("secret assignment pattern")
+});
+
+/// A backtrack-limit error must not read as "no secret here", so an
+/// undecidable match counts as a match.
+fn matches_secret_assignment(value: &str) -> bool {
+    SERIALIZER_SECRET_ASSIGNMENT_RE
+        .is_match(value)
+        .unwrap_or(true)
+}
+
+/// `_sanitize_serializer_string(value, *, parent_key="", parent_sensitive=False)`
+pub fn sanitize_serializer_string(value: &str, parent_key: &str, parent_sensitive: bool) -> String {
+    if SAFE_SERIALIZED_MARKERS.contains(&value) {
+        return value.to_string();
+    }
+    if parent_sensitive || (!parent_key.is_empty() && SENSITIVE_KEY_RE.is_match(parent_key)) {
+        return SERIALIZER_REDACTED_VALUE.to_string();
+    }
+    if SERIALIZER_UNSAFE_PATH_RE.is_match(value)
+        || SENSITIVE_VALUE_RE.is_match(value)
+        || matches_secret_assignment(value)
+    {
+        return SERIALIZER_REDACTED_VALUE.to_string();
+    }
+    value.to_string()
+}
+
+/// `_safe_json(value, *, parent_key="", parent_sensitive=False)`.
+///
+/// `Path` inputs reach the Python function as `value.name`; the JSON mirror has
+/// no `Path` variant, so callers project paths before they get here.
+///
+/// Two keys that redact to the same text collapse into one entry, as they do
+/// in the Python dict comprehension. The surviving value is the later key in
+/// sort order rather than in insertion order, because the mirror's object type
+/// is already sorted; no producer emits two keys that collide this way.
+pub fn safe_json(value: &Value, parent_key: &str, parent_sensitive: bool) -> Value {
+    let key_sensitive =
+        parent_sensitive || (!parent_key.is_empty() && SENSITIVE_KEY_RE.is_match(parent_key));
+    match value {
+        Value::Object(entries) => {
+            let mut projected = Map::new();
+            for (key, item) in entries {
+                projected.insert(
+                    sanitize_serializer_string(key, "", false),
+                    safe_json(item, key, key_sensitive),
+                );
+            }
+            Value::Object(projected)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| safe_json(item, parent_key, parent_sensitive))
+                .collect(),
+        ),
+        Value::String(text) => Value::String(sanitize_serializer_string(
+            text,
+            parent_key,
+            parent_sensitive,
+        )),
+        other => other.clone(),
+    }
+}
+
+/// `_assert_serialized_inventory_payload_safe(payload)`.
+pub fn assert_serialized_inventory_payload_safe(payload: &Value) -> Result<(), String> {
+    let encoded = python_json(payload, DEFAULT_SEPARATORS);
+    if SERIALIZER_UNSAFE_PATH_RE.is_match(&encoded)
+        || SENSITIVE_VALUE_RE.is_match(&encoded)
+        || matches_secret_assignment(&encoded)
+    {
+        return Err("Inventory snapshot serialization produced unsafe payload.".to_string());
+    }
+    Ok(())
+}
+
+/// `_safe_source_detail(run)`.
+///
+/// `run` is the duck-typed scanner run the Python caller reads `status` and
+/// `metadata` from. Every producer sets `status` to a string; the scalar
+/// fallbacks below reproduce `str()` for the rest. A container `status` is
+/// rendered with Python's `repr` punctuation, which matches CPython except for
+/// format/private-use/surrogate/unassigned code points inside a string, where
+/// reproducing `repr` would need Unicode category data this crate does not
+/// carry.
+pub fn safe_source_detail(run: &Map<String, Value>) -> String {
+    let status = run
+        .get("status")
+        .map(python_str)
+        .unwrap_or_else(|| "unknown".to_string());
+    let finding_count = run
+        .get("metadata")
+        .and_then(Value::as_object)
+        .and_then(|metadata| metadata.get("totalFindings"))
+        .and_then(python_int_text);
+    match finding_count {
+        Some(count) => format!("status={status}, findings={count}"),
+        None => format!("status={status}"),
+    }
+}
+
+/// `isinstance(candidate, int)` — `True`/`False` are `int` in CPython, floats
+/// are not.
+fn python_int_text(value: &Value) -> Option<String> {
+    match value {
+        Value::Bool(true) => Some("True".to_string()),
+        Value::Bool(false) => Some("False".to_string()),
+        Value::Number(number) if number.is_i64() || number.is_u64() => Some(number.to_string()),
+        _ => None,
+    }
+}
+
+/// `str(value)` for the scalars a mirrored attribute can hold.
+fn python_str(value: &Value) -> String {
+    match value {
+        Value::Null => "None".to_string(),
+        Value::Bool(true) => "True".to_string(),
+        Value::Bool(false) => "False".to_string(),
+        Value::Number(number) => {
+            if number.is_f64() {
+                python_float_repr(number.as_f64().unwrap_or(0.0))
+            } else {
+                number.to_string()
+            }
+        }
+        Value::String(text) => text.clone(),
+        container => python_repr(container),
+    }
+}
+
+/// `repr(value)` for the container shapes `str()` falls back to.
+fn python_repr(value: &Value) -> String {
+    match value {
+        Value::String(text) => python_string_repr(text),
+        Value::Array(items) => {
+            let rendered: Vec<String> = items.iter().map(python_repr).collect();
+            format!("[{}]", rendered.join(", "))
+        }
+        Value::Object(entries) => {
+            let rendered: Vec<String> = entries
+                .iter()
+                .map(|(key, item)| format!("{}: {}", python_string_repr(key), python_repr(item)))
+                .collect();
+            format!("{{{}}}", rendered.join(", "))
+        }
+        scalar => python_str(scalar),
+    }
+}
+
+/// `repr(str)`: single quotes unless the text needs them escaped and no double
+/// quote is present.
+fn python_string_repr(value: &str) -> String {
+    let quote = if value.contains('\'') && !value.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut rendered = String::new();
+    rendered.push(quote);
+    for character in value.chars() {
+        match character {
+            '\\' => rendered.push_str("\\\\"),
+            '\t' => rendered.push_str("\\t"),
+            '\n' => rendered.push_str("\\n"),
+            '\r' => rendered.push_str("\\r"),
+            _ if character == quote => {
+                rendered.push('\\');
+                rendered.push(character);
+            }
+            _ if character.is_control() || (character.is_whitespace() && character != ' ') => {
+                let code = character as u32;
+                if code <= 0xff {
+                    rendered.push_str(&format!("\\x{code:02x}"));
+                } else if code <= 0xffff {
+                    rendered.push_str(&format!("\\u{code:04x}"));
+                } else {
+                    rendered.push_str(&format!("\\U{code:08x}"));
+                }
+            }
+            _ => rendered.push(character),
+        }
+    }
+    rendered.push(quote);
+    rendered
+}
+
+#[cfg(test)]
+#[path = "inventory_redaction_tests.rs"]
+mod tests;
