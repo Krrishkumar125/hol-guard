@@ -1469,6 +1469,20 @@
    "native_replacements": [
     "rust/crates/guard-command/src/shell_secret_read_support.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
+   "module": "codex_plugin_scanner.guard.runtime.shell_command_wrappers",
+   "source_sha256": "b328f048cc1b0e167dd1c57aeb1eaff84e5db25b6ed582dd3ecf91e0dd44f87e",
+   "forbidden_symbols": [
+    "ShellCommandNormalization",
+    "is_trusted_absolute_command_path",
+    "normalize_transparent_shell_command"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/shell_command_wrappers.rs",
+    "rust/crates/guard-command/src/shell_command_wrappers_paths.rs"
+   ]
   }
  ],
  "retired_test_paths": [

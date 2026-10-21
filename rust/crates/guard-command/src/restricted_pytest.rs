@@ -219,6 +219,8 @@ mod launch_shebang;
 mod mapping;
 mod mapping_elf;
 mod mapping_snapshot;
+#[cfg(test)]
+mod mapping_tests;
 mod paths;
 mod profiles;
 mod toolchains;
