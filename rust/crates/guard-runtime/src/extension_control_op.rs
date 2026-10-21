@@ -81,10 +81,21 @@ fn decide(request: &ExtensionControlRequestV1) -> Result<ExtensionControlPayload
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(ExtensionControlPayloadV1::Resolve { scenarios })
         }
+        ExtensionControlQueryV1::Preview {
+            registry,
+            current_layers,
+            proposed_layers,
+        } => Ok(ExtensionControlPayloadV1::Preview {
+            preview: crate::extension_control_preview_op::semantic_preview(
+                registry,
+                current_layers,
+                proposed_layers,
+            )?,
+        }),
     }
 }
 
-fn typed_layers(
+pub(crate) fn typed_layers(
     layers: &[NativeExtensionControlLayerV1],
 ) -> Result<Vec<ExtensionControlLayer>, String> {
     control_layers_from_wire_unbounded(layers)
@@ -214,14 +225,14 @@ fn composed_wire(composed: &ComposedExtensionControls) -> ExtensionControlCompos
 }
 
 /// Lookup normalization of the Python catalog the request projects.
-fn normalize(value: &str) -> String {
+pub(crate) fn normalize(value: &str) -> String {
     value.trim().to_lowercase()
 }
 
 /// The registry projection a request carries, indexed as the Python catalog
 /// indexes it: an extension resolves through its normalized id or an alias
 /// (alias keys are taken as listed), a permission through its normalized id.
-struct RequestRegistry<'a> {
+pub(crate) struct RequestRegistry<'a> {
     catalog_digest: &'a str,
     extensions: HashMap<&'a str, &'a ExtensionControlRegistryExtensionV1>,
     aliases: HashMap<&'a str, &'a str>,
@@ -229,7 +240,7 @@ struct RequestRegistry<'a> {
 }
 
 impl<'a> RequestRegistry<'a> {
-    fn new(registry: &'a ExtensionControlRegistryV1) -> Result<Self, String> {
+    pub(crate) fn new(registry: &'a ExtensionControlRegistryV1) -> Result<Self, String> {
         let invalid = || "native_extension_control_registry_invalid".to_owned();
         let mut extensions = HashMap::with_capacity(registry.extensions.len());
         let mut aliases = HashMap::new();
@@ -266,7 +277,10 @@ impl<'a> RequestRegistry<'a> {
         })
     }
 
-    fn lookup(&self, extension_id: &str) -> Option<&'a ExtensionControlRegistryExtensionV1> {
+    pub(crate) fn lookup(
+        &self,
+        extension_id: &str,
+    ) -> Option<&'a ExtensionControlRegistryExtensionV1> {
         let normalized = normalize(extension_id);
         let key = self
             .aliases

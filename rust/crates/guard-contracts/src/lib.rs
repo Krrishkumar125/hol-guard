@@ -13,6 +13,8 @@ mod composio_role;
 pub use composio_role::*;
 mod extension_control;
 pub use extension_control::*;
+mod extension_control_preview;
+pub use extension_control_preview::*;
 mod github_cli_classify;
 pub use github_cli_classify::*;
 mod github_workflow_prepare;
