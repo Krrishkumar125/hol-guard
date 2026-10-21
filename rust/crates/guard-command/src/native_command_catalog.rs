@@ -17,6 +17,7 @@ use std::sync::{Arc, OnceLock};
 use serde::Deserialize;
 
 use crate::native_command_program::packaged_command_program;
+use crate::workspace_inventory::python_strip;
 
 #[cfg(not(guard_source_bootstrap))]
 static EMBEDDED_CATALOG: &[u8] =
@@ -252,15 +253,16 @@ impl CommandCatalog {
 
     /// Resolve an extension by `extension_id` or any of its `aliases`
     /// (GeneratedCommandCatalog.get). Like the Python lookup, the query is
-    /// stripped and lowercased first; an already-normalized id skips the
-    /// allocation.
+    /// stripped (`str.strip`, which also drops U+001C..U+001F) and lowercased
+    /// first; an already-normalized id skips the allocation.
     pub fn get(&self, extension_id: &str) -> Option<&CatalogExtension> {
-        let normalized = if extension_id.trim().len() == extension_id.len()
+        let stripped = python_strip(extension_id);
+        let normalized = if stripped.len() == extension_id.len()
             && !extension_id.chars().any(char::is_uppercase)
         {
             Cow::Borrowed(extension_id)
         } else {
-            Cow::Owned(extension_id.trim().to_lowercase())
+            Cow::Owned(stripped.to_lowercase())
         };
         self.by_extension_id
             .get(normalized.as_ref())
