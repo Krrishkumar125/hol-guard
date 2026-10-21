@@ -16,7 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use guard_command::network_url::{
     digest_normalized_network_url, host_matches_domain, normalize_network_url,
 };
-use guard_contracts::{PreToolActionTypeV1, PreToolResultV1};
+use guard_contracts::{GuardHookEnvelopeV2, PreToolActionTypeV1, PreToolResultV1};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use serde_json::Value;
@@ -306,6 +306,18 @@ pub(crate) fn check_op(args: &Value) -> crate::runner_authority_op::KindResult {
         "reason_code": finding.as_ref().map(|finding| finding.reason_code),
         "reason": finding.map(|finding| finding.reason),
     }))
+}
+
+/// [`apply`] for a hook envelope: the bundle is read from the envelope's Guard home.
+pub(crate) fn apply_to_envelope(
+    envelope: &GuardHookEnvelopeV2,
+    result: PreToolResultV1,
+) -> PreToolResultV1 {
+    apply(
+        Path::new(&envelope.source.guard_home),
+        &envelope.raw_payload,
+        result,
+    )
 }
 
 /// Raises a PreToolUse result for destinations the saved bundle blocks or
