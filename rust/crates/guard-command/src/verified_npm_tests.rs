@@ -167,6 +167,8 @@ fn an_npmrc_that_moves_the_registry_proves_nothing() {
         "registry=https://example.test/\n",
         "@acme:registry=https://example.test/\n",
         "strict-ssl=false\n",
+        "fund=false\rregistry=https://example.test/\n",
+        "ca[]=/tmp/evil.pem\n",
     ] {
         fs::write(fixture.root.join(".npmrc"), npmrc).expect("npmrc must be writable");
         let environment = environment(&prefix, &fixture.root, &[]);
@@ -316,6 +318,10 @@ fn a_loader_path_inside_the_workspace_proves_nothing() {
     let workspace = fixture.workspace();
     let linked = fixture.root.join("link");
     link(&workspace, &linked);
+    // An outside link to a workspace directory that does not exist yet still
+    // leads into the workspace once the agent creates it.
+    let dangling = fixture.root.join("dangling");
+    link(&workspace.join("not-yet"), &dangling);
     for entry in [
         String::new(),
         "lib".to_owned(),
@@ -327,6 +333,7 @@ fn a_loader_path_inside_the_workspace_proves_nothing() {
             workspace.to_string_lossy()
         ),
         linked.join("lib").to_string_lossy().into_owned(),
+        dangling.join("lib").to_string_lossy().into_owned(),
     ] {
         let environment = ExecutionEnvironment::from_value(Some(&json!({
             "environment_names": ["PATH", "HOME", "LD_LIBRARY_PATH"],
@@ -369,6 +376,53 @@ fn a_loader_path_outside_the_workspace_still_proves_the_version() {
     assert_eq!(
         verified_npm_version(&environment, &workspace),
         Some("11.9.0".to_owned())
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_loop_in_a_loader_path_proves_nothing() {
+    let fixture = Fixture::new("loader-loop");
+    let prefix = fixture.npm_prefix("11.9.0");
+    let workspace = fixture.workspace();
+    let first = fixture.root.join("loop-a");
+    let second = fixture.root.join("loop-b");
+    link(&second, &first);
+    link(&first, &second);
+    let environment = ExecutionEnvironment::from_value(Some(&json!({
+        "environment_names": ["PATH", "HOME", "LD_LIBRARY_PATH"],
+        "path": prefix.join("bin").to_string_lossy(),
+        "home": fixture.root.to_string_lossy(),
+        "library_search_paths": {"LD_LIBRARY_PATH": first.join("lib").to_string_lossy()},
+    })));
+    assert_eq!(verified_npm_version(&environment, &workspace), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_npm_this_user_cannot_run_is_passed_over() {
+    use std::os::unix::fs::PermissionsExt;
+    if nix::unistd::geteuid().is_root() {
+        // Root may run any file with an execute bit, so there is nothing to see.
+        return;
+    }
+    let fixture = Fixture::new("npm-foreign");
+    let prefix = fixture.npm_prefix("11.9.0");
+    let blocked = fixture.root.join("blocked");
+    fs::create_dir_all(&blocked).expect("blocked dir must be creatable");
+    let foreign = blocked.join("npm");
+    fs::write(&foreign, "#!/bin/sh\n").expect("file must be writable");
+    // Executable for the group only, so the owner cannot run it.
+    fs::set_permissions(&foreign, fs::Permissions::from_mode(0o614))
+        .expect("mode must be settable");
+    let search_path = format!(
+        "{}:{}",
+        blocked.to_string_lossy(),
+        prefix.join("bin").to_string_lossy()
+    );
+    assert_eq!(
+        resolve_executable("npm", &search_path),
+        fs::canonicalize(prefix.join("bin").join("npm")).ok()
     );
 }
 

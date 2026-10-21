@@ -392,12 +392,13 @@ pub struct VerifiedNpmRequestV1 {
     pub workspace: String,
     /// The hook's stamped execution environment, forwarded unchanged. Any
     /// shape is accepted so a malformed stamp fails closed in the runtime
-    /// rather than being filtered by the caller.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// rather than being filtered by the caller. Serialized even when absent:
+    /// the request digest covers the fields exactly as the caller sent them.
+    #[serde(default)]
     pub environment: Option<Value>,
     /// Programs the command pipes its output through, which must also resolve
     /// outside the workspace.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub filter_programs: Vec<String>,
 }
 

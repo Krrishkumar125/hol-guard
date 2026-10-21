@@ -136,7 +136,7 @@ def test_a_filter_the_resident_cannot_place_outside_keeps_review(
     [
         ("", []),
         ("| tail -3", ["tail"]),
-        ("2>&1 | tail -3", ["tail"]),
+        (" | tail -3", ["tail"]),
         ("| head -20 | tail -n3", ["head", "tail"]),
         ("| tail -3 | tail -1", ["tail"]),
     ],

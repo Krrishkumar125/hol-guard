@@ -147,26 +147,62 @@ pub fn changes_npm(name: &str) -> bool {
         || ENVIRONMENT_NAMES.contains(&lowered.as_str())
 }
 
-/// `os.path.realpath`: resolve the longest existing prefix, re-append the rest.
-fn realpath(path: &Path) -> PathBuf {
-    let mut rest: Vec<PathBuf> = Vec::new();
-    let mut current = path.to_path_buf();
-    loop {
-        if let Ok(resolved) = fs::canonicalize(&current) {
-            let mut result = resolved;
-            for part in rest.iter().rev() {
-                result.push(part);
-            }
-            return result;
+/// Symlink hops `realpath` follows before it gives up, as the kernel does.
+const MAX_SYMLINK_HOPS: usize = 40;
+
+/// `os.path.realpath`: resolve every symlink component, dangling ones included.
+///
+/// A link whose target does not exist yet is still followed, so a path that
+/// leads through it into the workspace is seen as inside even before the
+/// directory is created. A symlink loop answers `None`, which callers treat as
+/// unprovable.
+fn realpath(path: &Path) -> Option<PathBuf> {
+    let mut pending: Vec<std::ffi::OsString> = Vec::new();
+    let mut resolved = PathBuf::new();
+    let mut hops = 0;
+    push_components(&mut pending, &mut resolved, path);
+    while let Some(part) = pending.pop() {
+        if part == ".." {
+            resolved.pop();
+            continue;
         }
-        let Some(name) = current.file_name().map(PathBuf::from) else {
-            return path.to_path_buf();
-        };
-        rest.push(name);
-        if !current.pop() {
-            return path.to_path_buf();
+        let candidate = resolved.join(&part);
+        match fs::symlink_metadata(&candidate) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                hops += 1;
+                if hops > MAX_SYMLINK_HOPS {
+                    return None;
+                }
+                let target = fs::read_link(&candidate).ok()?;
+                push_components(&mut pending, &mut resolved, &target);
+            }
+            _ => resolved = candidate,
         }
     }
+    Some(resolved)
+}
+
+/// Queue `path`'s components for `realpath`, restarting at the root when it is
+/// absolute.
+fn push_components(pending: &mut Vec<std::ffi::OsString>, resolved: &mut PathBuf, path: &Path) {
+    use std::path::Component;
+    let mut parts = Vec::new();
+    let mut rooted = false;
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => {
+                if !rooted {
+                    resolved.clear();
+                    rooted = true;
+                }
+                resolved.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => parts.push(std::ffi::OsString::from("..")),
+            Component::Normal(name) => parts.push(name.to_os_string()),
+        }
+    }
+    pending.extend(parts.into_iter().rev());
 }
 
 /// Whether every exported loader search path stays out of the workspace.
@@ -192,8 +228,12 @@ pub fn loader_paths_outside(environment: &ExecutionEnvironment, root: &Path) -> 
         }
         for entry in value.split(':') {
             let candidate = Path::new(entry);
-            if !candidate.is_absolute() || realpath(candidate).starts_with(root) {
+            if !candidate.is_absolute() {
                 return false;
+            }
+            match realpath(candidate) {
+                Some(resolved) if !resolved.starts_with(root) => {}
+                _ => return false,
             }
         }
     }
@@ -213,13 +253,17 @@ pub fn npmrc_redirects_fetch(path: &Path) -> bool {
     let Ok(text) = fs::read_to_string(path) else {
         return true;
     };
-    for line in text.lines() {
+    // Python's `splitlines` also ends a line at a bare `\r`, and npm's ini
+    // parser does too, so a key after one still counts.
+    for line in text.split(['\n', '\r']) {
         let key = line.split_once('=').map_or(line, |(head, _)| head).trim();
         if key.starts_with('#') || key.starts_with(';') {
             continue;
         }
         let key = key.trim_matches(['"', '\'']).to_lowercase();
-        if key.ends_with(":registry") || FETCH_REDIRECTING_KEYS.contains(&key.as_str()) {
+        // npm's ini parser reads `ca[]=` as an entry of the `ca` array.
+        let key = key.strip_suffix("[]").unwrap_or(&key);
+        if key.ends_with(":registry") || FETCH_REDIRECTING_KEYS.contains(&key) {
             return true;
         }
     }
@@ -227,13 +271,15 @@ pub fn npmrc_redirects_fetch(path: &Path) -> bool {
 }
 
 #[cfg(unix)]
-fn is_executable_file(metadata: &fs::Metadata) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+fn is_executable_file(path: &Path, metadata: &fs::Metadata) -> bool {
+    use nix::unistd::{access, AccessFlags};
+    // `shutil.which` asks whether this user may run the file, not whether any
+    // execute bit is set, so an npm only another user can run is passed over.
+    metadata.is_file() && access(path, AccessFlags::X_OK).is_ok()
 }
 
 #[cfg(not(unix))]
-fn is_executable_file(metadata: &fs::Metadata) -> bool {
+fn is_executable_file(_path: &Path, metadata: &fs::Metadata) -> bool {
     // Windows never reaches this path: the caller settles npm reviews only on
     // POSIX. Keeping the check compiled everywhere avoids a platform-shaped
     // hole in the port that CI could not see.
@@ -254,7 +300,7 @@ pub fn resolve_executable(name: &str, search_path: &str) -> Option<PathBuf> {
         let Ok(metadata) = fs::metadata(&candidate) else {
             continue;
         };
-        if is_executable_file(&metadata) {
+        if is_executable_file(&candidate, &metadata) {
             // `Path.resolve(strict=True)`: a candidate that vanished between
             // the probe and the resolve proves nothing.
             return fs::canonicalize(&candidate).ok();

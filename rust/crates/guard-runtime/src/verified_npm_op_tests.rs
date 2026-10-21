@@ -4,6 +4,7 @@ use guard_contracts::{VerifiedNpmRequestV1, PACKAGE_AUTHORITY_REQUEST_SCHEMA};
 use serde_json::{json, Value};
 
 use super::evaluate_verified_npm;
+use crate::package_authority_op::request_digest;
 
 fn request(workspace: &str) -> VerifiedNpmRequestV1 {
     VerifiedNpmRequestV1 {
@@ -69,5 +70,28 @@ fn a_foreign_schema_is_refused() {
     assert_eq!(
         evaluate_verified_npm(&input).unwrap_err(),
         "native_verified_npm_schema_mismatch"
+    );
+}
+
+#[test]
+fn an_unpiped_request_digest_matches_the_fields_the_caller_sent() {
+    let workspace = std::env::temp_dir();
+    // The bridge always sends both fields, even with no output filter and no
+    // stamped environment, and hashes them as sent.
+    let sent = json!({
+        "schema": PACKAGE_AUTHORITY_REQUEST_SCHEMA,
+        "request_id": "verified-npm-1",
+        "guard_home": "/tmp/guard-home",
+        "workspace": workspace.to_string_lossy(),
+        "environment": null,
+        "filter_programs": [],
+    });
+    let input: VerifiedNpmRequestV1 =
+        serde_json::from_value(sent.clone()).expect("request must decode");
+    let bytes = evaluate_verified_npm(&input).expect("request must encode a result");
+    let decoded: Value = serde_json::from_slice(&bytes).expect("result must decode");
+    assert_eq!(
+        decoded.get("request_sha256").and_then(Value::as_str),
+        Some(request_digest(&sent).expect("digest").as_str())
     );
 }
