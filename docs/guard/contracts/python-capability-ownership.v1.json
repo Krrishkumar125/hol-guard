@@ -1271,6 +1271,21 @@
    "native_replacements": [
     "rust/crates/guard-command/src/executable_flag_contract.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/workspace_path_guard.py",
+   "module": "codex_plugin_scanner.guard.runtime.workspace_path_guard",
+   "source_sha256": "56a69f517de93b42382d0af7183e6148f3950562add1b9761f9fa43fd3e295ac",
+   "forbidden_symbols": [
+    "resolve_path_within_workspace",
+    "read_text_within_workspace",
+    "read_bytes_within_workspace",
+    "existing_paths_within_workspace"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/package_intent_common.rs",
+    "rust/crates/guard-runtime/src/package_authority_op.rs"
+   ]
   }
  ],
  "retired_test_paths": [

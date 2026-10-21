@@ -86,7 +86,8 @@
   "src/codex_plugin_scanner/guard/runtime/npm_source_spec.py",
   "src/codex_plugin_scanner/guard/runtime/github_pr_body_file.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_body_safety.py",
-  "src/codex_plugin_scanner/guard/runtime/executable_flag_contract.py"
+  "src/codex_plugin_scanner/guard/runtime/executable_flag_contract.py",
+  "src/codex_plugin_scanner/guard/runtime/workspace_path_guard.py"
  ],
  "retired_tests": [
   {
@@ -6629,6 +6630,21 @@
    "old_node": "tests/test_guard_github_pr_body_file.py::test_windows_body_file_reader_binds_locked_path_and_descriptor_identity",
    "replacement_nodes": [
     "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::existing_locked_service_preserves_static_body_files_and_rejects_aliases"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_manifest_path_traversal.py::test_resolve_path_within_workspace_rejects_parent_traversal",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/workspace_path_guard_tests.rs::parent_traversal_resolves_to_nothing",
+    "rust/crates/guard-command/src/workspace_path_guard_tests.rs::absolute_and_empty_operands_resolve_to_nothing"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_manifest_path_traversal.py::test_resolve_path_within_workspace_rejects_symlink_escape",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/workspace_path_guard_tests.rs::a_symlink_out_of_the_workspace_resolves_to_nothing"
    ],
    "status": "native_behavior_ported_requires_ci"
   }
