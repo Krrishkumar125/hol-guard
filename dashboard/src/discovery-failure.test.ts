@@ -69,6 +69,13 @@ for (const [error, code, guidance] of [
   ["observed_provider_scan_failed", "observed_provider_scan_failed", "Check for connectors again"],
   ["catalog_limit_reached", "catalog_limit_reached", "remove tools you do not use"],
   ["discovery_failed", "discovery_failed", "Check for connectors again"],
+  ["configured_host_persist_failed", "configured_host_persist_failed", "could not save them"],
+  ["codex_host_changed", "codex_host_changed", "restarted while Guard was reading it"],
+  ["codex_host_untrusted", "codex_host_untrusted", "control socket"],
+  ["codex_host_invalid", "codex_host_invalid", "Update or reopen the Codex app"],
+  ["codex_host_limit", "codex_host_limit", "Remove connections you do not use"],
+  ["codex_host_timeout", "codex_host_timeout", "did not answer in time"],
+  ["codex_host_unavailable", "codex_host_unavailable", "could not reach the Codex app"],
 ] as const) {
   await assert.rejects(
     waitForDiscoveryJob(
@@ -81,6 +88,20 @@ for (const [error, code, guidance] of [
       && caught.code === code
       && caught.message.includes(guidance),
   );
+}
+
+{
+  // A code is attacker-shaped input: it arrives in a daemon reply and is used
+  // as a lookup key. An inherited key such as `__proto__` names no message
+  // Guard wrote, so the banner must fall back rather than render a function.
+  for (const code of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    const message = discoveryFailureMessage(new LocalCliApiError(code, "Guard could not update this custom extension."), CONFIGURED_CONNECTIONS_FALLBACK);
+    assert.equal(message, CONFIGURED_CONNECTIONS_FALLBACK, `${code} must not reach the banner`);
+  }
+  // Only codes Guard authors a reply for may pass the daemon's text through;
+  // an unknown code carrying arbitrary text falls back instead.
+  const unknown = new LocalCliApiError("surprise_code", "Raw daemon text that names no next step.");
+  assert.equal(discoveryFailureMessage(unknown, CONFIGURED_CONNECTIONS_FALLBACK), CONFIGURED_CONNECTIONS_FALLBACK);
 }
 
 console.log("discovery-failure ok");

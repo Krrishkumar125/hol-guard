@@ -379,7 +379,7 @@ class LocalCliApiService:
             if payload.get("operation") == "codex-host-connections":
                 return self._discovery_jobs.start(
                     "inventory:codex-host",
-                    lambda cancel: self._codex_host_inventory.refresh(codex_home=Path.home() / ".codex", cancel=cancel),
+                    self._refresh_codex_host_inventory,
                     reuse_seconds=0 if payload.get("force_refresh") is True else 30,
                     requested_job_id=_client_discovery_job_id(payload),
                 )
@@ -582,10 +582,10 @@ class LocalCliApiService:
         backfill_observed_local_clis(self._store, seen_at=utc_now(), home_dir=Path.home())
         try:
             labels = self._observe_harness_mcp_servers(strict=True)
-        except DiscoveryStageError:
+        except DiscoveryStageError as error:
             labels = {}
             if discovery_issue is None:
-                discovery_issue = "configured_host_scan_failed"
+                discovery_issue = error.code
         try:
             items = apply_source_labels(
                 refresh_package_script_catalogs(self._store, home_dir=Path.home()),
@@ -902,6 +902,16 @@ class LocalCliApiService:
                 self._configured_names = {}
             servers = self._discovered_servers(strict=True) if strict else self._discovered_servers()
             remote, remote_harnesses = self._remote_scan()
+        except DiscoveryStageError:
+            # The scan already recorded its own stage; re-wrapping it here
+            # would file a second record naming this wrapper instead.
+            raise
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error) as error:
+            if strict:
+                record_discovery_stage_failure("configured_host_scan_failed", error)
+                raise DiscoveryStageError("configured_host_scan_failed") from None
+            return {}
+        try:
             return persist_discovered_harness_mcp_servers(
                 self._store,
                 servers,
@@ -909,15 +919,35 @@ class LocalCliApiService:
                 remote=remote,
                 remote_harnesses=remote_harnesses,
             )
-        except DiscoveryStageError:
-            # The scan below already recorded its own stage; re-wrapping it
-            # here would file a second record naming this wrapper instead.
-            raise
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error) as error:
             if strict:
-                record_discovery_stage_failure("configured_host_scan_failed:persist", error)
-                raise DiscoveryStageError("configured_host_scan_failed") from None
+                # Saving is a separate failure from reading: the reader's agent
+                # configuration is fine, so the banner must not send them to it.
+                record_discovery_stage_failure("configured_host_persist_failed", error)
+                raise DiscoveryStageError("configured_host_persist_failed") from None
             return {}
+
+    def _refresh_codex_host_inventory(self, cancel: threading.Event) -> None:
+        """Refresh the Codex host inventory, keeping the reason the read failed.
+
+        ``CodexHostInventoryCache`` raises a bare ``ValueError`` whose text is
+        the reason, which carries no ``code``, so every Codex failure used to
+        reach the page as the generic "unexpected error" banner. Naming the
+        reason here lets the Extensions page say which Codex problem to fix.
+        """
+
+        from ..runtime.codex_host_inventory import HOST_FAILURE_CODES
+
+        try:
+            self._codex_host_inventory.refresh(codex_home=Path.home() / ".codex", cancel=cancel)
+        except ValueError as error:
+            reason = str(error)
+            code = reason if reason in HOST_FAILURE_CODES else "codex_host_invalid"
+            record_discovery_stage_failure(code, error)
+            raise DiscoveryStageError(code) from None
+        except (OSError, RuntimeError, TypeError, KeyError, UnicodeError, sqlite3.Error) as error:
+            record_discovery_stage_failure("codex_host_unavailable", error)
+            raise DiscoveryStageError("codex_host_unavailable") from None
 
     def _configured_server_names(self) -> dict[str, tuple[str, ...]]:
         _ = self._discovered_servers()
@@ -960,7 +990,7 @@ class LocalCliApiService:
             self._remote_discovery_cache = None
             self._configured_names = {}
             if strict:
-                record_discovery_stage_failure("configured_host_scan_failed:scan", error)
+                record_discovery_stage_failure("configured_host_scan_failed", error)
                 raise DiscoveryStageError("configured_host_scan_failed") from None
             return ()
         self._discovery_cache = (now, servers)
@@ -975,8 +1005,12 @@ class LocalCliApiService:
             harnesses = remote_scan_harnesses(detections, remote)
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error) as error:
             # A failed read lists none and must not forget any declaration. It
-            # does not fail the job, so the record is the only sign it happened.
-            record_discovery_stage_failure("remote_scan_skipped", error)
+            # does not fail the job, so the record is the only sign it happened
+            # - but this helper also serves background polling, and recording
+            # every cache expiry would fill daemon.log while a config stays
+            # broken. Only the explicit scan a reader asked for records it.
+            if strict:
+                record_discovery_stage_failure("remote_scan_skipped", error)
             remote, harnesses = (), None
         self._remote_discovery_cache = (now, remote, harnesses)
         return servers

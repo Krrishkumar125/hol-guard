@@ -54,6 +54,14 @@ const START_FAILURE_MESSAGES: Record<string, string> = {
   local_cli_request_failed: "Guard's connector scan returned no result. Reload this page, then choose Check for connectors again.",
 };
 
+/**
+ * Codes whose daemon-authored message is Guard's own wording for a surface
+ * this module has none for. `readJson` builds `LocalCliApiError` out of the
+ * response body, so any other code's message is untrusted text and must not
+ * render as guidance.
+ */
+const TRUSTED_MESSAGE_CODES = new Set(["session_expired"]);
+
 function errorCode(error: unknown): string {
   const code = (error as { code?: unknown } | null | undefined)?.code;
   return typeof code === "string" ? code : "";
@@ -64,8 +72,13 @@ export function discoveryFailureMessage(error: unknown, fallback: string): strin
   if (error instanceof DiscoveryFailure) return error.message;
   const code = errorCode(error);
   if (!code) return fallback;
-  const authored = START_FAILURE_MESSAGES[code];
-  if (authored) return authored;
+  // An own-key lookup only: an inherited key such as `__proto__` is not a
+  // message Guard wrote, and reading one would put a function in the banner.
+  if (Object.prototype.hasOwnProperty.call(START_FAILURE_MESSAGES, code)) {
+    const authored = START_FAILURE_MESSAGES[code];
+    if (typeof authored === "string" && authored) return authored;
+  }
+  if (!TRUSTED_MESSAGE_CODES.has(code)) return fallback;
   // A daemon reply Guard authored for this code (a 401 session message, for
   // example) is better than a generic banner; its own fallbacks are not.
   const message = error instanceof Error ? error.message.trim() : "";

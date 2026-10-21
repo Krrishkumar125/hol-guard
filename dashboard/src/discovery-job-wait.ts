@@ -21,12 +21,26 @@ function stageFailure(code: unknown): DiscoveryFailure {
       return new DiscoveryFailure("catalog_revision_conflict", "A newer discovery finished first. Reload the inventory.");
     case "configured_host_scan_failed":
       return new DiscoveryFailure("configured_host_scan_failed", "Guard could not read this device's configured connections. Check that your agent apps' MCP settings are valid, then choose Check for connectors again. Known connections were kept.");
+    case "configured_host_persist_failed":
+      return new DiscoveryFailure("configured_host_persist_failed", "Guard read this device's connections but could not save them. Choose Check for connectors again; if that keeps failing, restart Guard. Known connections were kept.");
+    case "codex_host_changed":
+      return new DiscoveryFailure("codex_host_changed", "The Codex app restarted while Guard was reading it. Choose Check for connectors again. Known connections were kept.");
+    case "codex_host_untrusted":
+      return new DiscoveryFailure("codex_host_untrusted", "Guard will not read this Codex app inventory because the app's control socket is not the one Guard trusts. Reopen the Codex app, then check again. Known connections were kept.");
+    case "codex_host_invalid":
+      return new DiscoveryFailure("codex_host_invalid", "Guard could not make sense of the Codex app's inventory. Update or reopen the Codex app, then choose Check for connectors again. Known connections were kept.");
+    case "codex_host_limit":
+      return new DiscoveryFailure("codex_host_limit", "The Codex app reported more connections than Guard can read safely. Remove connections you do not use in the Codex app, then check again. Known connections were kept.");
+    case "codex_host_timeout":
+      return new DiscoveryFailure("codex_host_timeout", "The Codex app did not answer in time. Choose Check for connectors again; if that keeps failing, reopen the Codex app. Known connections were kept.");
+    case "codex_host_unavailable":
+      return new DiscoveryFailure("codex_host_unavailable", "Guard could not reach the Codex app. Open or reopen the Codex app, then choose Check for connectors again. Known connections were kept.");
     case "observed_provider_scan_failed":
       return new DiscoveryFailure("observed_provider_scan_failed", "Guard could not merge observed provider tools. Known tools and choices were kept; choose Check for connectors again.");
     case "catalog_limit_reached":
       return new DiscoveryFailure("catalog_limit_reached", "This connector has more tools than Guard can catalog safely. Existing choices were kept; remove tools you do not use in the host app, then check again.");
     case "discovery_failed":
-      return new DiscoveryFailure("discovery_failed", "The connector scan stopped on an unexpected error. Known tools and choices were kept. Choose Check for connectors again; if that keeps failing, restart Guard and check Guard's log for discovery_stage_failed.");
+      return new DiscoveryFailure("discovery_failed", "The connector scan stopped on an unexpected error. Known tools and choices were kept. Choose Check for connectors again; if that keeps failing, restart Guard. Guard recorded the reason in its log for support.");
     default:
       console.warn("Unknown discovery error code:", code);
       return new DiscoveryFailure("discovery_failed", "Discovery did not finish. Known tools and choices were kept. Try again shortly.");
@@ -70,6 +84,16 @@ export async function waitForDiscoveryJob(cliId: string, initialJob: unknown, si
     }
     throw new DiscoveryFailure("discovery_timeout", "Discovery took too long. Known tools and choices were kept. Try again shortly.");
   } finally {
-    if (!finished) await request({ job_id: job.job_id, cancel: true });
+    // Cancelling is cleanup. A daemon that already lost this job answers the
+    // cancel with its own failure, and throwing it here would replace the
+    // reason the scan failed with one about cleanup, sending the reader to
+    // the wrong fix.
+    if (!finished) {
+      try {
+        await request({ job_id: job.job_id, cancel: true });
+      } catch {
+        // The polling failure above is the one worth showing.
+      }
+    }
   }
 }

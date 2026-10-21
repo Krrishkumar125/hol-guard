@@ -154,3 +154,55 @@ test("a scan that fails reading host configuration names what to fix", async ({ 
   await expect(notice).toContainText("Known connections were kept");
   await expect(notice.getByRole("button", { name: "Check for connectors again" })).toBeVisible();
 });
+
+test("a scan that cannot save what it read never blames the reader's config", async ({ page }) => {
+  await mount(page, { catalog: { ...catalog(), extensions: [extension("command.git", "")] } });
+  await page.route("**/v1/local-clis**", (route) => route.fulfill({ json: {
+    schema_version: "guard.daemon.local-clis.v1", revision: 1, items: [localCli(1, "allow")],
+    cloud: { sync_local_only: true, summary: "Synthetic fixture." },
+  } }));
+  await routeConnectorScan(page, {
+    configured: (clientJobId) => ({ status: 200, json: { job_id: clientJobId, cli_id: "inventory:configured", state: "running", error: null } }),
+    poll: (jobId) => ({ status: 200, json: { job_id: jobId, cli_id: "inventory:configured", state: "failed", error: "configured_host_persist_failed" } }),
+  });
+  await initialize(page);
+
+  const notice = page.getByRole("status").filter({ hasText: "could not save them" });
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText("restart Guard");
+  // Saving is Guard's own failure; sending the reader to their MCP settings
+  // would be an hour spent on a file that is fine.
+  await expect(notice).not.toContainText("MCP settings are valid");
+  await expect(notice.getByRole("button", { name: "Check for connectors again" })).toBeVisible();
+});
+
+test("a failed cleanup does not replace the reason the scan failed", async ({ page }) => {
+  await mount(page, { catalog: { ...catalog(), extensions: [extension("command.git", "")] } });
+  await page.route("**/v1/local-clis**", (route) => route.fulfill({ json: {
+    schema_version: "guard.daemon.local-clis.v1", revision: 1, items: [localCli(1, "allow")],
+    cloud: { sync_local_only: true, summary: "Synthetic fixture." },
+  } }));
+  // The poll fails to parse, then the cancel that cleans the job up answers
+  // with a different job. The reader must still be told what actually broke.
+  await page.route("**/v1/local-clis/refresh-job", (route) => {
+    const payload = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    const jobId = typeof payload.job_id === "string" ? payload.job_id : "";
+    if (payload.cancel === true) {
+      return route.fulfill({ json: { job_id: "b".repeat(32), cli_id: "inventory:configured", state: "cancelled", error: null } });
+    }
+    if (jobId) {
+      return route.fulfill({ json: {} });
+    }
+    const clientJobId = typeof payload.client_job_id === "string" ? payload.client_job_id : "0".repeat(32);
+    if (payload.operation === "configured-connections") {
+      return route.fulfill({ json: { job_id: clientJobId, cli_id: "inventory:configured", state: "running", error: null } });
+    }
+    return route.fulfill({ json: { job_id: clientJobId, cli_id: "inventory:codex-host", state: "complete", error: null } });
+  });
+  await initialize(page);
+
+  const notice = page.getByRole("status").filter({ hasText: "could not read this discovery's progress" });
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText("Reload this page");
+  await expect(notice).not.toContainText("A different discovery replaced this one");
+});

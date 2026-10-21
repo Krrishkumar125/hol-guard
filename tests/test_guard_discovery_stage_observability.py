@@ -9,6 +9,9 @@ harness from emptying every other harness's connections.
 
 from __future__ import annotations
 
+import sqlite3
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,7 +24,11 @@ from codex_plugin_scanner.guard.daemon.local_cli_api import (
     DISCOVERY_STAGE_FAILED_EVENT,
     LocalCliApiService,
 )
-from codex_plugin_scanner.guard.daemon.mcp_discovery_jobs import DiscoveryStageError
+from codex_plugin_scanner.guard.daemon.mcp_discovery_jobs import (
+    DISCOVERY_JOB_FAILED_EVENT,
+    DiscoveryStageError,
+    McpDiscoveryJobs,
+)
 from codex_plugin_scanner.guard.models import GuardArtifact, HarnessDetection
 from codex_plugin_scanner.guard.store import GuardStore
 
@@ -74,9 +81,7 @@ def test_recorded_detail_keeps_paths_out_of_the_log(tmp_path: Path, monkeypatch,
     secret_path = "/Users/someone/.cursor/mcp.json"
     monkeypatch.setattr(
         "codex_plugin_scanner.guard.daemon.local_cli_api.configured_harness_detections",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            OSError(13, "Permission denied", secret_path)
-        ),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(13, "Permission denied", secret_path)),
     )
 
     with pytest.raises(DiscoveryStageError):
@@ -160,9 +165,7 @@ def test_one_unreadable_harness_keeps_the_other_connections(monkeypatch) -> None
             None,
         )
 
-    monkeypatch.setattr(
-        harness_mcp_discovery, "observable_stdio_servers_with_proxy", servers_for
-    )
+    monkeypatch.setattr(harness_mcp_discovery, "observable_stdio_servers_with_proxy", servers_for)
     monkeypatch.setattr(harness_mcp_discovery, "_identity_for", identity_for)
 
     found = harness_mcp_discovery.discover_harness_mcp_servers(
@@ -172,3 +175,85 @@ def test_one_unreadable_harness_keeps_the_other_connections(monkeypatch) -> None
     )
 
     assert [server.harness for server in found] == ["codex"]
+
+
+def test_persist_failure_is_named_apart_from_the_scan(tmp_path: Path, monkeypatch, recorded) -> None:
+    """Saving a good scan is its own failure; the banner must not blame the config."""
+
+    service = _service(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.local_cli_api.configured_harness_detections",
+        lambda *_args, **_kwargs: (),
+    )
+    monkeypatch.setattr(service, "_remote_scan", lambda: ((), None))
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.local_cli_api.persist_discovered_harness_mcp_servers",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("disk is full")),
+    )
+
+    with pytest.raises(DiscoveryStageError) as caught:
+        service._observe_harness_mcp_servers(strict=True, fresh=True)
+
+    assert caught.value.code == "configured_host_persist_failed"
+    detail = next(detail for event, detail in recorded if event == DISCOVERY_STAGE_FAILED_EVENT)
+    assert "stage=configured_host_persist_failed" in detail
+    assert "error=OperationalError" in detail
+
+
+def test_codex_host_failure_keeps_the_reason_the_reader_can_act_on(tmp_path: Path, monkeypatch, recorded) -> None:
+    """A named host failure reaches the client as itself, not as a generic failure."""
+
+    service = _service(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        service._codex_host_inventory,
+        "refresh",
+        lambda **_kwargs: (_ for _ in ()).throw(ValueError("codex_host_untrusted")),
+    )
+
+    with pytest.raises(DiscoveryStageError) as caught:
+        service._refresh_codex_host_inventory(threading.Event())
+
+    assert caught.value.code == "codex_host_untrusted"
+    detail = next(detail for event, detail in recorded if event == DISCOVERY_STAGE_FAILED_EVENT)
+    assert "stage=codex_host_untrusted" in detail
+
+
+def test_unnamed_codex_host_failure_still_reaches_the_log(tmp_path: Path, monkeypatch, recorded) -> None:
+    """An unexpected read failure is recorded rather than dropped on the floor."""
+
+    service = _service(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        service._codex_host_inventory,
+        "refresh",
+        lambda **_kwargs: (_ for _ in ()).throw(OSError(13, "Permission denied", "/Users/x/.codex")),
+    )
+
+    with pytest.raises(DiscoveryStageError) as caught:
+        service._refresh_codex_host_inventory(threading.Event())
+
+    assert caught.value.code == "codex_host_unavailable"
+    detail = next(detail for event, detail in recorded if event == DISCOVERY_STAGE_FAILED_EVENT)
+    assert "error=PermissionError" in detail
+    assert "/Users/x/.codex" not in detail
+
+
+def test_a_failed_discovery_job_leaves_a_record(recorded) -> None:
+    """Every failed job is in the log, so the banner's promise of a record holds."""
+
+    pool = McpDiscoveryJobs()
+    try:
+        job = pool.start(
+            "configured-connections",
+            lambda _cancel: (_ for _ in ()).throw(RuntimeError("worker exploded")),
+        )
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if pool.read(str(job["job_id"]))["state"] not in {"running", "cancelling"}:
+                break
+            time.sleep(0.01)
+    finally:
+        pool.close()
+
+    detail = next(detail for event, detail in recorded if event == DISCOVERY_JOB_FAILED_EVENT)
+    assert "code=discovery_failed" in detail
+    assert "error=RuntimeError" in detail

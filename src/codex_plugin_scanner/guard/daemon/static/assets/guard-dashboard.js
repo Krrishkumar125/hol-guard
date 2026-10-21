@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-CkMTJ0-Z.js","assets/chunks/harness-version-label-0p6P70WE.js","assets/chunks/connect-guard-cloud-button-COC8NKLs.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-DdhT0dGq.js","assets/chunks/confirm-dialog-DoiBaaXB.js","assets/chunks/extensions-workspace-Cf4cSdJD.js","assets/chunks/app-detail-workspace-B9rlD0o5.js","assets/chunks/policy-workspace-page-VXBC0Fjp.js","assets/chunks/about-workspace-C1-uAYDr.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-CkMTJ0-Z.js","assets/chunks/harness-version-label-0p6P70WE.js","assets/chunks/connect-guard-cloud-button-COC8NKLs.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-DdhT0dGq.js","assets/chunks/confirm-dialog-DoiBaaXB.js","assets/chunks/extensions-workspace-Hk8x_uSM.js","assets/chunks/app-detail-workspace-B9rlD0o5.js","assets/chunks/policy-workspace-page-VXBC0Fjp.js","assets/chunks/about-workspace-C1-uAYDr.js"])))=>i.map(i=>d[i]);
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -33776,6 +33776,7 @@ const START_FAILURE_MESSAGES = {
   local_cli_unavailable: "Guard's extension service is not answering, so host connections could not be read. Restart Guard, then check again.",
   local_cli_request_failed: "Guard's connector scan returned no result. Reload this page, then choose Check for connectors again."
 };
+const TRUSTED_MESSAGE_CODES = /* @__PURE__ */ new Set(["session_expired"]);
 function errorCode(error) {
   const code = error?.code;
   return typeof code === "string" ? code : "";
@@ -33784,8 +33785,11 @@ function discoveryFailureMessage(error, fallback) {
   if (error instanceof DiscoveryFailure) return error.message;
   const code = errorCode(error);
   if (!code) return fallback;
-  const authored = START_FAILURE_MESSAGES[code];
-  if (authored) return authored;
+  if (Object.prototype.hasOwnProperty.call(START_FAILURE_MESSAGES, code)) {
+    const authored = START_FAILURE_MESSAGES[code];
+    if (typeof authored === "string" && authored) return authored;
+  }
+  if (!TRUSTED_MESSAGE_CODES.has(code)) return fallback;
   const message = error instanceof Error ? error.message.trim() : "";
   return message && !GENERIC_API_MESSAGES.has(message) ? message : fallback;
 }
@@ -33828,12 +33832,26 @@ function stageFailure(code) {
       return new DiscoveryFailure("catalog_revision_conflict", "A newer discovery finished first. Reload the inventory.");
     case "configured_host_scan_failed":
       return new DiscoveryFailure("configured_host_scan_failed", "Guard could not read this device's configured connections. Check that your agent apps' MCP settings are valid, then choose Check for connectors again. Known connections were kept.");
+    case "configured_host_persist_failed":
+      return new DiscoveryFailure("configured_host_persist_failed", "Guard read this device's connections but could not save them. Choose Check for connectors again; if that keeps failing, restart Guard. Known connections were kept.");
+    case "codex_host_changed":
+      return new DiscoveryFailure("codex_host_changed", "The Codex app restarted while Guard was reading it. Choose Check for connectors again. Known connections were kept.");
+    case "codex_host_untrusted":
+      return new DiscoveryFailure("codex_host_untrusted", "Guard will not read this Codex app inventory because the app's control socket is not the one Guard trusts. Reopen the Codex app, then check again. Known connections were kept.");
+    case "codex_host_invalid":
+      return new DiscoveryFailure("codex_host_invalid", "Guard could not make sense of the Codex app's inventory. Update or reopen the Codex app, then choose Check for connectors again. Known connections were kept.");
+    case "codex_host_limit":
+      return new DiscoveryFailure("codex_host_limit", "The Codex app reported more connections than Guard can read safely. Remove connections you do not use in the Codex app, then check again. Known connections were kept.");
+    case "codex_host_timeout":
+      return new DiscoveryFailure("codex_host_timeout", "The Codex app did not answer in time. Choose Check for connectors again; if that keeps failing, reopen the Codex app. Known connections were kept.");
+    case "codex_host_unavailable":
+      return new DiscoveryFailure("codex_host_unavailable", "Guard could not reach the Codex app. Open or reopen the Codex app, then choose Check for connectors again. Known connections were kept.");
     case "observed_provider_scan_failed":
       return new DiscoveryFailure("observed_provider_scan_failed", "Guard could not merge observed provider tools. Known tools and choices were kept; choose Check for connectors again.");
     case "catalog_limit_reached":
       return new DiscoveryFailure("catalog_limit_reached", "This connector has more tools than Guard can catalog safely. Existing choices were kept; remove tools you do not use in the host app, then check again.");
     case "discovery_failed":
-      return new DiscoveryFailure("discovery_failed", "The connector scan stopped on an unexpected error. Known tools and choices were kept. Choose Check for connectors again; if that keeps failing, restart Guard and check Guard's log for discovery_stage_failed.");
+      return new DiscoveryFailure("discovery_failed", "The connector scan stopped on an unexpected error. Known tools and choices were kept. Choose Check for connectors again; if that keeps failing, restart Guard. Guard recorded the reason in its log for support.");
     default:
       console.warn("Unknown discovery error code:", code);
       return new DiscoveryFailure("discovery_failed", "Discovery did not finish. Known tools and choices were kept. Try again shortly.");
@@ -33884,7 +33902,12 @@ async function waitForDiscoveryJob(cliId, initialJob, signal, readJson2) {
     }
     throw new DiscoveryFailure("discovery_timeout", "Discovery took too long. Known tools and choices were kept. Try again shortly.");
   } finally {
-    if (!finished) await request2({ job_id: job.job_id, cancel: true });
+    if (!finished) {
+      try {
+        await request2({ job_id: job.job_id, cancel: true });
+      } catch {
+      }
+    }
   }
 }
 function record(value) {
@@ -34199,7 +34222,7 @@ function normalizeLocalCliList(value) {
   return {
     schema_version: requiredString(value.schema_version, "schema"),
     revision,
-    ...discoveryIssue === "catalog_limit_reached" || discoveryIssue === "observed_provider_scan_failed" || discoveryIssue === "configured_host_scan_failed" || discoveryIssue === "package_catalog_refresh_failed" ? { discovery_issue: discoveryIssue } : {},
+    ...discoveryIssue === "catalog_limit_reached" || discoveryIssue === "observed_provider_scan_failed" || discoveryIssue === "configured_host_scan_failed" || discoveryIssue === "configured_host_persist_failed" || discoveryIssue === "package_catalog_refresh_failed" ? { discovery_issue: discoveryIssue } : {},
     ...nativePublication ? { native_publication: nativePublication } : {},
     ...hostInventory ? { host_inventory: hostInventory } : {},
     items,
@@ -36209,7 +36232,7 @@ const FleetWorkspace = lazyWorkspace("fleet-workspace", () => __vitePreload(() =
 const SettingsWorkspace = lazyWorkspace("settings-workspace", () => __vitePreload(() => import("./chunks/settings-workspace-DdhT0dGq.js"), true ? __vite__mapDeps([8,7,3,9,6]) : void 0).then((m) => ({ default: m.SettingsWorkspace })));
 const ExtensionsWorkspace = lazyWorkspace(
   "extensions-workspace",
-  () => __vitePreload(() => import("./chunks/extensions-workspace-Cf4cSdJD.js"), true ? __vite__mapDeps([10,9]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
+  () => __vitePreload(() => import("./chunks/extensions-workspace-Hk8x_uSM.js"), true ? __vite__mapDeps([10,9]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
 );
 const AppDetailWorkspace = lazyWorkspace("app-detail-workspace", () => __vitePreload(() => import("./chunks/app-detail-workspace-B9rlD0o5.js"), true ? __vite__mapDeps([11,5]) : void 0).then((m) => ({ default: m.AppDetailWorkspace })));
 const HelpModal = lazyWorkspace("help-modal", () => __vitePreload(() => import("./chunks/help-modal-B0TZsHE3.js"), true ? [] : void 0).then((m) => ({ default: m.HelpModal })));
