@@ -17,6 +17,8 @@ import sys
 import threading
 from pathlib import Path
 
+from installed_extension_authority_fixture import describe_authority, read_authority
+
 from codex_plugin_scanner import __version__
 from codex_plugin_scanner.guard.approval_gate import public_config, update_settings
 from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer
@@ -25,7 +27,6 @@ from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMA
 from codex_plugin_scanner.guard.runtime.extension_control_authority import AuthorityHealth
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.guard.store_base import EncryptedFileSecretStore
-from installed_extension_authority_fixture import describe_authority, read_authority
 
 
 def _installed_origin() -> Path:
@@ -98,8 +99,7 @@ def _prepare_test_authority(store: GuardStore, guard_home: Path, password_file: 
         )
     if view.health is not AuthorityHealth.PROTECTED:
         raise RuntimeError(
-            f"installed-CI extension authority is not protected: {view.health.value} "
-            f"({describe_authority(store)})"
+            f"installed-CI extension authority is not protected: {view.health.value} ({describe_authority(store)})"
         )
 
 
