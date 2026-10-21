@@ -118,7 +118,7 @@ static SERIALIZER_SECRET_ASSIGNMENT_RE: LazyLock<FancyRegex> = LazyLock::new(|| 
 /// undecidable match counts as a match.
 fn matches_secret_assignment(value: &str) -> bool {
     SERIALIZER_SECRET_ASSIGNMENT_RE
-        .is_match(&fold_python_case_extras(value))
+        .is_match(&*fold_python_case_extras(value))
         .unwrap_or(true)
 }
 
