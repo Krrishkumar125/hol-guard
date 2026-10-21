@@ -114,7 +114,7 @@ fn spilled(path: &str, snapshot: &mut Value, legacy_key: &[u8]) -> Result<(), St
         if read as u64 == MAX_SPILLED_LINE_BYTES && !line.ends_with('\n') {
             return Err("pack_lifecycle_legacy_invalid".into());
         }
-        let record = line.trim_end_matches(|c| c == '\n' || c == '\r');
+        let record = line.trim_end_matches(['\n', '\r']);
         if record.is_empty() {
             continue;
         }
