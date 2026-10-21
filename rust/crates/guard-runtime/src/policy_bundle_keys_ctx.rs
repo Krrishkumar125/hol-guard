@@ -21,10 +21,22 @@ const BUILTIN_KEY_FINGERPRINT: &str =
     "4c8f2d81f564e4a5b108896b87599001bdaf30be8ae961769fe958590b3ebb52";
 const BUILTIN_PUBLIC_KEY_PEM: &str = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAre602aUcqrQTE/V0TKnO\nm4WW9dZ6cJUoUKPyBvrb90y8YKPmlzQJb4Ua8cZpUfNUstnpRNyLV/qaBxcHMcbM\n0xU7hwOi7nMjOgVDb9qKfFeZF/1HH21fzfnkLbDYynkoGPoiOL/toc7RGNeLGMLz\naP+X+CsTRG5kaFLAkNFzVCOGvui1JwsYl5gkdSJIuF1GANOKBh9J/2sEo4pw5JiV\n6OKSfXNE8uXsejMJZT2/WhiqCaf1NbBb4lKETcMD2ul6uobflTpLRafg7L8TMHRp\nTkJCkPeFpNeWG4FzDkGUU+chwgXmZxrB4hAWaSLkeevgJiPglTj0PyEyVkvMShcX\nXQIDAQAB\n-----END PUBLIC KEY-----";
 
+#[cfg(test)]
+thread_local! {
+    /// The recorded Python parity vectors predate the pinned anchor; replaying
+    /// them turns it off so they keep checking everything else verbatim.
+    pub(crate) static BUILTIN_ANCHOR_DISABLED: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
 /// Pinned anchors scoped to the paired workspace. The bundle signature covers
 /// `workspaceId` and the workspace is checked before any rule applies, so one
 /// Cloud key serves every workspace without allowing cross-workspace replay.
 pub(crate) fn builtin_keys(expected_workspace: Option<&str>) -> Vec<Key> {
+    #[cfg(test)]
+    if BUILTIN_ANCHOR_DISABLED.with(std::cell::Cell::get) {
+        return Vec::new();
+    }
     let Some(workspace) = expected_workspace.filter(|value| !py_strip(value).is_empty()) else {
         return Vec::new();
     };
