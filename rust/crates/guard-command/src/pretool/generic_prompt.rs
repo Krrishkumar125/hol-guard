@@ -439,13 +439,14 @@ pub(super) fn benign_prompt_text(text: &str) -> bool {
         && !risky_action.is_match(&mask_format_options(&mask_negated_clauses(&remainder)))
 }
 
-/// `--format`, `-format` and `--pretty=format:` choose how a command prints
-/// its output; only the bare word asks to format a disk.
+/// `--format`, `-format` and the `format:` value of `--pretty=format:` choose
+/// how a command prints its output; the bare word, or an assignment such as
+/// `operation=format`, still asks to format a disk.
 fn mask_format_options(value: &str) -> String {
     static OPTION: OnceLock<Regex> = OnceLock::new();
     OPTION
         .get_or_init(|| {
-            Regex::new(r"(?i)(^|[^a-z0-9-])--?format\b|=format\b").expect("bounded format option")
+            Regex::new(r"(?i)(^|[^a-z0-9-])--?format\b|=format:").expect("bounded format option")
         })
         .replace_all(value, "${1}output-layout")
         .into_owned()

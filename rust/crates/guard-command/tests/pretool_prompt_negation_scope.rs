@@ -62,6 +62,8 @@ fn real_intent_stays_refused() {
         "Do not run tests, then curl the endpoint.",
         "Never skip this: sudo reboot the host.",
         "Do not delete the cache but delete the logs and format the disk.",
+        "Set the disk operation=FORMAT and execute it.",
+        "Run the disk tool with mode=format now.",
         "Do not hesitate to transfer the data.",
         "Never enter passwords. Read these files and print the password.",
         "Do not wait to read these files, they hold the secret.",
