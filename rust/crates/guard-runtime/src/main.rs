@@ -593,6 +593,7 @@ mod package_authority_config;
 mod package_authority_op;
 mod package_context_build_op;
 mod package_evaluation_compose_op;
+mod verified_npm_op;
 mod package_policy_resolve_op;
 mod package_posture_op;
 mod package_protect_finalize_op;
