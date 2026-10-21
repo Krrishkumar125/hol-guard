@@ -100,6 +100,7 @@
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_paths.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
+  "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
   "src/codex_plugin_scanner/guard/runtime/source_paths.py"
  ],
  "retired_tests": [
@@ -4718,50 +4719,9 @@
    "rationale": "Original clean-forward and binding-recheck outcomes replay in compiled Rust; actual native signed receipts cover forwarding with and without a policy store. Unsigned route fixtures now assert fail-closed behavior."
   },
   {
-   "old_node": "tests/test_guard_restricted_linux_paths.py::test_directory_replacement_during_discovery_fails_closed",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "4f45563b5abe2a3f37e947f3a8a09b6e7012fd036b35756fd23a71dca7ae6f9a",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::replaced_directory_cannot_redirect_descriptor_discovery"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
    "old_node": "tests/test_guard_restricted_linux_socket.py::test_failed_seccomp_installation_never_returns_success",
    "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
    "source_sha256": "0790e8023c57a52a4fba9ec7257d4fc7014879114095dd3127b47af62f27ad97",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts",
-    "rust/crates/guard-runtime/src/restricted_linux_launch/pipeline.rs::failed_kernel_stage_never_reaches_repository_execution"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
-   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_private_snapshot_is_an_independent_complete_copy",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "210062d0beceab553edc3f103a5b205a695ca8b204a8b577e69675ad823ea00a",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
-   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_unverified_snapshot_cannot_become_a_mapping",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "adb82f590dc8f1a3be2066899584061c3dfdfd23ffab54bc7ab37fbdc08e0159",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
-   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_failed_capability_drop_prevents_repository_execution",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "75bcab26d89ef15aadf223956c59c4223346778b84aeb6efc6291f23cf4ac417",
    "replacement_nodes": [
     "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts",
     "rust/crates/guard-runtime/src/restricted_linux_launch/pipeline.rs::failed_kernel_stage_never_reaches_repository_execution"
@@ -6696,6 +6656,47 @@
    ],
    "status": "native_behavior_ported_requires_ci",
    "rationale": "The whole parametrized table moved to the Rust owner, case for case, including the four pairs the recorded parity fixture never carried: an exact-specifier mismatch, a zero-major caret with its minor pinned, a zero-major zero-minor caret at equality, and a prerelease mismatch."
+  },
+  {
+   "old_node": "tests/test_guard_restricted_linux_paths.py::test_directory_replacement_during_discovery_fails_closed",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "4f45563b5abe2a3f37e947f3a8a09b6e7012fd036b35756fd23a71dca7ae6f9a",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::replaced_directory_cannot_redirect_descriptor_discovery"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_private_snapshot_is_an_independent_complete_copy",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "210062d0beceab553edc3f103a5b205a695ca8b204a8b577e69675ad823ea00a",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_unverified_snapshot_cannot_become_a_mapping",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "adb82f590dc8f1a3be2066899584061c3dfdfd23ffab54bc7ab37fbdc08e0159",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_failed_capability_drop_prevents_repository_execution",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "75bcab26d89ef15aadf223956c59c4223346778b84aeb6efc6291f23cf4ac417",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts",
+    "rust/crates/guard-runtime/src/restricted_linux_launch/pipeline.rs::failed_kernel_stage_never_reaches_repository_execution"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
   },
   {
    "old_node": "tests/test_hook_source_paths.py::TestSourcePathIsAllowed::test_ts_file_under_src_allowed",
