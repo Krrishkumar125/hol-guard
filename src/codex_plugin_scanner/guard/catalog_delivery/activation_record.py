@@ -12,9 +12,9 @@ from . import lifecycle
 from .activation_types import ActivationHeader
 from .authority import DIGEST
 from .located_store import LocatedStore
-from .metadata_objects import ObjectStore, encoded, validate_reference
-from .pack_store import PackReader, decode
-from .preparation import IDENTITY, MAX_SELECTED, PreparedCommandPacks
+from .metadata_objects import ObjectStore, encoded
+from .pack_store import decode
+from .preparation import PreparedCommandPacks
 
 PURPOSE = "command-pack-activation.v1"
 SCHEMA = "guard.command-pack-activation.v1"
@@ -22,7 +22,6 @@ SCHEMA_V2 = "guard.command-pack-activation.v2"
 MAX_RECORD_BYTES = 64 * 1024
 REGISTRY_PAGE = "guard.command-pack-registry-page.v1"
 EXECUTABLE_PAGE = "guard.command-pack-executables-page.v1"
-SELECTION_PAGE = "guard.command-pack-selection-page.v1"
 MAX_EXECUTABLES = 1048576
 
 
@@ -34,34 +33,6 @@ def _pages(store, values, schema, field="items"):
             raise ValueError("activation metadata page exceeds byte budget")
         next_page = store.put_json(value)
     return next_page
-
-
-def _items(reader, reference, count, schema, maximum, field="items"):
-    if type(count) is not int or not 0 <= count <= maximum or (reference is None) != (count == 0):
-        raise ValueError("activation metadata count invalid")
-    seen, read = set(), 0
-    while reference is not None:
-        validate_reference(reference)
-        if reference["expanded_length"] > MAX_RECORD_BYTES or reference["sha256"] in seen:
-            raise ValueError("activation metadata page bounds invalid")
-        seen.add(reference["sha256"])
-        value = reader.json(reference)
-        if (
-            not isinstance(value, dict)
-            or set(value) != {"schema", field, "next"}
-            or value["schema"] != schema
-            or not isinstance(value[field], list)
-            or not 0 < len(value[field]) <= 64
-        ):
-            raise ValueError("activation metadata page invalid")
-        for item in value[field]:
-            read += 1
-            if read > count:
-                raise ValueError("activation metadata has surplus entries")
-            yield item
-        reference = value["next"]
-    if read != count:
-        raise ValueError("activation metadata is incomplete")
 
 
 def seal(prepared, *, key: bytes, revision: int, previous_digest=None, now=None):
@@ -164,63 +135,19 @@ def admission_is_current(header: ActivationHeader, now: int) -> bool:
 
 
 def open_record(data, expected_digest, expected_mac, *, key, directory):
-    value = verify_header(data, expected_digest, expected_mac, key=key)
-    reader = PackReader(directory / "objects")
-    if (
-        value["distribution"]["expanded_length"] > MAX_RECORD_BYTES
-        or value["distribution"]["sha256"] != value["root_digest"]
-    ):
-        raise ValueError("activation distribution binding invalid")
-    distribution = reader.json(value["distribution"])
-    if (
-        not isinstance(distribution, dict)
-        or distribution.get("schema")
-        != ("guard.command-pack-bundle.v1" if value["issued_at"] is None else "guard.extension-distribution.v2")
-        or any(
-            distribution.get(field) != value[field]
-            for field in ("source_sha", "engine", "publication_id", "authority_epoch", "issued_at", "expires_at")
-        )
-        or distribution["policy"]["revocations"]["epoch"] != value["revocation_epoch"]
-    ):
-        raise ValueError("activation publication identity invalid")
-    selected = list(_items(reader, value["selection"], value["selected_count"], SELECTION_PAGE, MAX_SELECTED, "ids"))
-    if (
-        not selected
-        or any(
-            not isinstance(identity, str) or len(identity) > 256 or IDENTITY.fullmatch(identity) is None
-            for identity in selected
-        )
-        or selected != sorted(set(selected))
-    ):
-        raise ValueError("activation selected inventory invalid")
-    references = tuple(
-        encoded(reference)
-        for reference in _items(reader, value["registry"], value["registry_count"], REGISTRY_PAGE, MAX_SELECTED)
+    """The authenticated activation and the local inventories it binds; the runtime checks each."""
+    opened = lifecycle.record(
+        "open",
+        "activation",
+        key=key,
+        record=data,
+        digest=expected_digest,
+        mac=expected_mac,
+        directory=str(directory),
     )
-    executables = tuple(
-        _items(reader, value["executables"], value["executable_count"], EXECUTABLE_PAGE, MAX_EXECUTABLES)
-    )
-    if (
-        any(not isinstance(item, str) or not 0 < len(item) <= 8192 for item in executables)
-        or tuple(sorted(set(executables))) != executables
-    ):
-        raise ValueError("activation executable inventory invalid")
-    store = LocatedStore(directory / "objects")
-    ids = []
-    for reference in references:
-        catalog = store.json(decode(reference))
-        if not isinstance(catalog, list) or len(catalog) != 1 or not isinstance(catalog[0], dict):
-            raise ValueError("activation registry metadata invalid")
-        ids.append(catalog[0].get("extension_id"))
-    if (
-        any(
-            not isinstance(identity, str) or len(identity) > 256 or IDENTITY.fullmatch(identity) is None
-            for identity in ids
-        )
-        or ids != sorted(set(ids))
-        or not set(selected) <= set(ids)
-    ):
-        raise ValueError("activation registry inventory invalid")
+    value = cast(ActivationHeader, opened["value"])
+    selected, ids, executables = opened["selected"], opened["registry_ids"], tuple(opened["executables"])
+    references = tuple(encoded(reference) for reference in opened["registry"])
     result = object.__new__(CommittedCommandPacks)
     captured = {
         "directory": directory,

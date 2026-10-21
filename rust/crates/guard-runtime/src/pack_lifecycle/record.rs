@@ -7,6 +7,7 @@
 //! `{"fault":"tampered"}`; a record that authenticates but breaks the schema is
 //! refused with the reason the caller reports.
 
+use std::path::Path;
 use std::sync::OnceLock;
 
 use regex::Regex;
@@ -403,17 +404,38 @@ fn verify(input: &Value, key: &[u8]) -> std::result::Result<Value, Refusal> {
     Ok(json!({"value": value}))
 }
 
+/// `activation_record.open_record`: the authenticated header, then the
+/// publication and inventories it binds in the local delivery cache.
+fn open_record(input: &Value, key: &[u8]) -> std::result::Result<Value, Refusal> {
+    if input["purpose"] != "activation" {
+        return Err("pack_lifecycle_record_purpose_invalid".into());
+    }
+    let directory = input["directory"]
+        .as_str()
+        .filter(|directory| !directory.is_empty())
+        .ok_or("pack_lifecycle_record_directory_invalid")?;
+    let verified = verify(input, key)?;
+    Ok(open::open(&verified["value"], Path::new(directory))?)
+}
+
+fn answer(result: std::result::Result<Value, Refusal>) -> Result<Value> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(Refusal::Tampered(reason)) => Ok(json!({"fault": "tampered", "reason": reason})),
+        Err(Refusal::Invalid(reason)) => Err(reason),
+    }
+}
+
 pub(super) fn evaluate(input: &Value, key: &[u8]) -> Result<Value> {
     match input["operation"].as_str() {
         Some("seal") => seal(input, key),
-        Some("verify") => match verify(input, key) {
-            Ok(value) => Ok(value),
-            Err(Refusal::Tampered(reason)) => Ok(json!({"fault": "tampered", "reason": reason})),
-            Err(Refusal::Invalid(reason)) => Err(reason),
-        },
+        Some("verify") => answer(verify(input, key)),
+        Some("open") => answer(open_record(input, key)),
         _ => Err("pack_lifecycle_record_operation_invalid".into()),
     }
 }
+
+mod open;
 
 #[cfg(test)]
 #[path = "record_tests.rs"]
