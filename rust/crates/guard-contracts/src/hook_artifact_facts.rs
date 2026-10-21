@@ -26,7 +26,7 @@ pub const HOOK_ARTIFACT_FACTS_MAX_BYTES: usize = 4 * 1024 * 1024;
 pub const HOOK_ARTIFACT_FACTS_MAX_ARTIFACTS: usize = 64;
 
 /// One artifact the caller asks about.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct HookArtifactV1 {
     /// `GuardArtifact.artifact_type`.
