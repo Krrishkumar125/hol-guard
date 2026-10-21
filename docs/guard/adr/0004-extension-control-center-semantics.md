@@ -72,7 +72,6 @@ The dashboard has a larger validation and presentation surface, but policy meani
 ## Implementation references
 
 - `src/codex_plugin_scanner/guard/runtime/command_extensions.py`
-- `src/codex_plugin_scanner/guard/runtime/command_permission_catalog.py`
 - `rust/crates/guard-command/src/extension_control.rs`
 - `rust/crates/guard-runtime/src/extension_control_op.rs`
 - `src/codex_plugin_scanner/guard/native_extension_control.py`
