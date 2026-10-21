@@ -94,6 +94,13 @@ class ExtensionControlRuntime:
         self._highest_protected_digest = (
             self._snapshot.effective_digest if initial.health is AuthorityHealth.PROTECTED else None
         )
+        # The catalog the floor digest was taken for. A view read for another
+        # catalog is a different projection of the same authority, not a second
+        # authority offered for the same revision, so the floor digest says
+        # nothing about it. The revision floor below still applies to both.
+        self._highest_protected_catalog = (
+            self._snapshot.catalog_digest if initial.health is AuthorityHealth.PROTECTED else None
+        )
 
     def current(self) -> ExtensionControlRuntimeSnapshot:
         with self._lock:
@@ -120,6 +127,7 @@ class ExtensionControlRuntime:
                 raise ValueError("extension control runtime recovery is not protected")
             self._highest_protected_revision = (candidate.revision, candidate.managed_revision)
             self._highest_protected_digest = candidate.effective_digest
+            self._highest_protected_catalog = candidate.catalog_digest
             self._snapshot = candidate
             return candidate
 
@@ -148,6 +156,7 @@ class ExtensionControlRuntime:
         if (
             candidate_revision == self._highest_protected_revision
             and self._highest_protected_digest is not None
+            and candidate.catalog_digest == self._highest_protected_catalog
             and candidate.effective_digest != self._highest_protected_digest
         ):
             raise ValueError("extension control runtime revision cannot be replaced")
@@ -163,6 +172,7 @@ class ExtensionControlRuntime:
         if candidate.health is AuthorityHealth.PROTECTED:
             self._highest_protected_digest = candidate.effective_digest
             self._highest_protected_revision = (candidate.revision, candidate.managed_revision)
+            self._highest_protected_catalog = candidate.catalog_digest
         self._snapshot = candidate
         return candidate
 

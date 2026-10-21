@@ -84,7 +84,16 @@ class _ControlPostRoutes:
                         require_fresh_totp=self._request_uses_protection_repair_session(),
                     )
                 else:
-                    response = self._daemon_server().extension_control_api.refresh()
+                    # The dashboard posts here when the catalog it read and the
+                    # effective controls it read name different catalogs. Only
+                    # the daemon-wide refresh recaptures the active activation
+                    # and rebinds the control API to it; the service's own
+                    # refresh re-reads for the registry it is already bound to,
+                    # which cannot close that gap. It reads under the authority
+                    # lease and commits nothing, and keeps the installed
+                    # snapshot when the read fails.
+                    self._daemon_server().refresh_extension_control_runtime()
+                    response = self._daemon_server().extension_control_api.effective()
             except ExtensionControlApiError as error:
                 self._write_json(error.to_payload(), status=error.status)
                 return

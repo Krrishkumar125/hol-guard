@@ -392,6 +392,23 @@ export async function fetchEffectiveExtensionControls(): Promise<EffectiveExtens
   return { ...normalized, projection };
 }
 
+/**
+ * Ask the daemon to re-read durable authority and serve the catalog it was
+ * read for. The daemon publishes the catalog and the effective controls from
+ * two bindings that a restart can leave on different catalogs; this is the
+ * route that puts them back together, so a reader that sees two catalog
+ * digests calls it before reading again instead of giving up. The response is
+ * discarded: the caller reads both endpoints again, and only that pair tells
+ * it whether the two bindings now agree.
+ */
+export async function refreshEffectiveExtensionControls(): Promise<void> {
+  await request("/v1/extension-controls/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
 export async function fetchExtensionControlHistory(): Promise<ExtensionControlHistoryResponse> {
   const raw = await request("/v1/extension-controls/history");
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new ExtensionControlApiError("Guard returned invalid settings history", 502);

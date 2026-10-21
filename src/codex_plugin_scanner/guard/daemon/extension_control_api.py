@@ -180,6 +180,13 @@ class ExtensionControlApiService:
         process must not take protection away from a running daemon; refreshing
         is here to catch up with another writer, not to downgrade.
 
+        A protected read for a catalog the snapshot was not built for also
+        replaces it, whatever its revision says. The view was read for the
+        registry this service serves, so keeping a snapshot from another
+        catalog would publish controls under a catalog digest the catalog
+        endpoint no longer names, and a reader comparing the two cannot settle
+        that by reading again.
+
         `read_only` keeps the read on the shared lock and off the write path, so
         a caller that only renders the controls cannot settle a pending catalog
         migration on the operator's behalf.
@@ -188,7 +195,9 @@ class ExtensionControlApiService:
         current = self._runtime.current()
         try:
             view = self._store.read_extension_control_authority_for_registry(self._registry, read_only=read_only)
-            if view.health is not AuthorityHealth.PROTECTED or (view.revision, view.managed_revision) <= (
+            if view.health is not AuthorityHealth.PROTECTED:
+                return current
+            if view.catalog_digest == current.catalog_digest and (view.revision, view.managed_revision) <= (
                 current.revision,
                 current.managed_revision,
             ):
