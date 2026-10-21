@@ -169,12 +169,12 @@ def test_a_runtime_outage_while_resuming_keeps_the_pending_transition(journal, m
     before = tuple(value.connection.iterdump())
 
     def unavailable(*args, **kwargs):
-        raise lifecycle.NativePackLifecycleUnavailable("native_pack_lifecycle_unavailable: feature unavailable")
+        raise lifecycle.NativePackLifecycleUnavailableError("native_pack_lifecycle_unavailable: feature unavailable")
 
     monkeypatch.setattr(lifecycle, "record", unavailable)
     with (
         hold_command_control_authority_lock(value.store.guard_home),
-        pytest.raises(lifecycle.NativePackLifecycleUnavailable, match="unavailable"),
+        pytest.raises(lifecycle.NativePackLifecycleUnavailableError, match="unavailable"),
         value.connection,
     ):
         activation_journal.finish(value.store, value.connection, value.transition)

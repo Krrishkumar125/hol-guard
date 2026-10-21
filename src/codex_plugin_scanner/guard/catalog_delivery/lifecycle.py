@@ -13,7 +13,7 @@ from typing import Any, cast
 from ..extension_builder import native_source_compiler as transport
 
 
-class NativePackLifecycleUnavailable(ValueError):
+class NativePackLifecycleUnavailableError(ValueError):
     """The runtime could not answer: missing, unverifiable, timed out or crashed.
 
     This is the transport saying nothing, not the runtime refusing a record. A
@@ -61,7 +61,7 @@ def session():
             finally:
                 _SESSION.reset(token)
     except transport.NativeSourceCompilerError as exc:
-        raise NativePackLifecycleUnavailable(f"native_pack_lifecycle_unavailable: {exc}") from exc
+        raise NativePackLifecycleUnavailableError(f"native_pack_lifecycle_unavailable: {exc}") from exc
 
 
 def runtime_fingerprint() -> tuple[tuple[int, ...], ...]:
@@ -98,7 +98,7 @@ def _invoke(kind, fields, deadline) -> dict[str, Any]:
         # Rust validates each operation's record; this adapter transports heterogeneous JSON values.
         return cast(dict[str, Any], transport._decode_output(stdout, returncode=code, stderr=stderr))
     except transport.NativeSourceCompilerError as exc:
-        raise NativePackLifecycleUnavailable(f"native_pack_lifecycle_unavailable: {exc}") from exc
+        raise NativePackLifecycleUnavailableError(f"native_pack_lifecycle_unavailable: {exc}") from exc
 
 
 @contextmanager
@@ -119,7 +119,7 @@ def record(operation, purpose, *, key: bytes, **fields) -> dict[str, Any]:
     authenticates outside its schema is refused by name. Both arrive as answers:
     a tampered record raises `ExtensionControlAuthorityError`, a refused one
     raises `ValueError` with the reason, and only a runtime that could not
-    answer raises `NativePackLifecycleUnavailable`.
+    answer raises `NativePackLifecycleUnavailableError`.
     """
     from ..runtime.extension_control_authority import ExtensionControlAuthorityError
 
