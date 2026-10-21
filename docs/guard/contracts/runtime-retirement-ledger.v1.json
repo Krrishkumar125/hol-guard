@@ -94,7 +94,13 @@
   "src/codex_plugin_scanner/guard/runtime/network_public_suffix.py",
   "src/codex_plugin_scanner/guard/runtime/remote_approval_execution.py",
   "src/codex_plugin_scanner/guard/runtime/resource_budget.py",
-  "src/codex_plugin_scanner/guard/runtime/node_semver.py"
+  "src/codex_plugin_scanner/guard/runtime/node_semver.py",
+  "src/codex_plugin_scanner/guard/runtime/data_flow.py",
+  "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
+  "src/codex_plugin_scanner/guard/runtime/restricted_linux_paths.py",
+  "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
+  "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
+  "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py"
  ],
  "retired_tests": [
   {
@@ -4712,50 +4718,9 @@
    "rationale": "Original clean-forward and binding-recheck outcomes replay in compiled Rust; actual native signed receipts cover forwarding with and without a policy store. Unsigned route fixtures now assert fail-closed behavior."
   },
   {
-   "old_node": "tests/test_guard_restricted_linux_paths.py::test_directory_replacement_during_discovery_fails_closed",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "4f45563b5abe2a3f37e947f3a8a09b6e7012fd036b35756fd23a71dca7ae6f9a",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::replaced_directory_cannot_redirect_descriptor_discovery"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
    "old_node": "tests/test_guard_restricted_linux_socket.py::test_failed_seccomp_installation_never_returns_success",
    "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
    "source_sha256": "0790e8023c57a52a4fba9ec7257d4fc7014879114095dd3127b47af62f27ad97",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts",
-    "rust/crates/guard-runtime/src/restricted_linux_launch/pipeline.rs::failed_kernel_stage_never_reaches_repository_execution"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
-   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_private_snapshot_is_an_independent_complete_copy",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "210062d0beceab553edc3f103a5b205a695ca8b204a8b577e69675ad823ea00a",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
-   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_unverified_snapshot_cannot_become_a_mapping",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "adb82f590dc8f1a3be2066899584061c3dfdfd23ffab54bc7ab37fbdc08e0159",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
-   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_failed_capability_drop_prevents_repository_execution",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "75bcab26d89ef15aadf223956c59c4223346778b84aeb6efc6291f23cf4ac417",
    "replacement_nodes": [
     "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts",
     "rust/crates/guard-runtime/src/restricted_linux_launch/pipeline.rs::failed_kernel_stage_never_reaches_repository_execution"
@@ -6690,6 +6655,47 @@
    ],
    "status": "native_behavior_ported_requires_ci",
    "rationale": "The whole parametrized table moved to the Rust owner, case for case, including the four pairs the recorded parity fixture never carried: an exact-specifier mismatch, a zero-major caret with its minor pinned, a zero-major zero-minor caret at equality, and a prerelease mismatch."
+  },
+  {
+   "old_node": "tests/test_guard_restricted_linux_paths.py::test_directory_replacement_during_discovery_fails_closed",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "4f45563b5abe2a3f37e947f3a8a09b6e7012fd036b35756fd23a71dca7ae6f9a",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::replaced_directory_cannot_redirect_descriptor_discovery"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_private_snapshot_is_an_independent_complete_copy",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "210062d0beceab553edc3f103a5b205a695ca8b204a8b577e69675ad823ea00a",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_unverified_snapshot_cannot_become_a_mapping",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "adb82f590dc8f1a3be2066899584061c3dfdfd23ffab54bc7ab37fbdc08e0159",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_failed_capability_drop_prevents_repository_execution",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "75bcab26d89ef15aadf223956c59c4223346778b84aeb6efc6291f23cf4ac417",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts",
+    "rust/crates/guard-runtime/src/restricted_linux_launch/pipeline.rs::failed_kernel_stage_never_reaches_repository_execution"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
   }
  ],
  "preserved_tests": [
@@ -7020,16 +7026,6 @@
  "implementation_base_sha": "1dc81dd4319cdf18e4b1c0fd3d061f732601b188",
  "replaced_implementations": [
   {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "dd444d6d651697c0c7b7cf38d77bfa155e15adba183219fec85a393190789df1",
-   "remaining_role": "Portable native mapping/mount projections and legacy identity DTO only; stable image copying, noexec mounts and capability drop are native.",
-   "native_replacements": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
-   ],
-   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/linux_launch_parity.json"
-  },
-  {
    "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_namespace.py",
    "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
    "source_sha256": "a9b077f191f28ee2b82156bdd1f93aece68f6b4288bac81a2019490e1561f422",
@@ -7054,26 +7050,6 @@
    "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
    "source_sha256": "5892ba09cd8a077be5d8a345df131054115ff9f46e41ec9d4e1e93f62608e94c",
    "remaining_role": "Legacy fixed-locator constants and fail-closed compatibility entry only; the namespace invokes the packaged native kernel launcher directly.",
-   "native_replacements": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
-   ],
-   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/linux_launch_parity.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "db657bee3f0a23b44b23b9c1eb398babc0db4262d56477f8f179d94784c636df",
-   "remaining_role": "Typed projection of the native exact ELF loader result; bounded ELF parsing and system-image ownership checks are native.",
-   "native_replacements": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
-   ],
-   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/linux_launch_parity.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_paths.py",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "08fa4d90b10eff57b9e6e205ba4e025ecb0926828bb19df8bc97938ac88c1135",
-   "remaining_role": "Typed projection of the native private inode-index snapshot; native descriptor discovery and existing secret-path classification own admission.",
    "native_replacements": [
     "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
    ],
@@ -7122,18 +7098,6 @@
    "remaining_role": "Native transport projection of credential patterns and Seatbelt denials only; pattern construction and string escaping are native.",
    "native_replacements": [
     "rust/crates/guard-command/src/restricted_pytest/credentials.rs",
-    "rust/crates/guard-runtime/src/restricted_pytest_op.rs"
-   ],
-   "parity_fixture": "rust/crates/guard-command/tests/fixtures/contained_execution_parity.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
-   "base_commit": "1b76783140a37e849645f943984f587acaa52cfa",
-   "source_sha256": "0b7d2c667b1da815b33870865be842e46702a96a9bd8271dcafa1e98329a4e4a",
-   "remaining_role": "Bounded owner-only mapping input/result snapshot handoff and path-based ELF projection; ELF parsing and dependency-closure evidence are native.",
-   "native_replacements": [
-    "rust/crates/guard-command/src/restricted_pytest/mapping.rs",
-    "rust/crates/guard-command/src/restricted_pytest/mapping_elf.rs",
     "rust/crates/guard-runtime/src/restricted_pytest_op.rs"
    ],
    "parity_fixture": "rust/crates/guard-command/tests/fixtures/contained_execution_parity.json"
@@ -7200,17 +7164,6 @@
    "remaining_role": "Public option payload DTO and bound resident projection only; option and operand admission retired.",
    "native_replacements": [
     "rust/crates/guard-command/src/shell_interpreter_options.rs",
-    "rust/crates/guard-runtime/src/shell_helpers_op.rs"
-   ],
-   "parity_fixture": "tests/fixtures/shell-helper-python.v1.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/data_flow.py",
-   "base_commit": "da723a48b221c135cbce3bade1bab3ddb4959044",
-   "source_sha256": "2cae49b5d617d61d89f7b6da5788f75652e8c4043088902267c50adec50c9d09",
-   "remaining_role": "Public structures and native transport only; segmentation, pipe and redirect semantics retired.",
-   "native_replacements": [
-    "rust/crates/guard-command/src/data_flow.rs",
     "rust/crates/guard-runtime/src/shell_helpers_op.rs"
    ],
    "parity_fixture": "tests/fixtures/shell-helper-python.v1.json"

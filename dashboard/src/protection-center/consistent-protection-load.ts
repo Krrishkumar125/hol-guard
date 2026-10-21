@@ -1,3 +1,5 @@
+import { refreshEffectiveExtensionControls } from "../extension-controls-api";
+
 export const PROTECTION_DATA_CHANGED_MESSAGE =
   "Protection data changed while Guard was loading. Check again before making changes.";
 
@@ -15,10 +17,15 @@ const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => set
 export async function loadConsistentProtectionData<C extends Digested, E extends Digested>(
   loadCatalog: () => Promise<C>,
   loadEffective: () => Promise<E>,
-  options: { readonly delays?: readonly number[]; readonly sleep?: (ms: number) => Promise<void> } = {},
+  options: {
+    readonly delays?: readonly number[];
+    readonly sleep?: (ms: number) => Promise<void>;
+    readonly repair?: () => Promise<unknown>;
+  } = {},
 ): Promise<{ catalog: C; effective: E }> {
   const delays = options.delays ?? CONSISTENT_LOAD_RETRY_DELAYS_MS;
   const sleep = options.sleep ?? defaultSleep;
+  const repair = options.repair ?? refreshEffectiveExtensionControls;
   for (let attempt = 0; ; attempt += 1) {
     const [catalog, effective] = await Promise.all([loadCatalog(), loadEffective()]);
     if (catalog.catalog_digest === effective.catalog_digest) return { catalog, effective };
@@ -26,6 +33,12 @@ export async function loadConsistentProtectionData<C extends Digested, E extends
     // A pair that never agrees is still refused: edits drafted against one
     // catalog must not be applied against another.
     if (delay === undefined) throw new Error(PROTECTION_DATA_CHANGED_MESSAGE);
+    // Waiting alone only settles a transition that is still moving. A daemon
+    // whose catalog binding and whose control snapshot settled on different
+    // catalogs stays split until it reads the authority again, so ask it to:
+    // the request is a read on the daemon side and commits nothing. A repair
+    // that fails is not fatal, because the retry is still worth taking.
+    await repair().catch(() => undefined);
     await sleep(delay);
   }
 }
