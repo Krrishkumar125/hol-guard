@@ -13,6 +13,9 @@ _RECEIPT_PERSISTENCE_TIMEOUT_SECONDS = 60.0
 # starts. Installed hooks poll through it for this long; the probe does too.
 _POLICY_FENCE_WAIT_SECONDS = 8.0
 _POLICY_FENCE_ERROR = "native_business_source_mutation_in_progress"
+# The refresh that held the fence can publish a newer generation, which
+# supersedes the binding the case started with.
+_STALE_BINDING_ERROR = "native_policy_snapshot_not_current"
 _ACTION_RANK = {
     "allow": 0,
     "warn": 1,
@@ -71,6 +74,7 @@ def run_case(
     }
     payload = {"hook_event_name": "PreToolUse", **payload}
     fence_until = time.monotonic() + _POLICY_FENCE_WAIT_SECONDS
+    fenced = False
     while True:
         raw = review_raw_hook_native(
             payload=payload,
@@ -84,9 +88,17 @@ def run_case(
             deadline=time.monotonic() + 5,
             policy_snapshot=binding,
         )
-        if raw is not None or native_resident_client_failure_code() != _POLICY_FENCE_ERROR:
+        if raw is not None or time.monotonic() >= fence_until:
             break
-        if time.monotonic() >= fence_until:
+        failure = native_resident_client_failure_code()
+        if failure == _POLICY_FENCE_ERROR:
+            fenced = True
+        elif failure == _STALE_BINDING_ERROR and fenced:
+            # Bind to the generation the refresh published; ready() still
+            # requires the case's control revision.
+            binding = ready(daemon, workspace, revision, previous_publisher=previous_publisher, case_label=label)
+            continue
+        else:
             break
         time.sleep(0.1)
     if raw is None:
