@@ -16,6 +16,7 @@ passing so stale markers get removed rather than hiding regressions.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -97,6 +98,9 @@ class GateCase:
     expect: str
     event: str = "PreToolUse"
     tool_response: object = None
+    # Attach the source-file proof Oh My Pi's extension sends with a
+    # PostToolUse read, which routes the review through the source path.
+    source_ref: bool = False
     # Variables the agent shell inherits, such as a user's RIPGREP_CONFIG_PATH.
     environment: tuple[tuple[str, str], ...] = ()
 
@@ -117,6 +121,7 @@ def _expand() -> list[GateCase]:
                     expect=entry["expect"],
                     event=entry.get("event", "PreToolUse"),
                     tool_response=entry.get("tool_response"),
+                    source_ref=bool(entry.get("source_ref", False)),
                     environment=tuple(sorted(entry.get("environment", {}).items())),
                 )
             )
@@ -215,6 +220,8 @@ def _review(case: GateCase, fixture: BenignFixture, worker: HookWorker) -> tuple
     }
     if case.tool_response is not None:
         payload["tool_response"] = case.tool_response
+    if case.source_ref:
+        payload["guard_source_ref"] = _source_ref(payload["tool_input"], fixture.cwd(case.cwd))
     if case.harness == "cursor":
         payload.update(cursor_hook_fields(case.tool, payload))
     # Approval baselines stay from before the first attempt, so a retry never hides a row.
@@ -237,6 +244,24 @@ def _review(case: GateCase, fixture: BenignFixture, worker: HookWorker) -> tuple
     _ROWS[case.case_id] = approval_rows(worker.store, known)
     routed = _harness_route(case, result, payload, fixture)
     return routed, worker.store.count_approval_requests(status=None) - before
+
+
+def _source_ref(tool_input: object, cwd: Path) -> dict[str, object]:
+    """The proof Oh My Pi's extension attaches to a PostToolUse read.
+
+    The path keeps the spelling the tool was called with, so a host spelling
+    through a linked ancestor reaches classification exactly as it does live.
+    """
+    assert isinstance(tool_input, dict)
+    spelled = str(tool_input.get("path") or tool_input["file_path"])
+    text = (cwd / spelled).read_text(encoding="utf-8").rstrip("\n")
+    return {
+        "version": 1,
+        "path": spelled,
+        "output_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "output_chars": len(text),
+        "tool_input_path": spelled,
+    }
 
 
 def _harness_route(

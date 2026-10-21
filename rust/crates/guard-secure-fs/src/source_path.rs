@@ -370,14 +370,23 @@ pub fn classify_source_path(
         return SourcePathDecision::deny("unresolved_path");
     };
 
-    if contains_symlink_component(&lexical) {
-        return SourcePathDecision::deny("symlink_in_path");
-    }
+    let traversed_link = contains_symlink_component(&lexical);
     let Ok(candidate) = fs::canonicalize(&lexical) else {
         return SourcePathDecision::deny("external_target_not_readable");
     };
 
     let inside_workspace = candidate.starts_with(&workspace);
+    // A link only matters when the resolved target leaves the workspace.
+    // Hosts routinely spell an ordinary checkout through a linked ancestor:
+    // macOS resolves `/tmp` to `/private/tmp`, and linked homes, `/var` and
+    // `/Volumes` behave the same way. Refusing before the containment check
+    // denied every read in such a workspace. Once the target is inside, the
+    // in-workspace screens below run on the canonical path, so a link planted
+    // in the tree still cannot present `.env` or `.git` as ordinary source.
+    if traversed_link && !inside_workspace {
+        return SourcePathDecision::deny("symlink_in_path");
+    }
+
     if !inside_workspace {
         if !allow_external || !external_requested {
             return SourcePathDecision::deny("absolute_path_outside_workspace");
