@@ -10,6 +10,7 @@ recomputed action and never lets a claimed approval skip its revalidation.
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, TypeVar
 
@@ -55,6 +56,22 @@ def _stored_row(decision: Mapping[str, object] | None) -> dict[str, object] | No
         "source": decision.get("source"),
         "request_id": claimed_approval_request_id(decision),
     }
+
+
+def _workflow_preflight(store: Any, request_id: str, descriptor: GitHubWorkflowDescriptor) -> bool:
+    """Whether the request's workflow capability is pending, from read-only store lookups.
+
+    The resident reads this only when a saved allow asks to be approved again,
+    but it is gathered before the resident is asked. A store that cannot be
+    read is a capability that is not pending, the preflight's own answer for
+    every lookup it cannot verify, so a request that never needed it is not
+    failed by it and one that did is asked again.
+    """
+
+    try:
+        return bool(resolved_github_workflow_capability_preflight(store, request_id, descriptor))
+    except sqlite3.Error:
+        return False
 
 
 def _tool_lookup(
@@ -120,7 +137,7 @@ def reuse_step_facts(
             workflow_preflight=bool(
                 workflow_descriptor is not None
                 and request_id is not None
-                and resolved_github_workflow_capability_preflight(store, str(request_id), workflow_descriptor)
+                and _workflow_preflight(store, str(request_id), workflow_descriptor)
             ),
         )
     return {

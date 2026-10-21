@@ -284,29 +284,62 @@ fn a_saved_package_allow_is_honored_under_require_reapproval() {
     assert!(retained > 0 && consumed > 0);
 }
 
-/// Reuse does not read the scope that carried a saved allow: the plan is the
-/// same for every source a saved decision can name, so Always allow is honored
-/// at any scope.
+/// Does any claim in the plan spend a trusted-request override's approval?
+fn claims_an_override(plan: &Value) -> bool {
+    walk(plan).iter().any(|node| {
+        node.plan["effect"] == "claim"
+            && node.plan["on_claimed"]["trusted_request_override"] == true
+    })
+}
+
+fn with_source(facts: &Value, source: &str) -> Value {
+    let mut facts = facts.clone();
+    facts["stored"]["source"] = json!(source);
+    facts
+}
+
+/// Reuse reads no scope. The facts name only the saved row's action, hash,
+/// source and request, so a saved allow is honored whichever scope saved it,
+/// and a scope is not a field the wire accepts. The source label is read in
+/// one place only: a trusted browser request's override claims a saved allow
+/// the approval gate wrote, and no other source's.
 #[test]
 fn a_saved_allow_is_honored_at_any_scope() {
-    let scopes = [
-        "approval-gate",
-        "workspace",
-        "publisher",
-        "harness",
-        "global",
-    ];
+    let tool = first_fact(|facts| plain_tool_request(facts) && facts["stored"].is_object());
+    for field in ["scope", "approval_scope"] {
+        let mut facts = tool.clone();
+        facts["stored"][field] = json!("workspace");
+        assert!(rejected(&facts), "{field}");
+    }
+    let gate = ["approval-gate", "approval-gate-once"];
+    let others = ["manual", "imported"];
+    let (mut saved_path, mut override_claims) = (0, 0);
     for vector in vectors() {
-        let mut facts = vector["facts"].clone();
-        if !plain_tool_request(&facts) || !facts["stored"].is_object() {
+        let facts = &vector["facts"];
+        if !facts["stored"].is_object() {
             continue;
         }
-        let expected = plan(&facts);
-        for scope in scopes {
-            facts["stored"]["source"] = json!(scope);
-            assert_eq!(plan(&facts), expected, "{facts}");
+        if facts["trusted_override"].is_null() {
+            // The saved-reuse path never reads the source.
+            let expected = plan(facts);
+            for source in gate.into_iter().chain(others) {
+                assert_eq!(plan(&with_source(facts, source)), expected, "{facts}");
+            }
+            saved_path += 1;
+            continue;
+        }
+        // Both gate sources are claimed alike; any other source is refused.
+        let by_gate = plan(&with_source(facts, gate[0]));
+        assert_eq!(plan(&with_source(facts, gate[1])), by_gate, "{facts}");
+        if claims_an_override(&by_gate) {
+            override_claims += 1;
+            for source in others {
+                let refused = plan(&with_source(facts, source));
+                assert!(!claims_an_override(&refused), "{source}: {facts}");
+            }
         }
     }
+    assert!(saved_path > 1_000 && override_claims > 50);
 }
 
 #[test]

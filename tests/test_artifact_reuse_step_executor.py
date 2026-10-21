@@ -10,6 +10,7 @@ package request. The plan itself is checked against the frozen ladder in
 from __future__ import annotations
 
 import itertools
+import sqlite3
 from typing import Any, cast
 
 import pytest
@@ -113,6 +114,22 @@ def test_the_workflow_preflight_is_read_only_for_a_request_that_can_claim(monkey
     assert _lookup(_facts(workflow_descriptor=None))["workflow_preflight"] is False
     assert _lookup(_facts(workflow_descriptor=descriptor, stored_decision=None))["workflow_preflight"] is False
     assert len(calls) == 1
+
+
+def test_a_workflow_preflight_the_store_cannot_read_is_not_pending(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unreadable(store: object, request_id: str, descriptor: object) -> bool:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(reuse, "resolved_github_workflow_capability_preflight", unreadable)
+    descriptor: Any = object()
+    assert _lookup(_facts(workflow_descriptor=descriptor))["workflow_preflight"] is False
+
+    def corrupt(store: object, request_id: str, descriptor: object) -> bool:
+        raise RuntimeError("not a store error")
+
+    monkeypatch.setattr(reuse, "resolved_github_workflow_capability_preflight", corrupt)
+    with pytest.raises(RuntimeError):
+        _facts(workflow_descriptor=descriptor)
 
 
 def test_a_package_requests_facts_carry_its_evaluation_reasons() -> None:
