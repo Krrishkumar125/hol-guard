@@ -135,7 +135,7 @@ def _prepare(store, captured, activation, publication, fetch, *, profile=None, i
     if pending.get("ignored"):
         return None
     directory = activation_store.directory_for_store(store)
-    from .pack_archives import ingest
+    from .cache_io import stage_archive
 
     transfer = fetch or _no_fetch
     reader = LocatedStore(directory / "objects", fetch=transfer)
@@ -147,12 +147,7 @@ def _prepare(store, captured, activation, publication, fetch, *, profile=None, i
         while "need" in result or "need_archives" in result:
             if "need_archives" in result:
                 for archive in result["need_archives"]:
-                    ingest(
-                        transfer(archive["location"], archive["length"]),
-                        archive["sha256"],
-                        archive["length"],
-                        directory / "objects",
-                    )
+                    stage_archive(directory, archive, transfer)
             else:
                 reader.blob(result["need"])
             result = invoke("complete", store, budget=result["budget"], **complete)

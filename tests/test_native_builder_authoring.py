@@ -131,11 +131,17 @@ def test_native_admission_checks_last_inactive_global_executable(native, tmp_pat
 
 
 @pytest.mark.parametrize("corrupt", [False, True])
-def test_fixed_installed_bundle_uses_native_traversal_and_selected_archive(native, tmp_path, monkeypatch, corrupt):
+def test_fixed_installed_bundle_uses_native_traversal_and_selected_archive(
+    native, native_hook_force, tmp_path, monkeypatch, corrupt
+):
     import hashlib
     from types import SimpleNamespace
 
-    from codex_plugin_scanner.guard.catalog_delivery import installed_bundle
+    from codex_plugin_scanner.guard.catalog_delivery import installed_bundle, lifecycle
+    from tests.test_native_archive_handoff import native_invoke
+
+    # The selected archive is admitted by the pinned runtime, not a Python parser.
+    monkeypatch.setattr(lifecycle, "invoke", native_invoke(native_hook_force))
     from codex_plugin_scanner.guard.catalog_delivery.pack_archives import archive_bytes
     from codex_plugin_scanner.guard.catalog_delivery.pack_store import PackReader
     from codex_plugin_scanner.guard.extension_builder.bundle_baseline import validation_base

@@ -97,13 +97,12 @@ def validation_base(request, compiler, *, installed, directory, fixture=False, a
         return read_bytes(objects / (identity + ".json"), limit=64 * 1024)
 
     def archive(reference):
-        from ..catalog_delivery.pack_archives import ingest
+        from ..catalog_delivery.cache_io import stage_archive
 
         if bundle is None:
             raise ValueError("authoring archive requires a verified bundle")
-        ingest(
-            bundle.fetch(reference["location"], reference["length"]), reference["sha256"], reference["length"], objects
-        )
+        # Native admits the whole archive before any member reaches the cache.
+        stage_archive(directory, reference, bundle.fetch, objects=objects)
 
     result = exchange(
         compiler, "authoring-context", [native_request], directory / "authoring-index", fetch=fetch, archive=archive

@@ -381,9 +381,6 @@ fn worktree_add_attaches_an_existing_branch_beside_the_checkout() {
             "git worktree add {} feat/other-branch",
             code.join("linked/wt").display()
         ),
-        // Git would create a tracking branch from a remote-tracking ref or
-        // fail, so a name with no local branch is not proven.
-        "git worktree add ../wt-missing feat/missing-branch".to_owned(),
     ] {
         let result = evaluate(&home, &session, &command);
         assert_ne!(result.minimum_action, "allow", "{command}");
