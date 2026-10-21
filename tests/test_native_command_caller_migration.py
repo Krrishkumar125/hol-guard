@@ -51,6 +51,7 @@ def _workflow_hook_without_resident(monkeypatch: pytest.MonkeyPatch, claims: lis
     descriptor = SimpleNamespace(record=None, command_identity="command-security-v2:test")
     monkeypatch.setattr(workflow_hook, "_runtime_github_workflow_descriptor", lambda *_args, **_kwargs: descriptor)
     monkeypatch.setattr(workflow_hook, "github_workflow_capability_required", lambda *_args: True)
+    monkeypatch.setattr(workflow_hook, "resolved_github_workflow_capability_preflight", lambda *_args: True)
     monkeypatch.setattr(
         workflow_hook,
         "claim_resolved_github_workflow_authorization",
@@ -94,7 +95,8 @@ def test_workflow_unresolved_review_is_an_outage_not_a_python_floor(
 ) -> None:
     claims: list[object] = []
     store = _workflow_hook_without_resident(monkeypatch, claims)
-    monkeypatch.setattr(workflow_hook, "native_command_review", lambda *_args, **_kwargs: object())
+    review = SimpleNamespace(native={"minimum_action": "review"})
+    monkeypatch.setattr(workflow_hook, "native_command_review", lambda *_args, **_kwargs: review)
     monkeypatch.setattr(workflow_hook, "resolve_native_command_review", lambda *_args, **_kwargs: None)
 
     with pytest.raises(workflow_hook.GitHubWorkflowEvaluationUnavailableError) as error:
@@ -102,3 +104,40 @@ def test_workflow_unresolved_review_is_an_outage_not_a_python_floor(
 
     assert error.value.code == "native_github_workflow_evaluation_unavailable"
     assert len(claims) == 1
+
+
+def test_workflow_without_a_live_capability_asks_the_resident_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    claims: list[object] = []
+    store = _workflow_hook_without_resident(monkeypatch, claims)
+    monkeypatch.setattr(workflow_hook, "resolved_github_workflow_capability_preflight", lambda *_args: False)
+    monkeypatch.setattr(
+        workflow_hook,
+        "native_command_review",
+        lambda *_args, **_kwargs: pytest.fail("an approval with no live capability needs no resident review"),
+    )
+
+    state = _prepare(tmp_path, store)
+
+    assert state.authorization_claimed is False
+    assert claims == []
+
+
+def test_workflow_resident_block_leaves_the_approval_use_unspent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    claims: list[object] = []
+    store = _workflow_hook_without_resident(monkeypatch, claims)
+    review = SimpleNamespace(native={"minimum_action": "block"})
+    monkeypatch.setattr(workflow_hook, "native_command_review", lambda *_args, **_kwargs: review)
+    monkeypatch.setattr(
+        workflow_hook,
+        "resolve_native_command_review",
+        lambda *_args, **_kwargs: pytest.fail("a resident block is never resolved against a workflow proof"),
+    )
+
+    state = _prepare(tmp_path, store)
+
+    assert state.authorization_claimed is False
+    assert claims == []

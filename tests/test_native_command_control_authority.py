@@ -615,6 +615,7 @@ def test_github_workflow_hook_answers_a_busy_authority_lease_with_the_outage(mon
     descriptor = _Descriptor()
     monkeypatch.setattr(hook_module, "_runtime_github_workflow_descriptor", lambda *a, **k: descriptor)
     monkeypatch.setattr(hook_module, "github_workflow_capability_required", lambda store, request_id: False)
+    monkeypatch.setattr(hook_module, "resolved_github_workflow_capability_preflight", lambda *_args: True)
     monkeypatch.setattr(
         hook_module,
         "claim_resolved_github_workflow_authorization",

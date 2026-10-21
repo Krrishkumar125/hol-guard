@@ -22,6 +22,7 @@ from ..runtime.github_workflow_approval_record import GitHubWorkflowApprovalReco
 from ..runtime.github_workflow_runtime import (
     claim_resolved_github_workflow_authorization,
     github_workflow_capability_required,
+    resolved_github_workflow_capability_preflight,
 )
 from ..runtime.native_command_evaluation import native_command_review, resolve_native_command_review
 from ..store import GuardStore
@@ -69,6 +70,10 @@ def prepare_github_workflow_hook_state(
     required = approval_request_id is not None and github_workflow_capability_required(store, approval_request_id)
     if descriptor is None or approval_request_id is None:
         return GitHubWorkflowHookState(artifact, descriptor, record, False, required)
+    if not resolved_github_workflow_capability_preflight(store, approval_request_id, descriptor):
+        # No live capability to claim: the hook goes on without one and needs
+        # no resident review for it.
+        return GitHubWorkflowHookState(artifact, descriptor, record, False, required)
     try:
         authority = store.read_extension_control_authority_for_registry(
             BUILT_IN_COMMAND_EXTENSION_REGISTRY,
@@ -89,6 +94,10 @@ def prepare_github_workflow_hook_state(
     )
     if review is None:
         raise GitHubWorkflowEvaluationUnavailableError(_EVALUATION_UNAVAILABLE)
+    if review.native.get("minimum_action") == "block":
+        # A workflow proof never relaxes a resident block, so the claim could
+        # not change this hook's answer: leave the use unspent.
+        return GitHubWorkflowHookState(artifact, descriptor, record, False, required)
     authorization = claim_resolved_github_workflow_authorization(store, approval_request_id, descriptor)
     if authorization is None:
         return GitHubWorkflowHookState(artifact, descriptor, record, False, required)
