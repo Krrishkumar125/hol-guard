@@ -10,6 +10,8 @@ from pathlib import Path
 
 _TH32CS_SNAPPROCESS = 0x2
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_SYNCHRONIZE = 0x0010_0000
+_WAIT_TIMEOUT = 0x102
 _INVALID_HANDLE = ctypes.c_void_p(-1).value
 _MAX_PATH_CHARS = 32_768
 
@@ -67,14 +69,17 @@ def _image_path(pid: int) -> Path | None:
 
 
 def _start_time(pid: int) -> int | None:
-    """A process's creation time as a FILETIME count, or ``None``."""
+    """A running process's creation time as a FILETIME count, or ``None``
+    once it has exited, as ``running_process_start_marker`` answers."""
 
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
     kernel32.OpenProcess.restype = ctypes.c_void_p
-    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    handle = kernel32.OpenProcess(_SYNCHRONIZE | _PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:
         return None
     try:
+        if kernel32.WaitForSingleObject(ctypes.c_void_p(handle), 0) != _WAIT_TIMEOUT:
+            return None
         times = [ctypes.c_uint64() for _ in range(4)]
         if not kernel32.GetProcessTimes(ctypes.c_void_p(handle), *(ctypes.byref(time) for time in times)):
             return None
