@@ -128,6 +128,18 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: ${{ steps.subjects.outputs.paths }}
+      # Extension data is published in separate GitHub releases, so it needs
+      # its own signed provenance. The signed distribution root still governs
+      # runtime trust and binds every immutable data asset by content hash.
+      - name: Attest extension data release assets
+        id: data_provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+        with:
+          subject-path: extension-distribution/assets/**
+      - name: Retain extension data release provenance
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.data_provenance.outputs.bundle-path }}
+        run: cp "$PROVENANCE_BUNDLE" extension-distribution/extension-data.intoto.jsonl
       - name: Retain release provenance
         env:
           PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
@@ -143,6 +155,7 @@ jobs:
           path: |
             extension-distribution/extension-distribution.v2.json
             extension-distribution/extension-distribution.intoto.jsonl
+            extension-distribution/extension-data.intoto.jsonl
             extension-distribution/compilation-report.json
           if-no-files-found: error
           retention-days: 14
