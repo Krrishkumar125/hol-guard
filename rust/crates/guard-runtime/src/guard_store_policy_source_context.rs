@@ -67,6 +67,57 @@ fn is_context_token(hash: Option<&str>) -> bool {
     hash.is_some_and(|value| value.starts_with(APPROVAL_CONTEXT_PREFIX))
 }
 
+/// `YYYY-MM-DD[T ]HH:MM:SS[.fraction][UTC marker]` -> `YYYY-MM-DDTHH:MM:SS.ffffff`.
+/// Producers spell the same UTC instant differently (`Z`, `+00:00`, missing
+/// fractional digits when microseconds are zero). Only UTC offsets normalize;
+/// anything else returns None so callers fall back to byte equality.
+fn utc_instant_key(value: &str) -> Option<String> {
+    let value = value.trim();
+    let (date, tail) = value.split_once(['T', ' '])?;
+    if date.len() != 10 || !date.bytes().all(|b| b.is_ascii_digit() || b == b'-') {
+        return None;
+    }
+    let mut time = tail;
+    if let Some(stripped) = time.strip_suffix(['Z', 'z']) {
+        time = stripped;
+    } else if let Some(position) = time.rfind(['+', '-']) {
+        let offset = &time[position..];
+        if offset.bytes().any(|b| b.is_ascii_digit() && b != b'0') {
+            return None;
+        }
+        time = &time[..position];
+    }
+    let (clock, fraction) = match time.split_once('.') {
+        Some((clock, fraction)) => {
+            if !fraction.bytes().all(|b| b.is_ascii_digit()) || fraction.len() > 6 {
+                return None;
+            }
+            (clock, format!("{fraction:0<6}"))
+        }
+        None => (time, "000000".to_owned()),
+    };
+    if clock.len() != 8 || !clock.bytes().all(|b| b.is_ascii_digit() || b == b':') {
+        return None;
+    }
+    Some(format!("{date}T{clock}.{fraction}"))
+}
+
+/// True when two stored timestamps name the same instant. Both sides must be
+/// present — missing values never match. Byte equality first, then normalized
+/// UTC instant equality; unparseable spellings compare as raw strings.
+fn same_instant(a: Option<&str>, b: Option<&str>) -> bool {
+    let (Some(a), Some(b)) = (a, b) else {
+        return false;
+    };
+    if a == b {
+        return true;
+    }
+    match (utc_instant_key(a), utc_instant_key(b)) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
 fn parse_items(args: &Args) -> StoreResult<Vec<Item>> {
     let entries = args.raw("items").and_then(Value::as_array).ok_or(INVALID)?;
     entries
@@ -125,6 +176,10 @@ struct Table {
     rows: Vec<Row>,
     by_artifact: Buckets,
     by_hash: Buckets,
+    /// `approval_request_id -> positions`, newest first (rows arrive
+    /// timestamp-desc), so a chosen approval finds its receipt without
+    /// rescanning the table.
+    by_approval_request: HashMap<String, Vec<usize>>,
 }
 
 impl Table {
@@ -132,6 +187,15 @@ impl Table {
         let mut table = Table::default();
         for (position, row) in rows.iter().enumerate() {
             let harness = cell(row, "harness").unwrap_or_default();
+            if let Some(request_id) =
+                cell(row, "approval_request_id").filter(|value| !value.is_empty())
+            {
+                table
+                    .by_approval_request
+                    .entry(request_id)
+                    .or_default()
+                    .push(position);
+            }
             if let Some(artifact_id) =
                 cell(row, "artifact_id").filter(|value| !py_strip(value).is_empty())
             {
@@ -500,8 +564,10 @@ fn lookup(index: &Index, item: &Item) -> Value {
             .iter()
             .map(|&position| &index.approvals.rows[position])
             .filter(|row| {
-                cell(row, "resolved_at").as_deref() == item.updated_at.as_deref()
-                    && cell(row, "resolution_action").as_deref() == item.action.as_deref()
+                same_instant(
+                    cell(row, "resolved_at").as_deref(),
+                    item.updated_at.as_deref(),
+                ) && cell(row, "resolution_action").as_deref() == item.action.as_deref()
             })
             .collect();
         if let [only] = timed.as_slice() {
@@ -521,16 +587,16 @@ fn lookup(index: &Index, item: &Item) -> Value {
             let resolved_at = cell(approval_row, "resolved_at").unwrap_or_default();
             index
                 .receipts
-                .rows
-                .iter()
-                .find(|row| {
-                    cell(row, "approval_request_id").as_deref() == Some(request_id.as_str())
-                })
+                .by_approval_request
+                .get(&request_id)
+                .and_then(|positions| positions.first())
+                .map(|&position| &index.receipts.rows[position])
                 .or_else(|| {
-                    let timed: Vec<&Row> = index
-                        .receipts
-                        .rows
+                    let mut bucket = Vec::new();
+                    index.receipts.artifact_candidates(item, &mut bucket);
+                    let timed: Vec<&Row> = bucket
                         .iter()
+                        .map(|&position| &index.receipts.rows[position])
                         .filter(|row| {
                             row.get("harness").and_then(Value::as_str)
                                 == Some(item.harness.as_str())
@@ -538,7 +604,10 @@ fn lookup(index: &Index, item: &Item) -> Value {
                                     item.id(),
                                     row.get("artifact_id").and_then(Value::as_str),
                                 )
-                                && cell(row, "timestamp").as_deref() == Some(resolved_at.as_str())
+                                && same_instant(
+                                    cell(row, "timestamp").as_deref(),
+                                    Some(resolved_at.as_str()),
+                                )
                         })
                         .collect();
                     if let [only] = timed.as_slice() {
@@ -581,113 +650,5 @@ pub(crate) fn policy_source_contexts(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn row(fields: &[(&str, Value)]) -> Row {
-        fields
-            .iter()
-            .map(|(key, value)| ((*key).to_owned(), value.clone()))
-            .collect()
-    }
-
-    fn approval(request_id: &str, resolved_at: &str, target: &str) -> Row {
-        row(&[
-            ("request_id", json!(request_id)),
-            ("harness", json!("omp")),
-            ("artifact_id", json!("omp:native-pretool:bash")),
-            ("artifact_hash", json!("native-review-v4:binding")),
-            ("artifact_name", json!("bash")),
-            ("launch_target", json!(target)),
-            ("resolved_at", json!(resolved_at)),
-            ("resolution_action", json!("allow")),
-            ("resolution_scope", json!("artifact")),
-        ])
-    }
-
-    fn token_item(updated_at: &str) -> Item {
-        Item {
-            harness: "omp".to_owned(),
-            artifact_id: Some("omp:native-pretool:bash".to_owned()),
-            artifact_hash: Some("guard-approval-context:v1:token".to_owned()),
-            workspace: None,
-            reason: Some("approved in review".to_owned()),
-            action: Some("allow".to_owned()),
-            updated_at: Some(updated_at.to_owned()),
-        }
-    }
-
-    fn index(approvals: Vec<Row>, receipts: Vec<Row>) -> Index {
-        Index {
-            receipts: Table::index(receipts),
-            inventory: HashMap::new(),
-            approvals: Table::index(approvals),
-        }
-    }
-
-    #[test]
-    fn context_token_names_its_own_approval_not_the_newest() {
-        let index = index(
-            vec![
-                approval("req-old", "2026-10-20T10:00:00Z", "cd /repo && git status"),
-                approval("req-new", "2026-10-20T11:00:00Z", "rm -rf /tmp/build"),
-            ],
-            vec![],
-        );
-        let context = lookup(&index, &token_item("2026-10-20T10:00:00Z"));
-        assert_eq!(
-            context["remembered_command"],
-            json!("cd /repo && git status")
-        );
-    }
-
-    #[test]
-    fn context_token_ambiguous_timestamp_stays_unnamed() {
-        let index = index(
-            vec![
-                approval("req-a", "2026-10-20T10:00:00Z", "git status"),
-                approval("req-b", "2026-10-20T10:00:00Z", "git diff"),
-            ],
-            vec![],
-        );
-        assert_eq!(
-            lookup(&index, &token_item("2026-10-20T10:00:00Z")),
-            Value::Null
-        );
-    }
-
-    #[test]
-    fn context_token_receipt_follows_the_timed_approval() {
-        let receipt = row(&[
-            ("receipt_id", json!("receipt-1")),
-            ("harness", json!("omp")),
-            ("artifact_id", json!("omp:native-pretool:bash")),
-            ("artifact_hash", json!("native-review-v4:binding")),
-            ("artifact_name", json!("bash")),
-            ("capabilities_summary", json!("approval decision")),
-            ("timestamp", json!("2026-10-20T10:00:01Z")),
-            ("approval_request_id", json!("req-old")),
-        ]);
-        let index = index(
-            vec![approval("req-old", "2026-10-20T10:00:00Z", "git status")],
-            vec![receipt],
-        );
-        let context = lookup(&index, &token_item("2026-10-20T10:00:00Z"));
-        assert_eq!(context["source_receipt_id"], json!("receipt-1"));
-        assert_eq!(context["remembered_command"], json!("git status"));
-    }
-
-    #[test]
-    fn regular_hash_mismatch_still_names_nothing() {
-        let mut item = token_item("2026-10-20T10:00:00Z");
-        item.artifact_hash = Some(
-            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
-        );
-        let index = index(
-            vec![approval("req-old", "2026-10-20T10:00:00Z", "git status")],
-            vec![],
-        );
-        assert_eq!(lookup(&index, &item), Value::Null);
-    }
-}
+#[path = "guard_store_policy_source_context_tests.rs"]
+mod tests;

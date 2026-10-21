@@ -269,10 +269,23 @@ function resolveProjectLabel(policy: GuardPolicyDecision): string | null {
   return resolveWorkspaceLabel(workspace);
 }
 
-/** The exact action text the user approved, when the decision carries it. */
+/**
+ * The exact action text the user approved, when the decision carries it.
+ * Only artifact-scoped rules bind one exact action; broader scopes inherit the
+ * newest family command, which is an example rather than the rule's binding.
+ * A command that equals the rule's own reason is the source-context reason
+ * fallback — descriptive text, not an action.
+ */
 export function resolveExactApprovedAction(policy: GuardPolicyDecision): string | null {
+  if (policy.scope !== "artifact") {
+    return null;
+  }
   const command = policy.remembered_command?.trim();
-  if (!command || isScannerGeneratedPolicyLabel(command)) {
+  if (
+    !command ||
+    isScannerGeneratedPolicyLabel(command) ||
+    command === policy.reason?.trim()
+  ) {
     return null;
   }
   return command;

@@ -158,7 +158,35 @@ const exactRule = basePolicy({
 assert(resolveExactApprovedAction(exactRule) === "cd /repo && git status && rm -rf /tmp/build", "POL-H18: exact approved action surfaces verbatim");
 assert(resolvePolicyDisplay(exactRule).headline === "cd /repo && git status && rm -rf /tmp/build", "POL-H19: row headline is the exact action");
 assert(resolvePolicyDisplay(exactRule).rememberSentence.includes("cd /repo && git status"), "POL-H20: sentence quotes the exact action");
-assert(resolveExactApprovedAction(basePolicy({ remembered_command: "credential-looking output review" })) === null, "POL-H21: scanner labels never pose as exact actions");
+assert(resolveExactApprovedAction(basePolicy({ scope: "artifact", remembered_command: "credential-looking output review" })) === null, "POL-H21: scanner labels never pose as exact actions");
+assert(
+  resolveExactApprovedAction(
+    basePolicy({ scope: "global", remembered_command: "npm install left-pad" }),
+  ) === null,
+  "POL-H24: broad rules never claim one exact action",
+);
+assert(
+  resolveExactApprovedAction(
+    basePolicy({ scope: "workspace", remembered_command: "npm install left-pad" }),
+  ) === null,
+  "POL-H25: workspace rules never claim one exact action",
+);
+assert(
+  resolveExactApprovedAction(
+    basePolicy({
+      scope: "artifact",
+      remembered_command: "trusted build tool",
+      reason: "trusted build tool",
+    }),
+  ) === null,
+  "POL-H26: the reason fallback is descriptive text, not an action",
+);
+assert(
+  resolveExactApprovedAction(
+    basePolicy({ scope: "artifact", action: "block", remembered_command: "rm -rf /prod" }),
+  ) === "rm -rf /prod",
+  "POL-H27: artifact-scoped block rules still name the exact action",
+);
 const longRule = basePolicy({ scope: "artifact", remembered_command: "x".repeat(200) });
 assert(resolvePolicyDisplay(longRule).rememberSentence.length < 230, "POL-H22: row sentence bounds very long commands");
 assert(resolvePolicyDisplay(longRule).rememberSentence.includes("…"), "POL-H23: truncated sentence is marked");

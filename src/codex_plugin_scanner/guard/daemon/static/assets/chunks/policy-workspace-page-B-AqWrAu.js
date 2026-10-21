@@ -1940,8 +1940,11 @@ function resolveProjectLabel(policy) {
   return resolveWorkspaceLabel(workspace);
 }
 function resolveExactApprovedAction(policy) {
+  if (policy.scope !== "artifact") {
+    return null;
+  }
   const command = policy.remembered_command?.trim();
-  if (!command || isScannerGeneratedPolicyLabel(command)) {
+  if (!command || isScannerGeneratedPolicyLabel(command) || command === policy.reason?.trim()) {
     return null;
   }
   return command;
@@ -3954,7 +3957,7 @@ function PolicyRuleInspector(props) {
           exactAction ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] font-medium uppercase tracking-wider text-slate-500", children: policy.action === "block" ? "Exact action blocked" : "Exact action approved" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "mt-1.5 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-900 px-3 py-2.5 font-mono text-xs leading-relaxed text-slate-50", children: exactAction }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1.5 text-xs leading-relaxed text-slate-500", children: "This is the exact action this rule was approved for. Guard repeats it without asking while the rule stands." })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1.5 text-xs leading-relaxed text-slate-500", children: policy.action === "block" ? "This is the exact action this rule blocks. Guard stops it without asking while the rule stands." : "This is the exact action this rule was approved for. Guard repeats it without asking while the rule stands." })
           ] }) : null,
           /* @__PURE__ */ jsxRuntimeExports.jsx("dl", { className: "mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:grid-cols-2", children: [
             ["Source", resolvePolicyRowSourceLabel(policy)],

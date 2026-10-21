@@ -137,7 +137,9 @@ export function PolicyRuleInspector(props: {
             </p>
             <pre className="mt-1.5 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-900 px-3 py-2.5 font-mono text-xs leading-relaxed text-slate-50">{exactAction}</pre>
             <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-              This is the exact action this rule was approved for. Guard repeats it without asking while the rule stands.
+              {policy.action === "block"
+                ? "This is the exact action this rule blocks. Guard stops it without asking while the rule stands."
+                : "This is the exact action this rule was approved for. Guard repeats it without asking while the rule stands."}
             </p>
           </div>
         ) : null}
