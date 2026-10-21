@@ -341,6 +341,12 @@ def test_daemon_aibom_refresh_rejects_mismatched_persisted_context(
         "sync_aibom_snapshots_if_due",
         lambda _store, **kwargs: calls.append(kwargs) or {"synced": True},
     )
+    user_inventory_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        guard_daemon_module,
+        "remember_user_inventory_if_due",
+        lambda _store, **kwargs: user_inventory_calls.append(kwargs) or {"collected": True, "items": 3},
+    )
     daemon = guard_daemon_module.GuardDaemonServer(
         store,
         host="127.0.0.1",
@@ -373,6 +379,12 @@ def test_daemon_aibom_refresh_rejects_explicit_context_after_repair(
         "sync_aibom_snapshots_if_due",
         lambda _store, **kwargs: calls.append(kwargs) or {"synced": True},
     )
+    user_inventory_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        guard_daemon_module,
+        "remember_user_inventory_if_due",
+        lambda _store, **kwargs: user_inventory_calls.append(kwargs) or {"collected": True, "items": 3},
+    )
     daemon = guard_daemon_module.GuardDaemonServer(
         store,
         host="127.0.0.1",
@@ -400,7 +412,7 @@ def test_daemon_aibom_refresh_skips_without_workspace_context(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """AIBOM daemon does not replace a full snapshot with a home-only scan."""
+    """AIBOM daemon keeps a home-only scan local instead of replacing the cloud snapshot."""
     store = GuardStore(tmp_path / "guard-home")
     _seed_guard_cloud(store, workspace_id="workspace-alpha")
     calls: list[dict[str, object]] = []
@@ -409,6 +421,12 @@ def test_daemon_aibom_refresh_skips_without_workspace_context(
         guard_daemon_module,
         "sync_aibom_snapshots_if_due",
         lambda _store, **kwargs: calls.append(kwargs) or {"synced": True},
+    )
+    user_inventory_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        guard_daemon_module,
+        "remember_user_inventory_if_due",
+        lambda _store, **kwargs: user_inventory_calls.append(kwargs) or {"collected": True, "items": 3},
     )
     daemon = guard_daemon_module.GuardDaemonServer(
         store,
@@ -426,6 +444,8 @@ def test_daemon_aibom_refresh_skips_without_workspace_context(
 
     assert calls == []
     assert summary["reason"] == "missing_workspace_context"
+    assert user_inventory_calls and user_inventory_calls[0]["home_dir"] is None
+    assert summary["user_inventory"] == {"collected": True, "items": 3}
 
 
 @pytest.mark.daemon_aibom_refresh
