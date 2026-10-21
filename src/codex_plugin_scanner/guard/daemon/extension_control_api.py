@@ -159,13 +159,19 @@ class ExtensionControlApiService:
             raise ExtensionControlApiError(413, "catalog_payload_limit_exceeded")
         return payload
 
-    def effective(self) -> dict[str, object]:
+    def effective(self, *, reread: bool = True) -> dict[str, object]:
         # Reading the controls must stay a read. Committing a catalog migration
         # here would move the stored revision under every draft the dashboard
         # has open, which is the conflict this endpoint is polled to report.
-        return effective_controls_payload(self._registry, self._live_snapshot(read_only=True), self._store)
+        #
+        # `reread=False` is for a caller that has just refreshed the runtime
+        # itself. Re-reading durable authority there would take the authority
+        # lease a second time for an answer the caller already installed, and
+        # that second wait is the one a dashboard repair pays for.
+        snapshot = self._runtime.current() if not reread else self._live_snapshot(read_only=True)
+        return effective_controls_payload(self._registry, snapshot, self._store)
 
-    def _live_snapshot(self, *, read_only: bool = False) -> ExtensionControlRuntimeSnapshot:
+    def _live_snapshot(self, *, read_only: bool = False, apply_locked: bool = False) -> ExtensionControlRuntimeSnapshot:
         """The snapshot a draft is built on, re-read from durable authority.
 
         The in-process snapshot only advances when this daemon commits, so a
@@ -180,20 +186,46 @@ class ExtensionControlApiService:
         process must not take protection away from a running daemon; refreshing
         is here to catch up with another writer, not to downgrade.
 
+        A protected read for a catalog the snapshot was not built for also
+        replaces it, whatever its revision says. The view was read for the
+        registry this service serves, so keeping a snapshot from another
+        catalog would publish controls under a catalog digest the catalog
+        endpoint no longer names, and a reader comparing the two cannot settle
+        that by reading again.
+
         `read_only` keeps the read on the shared lock and off the write path, so
         a caller that only renders the controls cannot settle a pending catalog
         migration on the operator's behalf.
+
+        `apply_locked` is for a caller that already holds the apply lock. That
+        lock is not reentrant, so taking it again here would deadlock the
+        apply that asked for the snapshot.
         """
 
+        registry = self._registry
         current = self._runtime.current()
         try:
-            view = self._store.read_extension_control_authority_for_registry(self._registry, read_only=read_only)
-            if view.health is not AuthorityHealth.PROTECTED or (view.revision, view.managed_revision) <= (
+            view = self._store.read_extension_control_authority_for_registry(registry, read_only=read_only)
+            if view.health is not AuthorityHealth.PROTECTED:
+                return current
+            if view.catalog_digest == current.catalog_digest and (view.revision, view.managed_revision) <= (
                 current.revision,
                 current.managed_revision,
             ):
                 return current
-            return self._runtime.refresh(view)
+            if apply_locked:
+                return self._runtime.refresh(view)
+            with self._apply_lock:
+                # The read above runs without the apply lock, so an apply or a
+                # daemon refresh can install a newer snapshot, or rebind this
+                # service to another registry, while it is in flight. Installing
+                # this view anyway would roll the runtime back under the work
+                # that just landed, and `rebind_registry` would then refuse the
+                # rebind because the snapshot it installed is no longer current.
+                # A reader that lost the race serves what the writer installed.
+                if self._registry is not registry or self._runtime.current() is not current:
+                    return self._runtime.current()
+                return self._runtime.refresh(view)
         except (ExtensionControlAuthorityError, ValueError, OSError):
             # Authority that cannot be re-read or installed keeps serving the
             # snapshot the runtime already holds; mutations still fail closed.
@@ -457,7 +489,7 @@ class ExtensionControlApiService:
         if candidate is not None and expired((candidate,)):
             raise ExtensionControlApiError(409, "prepared_preview_expired")
         registry = self._registry if candidate is None else candidate.registry
-        current = self._live_snapshot(read_only=True)
+        current = self._live_snapshot(read_only=True, apply_locked=True)
         if candidate is not None and (
             current.managed_revision != candidate.managed_revision
             or tuple(layer for layer in current.layers if layer.kind is ControlLayerKind.SIGNED_CLOUD)

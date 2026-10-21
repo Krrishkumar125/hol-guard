@@ -1483,6 +1483,25 @@
     "rust/crates/guard-command/src/shell_command_wrappers.rs",
     "rust/crates/guard-command/src/shell_command_wrappers_paths.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/source_paths.py",
+   "module": "codex_plugin_scanner.guard.runtime.source_paths",
+   "source_sha256": "e187c4541905d1db3e72ebc9b979fb2d22a24261bf18553fdd5ae7dfeb8cefa7",
+   "forbidden_symbols": [
+    "SOURCE_CLASSIFIER_VERSION",
+    "SourcePathDecision",
+    "path_contains_symlink",
+    "resolve_source_candidate_path",
+    "source_path_is_allowed",
+    "_hidden_parts_are_allowed_source",
+    "_path_contains_symlink_component",
+    "_is_immediate_sibling_git_checkout_path",
+    "_external_source_filename_is_sensitive"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/codex_output_source_paths.rs"
+   ]
   }
  ],
  "retired_test_paths": [
@@ -1515,7 +1534,8 @@
   "tests/test_npm_source_spec.py",
   "tests/test_guard_github_pr_body_file.py",
   "tests/test_native_command_options.py",
-  "tests/test_guard_node_semver.py"
+  "tests/test_guard_node_semver.py",
+  "tests/test_hook_source_paths.py"
  ],
  "retired_bodies": [
   {
