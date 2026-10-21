@@ -101,7 +101,8 @@
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
-  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py"
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py"
  ],
  "retired_tests": [
   {
@@ -7617,13 +7618,6 @@
   {
    "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_shell_capabilities.py",
    "source_sha256": "d584623615ba075ac4ab57cc81f9db42a8c4448638308935dff08e5172484317",
-   "replacement_nodes": [
-    "rust/crates/guard-command/src/shell_request_authority.rs::pinned_original_python_helpers"
-   ]
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py",
-   "source_sha256": "1d245cfc7dd004faba76f35dd631f1d6561945610a6f7e1f1e0236feeb74cf68",
    "replacement_nodes": [
     "rust/crates/guard-command/src/shell_request_authority.rs::pinned_original_python_helpers"
    ]

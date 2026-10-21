@@ -1475,6 +1475,35 @@
    "native_replacements": [
     "rust/crates/guard-command/src/sfrs_selectors.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.github_pr_expansion",
+   "source_sha256": "bc3b313be283818515d58f0742461ba430775b0da3dd50cd21bffc7c6ae57ed9",
+   "forbidden_symbols": [
+    "_gh_pr_body_args_start_index",
+    "_gh_pr_create_body_args_have_substitution",
+    "_gh_pr_create_body_args_start_index",
+    "_gh_pr_create_body_has_shell_command_substitution",
+    "_gh_pr_create_has_active_shell_expansion",
+    "_gh_pr_edit_has_shell_command_substitution",
+    "_gh_pr_env_split_string_payloads_with_active_expansion",
+    "_is_pytest_python_interpreter_command",
+    "_literal_python_argv",
+    "_python_call_imports_pytest",
+    "_python_call_resolves_pytest_main",
+    "_python_call_runs_pytest_module",
+    "_shell_token_has_active_expansion",
+    "_skip_command_builtin_options",
+    "_skip_env_wrapper_options",
+    "_skip_shell_case_header",
+    "_skip_shell_select_header",
+    "_skip_sudo_wrapper_options"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/sfrs_gh_pr_expansion.rs",
+    "rust/crates/guard-command/src/sfrs_pytest_target.rs"
+   ]
   }
  ],
  "retired_test_paths": [
@@ -1725,20 +1754,6 @@
     "_SHELL_ALIAS_DEFINITION",
     "_DEFERRED_GITHUB_EFFECT",
     "parse_env_wrapper"
-   ],
-   "native_replacements": [
-    "rust/crates/guard-command/src/shell_request_authority.rs",
-    "rust/crates/guard-runtime/src/shell_request_authority_op.rs"
-   ]
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py",
-   "source_sha256": "1d245cfc7dd004faba76f35dd631f1d6561945610a6f7e1f1e0236feeb74cf68",
-   "forbidden_symbols": [
-    "parse_env_wrapper",
-    "_SHELL_CONTROL_PREFIX_TOKENS",
-    "_SUDO_OPTION_VALUE_FLAGS",
-    "_leading_shell_redirection_tokens_consumed"
    ],
    "native_replacements": [
     "rust/crates/guard-command/src/shell_request_authority.rs",

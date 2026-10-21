@@ -19,7 +19,6 @@ import tempfile
 from pathlib import Path
 
 from sfrs_graph_cases import graph_cases
-from sfrs_pr_expansion_cases import pr_expansion_cases
 from sfrs_quote_cases import quote_cases
 
 from codex_plugin_scanner.guard.runtime.secret_file_request_services import source_edit_context
@@ -256,7 +255,6 @@ def _cases(root: Path) -> list[dict[str, object]]:
             )
     graph_cases(root, add)
     quote_cases(root, add)
-    pr_expansion_cases(root, add)
     return cases
 
 
