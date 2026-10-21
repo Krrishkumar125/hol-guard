@@ -397,12 +397,24 @@ def _assert_policy_floor_fail_closed(path: Path) -> None:
             raise RuntimeError("PreToolUse policy floor still inspects native availability")
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "native_mode":
             raise RuntimeError("PreToolUse policy floor still calls native_mode")
-    returns_block = any(
-        isinstance(node, ast.Return) and isinstance(node.value, ast.Constant) and node.value.value == "block"
+    # The resident answers the floor; Python never picks one. A missing review
+    # is the host outage, raised as ``NativeHookDecisionError``.
+    if any(
+        isinstance(node, ast.Return) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+        for node in ast.walk(fn)
+    ):
+        raise RuntimeError("PreToolUse policy floor returns an action Python picked")
+    raises_outage = any(
+        isinstance(node, ast.Raise)
+        and isinstance(node.exc, ast.Call)
+        and isinstance(node.exc.func, ast.Name)
+        and node.exc.func.id == "NativeHookDecisionError"
         for node in ast.walk(fn)
     )
-    if not returns_block:
-        raise RuntimeError("PreToolUse policy floor does not fail closed")
+    if not raises_outage:
+        raise RuntimeError("PreToolUse policy floor does not fail closed to the host outage")
+    if "native_pretool_floor" not in _ordered_call_names(fn):
+        raise RuntimeError("PreToolUse policy floor does not ask the resident for the floor")
 
 
 def _cli_gate() -> None:
