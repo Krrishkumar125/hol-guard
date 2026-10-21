@@ -1098,6 +1098,7 @@ jobs:
             installed-native-prompt.json
             native-installed-slo.json
             native-soak.json
+            native-soak-attempt-*.json
             native-stress-smoke.json
             native-artifact-evidence.json
             native-stop-diagnostic.json

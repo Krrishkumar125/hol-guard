@@ -92,6 +92,7 @@ class NativeShard:
         self.count = count
         self.all_nodes: list[str] = []
         self.selected: list[str] = []
+        self.reruns: list[str] = []
 
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -105,6 +106,11 @@ class NativeShard:
         items[:] = [item for item in items if item.nodeid in selected]
         config.hook.pytest_deselected(items=deselected)
 
+    def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
+        # A retried failure must stay visible even when the retry passes.
+        if report.outcome == "rerun" and report.nodeid not in self.reruns:
+            self.reruns.append(report.nodeid)
+
     def report(self, exit_code: int) -> dict[str, object]:
         inventory = "\n".join(self.all_nodes).encode("utf-8")
         return {
@@ -114,6 +120,7 @@ class NativeShard:
             "collected_count": len(self.all_nodes),
             "inventory_sha256": hashlib.sha256(inventory).hexdigest(),
             "selected": self.selected,
+            "reruns": sorted(self.reruns),
             "exit_code": exit_code,
         }
 
