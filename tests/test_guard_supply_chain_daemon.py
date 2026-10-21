@@ -487,6 +487,41 @@ def test_daemon_user_inventory_scan_uses_the_configured_home(
 
 
 @pytest.mark.daemon_aibom_refresh
+def test_daemon_user_inventory_failure_keeps_the_missing_workspace_status(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A failed home scan is reported without turning the daemon status into a sync error."""
+    store = GuardStore(tmp_path / "guard-home")
+    _seed_guard_cloud(store, workspace_id="workspace-alpha")
+    monkeypatch.setattr(
+        guard_daemon_module,
+        "sync_aibom_snapshots_if_due",
+        lambda _store, **_kwargs: {"synced": True},
+    )
+
+    def _fail(_store: GuardStore, **_kwargs: object) -> dict[str, object]:
+        raise OSError("home scan failed")
+
+    monkeypatch.setattr(guard_daemon_module, "remember_user_inventory_if_due", _fail)
+    daemon = guard_daemon_module.GuardDaemonServer(
+        store,
+        host="127.0.0.1",
+        port=0,
+        idle_timeout_seconds=60,
+        aibom_refresh_interval_seconds=60,
+        aibom_refresh_backoff_seconds=0.05,
+    )
+    daemon.start()
+    try:
+        summary = _wait_for_aibom_status(store, expected="missing_workspace_context")
+    finally:
+        daemon.stop()
+
+    assert summary["user_inventory"] == {"collected": False, "error": "home scan failed"}
+
+
+@pytest.mark.daemon_aibom_refresh
 def test_daemon_aibom_refresh_retries_returned_error_on_backoff(
     tmp_path: Path,
     monkeypatch,

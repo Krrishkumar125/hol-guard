@@ -123,8 +123,10 @@ def _item_rows(snapshot: Any, home_dir: Path | None, workspace_dir: Path | None)
         }
 
 
-# The daemon refresh loop and request handlers can collect at the same time;
-# the lock keeps one read-modify-write of the stored rows from dropping another.
+# The daemon refresh loop, request handlers and the CLI can collect at the same
+# time. The thread lock orders collectors in one process and the store's
+# advisory file lock orders processes, so one read-modify-write of the stored
+# rows never drops another.
 _ROWS_LOCK = threading.Lock()
 
 
@@ -146,7 +148,7 @@ def remember_aibom_items(
 
     home = _resolved(home_dir)
     workspace = _resolved(workspace_dir)
-    with _ROWS_LOCK:
+    with _ROWS_LOCK, store.hold_aibom_items_lock():
         return _replace_rows(store, snapshots, now=now, home=home, workspace=workspace)
 
 
