@@ -267,3 +267,52 @@ def test_packaged_alpha_offline_upgrade_keeps_remote_floor_and_rejects_replays(t
     for candidate in [{**identity, "version": "3.50.0a1"}, {**remote, "version": "100.6"}]:
         with pytest.raises(ValueError, match="version_rollback"):
             lifecycle.invoke("transition", key=_key(store).hex(), floor=plan["admission_floor"], candidate=candidate)
+
+
+def test_history_past_the_request_bound_migrates_through_a_spilled_chain(tmp_path, monkeypatch, release):
+    """One authority transition per policy save eventually outgrows a request.
+
+    The native walk reads the chain in order, so the daemon hands it a file
+    rather than inlining every predecessor. Forcing the threshold down proves
+    the spilled transport carries a real chain end to end.
+    """
+    from pathlib import Path
+
+    from codex_plugin_scanner.guard.approval_gate import ApprovalGateInput, require_approval_decision
+    from codex_plugin_scanner.guard.models import PolicyDecision
+    from tests.guard_extension_control_authority_fixtures import _PASSWORD
+    from tests.managed_controls_activation_support import activate_managed_bundle, managed_bundle
+
+    store = legacy_store(tmp_path, monkeypatch)
+    assert activate_managed_bundle(store, managed_bundle())
+    grant = require_approval_decision(
+        store.guard_home, action="allow", scope="artifact", approval_gate_input=ApprovalGateInput(password=_PASSWORD)
+    )
+    store.upsert_policy(
+        PolicyDecision(
+            harness="codex",
+            scope="artifact",
+            action="allow",
+            artifact_id="fixture:exact-command",
+            artifact_hash="a" * 64,
+        ),
+        "2026-10-18T12:00:00Z",
+        approval_gate_grant=grant,
+    )
+    with store._connect() as connection:
+        assert lifecycle_store.legacy_evidence(store, connection)["legacy_history"]
+    monkeypatch.setattr(lifecycle_store, "LEGACY_HISTORY_INLINE_BYTES", -1)
+    requested: dict = {}
+    invoke = lifecycle.invoke
+
+    def record(kind, **fields):
+        if kind == "migrate":
+            requested.update(fields)
+        return invoke(kind, **fields)
+
+    monkeypatch.setattr(lifecycle, "invoke", record)
+    store.migrate_installed_command_pack_authority()
+    assert requested["legacy_history"] == []
+    # The chain travelled beside the request, and nothing is left behind.
+    assert not Path(requested["legacy_history_path"]).exists()
+    assert lifecycle_store.read(store) is not None

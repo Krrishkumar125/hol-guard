@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
+import os
+import tempfile
+
 from ..native_command_control_authority_io import require_exclusive_command_control_mutation_lease
 from ..native_command_control_authority_store import _key
+from ..native_policy_snapshot_constants import NATIVE_RUNTIME_STATE_DIRECTORY
 from . import lifecycle
 
 PREFIX = "guard-command-pack-lifecycle"
 STAMP = "guard-command-pack-lifecycle-enrolled"
+# A native request carries a bounded payload. Control history grows without
+# bound, so hand the native walk a file once the chain outgrows the request.
+LEGACY_HISTORY_INLINE_BYTES = 1024 * 1024
 
 
 def _stamp(store):
@@ -71,23 +80,50 @@ def migrate_installed(store, authority):
     them exactly. Missing/corrupt stamped floors are never reconstructed.
     """
     require_exclusive_command_control_mutation_lease(store.guard_home)
-    result = lifecycle.invoke(
-        "migrate",
-        key=_key(store).hex(),
-        floor=read(store),
-        stamp=_stamp(store),
-        **legacy_evidence(store),
-        **lifecycle.release_evidence(authority),
-    )
+    with legacy_transport(store) as evidence:
+        result = lifecycle.invoke(
+            "migrate",
+            key=_key(store).hex(),
+            floor=read(store),
+            stamp=_stamp(store),
+            **evidence,
+            **lifecycle.release_evidence(authority),
+        )
     if result["record"] is not None:
         _mark(store, result["stamp"])
         write(store, result["record"])
 
 
+@contextlib.contextmanager
+def legacy_transport(store, connection=None):
+    """Keep the legacy evidence request within the native payload bound.
+
+    An install accumulates one authority transition per policy save and the
+    native walk reads them in order, so a long-lived install eventually cannot
+    state its own history in a single request. Spill the chain to a private
+    file beside the request instead; the native side authenticates every
+    record exactly as it does inline, and the file never outlives the call.
+    """
+    evidence = legacy_evidence(store, connection)
+    history = evidence["legacy_history"]
+    if sum(len(item["record"]) for item in history if item) <= LEGACY_HISTORY_INLINE_BYTES:
+        yield evidence
+        return
+    directory = store.guard_home / NATIVE_RUNTIME_STATE_DIRECTORY
+    directory.mkdir(parents=True, exist_ok=True)
+    handle, spilled = tempfile.mkstemp(prefix="legacy-history-", suffix=".jsonl", dir=directory)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            for item in history:
+                stream.write(json.dumps(item, separators=(",", ":")) + "\n")
+        yield {**evidence, "legacy_history": [], "legacy_history_path": spilled}
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(spilled)
+
+
 def legacy_evidence(store, connection=None):
     """Transport retained credential/SQL envelopes; native code binds them."""
-    import json
-
     from . import activation_baseline, activation_store
 
     if connection is None:
