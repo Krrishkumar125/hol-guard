@@ -1454,6 +1454,10 @@
    "forbidden_symbols": [
     "_argument_sequence_targets_pytest",
     "_inline_python_payload_runs_pytest",
+    "_pytest_args_from_argument_sequence",
+    "_pytest_args_from_argument_sequence_ignoring",
+    "_pytest_args_from_command_position",
+    "_pytest_args_from_runner_argument_sequence",
     "_python_inline_script_runs_pytest",
     "_python_process_call_targets_pytest",
     "_segment_targets_pytest",
@@ -1474,6 +1478,39 @@
    ],
    "native_replacements": [
     "rust/crates/guard-command/src/sfrs_selectors.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
+   "module": "codex_plugin_scanner.guard.runtime.shell_command_wrappers",
+   "source_sha256": "b328f048cc1b0e167dd1c57aeb1eaff84e5db25b6ed582dd3ecf91e0dd44f87e",
+   "forbidden_symbols": [
+    "ShellCommandNormalization",
+    "is_trusted_absolute_command_path",
+    "normalize_transparent_shell_command"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/shell_command_wrappers.rs",
+    "rust/crates/guard-command/src/shell_command_wrappers_paths.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/source_paths.py",
+   "module": "codex_plugin_scanner.guard.runtime.source_paths",
+   "source_sha256": "e187c4541905d1db3e72ebc9b979fb2d22a24261bf18553fdd5ae7dfeb8cefa7",
+   "forbidden_symbols": [
+    "SOURCE_CLASSIFIER_VERSION",
+    "SourcePathDecision",
+    "path_contains_symlink",
+    "resolve_source_candidate_path",
+    "source_path_is_allowed",
+    "_hidden_parts_are_allowed_source",
+    "_path_contains_symlink_component",
+    "_is_immediate_sibling_git_checkout_path",
+    "_external_source_filename_is_sensitive"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/codex_output_source_paths.rs"
    ]
   },
   {
@@ -1536,7 +1573,8 @@
   "tests/test_npm_source_spec.py",
   "tests/test_guard_github_pr_body_file.py",
   "tests/test_native_command_options.py",
-  "tests/test_guard_node_semver.py"
+  "tests/test_guard_node_semver.py",
+  "tests/test_hook_source_paths.py"
  ],
  "retired_bodies": [
   {
