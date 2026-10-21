@@ -152,6 +152,8 @@ fn resolve_item(
 
 /// An owner the registry does not know is never active. An owner whose trust
 /// class the request left out cannot be answered, so the request is refused.
+/// The controls name canonical ids, so an owner asked about by alias or in
+/// another case is judged by the canonical id the registry resolved it to.
 fn is_active(
     registry: &RequestRegistry<'_>,
     layers: &[ExtensionControlLayer],
@@ -166,7 +168,7 @@ fn is_active(
         .ok_or_else(|| "native_extension_control_trust_class_missing".to_owned())?;
     Ok(extension_is_active_for_class(
         trust_class,
-        extension_id,
+        &extension.extension_id,
         extension.required,
         layers,
     ))

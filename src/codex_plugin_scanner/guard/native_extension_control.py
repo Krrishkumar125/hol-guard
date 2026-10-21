@@ -10,6 +10,7 @@ raises ``NativeExtensionControlError`` and callers fail closed.
 
 from __future__ import annotations
 
+import json
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -40,8 +41,10 @@ if TYPE_CHECKING:
 EXTENSION_CONTROL_FEATURE: Final = "extension-control-v1"
 _TIMEOUT_SECONDS: Final = 5.0
 # The resident bounds one request to 4 MiB of canonical JSON, 4096 items and 64
-# scenarios; larger questions are split across requests below those bounds.
+# scenarios; larger questions are split across requests below those bounds. The
+# byte budget leaves room for the request envelope.
 _MAX_REQUEST_BYTES: Final = 4 * 1024 * 1024 + 64 * 1024
+_MAX_BATCH_BYTES: Final = 4 * 1024 * 1024 - 64 * 1024
 _MAX_ITEMS_PER_REQUEST: Final = 2048
 _MAX_SCENARIOS_PER_REQUEST: Final = 64
 _MAX_CONCURRENT_ASKS: Final = 4
@@ -240,6 +243,12 @@ def _item_wire(item: ControlItem) -> dict[str, object]:
     }
 
 
+def _wire_bytes(value: object) -> int:
+    """Canonical size of ``value``; ASCII escaping never counts fewer bytes than the resident reads."""
+
+    return len(json.dumps(value, separators=(",", ":")))
+
+
 @dataclass(frozen=True, slots=True)
 class _Piece:
     """A scenario, or a run of its items when it is larger than one request."""
@@ -247,31 +256,50 @@ class _Piece:
     index: int
     wire: dict[str, object]
     items: tuple[ControlItem, ...]
+    size: int
 
 
 def _pieces(scenarios: Sequence[ControlScenario]) -> Iterator[_Piece]:
     for index, scenario in enumerate(scenarios):
         layers = [_layer_wire(layer) for layer in islice(scenario.layers, MAX_CONTROL_LAYERS + 1)]
-        wire: dict[str, object] = {
+        base: dict[str, object] = {
             "layers": layers,
             "surface": scenario.surface.value,
             "authority_failure": None if scenario.authority_failure is None else scenario.authority_failure.value,
         }
         for start in range(0, max(len(scenario.items), 1), _MAX_ITEMS_PER_REQUEST):
-            yield _Piece(index, wire, scenario.items[start : start + _MAX_ITEMS_PER_REQUEST])
+            items = scenario.items[start : start + _MAX_ITEMS_PER_REQUEST]
+            wire = {**base, "items": [_item_wire(item) for item in items]}
+            yield _Piece(index, wire, items, _wire_bytes(wire))
 
 
-def _batches(pieces: Iterable[_Piece]) -> Iterator[list[_Piece]]:
+def _too_large() -> RuntimeError:
+    return NativeExtensionControlError(f"{_OPERATION.prefix}_too_large")
+
+
+def _batches(pieces: Iterable[_Piece], registry_bytes: int) -> Iterator[list[_Piece]]:
+    """Group pieces into requests that stay inside every resident bound.
+
+    Each request carries the registry, so a piece that cannot fit beside it has
+    no request to travel in and the whole question is refused.
+    """
+
     batch: list[_Piece] = []
     batch_items = 0
+    batch_bytes = registry_bytes
     for piece in pieces:
+        if registry_bytes + piece.size > _MAX_BATCH_BYTES:
+            raise _too_large()
         if batch and (
-            len(batch) >= _MAX_SCENARIOS_PER_REQUEST or batch_items + len(piece.items) > _MAX_ITEMS_PER_REQUEST
+            len(batch) >= _MAX_SCENARIOS_PER_REQUEST
+            or batch_items + len(piece.items) > _MAX_ITEMS_PER_REQUEST
+            or batch_bytes + piece.size > _MAX_BATCH_BYTES
         ):
             yield batch
-            batch, batch_items = [], 0
+            batch, batch_items, batch_bytes = [], 0, registry_bytes
         batch.append(piece)
         batch_items += len(piece.items)
+        batch_bytes += piece.size
     if batch:
         yield batch
 
@@ -328,13 +356,16 @@ def resolve_scenarios(
     if not scenarios:
         return ()
     registry_wire = _registry_wire(registry, trust_classes=trust_classes)
+    # Size every piece before the first ask, so a question that cannot be
+    # carried is refused without a partial round of requests.
+    batches = list(_batches(list(_pieces(scenarios)), _wire_bytes(registry_wire)))
     items: list[list[ControlAnswer]] = [[] for _ in scenarios]
     lockdowns: list[bool | None] = [None] * len(scenarios)
-    for batch in _batches(_pieces(scenarios)):
+    for batch in batches:
         query: dict[str, object] = {
             "kind": "resolve",
             "registry": registry_wire,
-            "scenarios": [{**piece.wire, "items": [_item_wire(item) for item in piece.items]} for piece in batch],
+            "scenarios": [piece.wire for piece in batch],
         }
         asked = [piece.items for piece in batch]
         answered: list[ScenarioAnswer] = _ask(
