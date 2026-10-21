@@ -360,3 +360,23 @@ test("malformed catalog response is rejected at the client boundary", async ({ p
   await expect(page.getByRole("heading", { name: "Extensions unavailable" })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText("Invalid extension-control response");
 });
+
+// A daemon whose catalog read model and whose effective controls name different
+// catalogs used to take the whole page away: the list, the policies and the
+// editor were replaced by "Extensions unavailable", and its "Try again" ran the
+// same unresolvable read. The daemon refuses a mutation carrying the wrong
+// catalog digest on its own, so the page shows what it has and says so.
+test("a catalog the daemon has not finished binding still lists every extension", async ({ page }) => {
+  test.setTimeout(60_000);
+  await mount(page, { effective: effective({ catalog_digest: `${"c".repeat(63)}1` }) });
+  await page.goto(`/extensions?guardDaemon=${DAEMON_ORIGIN}`);
+  // The loader retries across the daemon's control-refresh interval before it
+  // settles for the pair it has, so this first paint is slower than a normal one.
+  await expect(page.getByRole("heading", { name: "Extensions", exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("protection-data-unsettled")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Extensions unavailable" })).toHaveCount(0);
+  const card = page.getByRole("button", { name: /^Git/ });
+  await expect(card).toBeVisible();
+  await card.press("Enter");
+  await expect(page.getByTestId("protection-module-detail")).toBeVisible();
+});
