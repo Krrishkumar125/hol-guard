@@ -96,7 +96,8 @@
   "src/codex_plugin_scanner/guard/runtime/resource_budget.py",
   "src/codex_plugin_scanner/guard/runtime/node_semver.py",
   "src/codex_plugin_scanner/guard/runtime/data_flow.py",
-  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py"
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/read_only_filters.py"
  ],
  "retired_tests": [
   {

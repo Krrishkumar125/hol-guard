@@ -33,9 +33,6 @@ from codex_plugin_scanner.guard.runtime.git_execution_safety import git_binary_p
 from codex_plugin_scanner.guard.runtime.secret_file_request_services.github_pr_expansion import (
     _gh_pr_create_body_has_shell_command_substitution,
 )
-from codex_plugin_scanner.guard.runtime.secret_file_request_services.read_only_filters import (
-    _split_attached_redirection_token,
-)
 from codex_plugin_scanner.guard.runtime.secret_file_request_services.shell_static_safety import (
     _path_text_is_within_root_text,
     _script_has_aliased_risky_import,
@@ -4414,12 +4411,6 @@ def test_path_text_is_within_root_text_preserves_windows_case_insensitivity(monk
         "C:\\Users\\Michael\\Workspace\\config.toml",
         "c:\\users\\michael\\workspace",
     )
-
-
-def test_split_attached_redirection_token_handles_long_user_text_without_regex():
-    token = f"{'!' * 20000}>danger.txt"
-
-    assert _split_attached_redirection_token(token) == ("!" * 20000, "", ">", "danger.txt")
 
 
 def test_tool_action_request_classifier_detects_nested_relative_curl_config_file_upload(tmp_path):

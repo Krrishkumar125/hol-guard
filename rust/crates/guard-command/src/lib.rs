@@ -301,6 +301,8 @@ mod sfrs_quote_parsing;
 mod sfrs_quote_tokens;
 #[cfg(all(test, unix))]
 mod sfrs_quote_vectors;
+#[cfg(test)]
+mod sfrs_read_only_filter_tests;
 mod sfrs_read_only_filters;
 pub mod sfrs_replay;
 mod sfrs_replay_context;
