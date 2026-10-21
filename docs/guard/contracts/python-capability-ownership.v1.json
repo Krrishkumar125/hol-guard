@@ -1262,6 +1262,26 @@
    ]
   },
   {
+   "path": "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py",
+   "module": "codex_plugin_scanner.guard.runtime.command_option_parsing",
+   "source_sha256": "3ce77bdfa45cdd1296b2d85286daf964cbbe61cbee8a280e01cd584a307a3ccf",
+   "forbidden_symbols": [
+    "ArgumentSemantics",
+    "argument_semantics",
+    "matches_subcommands_conservatively",
+    "flags_present_in_all_option_parses",
+    "known_option_advance",
+    "long_flag_assignment_is_enabled",
+    "_option_result",
+    "_option_call"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/command_option_parsing.rs",
+    "rust/crates/guard-command/src/command_argument_semantics.rs",
+    "rust/crates/guard-command/src/shell_helpers.rs"
+   ]
+  },
+  {
    "path": "src/codex_plugin_scanner/guard/runtime/source_paths.py",
    "module": "codex_plugin_scanner.guard.runtime.source_paths",
    "source_sha256": "e187c4541905d1db3e72ebc9b979fb2d22a24261bf18553fdd5ae7dfeb8cefa7",
@@ -1310,6 +1330,7 @@
   "tests/test_codex_daemon_bridge_failure_reason.py",
   "tests/test_npm_source_spec.py",
   "tests/test_guard_github_pr_body_file.py",
+  "tests/test_native_command_options.py",
   "tests/test_hook_source_paths.py"
  ],
  "retired_bodies": [
