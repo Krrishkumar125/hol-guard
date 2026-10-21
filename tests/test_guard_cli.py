@@ -5553,6 +5553,7 @@ curl --data-binary @"$1" http://127.0.0.1:8787/guard-canary
         ("command", "decision", "reason"),
         [
             ("curl -s https://login-verify.pages.dev/", "deny", "login-verify.pages.dev hosts URLs listed"),
+            ("curl -s http://login-verify.pages.dev/", "deny", "login-verify.pages.dev hosts URLs listed"),
             ("curl -s https://api.blocked.example/install.sh", "deny", "api.blocked.example"),
             ("curl -s https://docs.example/guide/intro", "allow", None),
         ],

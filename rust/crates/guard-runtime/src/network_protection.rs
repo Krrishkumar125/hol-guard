@@ -300,7 +300,18 @@ fn raise(mut result: PreToolResultV1, finding: NetworkFinding) -> PreToolResultV
     ) else {
         return result;
     };
-    if minimum >= floor {
+    if minimum > floor {
+        return result;
+    }
+    if minimum == floor {
+        // A review the edge already raised is provenance the composer settles
+        // before execution. The bundle match holds the review, so it carries
+        // the reason.
+        if floor == ActionFloor::Review {
+            result.explicitly_benign = false;
+            result.reason_code = finding.reason_code.into();
+            result.reason = finding.reason;
+        }
         return result;
     }
     result.minimum_action = finding.floor.into();
