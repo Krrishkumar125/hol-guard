@@ -859,7 +859,9 @@ pub mod hook_evidence_writer;
 #[cfg(test)]
 mod hook_evidence_writer_tests;
 pub mod hook_responses;
+pub mod inventory_agent_types;
 pub mod inventory_contract;
+pub mod inventory_fingerprints;
 pub mod js_semver;
 pub mod linux_artifact_supply_chain;
 #[cfg(any(unix, windows))]
