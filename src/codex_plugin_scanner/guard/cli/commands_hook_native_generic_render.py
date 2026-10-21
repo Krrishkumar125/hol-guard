@@ -127,7 +127,14 @@ def _reason(
     return _native_hook_reason_for_harness(harness, incoming_reason, approval_context, guidance)
 
 
-def _system_message(directive: Mapping[str, object], *, policy_action: str, reason: Callable[[], str]) -> str | None:
+def directive_system_message(
+    directive: Mapping[str, object],
+    *,
+    policy_action: str,
+    reason: Callable[[], str],
+) -> str | None:
+    """The system message a directive or review route names, or ``None``."""
+
     message = directive["system_message"]
     if message == "claude_punctuated":
         return _ensure_terminal_punctuation(reason())
@@ -228,7 +235,7 @@ def render_generic_hook(
             reason=json_reason,
             envelope=envelope,
             system_message=(
-                _system_message(directive, policy_action=policy_action, reason=reason) if artifact else None
+                directive_system_message(directive, policy_action=policy_action, reason=reason) if artifact else None
             ),
             generic_path=not artifact,
             native_protocol_payload="hook_event_name" in payload or "event" not in payload,
@@ -257,7 +264,7 @@ def render_generic_hook(
             output_stream=output_stream,
             approval_payload=approval_payload,
             system_message=(
-                _system_message(directive, policy_action=policy_action, reason=reason)
+                directive_system_message(directive, policy_action=policy_action, reason=reason)
                 if directive["emitter"] == "default"
                 else None
             ),
@@ -281,4 +288,4 @@ def render_generic_hook(
     return exit_code()
 
 
-__all__ = ["directive_exit_code", "render_generic_hook"]
+__all__ = ["directive_exit_code", "directive_system_message", "render_generic_hook"]

@@ -460,16 +460,40 @@ pub(in crate::pretool) fn missing_path_in_registered_worktree(
         workspace.join(expanded)
     };
     // The nearest ancestor that exists is the only part of the name the
-    // filesystem can speak for; canonicalizing there resolves every link and
-    // `..` before the registry is consulted.
-    let Some(existing) = candidate
+    // filesystem can speak for. Steps written after it cannot be resolved,
+    // so they must be plain names: `wt/absent/../../elsewhere` would otherwise
+    // be judged as `wt` while a harness that tidies the name first opens
+    // `elsewhere`.
+    let Some(existing_prefix) = candidate
         .ancestors()
         .take(64)
         .find(|path| std::fs::symlink_metadata(path).is_ok())
-        .and_then(|path| std::fs::canonicalize(path).ok())
     else {
         return false;
     };
+    let Ok(missing_tail) = candidate.strip_prefix(existing_prefix) else {
+        return false;
+    };
+    if !missing_tail
+        .components()
+        .all(|component| matches!(component, std::path::Component::Normal(_)))
+    {
+        return false;
+    }
+    let Ok(existing) = std::fs::canonicalize(existing_prefix) else {
+        return false;
+    };
+    // A `..` inside the existing part is resolved by the filesystem, through
+    // any link, while a harness that tidies the name first resolves it as
+    // text. The call is only judged here when both readings name the same
+    // directory.
+    if existing_prefix
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+        && lexically_normalized(existing_prefix) != existing
+    {
+        return false;
+    }
     if !existing.is_dir() || existing.starts_with(&workspace) {
         return false;
     }
@@ -477,6 +501,22 @@ pub(in crate::pretool) fn missing_path_in_registered_worktree(
         .ancestors()
         .take(64)
         .any(|root| registered_worktree_of_workspace(root, &workspace))
+}
+
+/// Resolves `.` and `..` as text, the way `path.resolve` does, without
+/// consulting the filesystem.
+fn lexically_normalized(path: &std::path::Path) -> std::path::PathBuf {
+    let mut normalized = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                let _ = normalized.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized
 }
 
 /// `git --git-dir=<bare repository>` reads a repository without a work tree,

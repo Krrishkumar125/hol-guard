@@ -422,8 +422,14 @@ def _claude_prompt_additional_context(
         return None
     if _prompt_requires_hard_block(artifact):
         return None
+    return _claude_prompt_briefing(native_reason, secret="secret_read" in _prompt_request_classes(artifact))
+
+
+def _claude_prompt_briefing(native_reason: str, *, secret: bool) -> str:
+    """What Claude is told to do before a paused prompt's sensitive action."""
+
     briefing_sentence = "HOL Guard will intercept Claude's next sensitive action and open a branded approval question."
-    if "secret_read" in _prompt_request_classes(artifact):
+    if secret:
         briefing_sentence = (
             "HOL Guard will intercept Claude's next attempt to access local secrets and open a branded approval "
             "question to protect you."
@@ -594,6 +600,7 @@ def _emit_copilot_permission_request_response(
 __all__ = [
     "_append_guard_context_args",
     "_claude_prompt_additional_context",
+    "_claude_prompt_briefing",
     "_claude_prompt_intercept_message",
     "_claude_prompt_system_message",
     "_codex_prompt_block_system_message",

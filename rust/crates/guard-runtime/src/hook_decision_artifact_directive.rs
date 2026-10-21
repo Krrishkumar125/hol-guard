@@ -13,13 +13,18 @@ use crate::hook_decision_directive::{
 use crate::hook_decision_finalize::parse_action;
 
 /// The Claude system message for a prompt or tool call, by kind.
-fn claude_system_message(inputs: &ArtifactDirectiveInputsV1, action: GuardAction) -> &'static str {
+pub(crate) fn claude_system_message(
+    event: &str,
+    prompt_hard_block: bool,
+    prompt_secret_read: bool,
+    action: GuardAction,
+) -> &'static str {
     let stops = matches!(action, GuardAction::Block | GuardAction::SandboxRequired);
-    match inputs.event.as_str() {
+    match event {
         "UserPromptSubmit" => {
-            if action == GuardAction::RequireReapproval && !inputs.prompt_hard_block {
+            if action == GuardAction::RequireReapproval && !prompt_hard_block {
                 // A sensitive prompt may still be approved; say why it paused.
-                if inputs.prompt_secret_read {
+                if prompt_secret_read {
                     "claude_prompt_secret"
                 } else {
                     "claude_prompt_sensitive"
@@ -37,7 +42,12 @@ fn claude_system_message(inputs: &ArtifactDirectiveInputsV1, action: GuardAction
 
 fn system_message(inputs: &ArtifactDirectiveInputsV1, action: GuardAction) -> &'static str {
     match inputs.canonical_harness.as_str() {
-        "claude-code" => claude_system_message(inputs, action),
+        "claude-code" => claude_system_message(
+            &inputs.event,
+            inputs.prompt_hard_block,
+            inputs.prompt_secret_read,
+            action,
+        ),
         "codex" if inputs.event == "UserPromptSubmit" && is_blocking(action) => "codex_prompt",
         _ => "none",
     }

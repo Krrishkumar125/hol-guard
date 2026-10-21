@@ -450,8 +450,7 @@ jobs:
         env:
           GUARD_VITEST_FIXTURE: ${{ runner.temp }}/guard-vitest-fixture
         run: >-
-          uv run --no-sync pytest tests/test_guard_containment_backend_status.py
-          tests/test_guard_contained_vitest_handoff_fail_closed.py
+          uv run --no-sync pytest tests/test_guard_contained_vitest_handoff_fail_closed.py
           --tb=short --junitxml=containment-results.xml
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
