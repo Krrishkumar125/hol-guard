@@ -1050,27 +1050,31 @@ jobs:
       - name: Enforce complete installed native soak
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
-          source scripts/ci/native-proof-environment.sh
-          soak=(.venv/bin/python scripts/stress_guard_daemon.py
-            --requests 100000
-            --receipts 250000
-            --settle-seconds 0
-            --enforce-soak
-            --json native-soak.json)
-          # Peak RSS growth differs by about 0.2 between identical hosted runs.
-          # A soak that missed only the RSS ceiling runs once more: a real leak
-          # misses it again, and any other miss fails the first time.
           status=0
-          "${soak[@]}" || status=$?
+          source scripts/ci/native-proof-environment.sh
+          .venv/bin/python scripts/stress_guard_daemon.py \
+            --requests 100000 \
+            --receipts 250000 \
+            --settle-seconds 0 \
+            --enforce-soak \
+            --json native-soak.json || status=$?
           if [[ "$status" -eq 0 ]]; then
             exit 0
           fi
+          # Peak RSS growth differs by about 0.2 between identical hosted runs.
+          # A soak that missed only the RSS ceiling runs once more: a real leak
+          # misses it again, and any other miss fails the first time.
           if ! .venv/bin/python -c 'import json, sys; sys.exit(json.load(open(sys.argv[1]))["soak_failures"] != ["rss_growth"])' native-soak.json; then
             exit "$status"
           fi
           echo "::warning::Native soak missed only the RSS growth ceiling; running it once more."
           mv native-soak.json native-soak-attempt-1.json
-          "${soak[@]}"
+          .venv/bin/python scripts/stress_guard_daemon.py \
+            --requests 100000 \
+            --receipts 250000 \
+            --settle-seconds 0 \
+            --enforce-soak \
+            --json native-soak.json
       - name: Verify native artifact provenance
         run: |
           VERSION=$(uv run --no-sync python scripts/sync_repo_version.py --check)
