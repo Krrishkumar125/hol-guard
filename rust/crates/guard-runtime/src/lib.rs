@@ -658,7 +658,7 @@ mod policy_store;
 mod project_identity;
 mod prompt_analyze_op;
 mod protect_request_op;
-mod pyjson;
+use guard_runtime_pyjson as pyjson;
 #[cfg(test)]
 mod registry_vectors_tests;
 mod request_context_op;

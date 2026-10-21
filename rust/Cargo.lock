@@ -640,6 +640,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
+name = "guard-adapter-detection"
+version = "0.1.0"
+dependencies = [
+ "guard-runtime-pyjson",
+ "serde_json",
+]
+
+[[package]]
 name = "guard-alloc-probe"
 version = "0.1.0"
 
@@ -872,6 +880,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "guard-runtime-pyjson"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "guard-runtime-windows-process"
 version = "0.1.0"
 dependencies = [
@@ -968,6 +983,7 @@ dependencies = [
  "flate2",
  "fs2",
  "getrandom 0.3.4",
+ "guard-adapter-detection",
  "guard-archive",
  "guard-command",
  "guard-contained-process",
@@ -976,6 +992,7 @@ dependencies = [
  "guard-hook-core",
  "guard-policy-snapshot",
  "guard-rule-contract",
+ "guard-runtime-pyjson",
  "guard-runtime-windows-process",
  "guard-scanner",
  "guard-seatbelt",
