@@ -82,6 +82,7 @@ _RESULT_OPTIONAL_KEYS = {
     "managed_controls_policy_fields",
     "claude_guard_question",
     "memory_pattern",
+    "guard_run_launch",
 }
 _RESULT_CODES = {
     "ok",

@@ -482,10 +482,13 @@ fn guard_run_authorized_prefixes_answers_null_when_the_set_does_not_bind() {
     ));
     assert_eq!(
         bound.guard_run_launch,
-        Some(json!({"prefixes": [["/usr/bin/cli"]]}))
+        Some(json!({"prefixes": [["/usr/bin/cli", "cli"]]}))
     );
 
-    let unbound = evaluate(request_for(
+    // The unbound verdict is an explicit JSON null, which Python reads as
+    // "the authorized set does not bind". Decoding it into `Option<Value>`
+    // collapses it to `None`, so assert on the wire bytes the caller sees.
+    let unbound = evaluate_context_digest_request(&request_for(
         ContextDigestKindV1::GuardRunAuthorizedPrefixes {
             plans: vec![guard_contracts::GuardRunLaunchPlanV1 {
                 adapter_command: vec!["cli".to_string()],
@@ -494,6 +497,12 @@ fn guard_run_authorized_prefixes_answers_null_when_the_set_does_not_bind() {
                 reusable: false,
             }],
         },
-    ));
-    assert_eq!(unbound.guard_run_launch, Some(Value::Null));
+    ))
+    .expect("request must encode a result");
+    let unbound: Value = serde_json::from_slice(&unbound).expect("result must decode");
+    assert_eq!(
+        unbound.get("guard_run_launch"),
+        Some(&Value::Null),
+        "Python requires the key to be present before reading the verdict"
+    );
 }

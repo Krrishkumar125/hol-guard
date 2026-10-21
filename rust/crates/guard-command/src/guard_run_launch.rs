@@ -137,13 +137,16 @@ pub fn guard_run_plan_for_command(
 /// resolved absolute path prepended to a `cmd /c`-style wrapper). Returns `None`
 /// when no extra prefix exists.
 pub fn guard_run_executable_prefix(launch_plan: &GuardRunLaunchPlan) -> Option<Vec<String>> {
-    let adapter = &launch_plan.adapter_command;
+    // Python compares the execution tail against the adapter *arguments*
+    // (`adapter_command[1:]`), because pinning replaces the adapter's argv[0]
+    // with the resolved executable prefix.
+    let arguments = launch_plan.adapter_command.get(1..).unwrap_or(&[]);
     let exec = &launch_plan.execution_command;
-    if exec.len() <= adapter.len() {
+    if exec.len() < arguments.len() + 1 {
         return None;
     }
-    let prefix_len = exec.len() - adapter.len();
-    if &exec[prefix_len..] != adapter {
+    let prefix_len = exec.len() - arguments.len();
+    if !arguments.is_empty() && &exec[prefix_len..] != arguments {
         return None;
     }
     Some(exec[..prefix_len].to_vec())

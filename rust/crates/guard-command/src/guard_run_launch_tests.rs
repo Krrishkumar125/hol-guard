@@ -67,14 +67,20 @@ fn executable_prefix_recovers_prepended_wrapper() {
     );
     assert_eq!(
         guard_run_executable_prefix(&p),
-        Some(vec!["/usr/local/bin/npm".to_string()])
+        Some(vec!["/usr/local/bin/npm".to_string(), "npm".to_string()])
     );
 }
 
 #[test]
-fn executable_prefix_none_when_same_or_shorter_or_mismatched_tail() {
+fn executable_prefix_none_when_shorter_or_mismatched_tail() {
+    // No argument tail: the whole execution command is the resolved prefix.
     assert_eq!(
         guard_run_executable_prefix(&plan(&["a"], &["a"], "s", true)),
+        Some(vec!["a".to_string()])
+    );
+    // One argument and a one-element execution command leaves no prefix.
+    assert_eq!(
+        guard_run_executable_prefix(&plan(&["a", "b"], &["b"], "s", true)),
         None
     );
     assert_eq!(
@@ -165,7 +171,7 @@ fn authorized_prefixes_reject_a_plan_without_a_recoverable_prefix() {
     assert_eq!(
         guard_run_authorized_executable_prefixes(&[
             plan(&["cli"], &["/usr/bin/cli", "cli"], "s", true),
-            plan(&["cli", "--go"], &["cli", "--go"], "s", true),
+            plan(&["cli", "--go"], &["--go"], "s", true),
         ]),
         None
     );
