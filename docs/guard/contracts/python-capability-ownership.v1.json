@@ -1448,36 +1448,26 @@
    ]
   },
   {
-   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
-   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.pytest_target_detection",
-   "source_sha256": "80050fe7831fd10c93fe8319a54662f17c83844fa22b5e8cb1f044a8fab23ded",
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.local_read_operands",
+   "source_sha256": "b5c830f9abdd9f692575d989741c81e3377a0e4f3df9d16e35760be0f7061742",
    "forbidden_symbols": [
-    "_argument_sequence_targets_pytest",
-    "_inline_python_payload_runs_pytest",
-    "_pytest_args_from_argument_sequence",
-    "_pytest_args_from_argument_sequence_ignoring",
-    "_pytest_args_from_command_position",
-    "_pytest_args_from_runner_argument_sequence",
-    "_python_inline_script_runs_pytest",
-    "_python_process_call_targets_pytest",
-    "_segment_targets_pytest",
-    "_shell_command_targets_pytest",
-    "_shell_token_has_active_glob"
+    "_bounded_local_read_glob_is_safe",
+    "_cat_file_operand_tokens",
+    "_local_read_operands_resolve_safely",
+    "_plain_file_operand_tokens",
+    "_ripgrep_args_expand_hidden_files",
+    "_search_command_has_no_pattern",
+    "_search_concrete_file_operand_tokens",
+    "_search_file_operand_roles",
+    "_search_file_operand_tokens",
+    "_search_glob_pattern_is_safe",
+    "_sed_file_operand_tokens",
+    "_shell_segment_file_operand_tokens",
+    "search_operands_are_safe"
    ],
    "native_replacements": [
-    "rust/crates/guard-command/src/sfrs_pytest_target.rs"
-   ]
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py",
-   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.python_pytest_entrypoints",
-   "source_sha256": "763d5b1cbb56a0a4999f028572c78bf23ae820824f57df4cea288324ef833df0",
-   "forbidden_symbols": [
-    "_python_segment_targets_module",
-    "_pytest_args_from_python"
-   ],
-   "native_replacements": [
-    "rust/crates/guard-command/src/sfrs_selectors.rs"
+    "rust/crates/guard-command/src/shell_secret_read_support.rs"
    ]
   },
   {
@@ -1511,6 +1501,39 @@
    ],
    "native_replacements": [
     "rust/crates/guard-command/src/codex_output_source_paths.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.pytest_target_detection",
+   "source_sha256": "80050fe7831fd10c93fe8319a54662f17c83844fa22b5e8cb1f044a8fab23ded",
+   "forbidden_symbols": [
+    "_argument_sequence_targets_pytest",
+    "_inline_python_payload_runs_pytest",
+    "_pytest_args_from_argument_sequence",
+    "_pytest_args_from_argument_sequence_ignoring",
+    "_pytest_args_from_command_position",
+    "_pytest_args_from_runner_argument_sequence",
+    "_python_inline_script_runs_pytest",
+    "_python_process_call_targets_pytest",
+    "_segment_targets_pytest",
+    "_shell_command_targets_pytest",
+    "_shell_token_has_active_glob"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/sfrs_pytest_target.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.python_pytest_entrypoints",
+   "source_sha256": "763d5b1cbb56a0a4999f028572c78bf23ae820824f57df4cea288324ef833df0",
+   "forbidden_symbols": [
+    "_python_segment_targets_module",
+    "_pytest_args_from_python"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/sfrs_selectors.rs"
    ]
   },
   {
