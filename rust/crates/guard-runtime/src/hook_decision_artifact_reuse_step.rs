@@ -245,7 +245,7 @@ impl Walk<'_> {
 
     /// A trusted browser request resolved this exact request: its saved allow
     /// is claimed, then the request is revalidated as that approval's run.
-    fn override_stage(mut self) -> Result<ArtifactReusePlanV1, String> {
+    fn override_stage(self) -> Result<ArtifactReusePlanV1, String> {
         let inputs = self.inputs;
         let Some(facts) = &inputs.trusted_override else {
             return self.claimed_stage();

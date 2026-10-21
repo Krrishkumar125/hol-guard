@@ -87,7 +87,7 @@ impl ReuseSavedFactsV1 {
 pub enum ReuseLookupV1 {
     /// A tool request: the lookups name what the store and the cursor row say.
     Tool {
-        saved: ReuseSavedFactsV1,
+        saved: Box<ReuseSavedFactsV1>,
         /// The workflow capability preflight found the request pending.
         workflow_preflight: bool,
     },

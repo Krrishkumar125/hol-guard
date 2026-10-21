@@ -91,7 +91,7 @@ fn first_fact(matches: impl Fn(&Value) -> bool) -> Value {
     vectors()
         .into_iter()
         .map(|vector| vector["facts"].clone())
-        .find(|facts| matches(facts))
+        .find(matches)
         .expect("a recorded fact set should match")
 }
 
