@@ -194,9 +194,7 @@ def _resident_answering(monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any]
         available=True,
         compatible=True,
         identity=object(),
-        capabilities=SimpleNamespace(
-            features={"resident-protocol-v2", decision.HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE}
-        ),
+        capabilities=SimpleNamespace(features={"resident-protocol-v2", decision.HOOK_DECISION_JSON_EXIT_CODE_FEATURE}),
     )
     monkeypatch.setattr(shared, "native_runtime_status", lambda: status)
     monkeypatch.setattr(shared, "record_resident", lambda *_args, **_kwargs: None)
@@ -223,7 +221,7 @@ def test_a_bound_directive_is_decoded_behind_its_capability(monkeypatch: pytest.
     _resident_answering(monkeypatch, _DIRECTIVE, asked)
     answer = decision.native_artifact_directive(_FACTS)
     assert answer == {key: value for key, value in _DIRECTIVE.items() if key != "kind"}
-    assert asked == [decision.HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE]
+    assert asked == [decision.HOOK_DECISION_JSON_EXIT_CODE_FEATURE]
 
 
 @pytest.mark.parametrize(

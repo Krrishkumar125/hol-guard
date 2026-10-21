@@ -46,6 +46,14 @@ pub const HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE: &str = "hook-decision-artifa
 pub const HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE: &str =
     "hook-decision-artifact-review-route-v1";
 
+/// Advertised when a directive carries `json_exit_code`, the status the JSON
+/// document itself exits with. A resident that predates the field omits it,
+/// and the caller decodes a directive by its exact key set, so a reply from
+/// the older resident would be rejected and every hook decision would fail
+/// closed after an upgrade until it is retired. Callers that read a directive
+/// demand this capability so the older resident is replaced instead.
+pub const HOOK_DECISION_JSON_EXIT_CODE_FEATURE: &str = "hook-decision-json-exit-code-v1";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct HookDecisionRequestV1 {

@@ -39,6 +39,12 @@ HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE = "hook-decision-artifact-directive-v1"
 HOOK_DECISION_NATIVE_PERMISSION_PERSIST_FEATURE = "hook-decision-native-permission-persist-plan-v1"
 # The route a reviewed artifact verdict takes; demanded first for the same reason.
 HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE = "hook-decision-artifact-review-route-v1"
+# A directive names the status the JSON document itself exits with. A resident
+# that predates the field omits it, and a directive is decoded by its exact key
+# set, so an older resident still answering after an upgrade would have every
+# reply rejected and every hook decision would fail closed until it is retired.
+# Demanding the capability replaces that resident instead.
+HOOK_DECISION_JSON_EXIT_CODE_FEATURE = "hook-decision-json-exit-code-v1"
 _UNAVAILABLE = "native_hook_decision_unavailable"
 _INVALID = "native_hook_decision_payload_invalid"
 _TIMEOUT_SECONDS = 5.0
@@ -387,7 +393,12 @@ def native_finalize(
         if review is not None:
             _shape(review, {"action": str, "reason": str})
 
-    payload = _decide({"kind": "finalize", "inputs": dict(inputs), "settled": dict(settled)}, guard_home, validate)
+    payload = _decide(
+        {"kind": "finalize", "inputs": dict(inputs), "settled": dict(settled)},
+        guard_home,
+        validate,
+        HOOK_DECISION_JSON_EXIT_CODE_FEATURE,
+    )
     return {key: payload[key] for key in _FINAL_FIELDS}
 
 
@@ -435,11 +446,13 @@ def native_artifact_directive(inputs: Mapping[str, object], *, guard_home: Path 
         if directive["queue_observe_request"] or directive["queue_approval_request"]:
             raise NativeHookDecisionError(_INVALID)
 
+    # The newer capability stands for both: a runtime that names the JSON
+    # document's exit status is built from a tree that answers this query.
     payload = _decide(
         {"kind": "artifact_directive", "inputs": dict(inputs)},
         guard_home,
         validate,
-        HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE,
+        HOOK_DECISION_JSON_EXIT_CODE_FEATURE,
     )
     return {key: payload[key] for key in _ARTIFACT_DIRECTIVE_FIELDS}
 
@@ -550,6 +563,7 @@ __all__ = [
     "HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE",
     "HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE",
     "HOOK_DECISION_FEATURE",
+    "HOOK_DECISION_JSON_EXIT_CODE_FEATURE",
     "HOOK_DECISION_NATIVE_PERMISSION_PERSIST_FEATURE",
     "HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE",
     "NativeHookDecisionError",
