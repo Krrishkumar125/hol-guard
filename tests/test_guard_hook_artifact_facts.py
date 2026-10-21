@@ -249,11 +249,12 @@ def test_the_identity_metadata_rides_as_the_stamp_rather_than_a_second_copy() ->
     artifact = _artifact()
     identity = dict(artifact.metadata)
     artifact.metadata["risk_signals"] = [{"category": "exfiltration"}]
-    artifact.metadata["risk_confidence"] = "strong"
     entry = bridge._wire_artifact(
         {"artifact_type": artifact.artifact_type, "metadata": artifact.metadata, "hash_metadata": identity}
     )
-    assert entry["metadata_stamp"] == {"added": ["risk_confidence", "risk_signals"], "replaced": {}}
+    # `action_class` and `risk_confidence` are already what the digest covers,
+    # so the stamp names neither of them, only the key the hook added.
+    assert entry["metadata_stamp"] == {"added": ["risk_signals"], "replaced": {}}
 
 
 def test_the_stamp_carries_back_a_key_the_caller_overwrote() -> None:
