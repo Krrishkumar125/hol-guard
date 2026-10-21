@@ -178,9 +178,21 @@ export function homeCommandActivityModel(analytics: CommandActivityAnalytics): {
   };
 }
 
+const COMMAND_HEALTH_CAUSES: Readonly<Record<string, string>> = {
+  pre_record_failed: "Guard could not save some command checks.",
+  post_record_failed: "Guard could not save some command results.",
+  pre_native_control_unavailable: "Guard's policy engine was unavailable while saving some command checks.",
+  shadow_evaluation_failed: "Guard could not save some policy previews.",
+  maintenance_failed: "Guard could not finish evidence cleanup.",
+};
+
 export function commandHealthCopy(analytics: CommandActivityAnalytics): string | null {
   if (analytics.health.status === "healthy") return null;
-  return "Command activity evidence is degraded. Counts may be incomplete.";
+  const errorClass = analytics.health.last_error_class;
+  const cause = errorClass !== null && Object.hasOwn(COMMAND_HEALTH_CAUSES, errorClass)
+    ? COMMAND_HEALTH_CAUSES[errorClass]
+    : "Guard could not save some command evidence.";
+  return `${cause} Counts may be incomplete.`;
 }
 
 export function commandWindowLabel(analytics: CommandActivityAnalytics): string {
