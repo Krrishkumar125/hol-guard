@@ -14,7 +14,7 @@ use super::records::{
     degraded, fields_match, query_row, row_text, tampered, verify_record, Res,
     CATALOG_MANIFEST_PURPOSE,
 };
-use super::{Ctx, View, PROTECTED};
+use super::{Ctx, Read, ReadMode, View, PROTECTED};
 
 /// The `migrate_catalog` action: commit `layers` under `catalog_digest` as the
 /// revision after `previous`, retiring `retired_targets`.
@@ -98,7 +98,7 @@ impl Ctx<'_> {
         let mut retired_targets: Vec<String> = expanded
             .iter()
             .flat_map(|layer| layer.controls.iter())
-            .filter(|control| !keep(*control))
+            .filter(|control| !keep(control))
             .map(|control| control.target.target_id.clone())
             .collect();
         retired_targets.sort();
@@ -109,7 +109,7 @@ impl Ctx<'_> {
                 controls: layer
                     .controls
                     .iter()
-                    .filter(|control| keep(*control))
+                    .filter(|control| keep(control))
                     .cloned()
                     .collect(),
                 ..layer
@@ -195,5 +195,46 @@ impl Ctx<'_> {
         let mut action = migrate_action(&view, catalog_digest, &layers, &retired_targets);
         action["stale"] = stale;
         Ok(json!({ "action": action }))
+    }
+
+    /// `read`, then `sync_manifest` and `compose_managed` on the view it
+    /// settles on, in one round trip. A read that owes writer work answers as
+    /// `read` does. A sync that owes a manifest write or a migration answers
+    /// with the base view alone, and the caller finishes with the separate ops.
+    pub(super) fn read_composed(&self, mode: ReadMode) -> Res<Value> {
+        let base = match self.read(self.catalog_digest()?, mode)? {
+            Read::View(view) => view,
+            other => return Ok(other.into_value()),
+        };
+        let mut view = base.clone();
+        let mut stale: Option<Manifest> = None;
+        if base.health == PROTECTED {
+            let synced = self.sync_manifest(base.clone())?;
+            if synced.get("need").is_some() {
+                return Ok(synced);
+            }
+            let settled = synced.get("action").is_none()
+                && matches!(synced.get("manifest_write"), None | Some(Value::Null));
+            let Some(synced_view) = synced.get("view").filter(|_| settled) else {
+                return Ok(json!({ "view": base.to_value() }));
+            };
+            view = View::from_value(Some(synced_view))?;
+            stale = match synced.get("stale") {
+                None | Some(Value::Null) => None,
+                Some(value) => Some(
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| tampered("invalid extension control catalog manifest"))?,
+                ),
+            };
+        }
+        let composed = self.compose_managed(view, stale.as_ref())?;
+        let Some(composed_view) = composed.get("view") else {
+            return Ok(composed);
+        };
+        Ok(json!({
+            "view": base.to_value(),
+            "composed": composed_view,
+            "stale": stale,
+        }))
     }
 }

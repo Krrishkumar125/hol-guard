@@ -7,13 +7,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from .managed_controls_policy_bundle import MANAGED_CONTROLS_LAST_GOOD_STATE_KEY
 from .native_extension_control_authority import (
     anchor_from_wire,
     extension_control_authority,
     layers_from_wire,
+    manifest_from_wire,
     manifest_sha256,
     raise_fault,
     view_to_wire,
@@ -27,6 +28,9 @@ from .runtime.extension_control_authority import (
 from .runtime.extension_control_contract import ExtensionControlLayer
 from .store_extension_control_authority_schema import ensure_extension_control_authority_schema
 from .store_extension_control_authority_support import _row_int, _row_str
+
+if TYPE_CHECKING:
+    from .store import GuardStore
 
 # Each writer action runs at most once, and a migration ends the read, so a
 # read settles well inside this many resident round trips.
@@ -77,28 +81,38 @@ class ExtensionControlAuthorityReadsMixin:
             self._catalog_target_manifest(registry)
             with self._extension_control_authority_lock(shared=read_only, timeout_seconds=lock_timeout_seconds):
                 self._require_compatible_extension_control_schema()
-                view = self._read_extension_control_authority_locked(
+                view, settled = self._read_authority_locked(
                     catalog_digest,
                     migration_registry=registry,
                     allow_migration=may_migrate,
+                    compose=include_managed_controls,
                 )
                 stale_manifest: dict[str, str] | None = None
                 authority_key: bytes | None = None
-                if view.health is AuthorityHealth.PROTECTED:
-                    authority_key = self._authority_key(required=True)
-                    if authority_key is None:
-                        raise ExtensionControlAuthorityError("extension-control authority key is unavailable")
-                    view, stale_manifest = self._sync_trusted_catalog_manifest(
-                        view, registry, key=authority_key, allow_migration=may_migrate
-                    )
-                if include_managed_controls:
-                    composed = self._with_managed_controls_activation(
-                        view,
-                        current_manifest=self._catalog_target_manifest(registry),
-                        previous_manifest=stale_manifest,
-                    )
+                if settled is not None:
+                    # The resident synced the manifest and composed managed
+                    # controls in the same round trip as the read.
+                    composed = self._view_from_wire(settled.get("composed"), view.catalog_digest)
+                    stale_manifest = manifest_from_wire(settled.get("stale"))
+                    if stale_manifest is not None and may_migrate:
+                        authority_key = self._authority_key(required=True)
                 else:
-                    composed = view
+                    if view.health is AuthorityHealth.PROTECTED:
+                        authority_key = self._authority_key(required=True)
+                        if authority_key is None:
+                            raise ExtensionControlAuthorityError("extension-control authority key is unavailable")
+                        view, stale_manifest = self._sync_trusted_catalog_manifest(
+                            view, registry, key=authority_key, allow_migration=may_migrate
+                        )
+                    composed = (
+                        self._with_managed_controls_activation(
+                            view,
+                            current_manifest=self._catalog_target_manifest(registry),
+                            previous_manifest=stale_manifest,
+                        )
+                        if include_managed_controls
+                        else view
+                    )
                 if stale_manifest is not None and may_migrate:
                     if authority_key is None:
                         raise ExtensionControlAuthorityError("extension-control authority key is unavailable")
@@ -195,7 +209,12 @@ class ExtensionControlAuthorityReadsMixin:
         """Ask the resident, record the migration events it found owed, raise its fault."""
 
         reply = extension_control_authority(
-            store_path=Path(self.path), guard_home=Path(self.guard_home), op=op, key=key, **fields
+            store_path=Path(self.path),
+            guard_home=Path(self.guard_home),
+            op=op,
+            key=key,
+            store=cast("GuardStore", self),
+            **fields,
         )
         events = reply.get("events")
         for event in events if isinstance(events, list) else ():
@@ -235,6 +254,7 @@ class ExtensionControlAuthorityReadsMixin:
         *,
         migration_registry: CommandSafetyExtensionRegistry | None = None,
         allow_migration: bool = True,
+        roll_back_abandoned: bool = True,
     ) -> ExtensionControlAuthorityView:
         """Read the authority through the resident, doing the writer work it asks for.
 
@@ -242,17 +262,46 @@ class ExtensionControlAuthorityReadsMixin:
         interrupted migration, rolling back an abandoned transition and
         committing a catalog migration come back as actions; each runs here
         under the lease the caller holds, at most once, before asking again.
+        A writer about to resume its own prepared row passes
+        ``roll_back_abandoned=False`` so the read leaves that row in place.
+        """
+
+        return self._read_authority_locked(
+            catalog_digest,
+            migration_registry=migration_registry,
+            allow_migration=allow_migration,
+            roll_back_abandoned=roll_back_abandoned,
+        )[0]
+
+    def _read_authority_locked(
+        self,
+        catalog_digest: str,
+        *,
+        migration_registry: CommandSafetyExtensionRegistry | None,
+        allow_migration: bool,
+        roll_back_abandoned: bool = True,
+        compose: bool = False,
+    ) -> tuple[ExtensionControlAuthorityView, dict[str, object] | None]:
+        """The view read, and with ``compose`` the resident's settled reply.
+
+        ``compose`` asks the resident to sync the catalog manifest and compose
+        managed controls in the read's round trip. The reply comes back only
+        when it did; otherwise the caller runs the separate ops on the view.
         """
 
         with self._connect() as connection:
             if not ensure_extension_control_authority_schema(connection, require_compatible=False):
-                return self._degraded_view(catalog_digest)
+                return self._degraded_view(catalog_digest), None
         try:
             return self._read_through_resident(
-                catalog_digest, migration_registry=migration_registry, allow_migration=allow_migration
+                catalog_digest,
+                migration_registry=migration_registry,
+                allow_migration=allow_migration,
+                roll_back_abandoned=roll_back_abandoned,
+                compose=compose and migration_registry is not None,
             )
         except ExtensionControlAuthorityError:
-            return self._tampered_view(catalog_digest)
+            return self._tampered_view(catalog_digest), None
 
     def _read_through_resident(
         self,
@@ -260,28 +309,34 @@ class ExtensionControlAuthorityReadsMixin:
         *,
         migration_registry: CommandSafetyExtensionRegistry | None,
         allow_migration: bool,
-    ) -> ExtensionControlAuthorityView:
+        roll_back_abandoned: bool,
+        compose: bool,
+    ) -> tuple[ExtensionControlAuthorityView, dict[str, object] | None]:
         migration = migration_registry is not None and migration_registry.catalog_digest == catalog_digest
-        attempted: dict[str, bool] = {}
+        attempted: dict[str, bool] = {} if roll_back_abandoned else {"rollback_attempted": True}
         current_manifest: dict[str, str] | None = None
+        composing: dict[str, object] = {}
+        if compose and migration_registry is not None:
+            composing["current_manifest_sha256"] = manifest_sha256(self._catalog_target_manifest(migration_registry))
         for _ in range(_MAX_READ_ROUNDS):
             try:
                 key = self._authority_key(required=False)
                 anchor_json = self._read_anchor_json() if key is not None else None
             except Exception:
-                return self._degraded_view(catalog_digest)
+                return self._degraded_view(catalog_digest), None
             reply = self._extension_control_authority_op(
-                "read",
+                "read_composed" if composing else "read",
                 key=key,
                 anchor_json=anchor_json,
                 catalog_digest=catalog_digest,
                 migration=migration,
                 allow_migration=allow_migration,
                 current_manifest=current_manifest,
+                **composing,
                 **attempted,
             )
             if "view" in reply:
-                return self._view_from_wire(reply["view"], catalog_digest)
+                return self._view_from_wire(reply["view"], catalog_digest), reply if "composed" in reply else None
             if reply.get("need") == "current_manifest" and migration_registry is not None:
                 current_manifest = self._catalog_target_manifest(migration_registry)
                 continue
@@ -296,7 +351,7 @@ class ExtensionControlAuthorityReadsMixin:
             elif kind == "resume_pending":
                 resumed = self._resume_pending_catalog_migration(action, key=key)
                 if resumed is not None and resumed.health is AuthorityHealth.PROTECTED:
-                    return resumed
+                    return resumed, None
                 attempted["resume_attempted"] = True
             elif kind == "roll_back_abandoned":
                 self._roll_back_abandoned_transition(
@@ -307,7 +362,7 @@ class ExtensionControlAuthorityReadsMixin:
                 )
                 attempted["rollback_attempted"] = True
             elif kind == "migrate_catalog" and migration_registry is not None:
-                return self._migrate_extension_control_catalog(action, registry=migration_registry, key=key)
+                return self._migrate_extension_control_catalog(action, registry=migration_registry, key=key), None
             else:
                 raise ExtensionControlAuthorityError("invalid extension control authority action")
         raise ExtensionControlAuthorityError("extension control authority read did not settle")

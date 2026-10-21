@@ -191,7 +191,7 @@ fn numeric_eq(left: &Value, right: &Value) -> bool {
             b.is_finite() && b.fract() == 0.0 && (b as i128) == a && (a as f64) == b
         }
         // Integers beyond 128 bits compare by their decimal spelling.
-        _ => left.to_string() == right.to_string(),
+        _ => left == right,
     }
 }
 

@@ -90,7 +90,8 @@ fn evaluate(request: &ExtensionControlAuthorityRequestV1) -> Result<Value, Strin
         "anchor" => anchor_op(request, key),
         "managed_activation" => managed::activation_op(request, key),
         "managed_revision" => managed::revision_op(request, key),
-        "read" | "sync_manifest" | "compose_managed" | "load_manifest" | "validate_chain" => {
+        "read" | "read_composed" | "sync_manifest" | "compose_managed" | "load_manifest"
+        | "validate_chain" => {
             return with_store(request, key);
         }
         _ => return Err(INVALID.to_owned()),
@@ -186,7 +187,7 @@ impl View {
         })
     }
 
-    pub(super) fn from_value(value: Option<&Value>) -> Res<Self> {
+    fn from_value(value: Option<&Value>) -> Res<Self> {
         let invalid = || tampered("invalid extension control authority view");
         let Some(Value::Object(view)) = value else {
             return Err(invalid());
@@ -241,12 +242,12 @@ impl Read {
 }
 
 impl Ctx<'_> {
-    pub(super) fn require_key(&self) -> Res<&[u8]> {
+    fn require_key(&self) -> Res<&[u8]> {
         self.key
             .ok_or_else(|| tampered("extension control authentication key missing"))
     }
 
-    pub(super) fn catalog_digest(&self) -> Res<&str> {
+    fn catalog_digest(&self) -> Res<&str> {
         self.request
             .catalog_digest
             .as_deref()
@@ -272,9 +273,14 @@ impl Ctx<'_> {
                 Ok(self.read(self.catalog_digest()?, mode)?.into_value())
             }
             "sync_manifest" => self.sync_manifest(View::from_value(self.request.view.as_ref())?),
-            "compose_managed" => {
-                self.compose_managed(View::from_value(self.request.view.as_ref())?)
-            }
+            "compose_managed" => self.compose_managed(
+                View::from_value(self.request.view.as_ref())?,
+                self.request.previous_manifest.as_ref(),
+            ),
+            "read_composed" => self.read_composed(ReadMode {
+                migration: self.request.migration,
+                allow_migration: self.request.allow_migration,
+            }),
             "load_manifest" => {
                 Ok(json!({ "manifest": self.load_manifest(self.catalog_digest()?)? }))
             }

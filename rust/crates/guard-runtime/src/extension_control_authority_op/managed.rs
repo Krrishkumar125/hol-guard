@@ -188,7 +188,7 @@ fn absent(value: Option<&Value>) -> bool {
 
 impl Ctx<'_> {
     /// `_with_managed_controls_activation`.
-    pub(super) fn compose_managed(&self, view: View) -> Res<Value> {
+    pub(super) fn compose_managed(&self, view: View, previous: Option<&Manifest>) -> Res<Value> {
         let rows = query_rows(
             self.connection,
             "select state_key, payload_json from sync_state where state_key in (?, ?)",
@@ -242,7 +242,7 @@ impl Ctx<'_> {
         let current = self.current_manifest();
         let current_sha256 = self.request.current_manifest_sha256.as_deref();
         let current_known = current.is_some() || current_sha256.is_some();
-        let fingerprint_refresh = match (self.request.previous_manifest.as_ref(), current_known) {
+        let fingerprint_refresh = match (previous, current_known) {
             (Some(previous), true) if active_catalog_digest == view.catalog_digest => match current
             {
                 Some(current) => previous != current,
@@ -269,13 +269,12 @@ impl Ctx<'_> {
             };
             // A missing prior manifest must not act as an implicit fingerprint
             // match: stale managed allows stay disabled until Cloud refreshes.
-            let prior: Manifest =
-                match (fingerprint_refresh, self.request.previous_manifest.as_ref()) {
-                    (true, Some(previous)) => previous.clone(),
-                    _ => self
-                        .load_manifest(&active_catalog_digest)?
-                        .unwrap_or_default(),
-                };
+            let prior: Manifest = match (fingerprint_refresh, previous) {
+                (true, Some(previous)) => previous.clone(),
+                _ => self
+                    .load_manifest(&active_catalog_digest)?
+                    .unwrap_or_default(),
+            };
             managed_layers = managed_layers
                 .into_iter()
                 .map(|layer| ExtensionControlLayer {

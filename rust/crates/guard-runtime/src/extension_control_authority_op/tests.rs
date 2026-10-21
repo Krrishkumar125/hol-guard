@@ -446,3 +446,45 @@ fn manifest_round_trips_and_sync_skips_an_unchanged_digest() {
     // unbound until the writer migrates.
     assert_eq!(result["view"]["layers"][0]["controls"], json!([]));
 }
+
+#[test]
+fn read_composed_settles_in_one_round_trip_or_hands_back_the_base_view() {
+    let home = Home::new();
+    let anchor = home.commit(1, &catalog('a'), &[local(&catalog('a'))], "committed");
+    let request = ExtensionControlAuthorityRequestV1 {
+        migration: true,
+        current_manifest_sha256: Some(manifest_sha256(&manifest("fp1")).unwrap()),
+        ..read_request(&home, &catalog('a'), Some(anchor))
+    };
+    let request = ExtensionControlAuthorityRequestV1 {
+        op: "read_composed".to_owned(),
+        ..request
+    };
+    // No manifest is recorded yet, so a writer owes the first one: the base
+    // view comes back alone for the separate ops to finish.
+    let writer = ExtensionControlAuthorityRequestV1 {
+        allow_migration: true,
+        ..request.clone()
+    };
+    let result = run(&writer);
+    assert_eq!(health(&result), "protected");
+    assert_eq!(result.get("composed"), None);
+
+    home.record_manifest(&catalog('a'), &manifest("fp1"));
+    let result = run(&request);
+    assert_eq!(result["composed"], result["view"]);
+    assert_eq!(result["stale"], Value::Null);
+
+    let drifted = ExtensionControlAuthorityRequestV1 {
+        current_manifest: Some(manifest("fp2")),
+        current_manifest_sha256: Some(manifest_sha256(&manifest("fp2")).unwrap()),
+        ..request
+    };
+    let result = run(&drifted);
+    assert_eq!(result["stale"], json!(manifest("fp1")));
+    assert_eq!(
+        result["view"]["layers"][0]["controls"][0]["target_id"],
+        json!(TARGET)
+    );
+    assert_eq!(result["composed"]["layers"][0]["controls"], json!([]));
+}

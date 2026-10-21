@@ -21,9 +21,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from . import native_extension_control_authority_memo as memo
 from .native_command_control_authority_io import NativeCommandControlAuthorityUnavailableError
 from .native_context import ensure_resident_prerequisite
 from .native_execution import _resident_request
+from .native_policy_snapshot_constants import NATIVE_POLICY_VERIFIER_KEY_NAME, NATIVE_RUNTIME_STATE_DIRECTORY
 from .native_store_policy import _payload, encode_key
 from .runtime.extension_control_authority import (
     AuthorityAnchor,
@@ -36,6 +38,7 @@ from .runtime.extension_control_contract import ExtensionControlLayer
 
 if TYPE_CHECKING:
     from .runtime.extension_control_authority import ExtensionControlAuthorityView
+    from .store import GuardStore
 
 EXTENSION_CONTROL_AUTHORITY_FEATURE = "extension-control-authority-v1"
 _REQUEST_SCHEMA = "guard-extension-control-authority-request.v1"
@@ -61,17 +64,21 @@ def extension_control_authority(
     guard_home: Path,
     op: str,
     key: bytes | None,
+    store: GuardStore | None = None,
     **fields: object,
 ) -> dict[str, object]:
     """The resident's answer to ``op``; raises on an outage or a fault.
 
     Optional fields set to ``None`` are omitted. The resident re-serializes
     the request to bind its reply, and it always writes the flags, so every
-    flag is sent even when unset.
+    flag is sent even when unset. A settled reply to the same request over an
+    unchanged database is served from the memo without asking again.
+
+    With ``store``, the resident's verifier key is provisioned from that store
+    rather than from a fresh one, so the read answers to the same integrity
+    material as the caller.
     """
 
-    if not ensure_resident_prerequisite(guard_home):
-        raise NativeExtensionControlAuthorityUnavailableError()
     wire: dict[str, object] = {
         "schema": _REQUEST_SCHEMA,
         "request_id": f"extension-control-authority-{uuid4().hex}",
@@ -83,6 +90,19 @@ def extension_control_authority(
     if key is not None:
         wire["key_b64"] = encode_key(key)
     wire.update({name: value for name, value in fields.items() if value is not None})
+    memo_key, kept = memo.lookup(wire)
+    if kept is not None:
+        return kept
+    verifier = guard_home / NATIVE_RUNTIME_STATE_DIRECTORY / NATIVE_POLICY_VERIFIER_KEY_NAME
+    if store is not None and not verifier.is_file():
+        from .native_policy_snapshot_publisher import provision_native_verifier_key_for_store
+
+        try:
+            provision_native_verifier_key_for_store(store)
+        except Exception as exc:
+            raise NativeExtensionControlAuthorityUnavailableError() from exc
+    if not ensure_resident_prerequisite(guard_home):
+        raise NativeExtensionControlAuthorityUnavailableError()
     try:
         response = _resident_request(
             operation="extension_control_authority",
@@ -99,6 +119,7 @@ def extension_control_authority(
     payload = _payload(response, wire, guard_home)
     if payload is None:
         raise NativeExtensionControlAuthorityUnavailableError()
+    memo.keep(memo_key, payload)
     return payload
 
 

@@ -47,8 +47,9 @@ pub struct ExtensionControlAuthorityRequestV1 {
     pub store_path: String,
     /// Absolute path to the resolved guard home.
     pub guard_home: String,
-    /// `read`, `sync_manifest`, `compose_managed`, `managed_activation`,
-    /// `managed_revision`, `load_manifest`, `validate_chain` or `anchor`.
+    /// `read`, `read_composed`, `sync_manifest`, `compose_managed`,
+    /// `managed_activation`, `managed_revision`, `load_manifest`,
+    /// `validate_chain` or `anchor`.
     pub op: String,
     /// Authority authentication key bytes (base64url, no padding); absent
     /// when the credential store holds none.
