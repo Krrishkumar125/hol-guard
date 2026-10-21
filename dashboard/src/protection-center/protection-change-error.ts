@@ -48,7 +48,7 @@ function codeSentence(code: string, recovery: Recovery): string | undefined {
     case "authority_conflict":
     case "revision_conflict":
     case "invalid_previous_revision":
-      return `${KEPT} Your protection settings changed while this page was open. Reload the page and make the change again.`;
+      return `${KEPT} Your protection settings changed while this page was open. This page now shows the current settings; make the change again.`;
     case "authority_unavailable":
     case "authority_unread":
     case "authority_history_unavailable":
@@ -62,7 +62,7 @@ function codeSentence(code: string, recovery: Recovery): string | undefined {
       return `Guard could not finish recovering the protection authority. ${repairAuthority}`;
     case "catalog_conflict":
     case "catalog_payload_limit_exceeded":
-      return `${KEPT} Guard's protection catalog moved underneath this page. Reload the page and make the change again.`;
+      return `${KEPT} Guard's protection catalog moved underneath this page. This page now shows the current catalog; make the change again.`;
     case "control_limit_exceeded":
     case "layer_control_limit_exceeded":
     case "layer_limit_exceeded":
@@ -79,7 +79,7 @@ function codeSentence(code: string, recovery: Recovery): string | undefined {
     case "invalid_extension":
     case "unknown_extension":
     case "unknown_permission":
-      return `${KEPT} Guard no longer recognizes the setting this page asked to change. Reload the page and try again.`;
+      return `${KEPT} Guard no longer recognizes the setting this page asked to change. This page now shows what Guard recognizes; try again.`;
     case "invalid_layers":
     case "invalid_mutation":
       return `${KEPT} Guard rejected the change as malformed. Reload the page and make the change again; if it keeps failing, the Guard daemon log records the exact cause.`;
@@ -110,6 +110,25 @@ const RETRYABLE_PREPARATION_CAUSES = new Set([
   "offline",
   "release_unavailable",
 ]);
+
+// The daemon is the authority on which catalog and which revision a mutation
+// is allowed to carry, and it refuses one that does not match. A refusal on
+// those grounds is not a dead end: the page reloads itself onto what the daemon
+// holds now, so the operator's next attempt is made against current data rather
+// than against a page they have to know to reload by hand.
+const STALE_DATA_CODES = new Set([
+  "authority_conflict",
+  "catalog_conflict",
+  "invalid_extension",
+  "invalid_previous_revision",
+  "revision_conflict",
+  "unknown_extension",
+  "unknown_permission",
+]);
+
+export function isStaleProtectionDataError(error: unknown): boolean {
+  return error instanceof ExtensionControlApiError && STALE_DATA_CODES.has(error.code ?? "");
+}
 
 export function isRetryableProtectionChangeError(error: unknown): boolean {
   return (

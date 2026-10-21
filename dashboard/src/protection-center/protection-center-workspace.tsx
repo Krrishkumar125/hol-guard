@@ -21,7 +21,7 @@ import {
 } from "../extension-controls-api";
 import { loadCatalogReadModel, type CatalogReadModel } from "../extension-catalog-v2";
 import { CatalogExtensionDetail } from "./catalog-extension-detail";
-import { loadConsistentProtectionData } from "./consistent-protection-load";
+import { PROTECTION_DATA_UNSETTLED_MESSAGE, loadConsistentProtectionData } from "./consistent-protection-load";
 import { buildExtensionMutation, randomToken } from "./extension-mutation";
 
 export { buildExtensionMutation };
@@ -38,11 +38,11 @@ import {
 } from "./protection-workspace-states";
 import { deriveProtectionStatus } from "./model/protection-presentation";
 import { ReviewModal, type ProtectionPendingChange } from "./protection-change-review";
-import { isRetryableProtectionChangeError, protectionChangeErrorMessage } from "./protection-change-error";
+import { isRetryableProtectionChangeError, isStaleProtectionDataError, protectionChangeErrorMessage } from "./protection-change-error";
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; catalog: CatalogReadModel; effective: EffectiveExtensionControls };
+  | { kind: "ready"; catalog: CatalogReadModel; effective: EffectiveExtensionControls; unsettled: boolean };
 type RouteState = { route: ProtectionRoute; detail: ExtensionDetailUrlState };
 
 // Long enough for a transport retry or a busy cache to clear, short enough
@@ -123,12 +123,15 @@ export function ProtectionCenterWorkspace(props: {
       // flight so an applied change's confirmation toast survives the reload.
       setState((current) => (current.kind === "ready" ? current : { kind: "loading" }));
       try {
-        const { catalog: fresh, effective } = await loadConsistentProtectionData(loadCatalogReadModel, fetchEffectiveExtensionControls);
+        const { catalog: fresh, effective, consistent } = await loadConsistentProtectionData(loadCatalogReadModel, fetchEffectiveExtensionControls);
         // An unchanged catalog keeps its model (and loaded details); effective state always refreshes.
         const previous = catalogRef.current;
         const catalog = previous?.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol ? previous : fresh;
         catalogRef.current = catalog;
-        setState({ kind: "ready", catalog, effective });
+        // A pair that never agreed still renders. The daemon refuses a mutation
+        // carrying the wrong catalog digest, so the list is shown with a notice
+        // rather than withheld behind a retry the user cannot win.
+        setState({ kind: "ready", catalog, effective, unsettled: !consistent });
         return effective;
       } catch (error) {
         // A failed refresh after an authority action must not unmount the page
@@ -268,6 +271,12 @@ export function ProtectionCenterWorkspace(props: {
       setPending(null);
       await load();
     } catch (error) {
+      // A refusal on stale catalog or revision grounds leaves the page holding
+      // data the daemon has already moved past. Reload it here, so the sentence
+      // the operator reads is true by the time they read it and their next
+      // attempt is made against current data. The change itself is never
+      // replayed: what they approved was approved against the old catalog.
+      if (isStaleProtectionDataError(error)) await load();
       setMutationError(protectionChangeErrorMessage(error, recoveryCommand, recoveryShell));
     } finally {
       setBusy(false);
@@ -371,6 +380,7 @@ export function ProtectionCenterWorkspace(props: {
   const loadError = state.kind === "error" ? protectionCenterLoadError(state.message) : null;
   const status = state.kind === "ready" ? deriveProtectionStatus(state.effective) : null;
   const healthBroken = state.kind === "ready" && state.effective.health !== "protected";
+  const dataUnsettled = state.kind === "ready" && state.unsettled;
 
   return (
     <div className="w-full" data-testid="extensions-workspace">
@@ -394,6 +404,15 @@ export function ProtectionCenterWorkspace(props: {
           onCheckAgain={handleCheckAgain}
           onOpenApprovalSettings={handleOpenApprovalSettings}
         />
+      ) : null}
+      {dataUnsettled ? (
+        <p
+          role="status"
+          data-testid="protection-data-unsettled"
+          className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          {PROTECTION_DATA_UNSETTLED_MESSAGE}
+        </p>
       ) : null}
       {state.kind === "ready" && recoveryStatus && !healthBroken && !showOverview ? (
         <p role="status" className="mb-3 text-sm font-medium text-emerald-800">{recoveryStatus}</p>

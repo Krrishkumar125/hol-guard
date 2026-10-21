@@ -3,7 +3,6 @@ import { REFRESH_DEADLINE_MS, refreshEffectiveExtensionControls } from "../exten
 import {
   CONSISTENT_LOAD_RETRY_DELAYS_MS,
   loadConsistentProtectionData,
-  PROTECTION_DATA_CHANGED_MESSAGE,
 } from "./consistent-protection-load";
 
 const sequence = (...digests: string[]) => {
@@ -22,6 +21,7 @@ const noRepair = async () => undefined;
     repair: noRepair,
   });
   assert.equal(result.catalog.catalog_digest, "a");
+  assert.equal(result.consistent, true);
   assert.deepEqual(waits, []);
 }
 
@@ -38,16 +38,20 @@ const noRepair = async () => undefined;
   assert.deepEqual(waits, CONSISTENT_LOAD_RETRY_DELAYS_MS.slice(0, 2));
 }
 
-// A pair that never agrees is still refused after the retry window.
+// A pair that never agrees still loads, marked unsettled. Refusing the read was
+// the one outcome the user could not clear: the list, the policies and the
+// editor all disappeared behind a "Try again" that ran the same read again.
+// The daemon still refuses a mutation whose catalog digest is not its own, so
+// nothing is applied against the wrong catalog.
 {
   const waits: number[] = [];
-  await assert.rejects(
-    loadConsistentProtectionData(sequence("a"), sequence("b"), {
-      sleep: async (ms) => { waits.push(ms); },
-      repair: noRepair,
-    }),
-    { message: PROTECTION_DATA_CHANGED_MESSAGE },
-  );
+  const result = await loadConsistentProtectionData(sequence("a"), sequence("b"), {
+    sleep: async (ms) => { waits.push(ms); },
+    repair: noRepair,
+  });
+  assert.equal(result.consistent, false);
+  assert.equal(result.catalog.catalog_digest, "a");
+  assert.equal(result.effective.catalog_digest, "b");
   assert.deepEqual(waits, [...CONSISTENT_LOAD_RETRY_DELAYS_MS]);
 }
 
@@ -67,6 +71,7 @@ assert.ok(CONSISTENT_LOAD_RETRY_DELAYS_MS.reduce((total, ms) => total + ms, 0) >
     repair: async () => { repairs += 1; },
   });
   assert.equal(repairs, 1);
+  assert.equal(result.consistent, true);
   assert.equal(result.catalog.catalog_digest, "new");
 }
 
