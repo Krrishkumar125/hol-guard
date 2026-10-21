@@ -178,6 +178,23 @@ def test_missing_root_is_an_error(tmp_path: Path) -> None:
         build_report(repo, scope_path)
 
 
+def test_reviewed_entry_naming_a_deleted_module_is_an_error(tmp_path: Path) -> None:
+    repo, scope_path = _synthetic_repo(tmp_path)
+    scope = _scope()
+    scope["python"]["reviewed_runtime"] = [{"path": ["pkg/gone.py"], "reason": "reviewed"}]
+    scope_path.write_text(json.dumps(scope), encoding="utf-8")
+    with pytest.raises(ScopeError, match="no longer exist"):
+        build_report(repo, scope_path)
+
+
+def test_reviewed_glob_is_not_required_to_match_a_file(tmp_path: Path) -> None:
+    repo, scope_path = _synthetic_repo(tmp_path)
+    scope = _scope()
+    scope["python"]["reviewed_runtime"] = [{"path": ["pkg/gone_*.py"], "reason": "reviewed"}]
+    scope_path.write_text(json.dumps(scope), encoding="utf-8")
+    build_report(repo, scope_path)
+
+
 def test_min_share_exit_code(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     repo, scope_path = _synthetic_repo(tmp_path)
     base = ["--repo", str(repo), "--scope", str(scope_path)]
