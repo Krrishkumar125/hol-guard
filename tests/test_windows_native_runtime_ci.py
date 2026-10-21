@@ -222,6 +222,7 @@ def test_windows_partition_union_keeps_every_original_cargo_contract() -> None:
             "guard-command --test shim_admin_vectors",
             "guard-command --test pretool_windows_drive_path_writes",
             "guard-command --test pretool_windows_sibling_repository_writes",
+            "guard-command --test pretool_windows_git_toplevel",
         ],
         "native-op": [
             "hol-guard-runtime --bin hol-guard-runtime shim_op",
