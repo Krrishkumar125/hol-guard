@@ -159,6 +159,14 @@ def parsed_managed_controls_from_validated_policy_bundle(
 _ACTIVATION_BUNDLE_FIELDS = ("bundleHash", "bundleVersion", "workspaceId", "payloadHash", "issuedAt", "expiresAt")
 
 
+def _activation_metadata_wire(metadata: object) -> object:
+    """Only the metadata the resident reads, so unrelated values cannot break the request hash."""
+
+    if not is_mapping(metadata):
+        return None
+    return {name: metadata[name] for name in ("revision", "id", "name") if name in metadata}
+
+
 def managed_controls_activation_input(
     policy_bundle: Mapping[str, object],
     parsed: ParsedManagedControlsPolicy,
@@ -172,7 +180,9 @@ def managed_controls_activation_input(
 
     bundle: dict[str, object] = {name: policy_bundle.get(name) for name in _ACTIVATION_BUNDLE_FIELDS}
     payload = policy_bundle.get("payload")
-    bundle["payload"] = {"metadata": payload.get("metadata")} if is_mapping(payload) else None
+    bundle["payload"] = (
+        {"metadata": _activation_metadata_wire(payload.get("metadata"))} if is_mapping(payload) else None
+    )
     signed_layers = () if parsed.signed_cloud_layer is None else (parsed.signed_cloud_layer,)
     activation: dict[str, object] = {
         "bundle": bundle,
