@@ -312,7 +312,14 @@ pub(crate) fn inline_python_payload_runs_pytest(payload: &str, depth: usize) -> 
     // including inside the literals the split removed. Python resolves the
     // call's own arguments for that name, so a route carrying nothing else
     // (`subprocess.run(["echo", "harmless"])`) runs no test there either.
-    let names_pytest = normalized.contains("pytest") || normalized.contains("py.test");
+    // The name is matched with quotes, spaces and operators removed, because
+    // a shell drops quotes (`py""test`) and Python joins pieces
+    // (`'py' + 'test'`, `''.join(['py', 'test'])`) before either runs it.
+    let compact: String = normalized
+        .chars()
+        .filter(|character| character.is_alphanumeric() || *character == '.')
+        .collect();
+    let names_pytest = compact.contains("pytest") || compact.contains("py.test");
     code.contains("pytest")
         || code.contains("py.test")
         || (uncertain && (normalized.contains('\\') || has_adjacent_quotes(&normalized)))
@@ -446,6 +453,19 @@ mod tests {
         ));
         assert!(!inline_python_payload_runs_pytest(
             "import os; os.system('echo harmless')",
+            0
+        ));
+        // A name split by shell quotes or Python concatenation still counts.
+        assert!(inline_python_payload_runs_pytest(
+            r#"import os; os.system('py""test -x')"#,
+            0
+        ));
+        assert!(inline_python_payload_runs_pytest(
+            "import subprocess; subprocess.run(['py' + 'test'])",
+            0
+        ));
+        assert!(inline_python_payload_runs_pytest(
+            "import subprocess; subprocess.run([''.join(['py', 'test'])])",
             0
         ));
         assert!(inline_python_payload_runs_pytest("print('pytest", 0));

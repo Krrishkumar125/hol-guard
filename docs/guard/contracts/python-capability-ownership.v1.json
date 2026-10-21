@@ -1454,6 +1454,10 @@
    "forbidden_symbols": [
     "_argument_sequence_targets_pytest",
     "_inline_python_payload_runs_pytest",
+    "_pytest_args_from_argument_sequence",
+    "_pytest_args_from_argument_sequence_ignoring",
+    "_pytest_args_from_command_position",
+    "_pytest_args_from_runner_argument_sequence",
     "_python_inline_script_runs_pytest",
     "_python_process_call_targets_pytest",
     "_segment_targets_pytest",
