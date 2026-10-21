@@ -5,11 +5,13 @@ for the store ops, of the committed database. One hook reads the same
 authority from several places, so a settled reply is kept and served again
 while both are unchanged, instead of asking the resident once per reader.
 
-The database is unchanged while its file identity and ``PRAGMA data_version``
-on a connection held open for the purpose are unchanged: SQLite moves the
-version on every commit any other connection makes, in this process or another.
-A replaced file has a new identity, and the held connection keeps the old inode
-from being reused. Only replies that settled (a view, a manifest, an anchor) are
+The authority's inputs are unchanged while the database's file identity and
+its authority epoch are unchanged. Triggers move the epoch on every write to a
+row the resident's read depends on, from any connection in any process, while
+the hook's own receipts and evidence leave it alone; a dropped or rewritten
+trigger reads as no epoch, and nothing is served. A replaced file has a new
+identity, and a connection held open for the purpose keeps the old inode from
+being reused. Only replies that settled (a view, a manifest, an anchor) are
 kept; a fault, a writer action, a request for the full manifest or recorded
 migration events always go back to the resident.
 
@@ -29,6 +31,8 @@ from collections import OrderedDict
 from pathlib import Path
 from threading import Lock
 
+from .store_extension_control_authority_epoch import extension_control_authority_epoch
+
 _STORE_OPS = frozenset({"read", "read_composed", "sync_manifest", "compose_managed", "load_manifest", "validate_chain"})
 # A reply settled with ``allow_migration`` needed no migration, so a caller
 # that may not migrate gets the same reply. The converse does not hold.
@@ -41,7 +45,7 @@ _entries: OrderedDict[str, tuple[bool, dict[str, object]]] = OrderedDict()
 
 
 def _store_token(store_path: str) -> tuple[int, int, int] | None:
-    """The database's identity and commit version, or None when unknown."""
+    """The database's identity and authority epoch, or None when unknown."""
 
     try:
         status = os.stat(store_path)
@@ -59,13 +63,13 @@ def _store_token(store_path: str) -> tuple[int, int, int] | None:
             )
             held = (pid, identity, connection)
             _sentinels[store_path] = held
-        row = held[2].execute("pragma data_version").fetchone()
+        epoch = extension_control_authority_epoch(held[2])
     except sqlite3.Error:
         _sentinels.pop(store_path, None)
         return None
-    if row is None or type(row[0]) is not int:
+    if epoch is None:
         return None
-    return (*identity, row[0])
+    return (*identity, epoch)
 
 
 def _memo_key(wire: dict[str, object]) -> tuple[str, bool] | None:
