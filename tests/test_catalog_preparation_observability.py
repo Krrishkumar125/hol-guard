@@ -134,7 +134,7 @@ def test_recorded_detail_is_bounded(prepared, recorded, monkeypatch) -> None:
     discovery._prepare_ready(prepared)
 
     (_event, detail) = recorded[0]
-    assert len(detail) <= discovery._MAX_FAILURE_DETAIL + 32
+    assert len(detail) <= background_diagnostics._MAX_FAILURE_DETAIL + 32
 
 
 def test_a_failure_reaches_the_daemon_log(prepared, tmp_path, sink, monkeypatch) -> None:
