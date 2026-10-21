@@ -25,10 +25,9 @@ _SINK_USERS = (
     "codex_plugin_scanner.guard.adapters.codex_contained_tests",
     "codex_plugin_scanner.guard.daemon.hook_contained_grant",
 )
-_ROUTE_USERS = (
-    "codex_plugin_scanner.guard.cli.commands_hook_native_containment",
-    "codex_plugin_scanner.guard.daemon.hook_worker_native",
-)
+# Both hook paths take the route through ``edge_containment_route``, which
+# asks ``native_containment_route`` when an edge carries no stamped route.
+_ROUTE_USERS = ("codex_plugin_scanner.guard.native_hook_containment_route",)
 
 
 @pytest.fixture
@@ -55,16 +54,22 @@ def containment_resident(monkeypatch: pytest.MonkeyPatch, native_approval_reuse_
         bridge: bool,
         payload: Mapping[str, object],
         guard_home: Path | None,
+        deadline: float | None = None,
     ) -> route_module.ContainmentSink:
-        del guard_home
+        del guard_home, deadline
         return on_real_host(
             lambda: real_sink(response, harness=harness, bridge=bridge, payload=payload, guard_home=home)
         )
 
     def route(
-        result: Mapping[str, object], *, event_name: object, recording_only: bool, guard_home: Path | None
+        result: Mapping[str, object],
+        *,
+        event_name: object,
+        recording_only: bool,
+        guard_home: Path | None,
+        deadline: float | None = None,
     ) -> str:
-        del guard_home
+        del guard_home, deadline
         return on_real_host(
             lambda: real_route(result, event_name=event_name, recording_only=recording_only, guard_home=home)
         )

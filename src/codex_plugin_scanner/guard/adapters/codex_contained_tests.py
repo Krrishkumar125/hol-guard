@@ -68,7 +68,9 @@ def route_codex_containment(
         return response
     if not isinstance(payload, dict):
         return response
-    sink = native_containment_sink(response, harness="codex", bridge=True, payload=payload, guard_home=guard_home)
+    sink = native_containment_sink(
+        response, harness="codex", bridge=True, payload=payload, guard_home=guard_home, deadline=deadline
+    )
     if sink.profile is None:
         return response
     executable = launching_codex_executable()

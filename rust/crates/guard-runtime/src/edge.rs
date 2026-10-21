@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use crate::hook_decision_containment_route::edge_route;
 use crate::policy_enforcement::AdmittedPolicySnapshot;
 use guard_contracts::{
     GuardHookEdgeResultV2, GuardHookEnvelopeV2, GuardHookPayloadKindV2, HookOutputSummaryV1,
@@ -451,14 +452,9 @@ fn evaluate_validated_envelope(
         envelope.recording_only,
     )
     .map(Value::Object);
-    // Every event carries its route, so no hook asks for it again; anything
-    // but a PreToolUse answer is `none`.
-    let containment_route = Some(crate::hook_decision_containment_route::edge_route(
-        &event_name,
-        &result,
-        envelope.recording_only,
-    ));
     crate::encode_response(&GuardHookEdgeResultV2 {
+        // Every edge carries its route so no hook asks again; only PreToolUse is routed.
+        containment_route: Some(edge_route(&event_name, &result, envelope.recording_only)),
         schema: GUARD_HOOK_EDGE_RESULT_V2_SCHEMA.to_owned(),
         authority: "rust".to_owned(),
         request_id: Some(request_id),
@@ -467,7 +463,6 @@ fn evaluate_validated_envelope(
         payload_kind: kind,
         result,
         harness_response,
-        containment_route,
         receipt,
     })
 }
