@@ -176,7 +176,7 @@ export function QueueItemRow({ item, active, readState, index, onOpenRequest, se
               active ? "bg-brand-blue/10 text-brand-blue" : "bg-slate-50 text-slate-500"
             }`}
           >
-            {extensionId ? (
+            {extensionId && category.id !== "guard_bypass" ? (
               <ExtensionBrandMark extension_id={extensionId} size="sm" />
             ) : (
               <CategoryIcon className="h-4 w-4" aria-hidden="true" />

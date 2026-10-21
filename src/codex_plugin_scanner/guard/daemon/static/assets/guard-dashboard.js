@@ -33273,7 +33273,7 @@ function QueueItemRow({ item, active, readState, index, onOpenRequest, selection
                   "aria-label": category.label,
                   className: `group/icon relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${active ? "bg-brand-blue/10 text-brand-blue" : "bg-slate-50 text-slate-500"}`,
                   children: [
-                    extensionId ? /* @__PURE__ */ jsxRuntimeExports.jsx(ExtensionBrandMark, { extension_id: extensionId, size: "sm" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(CategoryIcon, { className: "h-4 w-4", "aria-hidden": "true" }),
+                    extensionId && category.id !== "guard_bypass" ? /* @__PURE__ */ jsxRuntimeExports.jsx(ExtensionBrandMark, { extension_id: extensionId, size: "sm" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(CategoryIcon, { className: "h-4 w-4", "aria-hidden": "true" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "pointer-events-none absolute right-0 top-full z-50 mt-1.5 whitespace-nowrap rounded-md bg-brand-blue px-2 py-1 text-[10px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/icon:opacity-100", children: category.label })
                   ]
                 }

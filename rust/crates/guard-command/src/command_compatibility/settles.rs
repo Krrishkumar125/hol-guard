@@ -12,9 +12,9 @@
 
 use super::{basename, environment, CommandSegmentV1};
 
-/// Programs that run text they receive, or a program named by a later
-/// argument, so they can assemble any command. An uncertain attribution of
-/// their segment only sampled that text, so it never settles.
+/// Programs that run text they receive, or launch a program named by a
+/// later argument, so they can assemble any command. An uncertain
+/// attribution of their segment only sampled that text, so it never settles.
 const INTERPRETERS: &[&str] = &[
     "sh",
     "bash",
@@ -44,6 +44,25 @@ const INTERPRETERS: &[&str] = &[
     "env",
     "xargs",
     "eval",
+    // Launchers: the segment names another program to run (a busybox
+    // applet, a watched/retried/niced command, a Makefile's recipes, a
+    // package runner's binary), so the attribution only sampled its text.
+    "busybox",
+    "watch",
+    "timeout",
+    "nohup",
+    "stdbuf",
+    "setsid",
+    "nice",
+    "chroot",
+    "flock",
+    "expect",
+    "tclsh",
+    "make",
+    "npx",
+    "parallel",
+    "sudo",
+    "doas",
 ];
 
 fn inert_environment(segment: &CommandSegmentV1) -> bool {
@@ -274,8 +293,13 @@ fn kubernetes_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
         if subcommand.is_some() {
             // Only read shapes settle, and only with output the command
             // renders itself: no raw API path, no file of resources to act
-            // on, and no output format that reads a template file.
-            if matches!(name, "--raw" | "-f" | "--filename" | "-k" | "--kustomize") {
+            // on, and no output format that reads a template file. The
+            // `-f`/`-k` letters deny in any spelling — separate, attached
+            // (`-f./x.yaml`), or bundled — not just the exact token.
+            if matches!(name, "--raw" | "-f" | "--filename" | "-k" | "--kustomize")
+                || bundle_letters(argument).contains('f')
+                || bundle_letters(argument).contains('k')
+            {
                 return false;
             }
             let is_output = name == "-o"
@@ -314,7 +338,8 @@ fn kubernetes_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
 }
 
 /// `-o` keywords whose value names a program to run or a library to load
-/// locally, or reroutes the connection through one.
+/// locally, reroutes the connection through one, or hands the connection
+/// to state outside the text (an existing control socket).
 const SSH_PROGRAM_KEYWORDS: &[&str] = &[
     "proxycommand",
     "proxyjump",
@@ -325,6 +350,8 @@ const SSH_PROGRAM_KEYWORDS: &[&str] = &[
     "pkcs11provider",
     "securitykeyprovider",
     "remotecommand",
+    "xauthlocation",
+    "controlpath",
 ];
 
 /// Whether an ssh-family segment (ssh, scp, sftp) stays inside what its
@@ -362,7 +389,12 @@ fn ssh_family_segment_settles_uncertainty(segment: &CommandSegmentV1, sftp: bool
                 return false;
             };
             let lowered = value.trim().to_ascii_lowercase();
-            let keyword = lowered.split('=').next().unwrap_or("").trim();
+            // ssh_config separates a keyword from its value with `=` or
+            // whitespace (`-o "LocalCommand touch x"`), so split on both.
+            let keyword = lowered
+                .split(|c: char| c == '=' || c.is_whitespace())
+                .next()
+                .unwrap_or("");
             if SSH_PROGRAM_KEYWORDS.contains(&keyword)
                 || keyword.starts_with("match")
                 || lowered.contains("proxy")
@@ -439,10 +471,21 @@ fn sed_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
     let mut index = 0;
     while let Some(argument) = arguments.get(index) {
         index += 1;
-        if matches!(argument.as_str(), "-f" | "--file") || argument.starts_with("--file=") {
-            return false;
+        if argument.starts_with("--") {
+            // GNU getopt_long also accepts unambiguous abbreviations of
+            // long options (`--fil=script.sed`), which name the same
+            // unread file or script as the full spelling.
+            let name = flag_name(argument);
+            if "--file".starts_with(name) {
+                return false;
+            }
+            if name != "--expression" && "--expression".starts_with(name) {
+                return false;
+            }
         }
-        if argument.starts_with("-f") && !argument.starts_with("--") {
+        // An `f` anywhere in a short bundle (`-nf script.sed`) names the
+        // same unread script file as `-f`, attached or separate.
+        if bundle_letters(argument).contains('f') {
             return false;
         }
         if matches!(argument.as_str(), "-e" | "--expression") {
@@ -574,6 +617,12 @@ pub(crate) fn segment_settles_uncertainty(
     segment: &CommandSegmentV1,
     context: crate::pretool::PathContext<'_>,
 ) -> bool {
+    // A wrapper between the shell and the executable (sudo, env, a shell
+    // launcher) runs the segment under authority or text the segment's own
+    // shape does not prove, whichever owner the segment belongs to.
+    if !segment.wrapper_chain.is_empty() {
+        return false;
+    }
     match basename(segment).as_str() {
         "git" => {
             super::git::subcommand_settles_uncertainty(segment)
@@ -738,6 +787,37 @@ mod tests {
         // Interpreters run text the attribution only sampled.
         assert!(!settles("python3", &["-c", "import os"]));
         assert!(!settles("sh", &["-c", "rm -rf build"]));
+        // Attached and bundled kubectl file flags reach the same options
+        // as the separate spelling.
+        assert!(!settles("kubectl", &["get", "pods", "-f./x.yaml"]));
+        assert!(!settles("kubectl", &["get", "pods", "-k./kust"]));
+        // Bundled and abbreviated sed script-file spellings.
+        assert!(!settles("sed", &["-nf", "script.sed", "f.txt"]));
+        assert!(!settles("sed", &["--fil=script.sed", "f.txt"]));
+        assert!(!settles("sed", &["--exp=s|a|b|e", "f.txt"]));
+        // ssh keywords separate from their value with whitespace too, and
+        // an xauth program or an existing control socket is state outside
+        // the text.
+        assert!(!settles("ssh", &["-o", "LocalCommand touch x", "host"]));
+        assert!(!settles(
+            "ssh",
+            &["-o", "XAuthLocation=/tmp/evil-xauth", "host"]
+        ));
+        assert!(!settles("ssh", &["-o", "ControlPath=/tmp/sock", "host"]));
+        // Launchers run a program named by a later argument.
+        assert!(!settles("watch", &["docker", "ps"]));
+        assert!(!settles("busybox", &["ls", "-la"]));
+        assert!(!settles("timeout", &["5", "curl", "https://h"]));
+    }
+
+    #[test]
+    fn a_wrapped_segment_never_settles() {
+        let mut wrapped = segment("rm", &["-rf", "build"]);
+        wrapped.wrapper_chain = vec!["sudo".to_owned()];
+        assert!(!segment_settles_uncertainty(
+            &wrapped,
+            crate::pretool::PathContext::default()
+        ));
     }
 
     #[test]
