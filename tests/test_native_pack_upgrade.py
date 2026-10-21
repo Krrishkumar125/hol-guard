@@ -192,11 +192,18 @@ def test_fresh_install_and_retained_floor_after_sqlite_loss(tmp_path, monkeypatc
     seed(store)
     store._policy_integrity_secret_store.values.clear()
     store.migrate_installed_command_pack_authority()
-    assert lifecycle_store.read(store) is None
+    # An install with no legacy controls still gets a floor, derived from the
+    # verified installed release. Without one every later pack-lifecycle read
+    # fails and nothing else ever creates it.
+    enrolled = lifecycle_store.read(store)
+    assert enrolled is not None
     from tests.guard_extension_control_authority_fixtures import _enroll
 
+    # Enrolling the authority afterwards must not be refused by the floor that
+    # startup already wrote, and must leave that floor exactly as it is.
     _enroll(store)
     retained = lifecycle_store.inspect(store)[0]
+    assert retained == enrolled
     with store._connect() as connection:
         connection.execute("delete from extension_control_authority_snapshot")
     store.migrate_installed_command_pack_authority()

@@ -248,7 +248,20 @@ pub(super) fn migrate(input: &Value, key: &[u8]) -> Result<Value, String> {
         return Err("pack_lifecycle_protected_floor_missing".into());
     }
     if input["legacy_anchor"].is_null() && input["legacy_snapshot"].is_null() {
-        return Ok(json!({"record":null,"stamp":null}));
+        // An install with no legacy controls still needs a floor. Discovery,
+        // activation and every publication refresh read it, and once the
+        // authority is enrolled nothing else ever creates one, so returning
+        // no record here left those installs failing the floor gate forever.
+        // Deriving it from the verified installed release is exactly what
+        // enrollment itself writes: it admits nothing beyond that release,
+        // and it cannot lower a retained floor, because this is reached only
+        // when neither the record nor its enrollment stamp is present. A
+        // caller that carries no release evidence is a retained-floor probe
+        // rather than a startup, and keeps the previous no-op.
+        if input["release_data"].is_null() {
+            return Ok(json!({"record":null,"stamp":null}));
+        }
+        return super::enrolled(release::identity(input)?, key);
     }
     let candidate = release::identity(input)?;
     admit(input, key, candidate)
