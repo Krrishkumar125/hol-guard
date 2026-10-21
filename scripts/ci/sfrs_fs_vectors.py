@@ -258,13 +258,29 @@ def _cases(root: Path) -> list[dict[str, object]]:
     return cases
 
 
+# Cases recorded from Python helpers that have since been retired. Nothing can
+# regenerate them, so a refresh carries the recorded rows forward unchanged.
+_FROZEN_CASE_PREFIXES = ("pr_",)
+
+
+def _frozen_cases(out: Path) -> list[dict[str, object]]:
+    if not out.exists():
+        raise SystemExit(f"{out} is missing; its frozen cases cannot be regenerated")
+    recorded = json.loads(gzip.decompress(out.read_bytes()))
+    frozen = [case for case in recorded["cases"] if str(case["fn"]).startswith(_FROZEN_CASE_PREFIXES)]
+    if not frozen:
+        raise SystemExit(f"{out} has no frozen cases to carry forward")
+    return frozen
+
+
 def main() -> None:
     fixture_dir = Path(sys.argv[1])
+    out = fixture_dir / "fs_helpers.json.gz"
+    frozen = _frozen_cases(out)
     with tempfile.TemporaryDirectory(prefix="sfrs-fs-") as scratch:
         root = Path(scratch).resolve()
         _build(root)
-        document = {"schema": "sfrs-fs.v1", "tree": TREE, "cases": _cases(root)}
-    out = fixture_dir / "fs_helpers.json.gz"
+        document = {"schema": "sfrs-fs.v1", "tree": TREE, "cases": [*_cases(root), *frozen]}
     out.write_bytes(gzip.compress(json.dumps(document, sort_keys=True).encode("utf-8"), mtime=0))
     print(f"{len(document['cases'])} cases -> {out}")
 
