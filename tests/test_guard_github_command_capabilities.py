@@ -1110,9 +1110,9 @@ def test_native_classification_is_memoized_but_failures_are_not(monkeypatch: pyt
         calls.append(tuple(args))
         return answers[min(len(calls), len(answers)) - 1]
 
-    # The bridge binds the classifier at import, so the seam that memoization
-    # actually runs behind is the bridge's own name, not the source module's.
-    monkeypatch.setattr(bridge, "github_cli_classify_native", fake)
+    # The bridge looks the classifier up per call, so patching the source
+    # module is the seam memoization runs behind.
+    monkeypatch.setattr(native_github_cli, "github_cli_classify_native", fake)
     monkeypatch.setattr(bridge, "_ASSESSMENT_CACHE", {})
     args = ("pr", "view", "1")
 
