@@ -28,6 +28,7 @@ from codex_plugin_scanner.guard.native_claude_permission_verdict import (
     ClaudePermissionVerdict,
     native_claude_permission_verdict,
 )
+from codex_plugin_scanner.guard.native_hook_artifact_compose import NativeHookComposeError
 from codex_plugin_scanner.guard.native_hook_decision import _INVALID, NativeHookDecisionError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -132,6 +133,9 @@ _REVIEW = {
 }
 
 
+_DENY = {**_REVIEW, "verdict": "deny", "policy_action": "block", "offers_approval": False}
+
+
 def _answering(monkeypatch: pytest.MonkeyPatch, *payloads: dict[str, Any]) -> None:
     replies = list(payloads)
 
@@ -169,6 +173,28 @@ def _ok(verdict: dict[str, Any] | None, needs: list[str] | None = None) -> dict[
         ((_ok(None, ["notice"]),), True),
         ((_ok(None, [ARTIFACT_POLICY_FACT]), _ok(None, [ARTIFACT_POLICY_FACT])), True),
         ((_ok(None),), False),
+        # An artifact action that contradicts the verdict it is rendered with.
+        (
+            (
+                _ok(None, [ARTIFACT_POLICY_FACT]),
+                _ok({**_REVIEW, "reason_from_artifact": True, "artifact_action": "block"}),
+            ),
+            True,
+        ),
+        (
+            (
+                _ok(None, [ARTIFACT_POLICY_FACT]),
+                _ok({**_DENY, "reason_from_artifact": True, "artifact_action": "review"}),
+            ),
+            True,
+        ),
+        (
+            (
+                _ok(None, [ARTIFACT_POLICY_FACT]),
+                _ok({**_DENY, "reason_from_artifact": True, "artifact_action": "sandbox-required"}),
+            ),
+            True,
+        ),
     ],
 )
 def test_a_malformed_resident_answer_raises(
@@ -293,11 +319,22 @@ def test_the_artifact_reason_is_rendered_with_the_resident_action(
     assert (response["policy_action"], response["reason"]) == ("require-reapproval", shown)
 
 
-def test_a_verdict_the_resident_cannot_supply_is_the_host_outage(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "error",
+    [
+        NativeHookDecisionError("native_hook_decision_unavailable"),
+        # The artifact policy and reason are composed by the resident too.
+        NativeHookComposeError("native_hook_decision_unavailable"),
+    ],
+    ids=("verdict", "composition"),
+)
+def test_a_verdict_the_resident_cannot_supply_is_the_host_outage(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
     rendered = _Rendered(monkeypatch, notice={"artifact_type": "tool_action_request"})
 
     def outage(**_kwargs: object) -> ClaudePermissionVerdict:
-        raise NativeHookDecisionError("native_hook_decision_unavailable")
+        raise error
 
     monkeypatch.setattr(claude_module, "native_claude_permission_verdict", outage)
     unavailable: list[str] = []

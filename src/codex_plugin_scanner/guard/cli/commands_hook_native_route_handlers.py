@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from ..config import load_guard_config, overlay_synced_guard_policy
+from ..native_hook_artifact_compose import NativeHookComposeError
 from ..native_hook_decision import _INVALID, NativeHookDecisionError
 from ..native_hook_route import PASSTHROUGH_HANDLER
 from ..runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
@@ -217,9 +218,10 @@ def claude_permission_request(run: NativeHookRun) -> int | None:
             runtime_workspace=run.runtime_workspace,
             store=run.store,
         )
-    except NativeHookDecisionError as error:
-        # The resident picks the dialog's verdict; without its answer the host
-        # gets the outage response, never a verdict computed here.
+    except (NativeHookComposeError, NativeHookDecisionError) as error:
+        # The resident picks the dialog's verdict and composes the artifact
+        # policy and reason it rests on; without its answer the host gets the
+        # outage response, never a verdict computed here.
         return run.unavailable(error.code)
 
 

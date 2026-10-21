@@ -38,7 +38,11 @@ _VERDICT_SHAPES: Mapping[str, tuple[frozenset[str | None], bool]] = {
     "review": (frozenset({"require-reapproval"}), True),
     "deny": (frozenset({"block", "sandbox-required"}), False),
 }
-_ARTIFACT_ACTIONS = frozenset({"review", "require-reapproval", "sandbox-required", "block"})
+# The artifact actions each verdict may rest on.
+_ARTIFACT_ACTIONS: Mapping[str, frozenset[str]] = {
+    "review": frozenset({"review", "require-reapproval"}),
+    "deny": frozenset({"block", "sandbox-required"}),
+}
 
 
 @dataclass(frozen=True)
@@ -65,8 +69,8 @@ def _verdict(value: object, *, artifact_policy_sent: bool) -> ClaudePermissionVe
         raise NativeHookDecisionError(_INVALID)
     if answer.reason_from_artifact and (
         not artifact_policy_sent
-        or answer.artifact_action not in _ARTIFACT_ACTIONS
-        or answer.verdict == "guard_question"
+        or answer.artifact_action not in _ARTIFACT_ACTIONS.get(answer.verdict, frozenset())
+        or (answer.verdict == "deny" and answer.artifact_action != answer.policy_action)
     ):
         raise NativeHookDecisionError(_INVALID)
     return answer
