@@ -16,8 +16,9 @@ use serde_json::{Map, Value};
 
 use crate::{
     ArtifactBrowserOutcomeInputsV1, ArtifactBrowserOutcomeV1, ArtifactFinalizeInputsV1,
-    ArtifactFinalizeV1, CodexToolOutputFactsV1, HookRouteInputsV1, HookRouteV1,
-    NativeExtensionControlLayerV1, NativePermissionPersistInputsV1, NativePermissionPersistPlanV1,
+    ArtifactFinalizeV1, ArtifactReusePlanV1, ArtifactReuseStepInputsV1, CodexToolOutputFactsV1,
+    HookRouteInputsV1, HookRouteV1, NativeExtensionControlLayerV1, NativePermissionPersistInputsV1,
+    NativePermissionPersistPlanV1,
 };
 
 /// Schema discriminator for the request.
@@ -92,6 +93,11 @@ pub enum HookDecisionQueryV1 {
     /// the hook ends once it does.
     ArtifactBrowserOutcome {
         inputs: Box<ArtifactBrowserOutcomeInputsV1>,
+    },
+    /// The artifact hook's approval-reuse state machine: the plan of effects
+    /// (claim, revalidate) and the settlement the request reaches.
+    ArtifactReuseStep {
+        inputs: Box<ArtifactReuseStepInputsV1>,
     },
     /// The hook pipeline's dispatch route: which handlers answer a prepared
     /// payload, in what order.
@@ -421,6 +427,9 @@ pub enum HookDecisionPayloadV1 {
     ArtifactReviewRoute(Box<ArtifactReviewRouteV1>),
     ArtifactFinalize(Box<ArtifactFinalizeV1>),
     ArtifactBrowserOutcome(Box<ArtifactBrowserOutcomeV1>),
+    ArtifactReuseStep {
+        plan: Box<ArtifactReusePlanV1>,
+    },
     HookRoute(Box<HookRouteV1>),
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.

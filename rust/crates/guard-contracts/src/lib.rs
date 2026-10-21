@@ -160,6 +160,8 @@ mod hook_decision;
 pub use hook_decision::*;
 mod hook_decision_artifact_finalize;
 pub use hook_decision_artifact_finalize::*;
+mod hook_decision_artifact_reuse_step;
+pub use hook_decision_artifact_reuse_step::*;
 mod hook_route;
 pub use hook_route::*;
 mod hook_decision_permission_persist;

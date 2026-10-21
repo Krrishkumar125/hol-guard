@@ -82,7 +82,8 @@
   "src/codex_plugin_scanner/guard/runtime/command_tui_runner_extensions.py",
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_hook_bridge_flow.py",
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_bridge_failure_reason.py",
-  "src/codex_plugin_scanner/guard/adapters/codex_daemon_start_wait.py"
+  "src/codex_plugin_scanner/guard/adapters/codex_daemon_start_wait.py",
+  "src/codex_plugin_scanner/guard/runtime/npm_source_spec.py"
  ],
  "retired_tests": [
   {
@@ -6377,6 +6378,62 @@
    "rationale": "Exercises the retired Python executing layer of the Claude daemon hook bridge, which now only launches the native command. Python no longer decodes the hook body: the native child reads the bytes and forwards them."
   },
   {
+   "old_node": "tests/test_npm_source_spec.py::test_equivalent_github_source_forms_share_canonical_identity",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/npm_source_spec.rs::equivalent_github_source_forms_share_canonical_identity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_npm_source_spec.py::test_git_revision_state_is_classified_conservatively",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/npm_source_spec.rs::git_revision_state_is_classified_conservatively"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_npm_source_spec.py::test_hosted_git_archive_urls_remain_repository_sources",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/npm_source_spec.rs::hosted_git_archive_urls_remain_repository_sources"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_npm_source_spec.py::test_idna_and_nondefault_ports_are_canonicalized_without_collapsing_distinct_hosts",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/npm_source_spec.rs::idna_and_nondefault_ports_do_not_collapse_distinct_hosts"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_npm_source_spec.py::test_custom_git_hosts_support_root_level_repositories",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/npm_source_spec.rs::custom_git_hosts_support_root_level_repositories"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_npm_source_spec.py::test_ambiguous_or_malformed_sources_fail_with_stable_reasons",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/npm_source_spec.rs::ambiguous_or_malformed_sources_fail_with_stable_reasons"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_npm_source_spec.py::test_query_credentials_are_redacted_without_changing_git_identity",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/npm_source_spec.rs::query_credentials_are_redacted_without_changing_git_identity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_npm_source_spec.py::test_deeply_nested_npm_aliases_fail_without_recursion",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/npm_source_spec.rs::deeply_nested_npm_aliases_fail_without_recursion"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
    "old_node": "tests/test_native_package_review.py::test_standard_npm_install_reports_its_version",
    "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
    "replacement_nodes": [
@@ -6801,6 +6858,11 @@
    "old_node": "tests/test_codex_daemon_start_wait.py::test_unparseable_or_empty_markers_do_not_count",
    "new_node": "tests/test_codex_daemon_dead_fastpath.py::test_unparseable_or_empty_markers_do_not_count",
    "reason": "A pure unit of codex_daemon_dead_fastpath.daemon_start_in_progress, moved unchanged into that module's own test file when the start-wait file was retired."
+  },
+  {
+   "old_node": "tests/test_npm_source_spec.py::test_git_approval_fingerprint_uses_canonical_repository_and_exact_commit",
+   "new_node": "tests/test_guard_package_intent.py::test_git_approval_fingerprint_uses_canonical_repository_and_exact_commit",
+   "reason": "Approval-fingerprint equivalence exercises the native package-intent artifact path, not the retired Python source parser, so it moves to the package-intent suite unchanged."
   }
  ],
  "unchanged_regression_suites": [
