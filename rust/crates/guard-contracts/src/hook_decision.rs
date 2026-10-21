@@ -337,6 +337,11 @@ pub struct HookNativeEdgeV1 {
     pub minimum_action: Value,
     #[serde(default)]
     pub decision: Value,
+    /// The edge result's `reason_code`. A network protection review is a match
+    /// against the synced bundle rather than an unproven command, so the floor
+    /// keeps it before execution.
+    #[serde(default)]
+    pub reason_code: Value,
 }
 
 /// What the transport learned after the lookups the composition permitted.

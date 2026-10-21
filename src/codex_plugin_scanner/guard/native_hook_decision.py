@@ -226,7 +226,7 @@ _EFFECT_VALUES: dict[str, frozenset[str]] = {
     "event": frozenset({"preToolUse", "copilotPermissionRequest"}),
 }
 _ACKED_FACT = "acked_recording_only"
-_EDGE_KEYS = ("policy_action", "minimum_action", "decision")
+_EDGE_KEYS = ("policy_action", "minimum_action", "decision", "reason_code")
 
 
 class NativeHookDecisionError(RuntimeError):
