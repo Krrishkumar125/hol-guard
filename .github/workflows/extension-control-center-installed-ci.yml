@@ -12,6 +12,7 @@ on:
       - src/codex_plugin_scanner/guard/runtime/command_extensions.py
       - src/codex_plugin_scanner/guard/runtime/command_permission_catalog.py
       - src/codex_plugin_scanner/guard/runtime/extension_control_*.py
+      - scripts/ci/installed_extension_authority_fixture.py
       - scripts/ci/installed_extension_control_center_server.py
       - scripts/ci/installed_extension_control_probe.py
       - scripts/ci/verify_protection_center_artifacts.py
@@ -30,6 +31,7 @@ on:
       - src/codex_plugin_scanner/guard/runtime/command_extensions.py
       - src/codex_plugin_scanner/guard/runtime/command_permission_catalog.py
       - src/codex_plugin_scanner/guard/runtime/extension_control_*.py
+      - scripts/ci/installed_extension_authority_fixture.py
       - scripts/ci/installed_extension_control_center_server.py
       - scripts/ci/installed_extension_control_probe.py
       - scripts/ci/verify_protection_center_artifacts.py

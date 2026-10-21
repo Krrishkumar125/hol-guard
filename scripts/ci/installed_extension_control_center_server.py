@@ -25,6 +25,7 @@ from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMA
 from codex_plugin_scanner.guard.runtime.extension_control_authority import AuthorityHealth
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.guard.store_base import EncryptedFileSecretStore
+from installed_extension_authority_fixture import describe_authority, read_authority
 
 
 def _installed_origin() -> Path:
@@ -84,7 +85,7 @@ def _prepare_test_authority(store: GuardStore, guard_home: Path, password_file: 
             },
         )
     catalog_digest = BUILT_IN_COMMAND_EXTENSION_REGISTRY.catalog_digest
-    view = store.read_extension_control_authority(catalog_digest=catalog_digest)
+    view = read_authority(store)
     if view.health is AuthorityHealth.UNENROLLED:
         # This is an isolated CI fixture, not an operator enrollment path. A real
         # interactive terminal attestation is intentionally unavailable here, so
@@ -96,7 +97,10 @@ def _prepare_test_authority(store: GuardStore, guard_home: Path, password_file: 
             key=None,
         )
     if view.health is not AuthorityHealth.PROTECTED:
-        raise RuntimeError(f"installed-CI extension authority is not protected: {view.health.value}")
+        raise RuntimeError(
+            f"installed-CI extension authority is not protected: {view.health.value} "
+            f"({describe_authority(store)})"
+        )
 
 
 def main() -> None:

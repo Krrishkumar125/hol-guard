@@ -15,6 +15,7 @@ from codex_plugin_scanner.guard.runtime.extension_control_runtime import Extensi
 from codex_plugin_scanner.guard.runtime.native_command_evaluation import review_command_native
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.guard.store_base import EncryptedFileSecretStore
+from installed_extension_authority_fixture import describe_authority, read_authority
 
 _PROBE_COMMAND = "aws apigateway delete-rest-api --rest-api-id ci-proof"
 _EXPECTED_PERMISSION = "command.api-gateway.permission.delete"
@@ -34,11 +35,12 @@ def main() -> None:
     output = Path(os.environ["HOL_GUARD_INSTALLED_PROBE_FILE"]).resolve()
     store = GuardStore(guard_home, prime_policy_integrity=False)
     store._extension_control_authority_secret_store = EncryptedFileSecretStore(guard_home)  # pyright: ignore[reportPrivateUsage]
-    authority = store.read_extension_control_authority(
-        catalog_digest=BUILT_IN_COMMAND_EXTENSION_REGISTRY.catalog_digest,
-    )
+    authority = read_authority(store)
     if authority.health is not AuthorityHealth.PROTECTED:
-        raise RuntimeError(f"runtime probe authority is not protected: {authority.health.value}")
+        raise RuntimeError(
+            f"runtime probe authority is not protected: {authority.health.value} "
+            f"({describe_authority(store)})"
+        )
 
     permission = BUILT_IN_COMMAND_EXTENSION_REGISTRY.permission(_EXPECTED_PERMISSION)
     if permission is None or _EXPECTED_RULE not in permission.rule_ids:
