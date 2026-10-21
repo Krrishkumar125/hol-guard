@@ -181,7 +181,8 @@ def _native(action: str, *, guard_home: Path | None = None, **fields: object) ->
     from ..native_context import _resolve_digest_home, ensure_resident_prerequisite
     from . import extension_catalog_pages as pages
 
-    encoded = json.dumps(fields, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    # Measure the way the resident transport encodes: default separators, ASCII escapes.
+    encoded = json.dumps(fields, allow_nan=False).encode("utf-8")
     if len(encoded) > _NATIVE_FIELDS_MAX_BYTES:
         raise ExtensionCatalogLimitError("Extension catalog exceeds native wire limits")
     home = _resolve_digest_home(guard_home)

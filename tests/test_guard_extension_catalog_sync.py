@@ -456,3 +456,6 @@ def test_oversized_native_request_is_a_catalog_limit_before_any_resident_call(
     )
     with pytest.raises(ExtensionCatalogLimitError, match="native wire limits"):
         extension_catalog_sync._native("build", guard_home=tmp_path, raw_extensions=["x" * (4 * 1024 * 1024)])
+    # Non-ASCII text grows to six-byte escapes on the transport, so it counts that way too.
+    with pytest.raises(ExtensionCatalogLimitError, match="native wire limits"):
+        extension_catalog_sync._native("build", guard_home=tmp_path, raw_extensions=["\u00e9" * (1024 * 1024)])
