@@ -9,14 +9,14 @@
 //! the result's floor.
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use guard_command::network_url::{
     digest_normalized_network_url, host_matches_domain, normalize_network_url,
 };
-use guard_contracts::{GuardHookEnvelopeV2, PreToolActionTypeV1, PreToolResultV1};
+use guard_contracts::{GuardHookEnvelopeV2, PreToolResultV1};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use serde_json::Value;
@@ -26,7 +26,10 @@ use crate::policy_enforcement::ActionFloor;
 
 pub(crate) const SYNC_STATE_KEY: &str = "network_protection_bundle";
 const CONTRACT_VERSION: &str = "guard-network-protection-bundle.v1";
-const MAX_TARGETS: usize = 32;
+/// Destinations checked per tool call. A call naming more than this is
+/// flagged for review rather than partly checked, so padding a command with
+/// harmless URLs cannot push a bad one out of view.
+const MAX_TARGETS: usize = 256;
 /// Known-bad indicators are delisted upstream; past this, unsynced ones are
 /// no longer trusted. Workspace rules stay in force until replaced.
 const INDICATOR_STALE_AFTER_SECS: u64 = 7 * 24 * 60 * 60;
@@ -101,8 +104,21 @@ fn compile(saved: SavedBundle) -> Option<Compiled> {
             _ => continue,
         };
         match rule.match_kind.as_str() {
-            "domain" => set.domains.push(rule.pattern),
-            "url_prefix" => set.prefixes.push(rule.pattern),
+            "domain" => {
+                let pattern = rule.pattern.trim();
+                let pattern = pattern.strip_prefix("*.").unwrap_or(pattern);
+                if let Some(parsed) = normalize_network_url(pattern) {
+                    set.domains.push(parsed.host);
+                }
+            }
+            // The normal form always puts `/` after the host (and port), so a
+            // prefix stays bound to its host: `trusted.example` never covers
+            // `trusted.example.attacker.net`.
+            "url_prefix" => {
+                if let Some(parsed) = normalize_network_url(&rule.pattern) {
+                    set.prefixes.push(parsed.normalized);
+                }
+            }
             _ => {}
         }
     }
@@ -124,8 +140,8 @@ fn compile(saved: SavedBundle) -> Option<Compiled> {
     })
 }
 
-/// A saved row's write time and size.
-type RowKey = (String, i64);
+/// The Guard home, and its saved row's write time (microseconds) and size.
+type RowKey = (PathBuf, String, i64);
 
 /// The last compiled bundle, keyed by its row so an unchanged row is not read
 /// or parsed again.
@@ -142,7 +158,9 @@ fn load(guard_home: &Path) -> Option<Arc<Compiled>> {
         )
         .and_then(|mut statement| {
             statement
-                .query_row([SYNC_STATE_KEY], |row| Ok((row.get(0)?, row.get(1)?)))
+                .query_row([SYNC_STATE_KEY], |row| {
+                    Ok((guard_home.to_path_buf(), row.get(0)?, row.get(1)?))
+                })
                 .optional()
         })
         .ok()??;
@@ -195,6 +213,16 @@ fn host_indicator<'a>(compiled: &'a Compiled, host: &str) -> Option<&'a str> {
 
 fn threat_label(threat_type: &str) -> String {
     threat_type.replace('_', " ")
+}
+
+fn too_many_targets() -> NetworkFinding {
+    NetworkFinding {
+        floor: "review",
+        reason_code: "network_too_many_destinations",
+        reason: format!(
+            "This call names more than {MAX_TARGETS} network destinations, too many to check against your workspace rules. Review before letting this run."
+        ),
+    }
 }
 
 fn evaluate(compiled: &Compiled, targets: &[String], now: u64) -> Option<NetworkFinding> {
@@ -327,18 +355,22 @@ pub(crate) fn apply(
     payload: &Value,
     result: PreToolResultV1,
 ) -> PreToolResultV1 {
-    if result.minimum_action == "block" || result.action.action_type == PreToolActionTypeV1::Prompt
-    {
+    // A submitted prompt is the person's own text, not a destination; every
+    // tool call, message and subagent tools included, is checked.
+    if result.minimum_action == "block" || result.action.event == "UserPromptSubmit" {
         return result;
     }
-    let targets = guard_command::pretool::generic::network_targets(payload, MAX_TARGETS);
+    let targets = guard_command::pretool::generic::network_targets(payload, MAX_TARGETS + 1);
     if targets.is_empty() {
         return result;
     }
     let Some(compiled) = load(guard_home) else {
         return result;
     };
-    match evaluate(&compiled, &targets, now_epoch()) {
+    let checked = &targets[..targets.len().min(MAX_TARGETS)];
+    let finding = evaluate(&compiled, checked, now_epoch())
+        .or_else(|| (targets.len() > MAX_TARGETS).then(too_many_targets));
+    match finding {
         Some(finding) => raise(result, finding),
         None => result,
     }

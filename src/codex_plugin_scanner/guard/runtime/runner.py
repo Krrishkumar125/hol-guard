@@ -1452,6 +1452,11 @@ def sync_network_protection_bundle(
     saved = store.get_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY)
     cached_bundle_version = None
     saved_bundle = saved.get("bundle") if isinstance(saved, dict) else None
+    if isinstance(saved_bundle, dict) and saved_bundle.get("workspaceId") != workspace_id:
+        # Another workspace's rules must not stay in force, or anchor its
+        # rollback check, once this device is connected elsewhere.
+        store.delete_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY)
+        saved_bundle = None
     if isinstance(saved_bundle, dict):
         existing_version = saved_bundle.get("bundleVersion")
         if isinstance(existing_version, str) and existing_version:
@@ -1483,12 +1488,19 @@ def sync_network_protection_bundle_best_effort(
     *,
     auth_context: dict[str, object] | None = None,
 ) -> dict[str, object] | None:
-    """Sync the network protection bundle, keeping the saved one on failure."""
+    """Sync the network protection bundle, keeping the saved one on failure.
+
+    Returns ``None`` when no workspace is connected, and a ``failed`` status
+    with the error when the fetch or verification fails.
+    """
 
     try:
         return sync_network_protection_bundle(store, auth_context=auth_context)
-    except (GuardSyncNotConfiguredError, RuntimeError, OSError, ValueError):
+    except GuardSyncNotConfiguredError:
         return None
+    except (RuntimeError, OSError, ValueError) as error:
+        _LOGGER.warning("Guard network protection bundle sync failed: %s", error)
+        return {"status": "failed", "error": str(error)}
 
 
 def sync_guard_events(

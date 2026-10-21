@@ -4154,7 +4154,6 @@ class GuardDaemonServer:
                     {**summary, "status": "synced"},
                     refreshed_at,
                 )
-                sync_network_protection_bundle_best_effort(self._server.store)
                 wait_seconds = interval_seconds
             except GuardSyncAuthorizationExpiredError as error:
                 self._server.store.set_sync_payload(
@@ -4185,6 +4184,9 @@ class GuardDaemonServer:
                     refreshed_at,
                 )
                 wait_seconds = backoff_seconds
+            # Separate endpoint: refresh it whether or not the supply-chain
+            # bundle synced.
+            sync_network_protection_bundle_best_effort(self._server.store)
             if self._shutdown_started.wait(wait_seconds):
                 return
 
