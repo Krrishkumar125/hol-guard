@@ -129,6 +129,9 @@ pub(super) fn evaluate(input: &Value) -> Result<Value, String> {
     if input["kind"] == "installed-asset" {
         return installed_asset::fetch(input);
     }
+    if input["kind"] == "object" {
+        return crate::delivery_object::evaluate(input);
+    }
     if input["kind"] == "preparation" {
         return crate::pack_preparation::evaluate(input);
     }

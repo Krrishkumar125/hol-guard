@@ -24,6 +24,7 @@ pytest_plugins = [
     "tests.approval_reuse_fixtures",
     "tests.containment_resident",
     "tests.native_runtime_fixtures",
+    "tests.native_object_runtime",
     "tests.native_resident_teardown",
     "tests.optional_command_catalog_fixtures",
 ]

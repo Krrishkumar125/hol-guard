@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 
 from .metadata_objects import lookup_entry
+from .object_native import sessioned
 from .pack_store import digest
 from .preparation_authority import publication
 
@@ -27,6 +28,7 @@ def revocation_key(identity, kind, manifest=None):
     ).hexdigest()
 
 
+@sessioned
 def check(verified, store, identity, manifest):
     if not digest(manifest):
         raise ValueError("revocation lookup requires an authenticated pack identity")

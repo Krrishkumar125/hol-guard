@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .containers import location
+from .object_native import sessioned
 from .pack_store import MAX_BLOB_BYTES, MAX_OBJECT_BYTES, PackReader, digest, publish_object
 
 
@@ -167,6 +168,7 @@ def read_index_page(reader: PackReader, reference: dict[str, Any], count: int, p
     return value
 
 
+@sessioned
 def lookup_entry(reader, reference, count, identity, prefix=""):
     """Return one entry or a complete absence proof without fetching siblings."""
     if not isinstance(identity, str) or not identity.isascii() or not 0 < len(identity) <= 256:

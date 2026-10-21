@@ -6,6 +6,7 @@ import hashlib
 
 from .containers import location
 from .metadata_objects import read_index_page, validate_reference
+from .object_native import sessioned
 from .pack_archives import MAX_ARCHIVE_BYTES, MAX_PARTS
 from .pack_store import MAX_OBJECT_BYTES, digest
 
@@ -109,6 +110,7 @@ def read_transport_page(store, transport, expected, count, prefix):
     return wrapper, page
 
 
+@sessioned
 def lookup(store, native_root, transport, identity, *, expected_reference=None):
     """Caller supplies one authenticated root; this checks its byte proofs only."""
     if not isinstance(identity, str) or not identity.isascii() or not 0 < len(identity) <= 256:

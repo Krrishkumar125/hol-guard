@@ -11,7 +11,6 @@ import pytest
 
 from codex_plugin_scanner.guard.catalog_delivery import authority, preparation
 from codex_plugin_scanner.guard.catalog_delivery.containers import member
-from codex_plugin_scanner.guard.catalog_delivery.located_store import LocatedStore
 from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import ObjectStore, encoded, entries
 from codex_plugin_scanner.guard.catalog_delivery.pack_archives import pack_objects, parts
 from codex_plugin_scanner.guard.catalog_delivery.pack_store import PackReader
@@ -48,6 +47,7 @@ def delivery(tmp_path, monkeypatch):
     monkeypatch.setattr(preparation, "lookup", namespace["lookup"], raising=False)
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
     from extension_delivery_assets import AssetPlan
+    from extension_delivery_located_store import LocatedStore
 
     policy = ObjectStore(tmp_path / "policy")
     plan = AssetPlan(tmp_path / "assets", SOURCE)

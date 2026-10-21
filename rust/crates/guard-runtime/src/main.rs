@@ -245,6 +245,7 @@ mod data_flow_analyze_op;
 mod decision_authority_op;
 #[cfg(test)]
 mod decision_authority_vectors_tests;
+mod delivery_object;
 mod developer_inspection_authority_op;
 mod developer_inspection_host;
 #[path = "adapters/detection/devin_detect.rs"]
