@@ -50,6 +50,24 @@ impl Identity {
     }
 }
 
+/// The floor an install starts from: the verified installed release and
+/// nothing else. Enrollment and a startup that finds no record at all both
+/// derive it here, so the two cannot drift apart.
+fn enrolled(candidate: Identity, key: &[u8]) -> Result<Value, String> {
+    candidate.validate()?;
+    if candidate.profile != "installed" {
+        return Err("pack_lifecycle_enrollment_requires_release".into());
+    }
+    Ok(json!({"record": encode(&Floor {
+        schema: "guard.command-pack-floor.v1".into(),
+        source: candidate.source.clone(),
+        authority: candidate.authority,
+        revocation: candidate.revocation,
+        installed: Some(candidate),
+        remote: None,
+    }, key)?, "stamp": "guard.command-pack-enrolled.v1"}))
+}
+
 fn parse<T: serde::de::DeserializeOwned>(value: &Value) -> Result<T, String> {
     serde_json::from_value(value.clone()).map_err(|_| "pack_lifecycle_invalid".into())
 }
@@ -190,16 +208,7 @@ pub(super) fn evaluate(input: &Value) -> Result<Value, String> {
     if kind == "enroll" {
         // Only the installed capability adapter exposes this under an exclusive
         // lease. Ordinary preparation cannot enroll/recreate protected state.
-        let candidate = release::identity(input)?;
-        candidate.validate()?;
-        if candidate.profile != "installed" {
-            return Err("pack_lifecycle_enrollment_requires_release".into());
-        }
-        return Ok(json!({"record": encode(&Floor {
-            schema: "guard.command-pack-floor.v1".into(), source: candidate.source.clone(),
-            authority: candidate.authority, revocation: candidate.revocation,
-            installed: Some(candidate), remote: None,
-        }, &key)?,"stamp":"guard.command-pack-enrolled.v1"}));
+        return enrolled(release::identity(input)?, &key);
     }
     let encoded = input["floor"]
         .as_str()
