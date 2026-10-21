@@ -90,6 +90,13 @@ fn python_float_repr_matches_the_interpreter() {
 }
 
 #[test]
+fn python_float_repr_spells_non_finite_values_like_repr() {
+    assert_eq!(python_float_repr(f64::INFINITY), "inf");
+    assert_eq!(python_float_repr(f64::NEG_INFINITY), "-inf");
+    assert_eq!(python_float_repr(f64::NAN), "nan");
+}
+
+#[test]
 fn compact_json_matches_python_dumps() {
     for case in section(&corpus(), "compact_json") {
         let value = case.get("value").cloned().unwrap_or(Value::Null);
@@ -190,7 +197,10 @@ fn snapshot_content_hash_matches_python() {
                 title: text(finding, "title"),
                 artifact_id: text(finding, "artifact_id"),
                 check_id: text(finding, "check_id"),
-                summary: optional_text(finding, "summary"),
+                summary: finding
+                    .get("summary")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
                 evidence: object(finding, "evidence"),
                 extra: Map::new(),
             })

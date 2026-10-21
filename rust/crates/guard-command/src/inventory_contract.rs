@@ -54,7 +54,8 @@ pub struct GuardAgentInventoryFinding {
     pub title: String,
     pub artifact_id: String,
     pub check_id: String,
-    pub summary: String,
+    /// `None` is the dataclass default; an empty description stays `""`.
+    pub summary: Option<String>,
     pub evidence: Map<String, Value>,
     /// Remaining dataclass fields.
     pub extra: Map<String, Value>,
@@ -875,7 +876,7 @@ pub fn _cisco_inventory_findings(
                 title,
                 artifact_id,
                 check_id: format!("aibom.{source}.{rule_id}"),
-                summary: run_message.clone(),
+                summary: Some(run_message.clone()),
                 evidence,
                 extra: Map::new(),
             });
@@ -954,9 +955,9 @@ pub fn _symlink_findings_from_items(
             title: format!("Symlink source {}", validation_state.replace('_', " ")),
             artifact_id: item.item_id.clone(),
             check_id: format!("aibom.symlink.{validation_state}"),
-            summary: format!(
+            summary: Some(format!(
                 "Inventory item references a symlink source in state {validation_state}."
-            ),
+            )),
             evidence,
             extra: Map::new(),
         });

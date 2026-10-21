@@ -378,7 +378,7 @@
   },
   {
    "agent_type": "claude-code",
-   "digest": "610384c74b229fcc79aca09ff94c1695a53e49b60cc934b7e818f2137a793406",
+   "digest": "c388d54cc98f54d2f6bdaf88988ab2afa80e9471f482b002534038a1b590b33d",
    "findings": [
     {
      "artifact_id": "a1",
@@ -400,6 +400,17 @@
      "severity": "low",
      "source": "metadata",
      "summary": "has summary",
+     "title": "Title"
+    },
+    {
+     "artifact_id": "a1",
+     "check_id": "c1",
+     "confidence": "high",
+     "evidence": {},
+     "finding_id": "f3",
+     "severity": "low",
+     "source": "metadata",
+     "summary": "",
      "title": "Title"
     }
    ],

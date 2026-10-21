@@ -96,6 +96,12 @@ fn collapse_python_whitespace(value: &str) -> String {
 /// `> 16` and a trailing `.0` otherwise. Rust's `{:e}` gives the same digits,
 /// so the only work here is placing the point the way CPython does.
 pub fn python_float_repr(value: f64) -> String {
+    if value.is_nan() {
+        return "nan".to_string();
+    }
+    if value.is_infinite() {
+        return if value < 0.0 { "-inf" } else { "inf" }.to_string();
+    }
     if value == 0.0 {
         return if value.is_sign_negative() {
             "-0.0".to_string()
@@ -266,7 +272,7 @@ fn extra_or<'a>(extra: &'a Map<String, Value>, key: &str, fallback: &'a Value) -
     extra.get(key).unwrap_or(fallback)
 }
 
-/// The mirror types `summary`/`detail` as `String`, and the rest of this
+/// The source mirror types `detail` as `String`, and the rest of this
 /// contract already reads an empty one as Python's `None` (see
 /// `_inventory_source_json`). Keep that reading here so the digest matches a
 /// snapshot built from defaults.
@@ -328,7 +334,7 @@ pub fn inventory_snapshot_content_hash(
                 "finding_id": finding.finding_id,
                 "severity": finding.severity,
                 "source": finding.source,
-                "summary": optional_text(&finding.summary),
+                "summary": finding.summary,
                 "title": finding.title,
             })
         })

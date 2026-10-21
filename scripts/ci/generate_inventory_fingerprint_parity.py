@@ -184,6 +184,8 @@ SNAPSHOTS: tuple[dict[str, object], ...] = (
         "findings": (
             _finding(finding_id="f2", source="metadata"),
             _finding(finding_id="f1", source="metadata", summary="has summary"),
+            # A scanner finding with no description carries "", not None.
+            _finding(finding_id="f3", source="metadata", summary=""),
         ),
         "sources": (_source(source_id="s2"), _source(source_id="s1", detail="detail text")),
     },
