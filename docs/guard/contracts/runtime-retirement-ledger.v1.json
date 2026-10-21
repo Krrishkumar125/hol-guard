@@ -100,7 +100,8 @@
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_paths.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
-  "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py"
+  "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
+  "src/codex_plugin_scanner/guard/adapters/_modules/codex/codex_hook_response.py"
  ],
  "retired_tests": [
   {
@@ -6696,6 +6697,66 @@
    ],
    "status": "native_behavior_ported_requires_ci",
    "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
+  },
+  {
+   "old_node": "tests/test_codex_pretool_allow_schema.py::test_codex_pre_tool_response_omits_unsupported_allow",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "b178d3bf6c6b8a33f55b23197835c7ffb8c517938663a3c8821acca411e1da24",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
+  },
+  {
+   "old_node": "tests/test_codex_pretool_allow_schema.py::test_codex_pre_tool_warn_preserves_reason_as_system_message",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "b178d3bf6c6b8a33f55b23197835c7ffb8c517938663a3c8821acca411e1da24",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
+  },
+  {
+   "old_node": "tests/test_codex_pretool_allow_schema.py::test_codex_pre_tool_response_drops_invalid_permission_fields",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "b178d3bf6c6b8a33f55b23197835c7ffb8c517938663a3c8821acca411e1da24",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
+  },
+  {
+   "old_node": "tests/test_codex_signed_approval_handoff.py::test_codex_bridge_stdout_excludes_native_approval_aliases",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "4fae1440004a510ba16137fbb9c33e7fd717c1614b8327bd113249d308a89286",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::approval_aliases_never_reach_the_hook_response"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The approval aliases are stripped by the native shaper; the new Rust test asserts the same review response leaks none of them."
+  },
+  {
+   "old_node": "tests/test_codex_contained_tests.py::test_codex_response_drops_allow_without_updated_input",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "fb40c8a0ab431ab2ef33ad19488e2e139fbad3daec0970fd7f12a873978a3a2b",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
+  },
+  {
+   "old_node": "tests/test_codex_contained_tests.py::test_policy_deny_overrides_an_updated_input_allow",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "fb40c8a0ab431ab2ef33ad19488e2e139fbad3daec0970fd7f12a873978a3a2b",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
   }
  ],
  "preserved_tests": [

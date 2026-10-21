@@ -1460,6 +1460,17 @@
     "rust/crates/guard-command/src/shell_command_wrappers.rs",
     "rust/crates/guard-command/src/shell_command_wrappers_paths.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/adapters/_modules/codex/codex_hook_response.py",
+   "module": "codex_plugin_scanner.guard.adapters._modules.codex.codex_hook_response",
+   "source_sha256": "54d07ed0e88ff3329f76c0e2e1ba3f0e6dca89394dcf3db3d38786cec82176b6",
+   "forbidden_symbols": [
+    "codex_hook_response"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/codex_hook_response.rs"
+   ]
   }
  ],
  "retired_test_paths": [
@@ -1492,7 +1503,8 @@
   "tests/test_npm_source_spec.py",
   "tests/test_guard_github_pr_body_file.py",
   "tests/test_native_command_options.py",
-  "tests/test_guard_node_semver.py"
+  "tests/test_guard_node_semver.py",
+  "tests/test_codex_pretool_allow_schema.py"
  ],
  "retired_bodies": [
   {
