@@ -201,6 +201,7 @@ def _resident_request(
             "daemon_route",
             "daemon_handler",
             "hook_authority_state",
+            "extension_control_authority",
             "hook_render",
             "protect_request",
             "hook_artifact_compose",

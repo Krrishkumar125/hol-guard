@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import sqlite3
 import sys
-from collections.abc import Generator, Mapping
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -18,19 +18,17 @@ from typing import cast
 
 from .edge_events import build_policy_event
 from .extension_control_events import extension_control_change_payload
+from .native_extension_control_authority import anchor_from_wire
 from .runtime.extension_control_authority import (
     AuthorityAnchor,
     AuthorityHealth,
     ExtensionControlAuthorityError,
     ExtensionControlAuthorityView,
-    anchor_from_json,
     anchor_to_json,
     layers_from_json,
 )
 from .runtime.extension_control_contract import (
     ControlLayerKind,
-    ControlState,
-    ExtensionControl,
     ExtensionControlLayer,
 )
 from .runtime.extension_control_resolver import compose_control_layers
@@ -47,43 +45,6 @@ _ANCHOR_REF_SUFFIX = ":anchor"
 _MAX_TRANSITION_ID_LENGTH = 256
 _MAX_CONTROLS_PER_LAYER = 512
 _MAX_SERIALIZED_LAYERS_BYTES = 256 * 1024
-
-
-def preserve_migrated_extension_control(
-    control: ExtensionControl,
-    *,
-    previous_manifest: Mapping[str, str],
-    current_manifest: Mapping[str, str],
-) -> bool:
-    """Keep disabled controls and unchanged/unknown enabled allows across catalog upgrades."""
-
-    key_name = f"{control.target.kind.value}:{control.target.target_id}"
-    if key_name not in current_manifest:
-        return False
-    previous_fingerprint = previous_manifest.get(key_name)
-    return control.state is ControlState.DISABLED or previous_fingerprint in {None, current_manifest[key_name]}
-
-
-def preserve_managed_extension_control(
-    control: ExtensionControl,
-    *,
-    previous_manifest: Mapping[str, str],
-    current_manifest: Mapping[str, str],
-) -> bool:
-    """Keep managed state only with an authenticated prior contract match.
-
-    Unlike local-admin migration, a missing previous manifest is intentionally
-    treated as no match so an enabled cloud allow fails closed until refreshed.
-    """
-
-    key_name = f"{control.target.kind.value}:{control.target.target_id}"
-    current_fingerprint = current_manifest.get(key_name)
-    if current_fingerprint is None:
-        # Keep unknown targets visible so the resolver emits its fail-closed error.
-        return True
-    if control.state is ControlState.DISABLED:
-        return True
-    return previous_manifest.get(key_name) == current_fingerprint
 
 
 class _ExtensionControlAuthoritySupportMixin:
@@ -151,9 +112,17 @@ class _ExtensionControlAuthoritySupportMixin:
             raise ExtensionControlAuthorityError("invalid extension control authentication key")
         return key
 
+    def _read_anchor_json(self) -> str | None:
+        """The anchor exactly as the credential store holds it, unverified."""
+
+        return self._secret_store().get_secret(self._anchor_ref())
+
     def _read_anchor(self, *, key: bytes) -> AuthorityAnchor | None:
-        value = self._secret_store().get_secret(self._anchor_ref())
-        return None if value is None else anchor_from_json(value, key=key)
+        value = self._read_anchor_json()
+        if value is None:
+            return None
+        reply = self._extension_control_authority_op("anchor", key=key, anchor_json=value)
+        return anchor_from_wire(reply.get("anchor"))
 
     def _write_and_verify_anchor(self, anchor: AuthorityAnchor, *, key: bytes) -> None:
         encoded = anchor_to_json(anchor, key=key)
