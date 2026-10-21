@@ -21688,21 +21688,12 @@ const SHELL_NAV_ITEMS = [
     icon: HiMiniShieldCheck
   },
   {
-    href: "/evidence",
-    label: "Evidence",
-    shortLabel: "Evidence",
-    description: "Receipts, commands, and security insights",
-    view: "evidence",
-    group: "primary",
-    icon: HiMiniDocumentText
-  },
-  {
     href: "/extensions",
     label: "Extensions",
     shortLabel: "Extensions",
     description: "Tools and capabilities protected on this device",
     view: "extensions",
-    group: "manage",
+    group: "primary",
     icon: HiMiniPuzzlePiece
   },
   {
@@ -21733,6 +21724,15 @@ const SHELL_NAV_ITEMS = [
     icon: HiMiniAdjustmentsHorizontal
   },
   {
+    href: "/evidence",
+    label: "Evidence",
+    shortLabel: "Evidence",
+    description: "Receipts, commands, and security insights",
+    view: "evidence",
+    group: "manage",
+    icon: HiMiniDocumentText
+  },
+  {
     href: "/about",
     label: "About",
     shortLabel: "About",
@@ -21742,7 +21742,7 @@ const SHELL_NAV_ITEMS = [
     icon: HiMiniInformationCircle
   }
 ];
-const MOBILE_PRIMARY_VIEWS = /* @__PURE__ */ new Set(["home", "inbox", "fleet", "evidence"]);
+const MOBILE_PRIMARY_VIEWS = /* @__PURE__ */ new Set(["home", "inbox", "fleet", "extensions"]);
 const NAVIGATION_GROUPS = [
   { id: "primary", label: "Guard" },
   { id: "manage", label: "Manage" },
