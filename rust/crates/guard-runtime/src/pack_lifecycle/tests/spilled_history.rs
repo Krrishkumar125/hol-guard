@@ -90,7 +90,10 @@ fn a_spilled_chain_still_has_to_authenticate_and_link_every_record() {
     assert_eq!(reject(&reordered), "pack_lifecycle_legacy_anchor_mismatch");
     let mut forged = history.clone();
     forged[1]["mac"] = json!("0".repeat(64));
-    assert_eq!(reject(&forged), "pack_lifecycle_legacy_invalid");
+    assert_eq!(
+        reject(&forged),
+        "pack_lifecycle_legacy_authentication_failed"
+    );
     // A truncated chain never reaches the pack-bearing commit.
     assert_eq!(
         reject(&history[..history.len() - 1]),
