@@ -313,11 +313,26 @@ fn kubernetes_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
     matches!(subcommand, Some("get" | "describe"))
 }
 
+/// `-o` keywords whose value names a program to run or a library to load
+/// locally, or reroutes the connection through one.
+const SSH_PROGRAM_KEYWORDS: &[&str] = &[
+    "proxycommand",
+    "proxyjump",
+    "proxyusefdpass",
+    "localcommand",
+    "permitlocalcommand",
+    "knownhostscommand",
+    "pkcs11provider",
+    "securitykeyprovider",
+    "remotecommand",
+];
+
 /// Whether an ssh-family segment (ssh, scp, sftp) stays inside what its
 /// text proves. A config file (`-F`), a control or jump program (`-S`,
-/// `-J`), an sftp batch file (`-b`), and `-o` values that name a proxy or a
-/// local command all hand execution to something Guard never read, in any
-/// spelling: separate, attached, or bundled.
+/// `-J`), an sftp batch file (`-b`), and `-o` values that name a proxy, a
+/// local command, or a provider library all hand execution to something
+/// Guard never read, in any spelling: separate, attached, or bundled
+/// (`-o` may sit at the end of a bundle, as in `-vo`).
 fn ssh_family_segment_settles_uncertainty(segment: &CommandSegmentV1, sftp: bool) -> bool {
     if !inert_environment(segment) {
         return false;
@@ -327,12 +342,31 @@ fn ssh_family_segment_settles_uncertainty(segment: &CommandSegmentV1, sftp: bool
         if argument == "--" {
             break;
         }
-        if argument.starts_with("-o") && !argument.starts_with("--") {
-            let Some(value) = option_value(arguments, index, argument, "-o") else {
+        let letters = bundle_letters(argument);
+        if let Some(position) = letters.find('o') {
+            // Flags bundled before the `o` are still options of this
+            // command; a program-naming one among them fails as before.
+            if letters[..position]
+                .chars()
+                .any(|letter| matches!(letter, 'S' | 'F' | 'J') || (sftp && letter == 'b'))
+            {
+                return false;
+            }
+            let attached = &letters[position + 1..];
+            let value = if attached.is_empty() {
+                arguments.get(index + 1).map(String::as_str)
+            } else {
+                Some(attached.strip_prefix('=').unwrap_or(attached))
+            };
+            let Some(value) = value else {
                 return false;
             };
-            let lowered = value.to_ascii_lowercase();
-            if lowered.contains("proxy") || lowered.contains("localcommand") {
+            let lowered = value.trim().to_ascii_lowercase();
+            let keyword = lowered.split('=').next().unwrap_or("").trim();
+            if SSH_PROGRAM_KEYWORDS.contains(&keyword)
+                || keyword.starts_with("match")
+                || lowered.contains("proxy")
+            {
                 return false;
             }
             continue;
@@ -340,7 +374,7 @@ fn ssh_family_segment_settles_uncertainty(segment: &CommandSegmentV1, sftp: bool
         if matches!(flag_name(argument), "-S" | "-F" | "-J") {
             return false;
         }
-        if bundle_letters(argument)
+        if letters
             .chars()
             .any(|letter| matches!(letter, 'S' | 'F' | 'J') || (sftp && letter == 'b'))
         {
@@ -673,6 +707,12 @@ mod tests {
         // ssh-family programs and keyword options.
         assert!(!settles("ssh", &["-o", "ProxyCommand=sh -c x", "host"]));
         assert!(!settles("ssh", &["-oProxyJump=bastion", "host"]));
+        assert!(!settles("ssh", &["-vo", "ProxyCommand=sh -c x", "host"]));
+        assert!(!settles("ssh", &["-voKnownHostsCommand=cat %f", "host"]));
+        assert!(!settles(
+            "ssh",
+            &["-o", "PKCS11Provider=/tmp/lib.so", "host"]
+        ));
         assert!(!settles("scp", &["-Sprog", "f", "host:/tmp/"]));
         assert!(!settles(
             "scp",

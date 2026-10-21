@@ -55,15 +55,16 @@ def compute_extension_allow_hint(
         "require-reapproval",
     ):
         return None
-    if isinstance(native_evidence, dict) and native_evidence.get("minimum_action") == "block":
-        return None
-    if isinstance(native_evidence, dict):
+    if isinstance(native_evidence, dict) and (
+        native_evidence.get("minimum_action") == "block"
         # A fixed PreTool floor (sensitive access, Guard self-protection,
         # ...) reviews whatever the extensions say, so no extension Allow
-        # can settle it and no hint may promise otherwise.
-        reason_code = native_evidence.get("reason_code")
-        if reason_code is not None and reason_code != "native_command_review_required":
-            return None
+        # can settle it and no hint may promise otherwise. Real native
+        # results always carry the reason; its absence is not the
+        # extension review either.
+        or native_evidence.get("reason_code") != "native_command_review_required"
+    ):
+        return None
     already_enabled = set(evaluation.control_resolution.explicitly_enabled_permission_ids)
     owners: dict[str, tuple[str, str]] = {}
     relied_permission_ids: list[str] = []
