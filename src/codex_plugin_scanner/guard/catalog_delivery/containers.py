@@ -114,15 +114,3 @@ def member(data, asset, name, length):
         if hashlib.sha256(value).hexdigest() != digest:
             raise ValueError("delivery container member integrity invalid")
         return value
-
-
-def verify_inventory(data, asset, expected):
-    archive, infos = inspect(data, asset)
-    with archive:
-        if {info.filename for info in infos} != set(expected):
-            raise ValueError("new delivery container includes unbound or missing members")
-        for info in infos:
-            spec = expected[info.filename]
-            value = archive.read(info)
-            if len(value) != spec["length"] or hashlib.sha256(value).hexdigest() != spec["sha256"]:
-                raise ValueError("new delivery container member differs from authenticated reference")

@@ -9,10 +9,10 @@ import pytest
 
 from codex_plugin_scanner.guard.catalog_delivery import activation_store, preparation_authority, transport
 from codex_plugin_scanner.guard.catalog_delivery.located_store import LocatedStore
-from codex_plugin_scanner.guard.catalog_delivery.policy_lookup import lookup
 from codex_plugin_scanner.guard.daemon import extension_control_targets as targets
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler
 from codex_plugin_scanner.guard.runtime.generated_command_catalog import GeneratedCommandCatalog
+from tests.delivery_scripts import script
 from tests.test_native_pack_preparation import (
     BINARY,
     remote,
@@ -32,6 +32,8 @@ from tests.test_native_pack_preparation import (
 from tests.test_native_pack_preparation import (
     test_prepared_dataclass_through_real_daemon_control_commit as existing_enable,
 )
+
+lookup = script("extension_delivery_policy_lookup").lookup
 
 
 def layers(*rows):
