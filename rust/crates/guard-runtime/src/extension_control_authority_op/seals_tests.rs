@@ -165,6 +165,17 @@ fn a_catalog_migration_seals_the_rebinding_on_the_source_head() {
         refusal(&run(&request(&catalog('c')))),
         "extension control catalog migration source changed"
     );
+    // The new revision must follow the head it chains to.
+    let mut stale = migration(&catalog('b'));
+    stale.previous_revision = 2;
+    let stale = ExtensionControlAuthorityRequestV1 {
+        catalog_migration: Some(stale),
+        ..writer(&home, "migrate_plan")
+    };
+    assert_eq!(
+        refusal(&run(&stale)),
+        "extension control catalog migration source changed"
+    );
 }
 
 /// Commits revisions 1 and 2, exports the head, and leaves the database

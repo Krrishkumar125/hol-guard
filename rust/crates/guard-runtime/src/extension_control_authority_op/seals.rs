@@ -16,9 +16,9 @@ use super::layers::{
 };
 use super::plans::{plan, sealed};
 use super::records::{
-    authenticated_record, canonical, exact_int, field, private_hash, py_eq, query_row, row_text,
-    tampered, verify_record, Anchor, Phase, Res, ANCHOR_PURPOSE, CATALOG_MANIFEST_PURPOSE,
-    SNAPSHOT_PURPOSE, TRANSITION_PURPOSE,
+    authenticated_record, canonical, exact_int, field, private_hash, py_eq, query_row, row_int,
+    row_text, tampered, verify_record, Anchor, Phase, Res, ANCHOR_PURPOSE,
+    CATALOG_MANIFEST_PURPOSE, SNAPSHOT_PURPOSE, TRANSITION_PURPOSE,
 };
 use super::Ctx;
 
@@ -235,7 +235,10 @@ impl Ctx<'_> {
         validate_serialized_layers(&layers_json)?;
         let source = self.snapshot_row()?;
         let previous_digest = match &source {
-            Some(row) if row_text(row, "catalog_digest")? == migration.previous_catalog_digest => {
+            Some(row)
+                if row_text(row, "catalog_digest")? == migration.previous_catalog_digest
+                    && row_int(row, "revision")? == migration.previous_revision =>
+            {
                 row_text(row, "snapshot_digest")?
             }
             _ => {

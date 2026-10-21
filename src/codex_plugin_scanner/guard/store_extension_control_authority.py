@@ -17,7 +17,6 @@ from .runtime.extension_control_authority import (
     AuthorityAnchor,
     AuthorityHealth,
     AuthorityPhase,
-    ExtensionControlAuthorityError,
     ExtensionControlAuthorityView,
 )
 from .store_base import SecretStore
@@ -175,9 +174,11 @@ class StoreExtensionControlAuthorityMixin(
             return None
         try:
             restored = self._restore_last_good_authority(key=key)
-        except (sqlite3.Error, ExtensionControlAuthorityError):
-            # Leftover rows can conflict with the restore; fall back to the
-            # explicit reset, which archives them.
+        except (sqlite3.Error, RuntimeError):
+            # Leftover rows can conflict with the restore, and the resident can
+            # refuse or fail to read them; fall back to the explicit reset,
+            # which archives them. A resident that does not answer is not a
+            # verdict, so that outage propagates instead of resetting.
             return None
         if not restored:
             return None
