@@ -40,8 +40,8 @@ def archive(tmp_path):
         "rust/Cargo.toml": "[workspace]\n",
         "rust/Cargo.lock": "version = 4\n",
         "rust/build_support/command_identity.rs": "// implementation identity\n",
-        "rust/build_support/command_source_inputs.v1.json": {
-            "schema": "guard.command-source-inputs.v1",
+        "rust/build_support/command_source_inputs.v2.json": {
+            "schema": "guard.command-source-inputs.v2",
             "identity_domain": "hol-guard.native-source-implementation.v2",
             "files": ["build_support/command_identity.rs"],
             "crates": ["example"],

@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT / "rust"
-MANIFEST_PATH = WORKSPACE / "build_support/command_source_inputs.v1.json"
+MANIFEST_PATH = WORKSPACE / "build_support/command_source_inputs.v2.json"
 # The fingerprint exists to identify the command compiler implementation: the
 # target facade plus the excluded host package that compiles catalog inputs.
 COMPILER_ROOTS = ("guard-command", "guard-command-build")
+# The scoped host lib compiles only what these production roots reach. The
+# manifest's guard-command file list must equal this measured closure so an
+# unrelated facade edit can no longer invalidate the catalog identity.
+HOST_COMPILER_SEEDS = ("native_command_program", "source_cli", "command_parse_surface")
+GUARD_COMMAND_SRC = WORKSPACE / "crates/guard-command/src"
 
 
 def _manifest() -> dict:
@@ -49,7 +55,7 @@ def _production_closure() -> set[str]:
 def test_manifest_schema_and_identity_domain() -> None:
     """The manifest keeps the reviewed schema and its versioned identity domain."""
     manifest = _manifest()
-    assert manifest["schema"] == "guard.command-source-inputs.v1"
+    assert manifest["schema"] == "guard.command-source-inputs.v2"
     assert manifest["identity_domain"] == "hol-guard.native-source-implementation.v2"
 
 
@@ -76,7 +82,8 @@ def test_build_support_files_are_all_classified() -> None:
 
 def test_manifest_crates_match_the_production_closure() -> None:
     """A newly reachable or newly unreachable crate fails until classified."""
-    declared = set(_manifest()["crates"])
+    manifest = _manifest()
+    declared = set(manifest["crates"]) | set(manifest.get("crate_files", {}))
     assert declared == _production_closure()
     for crate in declared:
         assert (WORKSPACE / "crates" / crate / "Cargo.toml").is_file(), crate
@@ -84,7 +91,8 @@ def test_manifest_crates_match_the_production_closure() -> None:
 
 def test_runtime_only_crates_stay_outside_the_fingerprint() -> None:
     """Runtime domains must not re-enter the broad sweep this manifest replaces."""
-    declared = set(_manifest()["crates"])
+    manifest = _manifest()
+    declared = set(manifest["crates"]) | set(manifest.get("crate_files", {}))
     excluded = {
         "guard-runtime",
         "guard-contained-process",
@@ -98,6 +106,168 @@ def test_runtime_only_crates_stay_outside_the_fingerprint() -> None:
         "guard-alloc-probe",
     }
     assert declared.isdisjoint(excluded)
+
+
+def _crate_files() -> dict[str, list[str]]:
+    return _manifest().get("crate_files", {})
+
+
+def test_guard_command_file_inputs_exist_inside_the_crate() -> None:
+    """Every declared guard-command input is a regular file inside its src tree."""
+    crate = WORKSPACE / "crates/guard-command"
+    for relative in _crate_files()["guard-command"]:
+        assert not relative.startswith(("/", "\\"))
+        assert all(part not in ("", ".", "..") for part in relative.split("/"))
+        path = crate / relative
+        assert path.is_file(), relative
+        assert not path.is_symlink(), relative
+
+
+def _top_level_mods() -> dict[str, list[dict]]:
+    """lib.rs module declarations with their cfg/#[path] attributes."""
+    text = GUARD_COMMAND_SRC.joinpath("lib.rs").read_text(encoding="utf-8")
+    decls: dict[str, list[dict]] = {}
+    attrs: list[str] = []
+    for index, line in enumerate(text.splitlines()):
+        stripped = line.strip()
+        if stripped.startswith("#["):
+            attrs.append(stripped)
+            continue
+        match = re.match(r"(pub\s+)?mod\s+([a-z_][a-z0-9_]*)\s*(;|\{)", stripped)
+        if match:
+            decls.setdefault(match.group(2), []).append(
+                {
+                    "path": next((a for a in attrs if a.startswith("#[path")), None),
+                    "cfg": [a for a in attrs if a.startswith("#[cfg")],
+                    "inline": match.group(3) == "{",
+                    "pub": bool(match.group(1)),
+                    "line": index + 1,
+                }
+            )
+        if stripped and not stripped.startswith("//") and not stripped.startswith("#"):
+            attrs = []
+    return decls
+
+
+def _is_test_decl(cfg: list[str]) -> bool:
+    return any("cfg(test)" in attr for attr in cfg)
+
+
+def _path_value(attr: str) -> str:
+    return re.search(r'"([^"]+)"', attr).group(1)
+
+
+def _resolve_module(parent_rs: Path, name: str, path_attr: str | None) -> Path | None:
+    base = parent_rs.parent
+    if path_attr:
+        candidate = base / _path_value(path_attr)
+        return candidate if candidate.exists() else None
+    if parent_rs.name == "mod.rs":
+        candidates = [base / f"{name}.rs", base / name / "mod.rs"]
+    else:
+        stem = base / parent_rs.stem
+        candidates = [
+            stem / f"{name}.rs",
+            stem / name / "mod.rs",
+            base / f"{name}.rs",
+            base / name / "mod.rs",
+        ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _host_compiler_closure() -> tuple[set[str], set[str]]:
+    """Files and top-level modules the scoped host lib reaches from its seeds."""
+    decls = _top_level_mods()
+    lib_rs = GUARD_COMMAND_SRC / "lib.rs"
+    needed: set[str] = set()
+    files: set[Path] = set()
+    stack: list[Path] = []
+    for seed in HOST_COMPILER_SEEDS:
+        needed.add(seed)
+        for decl in decls[seed]:
+            resolved = _resolve_module(lib_rs, seed, decl["path"])
+            if resolved:
+                stack.append(resolved)
+
+    def bump(name: str) -> None:
+        live = [
+            decl
+            for decl in decls.get(name, ())
+            if not _is_test_decl(decl["cfg"]) and not decl["inline"]
+        ]
+        if not live or name in needed:
+            return
+        needed.add(name)
+        for decl in live:
+            resolved = _resolve_module(lib_rs, name, decl["path"])
+            if resolved:
+                stack.append(resolved)
+
+    while stack:
+        current = stack.pop()
+        if current in files:
+            continue
+        files.add(current)
+        text = current.read_text(encoding="utf-8")
+        children = set(
+            re.findall(r"(?:pub(?:\([^)]*\))?\s+)?mod\s+([a-z_][a-z0-9_]*)\s*;", text)
+        )
+        for match in re.finditer(r"crate::([a-z_][a-z0-9_]*)", text):
+            bump(match.group(1))
+        for match in re.finditer(r"use\s+crate::\{([^}]*)\}", text):
+            for part in match.group(1).split(","):
+                name = part.strip().split(" as ")[0].split("::")[0].strip()
+                if name:
+                    bump(name)
+        for match in re.finditer(r"use\s+([a-z_][a-z0-9_]*)::", text):
+            name = match.group(1)
+            if name not in children and name in decls:
+                bump(name)
+        for match in re.finditer(r"(?<![:\w])([a-z_][a-z0-9_]*)::", text):
+            name = match.group(1)
+            if name in decls and name not in children:
+                bump(name)
+        attrs = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#["):
+                attrs.append(stripped)
+                continue
+            match = re.match(r"(?:pub(?:\([^)]*\))?\s+)?mod\s+([a-z_][a-z0-9_]*)\s*;", stripped)
+            if match and not any("cfg(test)" in attr for attr in attrs):
+                nested = _resolve_module(
+                    current,
+                    match.group(1),
+                    next((a for a in attrs if a.startswith("#[path")), None),
+                )
+                if nested:
+                    stack.append(nested)
+            if stripped and not stripped.startswith("#"):
+                attrs = []
+    return files, needed
+
+
+def test_guard_command_files_match_the_host_compiler_closure() -> None:
+    """The manifest's guard-command list equals the scoped host lib's reach."""
+    files, _ = _host_compiler_closure()
+    declared = set(_crate_files()["guard-command"])
+    reached = {path.relative_to(GUARD_COMMAND_SRC.parent).as_posix() for path in files}
+    assert declared == reached
+
+
+def test_scoped_host_lib_mounts_stay_inside_the_closure() -> None:
+    """Every #[path] mount in the scoped host lib is a declared closure file."""
+    scoped = (WORKSPACE / "crates/guard-command-build/src/lib.rs").read_text(encoding="utf-8")
+    mounted = {
+        f"src/{relative}"
+        for relative in re.findall(r'#\[path = "\.\./\.\./guard-command/src/([^"]+)"\]', scoped)
+    }
+    declared = set(_crate_files()["guard-command"])
+    assert mounted
+    assert mounted <= declared
 
 
 def _path_dependencies(crate: str) -> set[str]:
@@ -136,8 +306,13 @@ def test_python_mirror_follows_the_manifest(tmp_path) -> None:
         target = fake / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-    (fake / "build_support" / "command_source_inputs.v1.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (fake / "build_support" / "command_source_inputs.v2.json").write_text(json.dumps(manifest), encoding="utf-8")
     for crate in manifest["crates"]:
         (fake / "crates" / crate).mkdir(parents=True)
         (fake / "crates" / crate / "Cargo.toml").write_text("[package]\n", encoding="utf-8")
+    for crate, relatives in manifest.get("crate_files", {}).items():
+        for relative in relatives:
+            target = fake / "crates" / crate / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("fn fake() {}\n", encoding="utf-8")
     assert implementation_digest(tmp_path) != digest

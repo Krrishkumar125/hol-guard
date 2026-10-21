@@ -119,13 +119,13 @@ def test_native_identity_changes_for_code_but_not_portable_fixture_snapshots(tmp
         "rust/Cargo.toml": "[workspace]\n",
         "rust/Cargo.lock": "version = 4\n",
         "rust/build_support/command_identity.rs": "// reviewed build identity\n",
-        "rust/build_support/command_source_inputs.v1.json": json.dumps(
+        "rust/build_support/command_source_inputs.v2.json": json.dumps(
             {
-                "schema": "guard.command-source-inputs.v1",
+                "schema": "guard.command-source-inputs.v2",
                 "identity_domain": "hol-guard.native-source-implementation.v2",
                 "files": [
                     "build_support/command_identity.rs",
-                    "build_support/command_source_inputs.v1.json",
+                    "build_support/command_source_inputs.v2.json",
                 ],
                 "crates": ["example"],
             }

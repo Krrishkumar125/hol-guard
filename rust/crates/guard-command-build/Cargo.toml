@@ -11,9 +11,11 @@ autoexamples = false
 autobenches = false
 
 # Build-dependency only. Compile the exact production compiler implementation,
-# but without its packaged default. No copied lowering or admission algorithm.
+# but without its packaged default. The scoped lib root at src/lib.rs reaches
+# only the catalog-compiler modules, path-mounted from guard-command/src, so
+# unrelated production edits stay out of this unit and the shared identity.
+# No copied lowering or admission algorithm.
 [lib]
-path = "../guard-command/src/lib.rs"
 test = false
 doctest = false
 bench = false

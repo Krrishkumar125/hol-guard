@@ -34,7 +34,7 @@ fn collect(directory: &Path, files: &mut Vec<PathBuf>) {
 }
 
 fn manifest(root: &Path) -> Value {
-    let path = root.join("build_support/command_source_inputs.v1.json");
+    let path = root.join("build_support/command_source_inputs.v2.json");
     println!("cargo:rerun-if-changed={}", path.display());
     let manifest: Value = serde_json::from_str(
         &fs::read_to_string(&path).expect("command source inputs manifest UTF-8"),
@@ -42,7 +42,7 @@ fn manifest(root: &Path) -> Value {
     .expect("command source inputs manifest JSON");
     assert_eq!(
         manifest["schema"].as_str(),
-        Some("guard.command-source-inputs.v1"),
+        Some("guard.command-source-inputs.v2"),
         "command source inputs manifest schema"
     );
     manifest
@@ -89,6 +89,40 @@ fn crate_inputs(root: &Path, entry: &Value, files: &mut Vec<PathBuf>) {
     }
 }
 
+fn crate_file_inputs(root: &Path, name: &str, entries: &Value, files: &mut Vec<PathBuf>) {
+    assert!(
+        !name.is_empty()
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+        "command source inputs crate_files name"
+    );
+    let directory = root.join("crates").join(name);
+    for entry in entries
+        .as_array()
+        .expect("command source inputs crate_files")
+    {
+        let relative = entry
+            .as_str()
+            .expect("command source inputs crate_files path");
+        assert!(
+            !relative.is_empty()
+                && !relative.starts_with('/')
+                && !relative.starts_with('\\')
+                && !relative
+                    .split('/')
+                    .any(|part| part.is_empty() || part == "." || part == ".."),
+            "command source inputs crate_files must stay inside the crate"
+        );
+        let path = directory.join(relative);
+        assert!(
+            path.is_file(),
+            "command source inputs crate file must exist"
+        );
+        files.push(path);
+    }
+}
+
 pub fn emit(root: &Path) -> String {
     println!("cargo:rustc-check-cfg=cfg(guard_source_bootstrap)");
     let manifest = manifest(root);
@@ -107,6 +141,11 @@ pub fn emit(root: &Path) -> String {
         .expect("command source inputs crates")
     {
         crate_inputs(root, entry, &mut files);
+    }
+    if let Some(partial) = manifest["crate_files"].as_object() {
+        for (name, entries) in partial {
+            crate_file_inputs(root, name, entries, &mut files);
+        }
     }
     files.sort_by_cached_key(|path| {
         path.strip_prefix(root)
