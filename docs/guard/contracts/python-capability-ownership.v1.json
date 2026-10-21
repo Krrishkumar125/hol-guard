@@ -1543,6 +1543,39 @@
    "removal_reason": "Static-first sandbox runner for isolated script analysis that no production caller ever imported. guard-command's sandbox.rs carries the same shape but is itself unreferenced and leaves apply_resource_limits a no-op, so it is not named as a behavioural replacement."
   },
   {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.pytest_target_detection",
+   "source_sha256": "80050fe7831fd10c93fe8319a54662f17c83844fa22b5e8cb1f044a8fab23ded",
+   "forbidden_symbols": [
+    "_argument_sequence_targets_pytest",
+    "_inline_python_payload_runs_pytest",
+    "_pytest_args_from_argument_sequence",
+    "_pytest_args_from_argument_sequence_ignoring",
+    "_pytest_args_from_command_position",
+    "_pytest_args_from_runner_argument_sequence",
+    "_python_inline_script_runs_pytest",
+    "_python_process_call_targets_pytest",
+    "_segment_targets_pytest",
+    "_shell_command_targets_pytest",
+    "_shell_token_has_active_glob"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/sfrs_pytest_target.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.python_pytest_entrypoints",
+   "source_sha256": "763d5b1cbb56a0a4999f028572c78bf23ae820824f57df4cea288324ef833df0",
+   "forbidden_symbols": [
+    "_python_segment_targets_module",
+    "_pytest_args_from_python"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/sfrs_selectors.rs"
+   ]
+  },
+  {
    "path": "src/codex_plugin_scanner/guard/runtime/github_command_capabilities.py",
    "module": "codex_plugin_scanner.guard.runtime.github_command_capabilities",
    "source_sha256": "d85871ebfb6b0d82c4f376aea1efac82d7312bd9c896fc3d3c6a4eaae59cb735",
