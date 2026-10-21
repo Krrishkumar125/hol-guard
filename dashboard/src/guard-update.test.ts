@@ -4,7 +4,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { buildGuardDaemonCandidatePorts, normalizeGuardUpdateStatus, updateReconnectSucceeded } from "./guard-api";
 import { AlphaChannelDialog } from "./alpha-update-channel-dialog";
 import { GuardUpdatePanel } from "./guard-update-panel";
-import { GuardUpdateBanner } from "./guard-update-banner";
+import {
+  GuardUpdateBanner,
+  readDismissedDesktopUpdateVersion,
+  rememberDismissedDesktopUpdateVersion,
+} from "./guard-update-banner";
 import { desktopUpdateBannerModel } from "./guard-update-copy";
 
 function assert(condition: boolean, message: string): void {
@@ -523,6 +527,32 @@ assert(
 assert(
   desktopUpdateBannerModel({ ...bannerStatus, update_suppressed: true }, true, null) === null,
   "a suppressed update stays quiet instead of re-announcing",
+);
+
+// Dismissal storage keeps one version: dismissing a newer release after an
+// older one must restore the newer version, not whichever key sorts first.
+const dismissalStore = new Map<string, string>();
+Object.assign(globalThis, {
+  window: {
+    location: { href: "http://127.0.0.1:5474/", search: "?desktop_embed=1", hash: "" },
+    sessionStorage: {
+      getItem: (key: string) => dismissalStore.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        dismissalStore.set(key, value);
+      },
+    },
+    localStorage: rememberedChannelStorage,
+  },
+});
+rememberDismissedDesktopUpdateVersion("3.53.0a5");
+rememberDismissedDesktopUpdateVersion("3.53.0a6");
+assert(
+  readDismissedDesktopUpdateVersion() === "3.53.0a6",
+  "dismissal should restore the most recently dismissed version",
+);
+assert(
+  desktopUpdateBannerModel({ ...bannerStatus, latest_version: "3.53.0a6" }, true, readDismissedDesktopUpdateVersion()) === null,
+  "a reloaded dashboard should keep the newest dismissal dismissed",
 );
 
 const bannerMarkup = renderToStaticMarkup(

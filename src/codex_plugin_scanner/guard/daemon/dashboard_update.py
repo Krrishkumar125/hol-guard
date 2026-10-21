@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import sysconfig
+import threading
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
@@ -102,18 +103,22 @@ def write_desktop_update_request(guard_home: Path, *, latest_version: str) -> Pa
         "requestedAt": datetime.now(timezone.utc).isoformat(),
         "latestVersion": latest_version,
     }
-    temporary = request_path.with_name(f"{request_path.name}.tmp-{os.getpid()}")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    # Unique per invocation: concurrent handoff requests in one daemon
+    # process must not share, truncate, or replace each other's temp file.
+    temporary = request_path.with_name(
+        f"{request_path.name}.tmp-{os.getpid()}-{threading.get_ident()}-{secrets.token_hex(4)}"
+    )
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     file_descriptor = os.open(temporary, flags, 0o600)
     try:
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
             handle.write(json.dumps(payload))
+        os.replace(temporary, request_path)
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
-    os.replace(temporary, request_path)
     return request_path
 
 

@@ -328,7 +328,18 @@ class _ControlMiscRoutes:
                 status=400,
             )
             return
-        write_desktop_update_request(guard_home, latest_version=latest_version)
+        try:
+            write_desktop_update_request(guard_home, latest_version=latest_version)
+        except OSError:
+            _LOGGER.exception("desktop update handoff request could not be recorded")
+            self._write_json(
+                {
+                    "error": "desktop_handoff_failed",
+                    "message": "The update request could not be recorded. Try again.",
+                },
+                status=500,
+            )
+            return
         self._write_json(
             {
                 "handoff_requested": True,

@@ -3530,12 +3530,22 @@ export async function requestGuardDesktopHandoff(): Promise<GuardDesktopHandoffR
   if (isGuardDemoMode()) {
     return { handoff_requested: false, latest_version: null };
   }
-  const response = await fetchWithGuardAuth("/v1/update", {
-    method: "POST",
-    redirect: "error",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ handoff_to_desktop: true }),
-  });
+  // Bounded: an unanswered request must release the banner into its
+  // failure state instead of disabling its actions forever.
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 10_000);
+  let response: Response;
+  try {
+    response = await fetchWithGuardAuth("/v1/update", {
+      method: "POST",
+      redirect: "error",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ handoff_to_desktop: true }),
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
     const message =

@@ -19115,12 +19115,20 @@ async function requestGuardDesktopHandoff() {
   if (isGuardDemoMode()) {
     return { handoff_requested: false, latest_version: null };
   }
-  const response = await fetchWithGuardAuth("/v1/update", {
-    method: "POST",
-    redirect: "error",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ handoff_to_desktop: true })
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 1e4);
+  let response;
+  try {
+    response = await fetchWithGuardAuth("/v1/update", {
+      method: "POST",
+      redirect: "error",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ handoff_to_desktop: true }),
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = stringValue$1(payload.message) ?? stringValue$1(payload.error) ?? `Guard update failed with ${response.status}`;
@@ -35558,23 +35566,18 @@ class ErrorBoundary extends reactExports.Component {
     );
   }
 }
-const DISMISSED_KEY_PREFIX = "guard-desktop-update-dismissed:";
+const DISMISSED_KEY = "guard-desktop-update-dismissed";
 const HANDOFF_GUIDANCE_DELAY_MS = 6e3;
 function readDismissedDesktopUpdateVersion() {
   try {
-    const keys = Object.keys(window.sessionStorage);
-    for (const key of keys) {
-      if (key.startsWith(DISMISSED_KEY_PREFIX)) {
-        return key.slice(DISMISSED_KEY_PREFIX.length);
-      }
-    }
+    return window.sessionStorage.getItem(DISMISSED_KEY);
   } catch {
+    return null;
   }
-  return null;
 }
 function rememberDismissedDesktopUpdateVersion(version2) {
   try {
-    window.sessionStorage.setItem(`${DISMISSED_KEY_PREFIX}${version2}`, "1");
+    window.sessionStorage.setItem(DISMISSED_KEY, version2);
   } catch {
   }
 }
@@ -35582,7 +35585,13 @@ function GuardUpdateBanner(props) {
   const { model, onDismiss } = props;
   const [phase, setPhase] = reactExports.useState("idle");
   const guidanceTimer = reactExports.useRef(null);
+  const attemptRef = reactExports.useRef(0);
   reactExports.useEffect(() => {
+    attemptRef.current += 1;
+    if (guidanceTimer.current !== null) {
+      window.clearTimeout(guidanceTimer.current);
+      guidanceTimer.current = null;
+    }
     setPhase("idle");
   }, [model.latestVersion]);
   reactExports.useEffect(
@@ -35597,18 +35606,27 @@ function GuardUpdateBanner(props) {
     if (phase === "requesting" || phase === "opening") {
       return;
     }
+    const attempt = attemptRef.current + 1;
+    attemptRef.current = attempt;
     setPhase("requesting");
     void requestGuardDesktopHandoff().then((result) => {
+      if (attemptRef.current !== attempt) {
+        return;
+      }
       if (!result.handoff_requested) {
         setPhase("failed");
         return;
       }
       setPhase("opening");
       guidanceTimer.current = window.setTimeout(() => {
-        setPhase("guidance");
+        if (attemptRef.current === attempt) {
+          setPhase("guidance");
+        }
       }, HANDOFF_GUIDANCE_DELAY_MS);
     }).catch(() => {
-      setPhase("failed");
+      if (attemptRef.current === attempt) {
+        setPhase("failed");
+      }
     });
   }, [phase]);
   const handleDismiss = reactExports.useCallback(() => {
