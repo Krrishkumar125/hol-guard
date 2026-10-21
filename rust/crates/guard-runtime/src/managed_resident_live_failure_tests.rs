@@ -205,3 +205,83 @@ fn owner_release_names_an_owner_kept_past_the_deadline() {
     std::fs::remove_dir_all(&home).unwrap();
     assert_eq!(result, Err("native_resident_owner_busy".to_owned()));
 }
+
+#[test]
+fn owner_release_names_a_live_foreign_owner_at_once() {
+    let (home, base) = owner_release_fixture("foreign-live");
+    let lock = crate::managed_resident::acquire_managed_owner_lock(&base).unwrap();
+    let started = Instant::now();
+    let mut probes = 0;
+    let result = await_owner_release_with(&base, started + Duration::from_secs(10), || {
+        probes += 1;
+        OwnerHolder::OtherRuntime
+    });
+    let waited = started.elapsed();
+    drop(lock);
+    std::fs::remove_dir_all(&home).unwrap();
+    assert_eq!(result, Err("native_resident_owner_busy".to_owned()));
+    assert_eq!(probes, 1, "a live foreign owner was polled");
+    assert!(
+        waited < Duration::from_secs(1),
+        "waited {waited:?} on a live foreign owner"
+    );
+}
+
+#[test]
+fn owner_release_caps_the_wait_for_an_exiting_owner() {
+    let (home, base) = owner_release_fixture("cap");
+    let digest = runtime_digest().unwrap();
+    let lock = crate::managed_resident::acquire_managed_owner_lock(&base).unwrap();
+    let started = Instant::now();
+    let result = await_owner_release(&base, &digest, started + Duration::from_secs(30));
+    let waited = started.elapsed();
+    drop(lock);
+    std::fs::remove_dir_all(&home).unwrap();
+    assert_eq!(result, Err("native_resident_owner_busy".to_owned()));
+    assert!(waited >= OWNER_RELEASE_WAIT, "returned after {waited:?}");
+    assert!(
+        waited < OWNER_RELEASE_WAIT + Duration::from_secs(3),
+        "the startup deadline replaced the release cap: {waited:?}"
+    );
+}
+
+#[test]
+fn owner_release_classifies_the_lock_holder_by_live_state() {
+    let process_id = std::process::id();
+    let marker = crate::resident_state::process_start_marker(process_id).unwrap();
+    let state =
+        |runtime_sha256: &str, process_start_marker: &str| crate::resident_state::ResidentState {
+            schema: String::new(),
+            generation: 1,
+            process_id,
+            process_start_marker: process_start_marker.to_owned(),
+            owner_process_id: process_id,
+            owner_process_start_marker: String::new(),
+            runtime_sha256: runtime_sha256.to_owned(),
+            transport: String::new(),
+            endpoint: String::new(),
+            unix_endpoint_identity: None,
+            token_hex: String::new(),
+            created_ms: 1,
+            state_mac: String::new(),
+        };
+    let own = state("own-digest", &marker);
+    let foreign = state("foreign-digest", &marker);
+    let stale_foreign = state("foreign-digest", "stale-process-marker");
+    assert_eq!(
+        classify_owner_holder([], "own-digest"),
+        OwnerHolder::Exiting
+    );
+    assert_eq!(
+        classify_owner_holder([&stale_foreign], "own-digest"),
+        OwnerHolder::Exiting
+    );
+    assert_eq!(
+        classify_owner_holder([&foreign], "own-digest"),
+        OwnerHolder::OtherRuntime
+    );
+    assert_eq!(
+        classify_owner_holder([&foreign, &own], "own-digest"),
+        OwnerHolder::ThisRuntime
+    );
+}
