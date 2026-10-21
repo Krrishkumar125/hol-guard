@@ -1398,6 +1398,56 @@
    ]
   },
   {
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_elf",
+   "source_sha256": "a9579f072979877dc86c7733fe3d2102381e4970339a20133da8ef43f69cf98d",
+   "forbidden_symbols": [
+    "resolve_linux_elf_loader"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/elf.rs",
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_paths.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_paths",
+   "source_sha256": "d6472b908b34eb0da25d303fdd6b77e2f86976e66f1dbe372479bdf3481a4a70",
+   "forbidden_symbols": [
+    "LinuxReadGrant",
+    "collect_linux_read_grants"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/read.rs",
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_mappings",
+   "source_sha256": "83c1af1a284ca1f4a3fd861ffd6565f086e9110e98b83e1ef9c5edd17ff04c3f",
+   "forbidden_symbols": [
+    "mount_targets",
+    "validate_records"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mappings.rs",
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mounts.rs",
+    "rust/crates/guard-runtime/src/restricted_linux_launch/mapping_records.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
+   "module": "codex_plugin_scanner.guard.runtime.restricted_linux_mapping_plan",
+   "source_sha256": "ceac7b7dbb72afc51e47902313b3a1bea570640e06b63614374d644bcbf3f7c3",
+   "forbidden_symbols": [
+    "collect_mapping_evidence"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/restricted_pytest/mapping.rs"
+   ]
+  },
+  {
    "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
    "module": "codex_plugin_scanner.guard.runtime.shell_command_wrappers",
    "source_sha256": "b328f048cc1b0e167dd1c57aeb1eaff84e5db25b6ed582dd3ecf91e0dd44f87e",
