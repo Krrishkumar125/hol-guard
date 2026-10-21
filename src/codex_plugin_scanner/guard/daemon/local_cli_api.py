@@ -82,6 +82,7 @@ from ..runtime.package_json_script_memory import (
 )
 from ..runtime.package_json_scripts import looks_like_package_script_paste
 from ..store_local_cli_capabilities import LocalCliCapabilityError
+from .background_diagnostics import failure_detail, record_background_event
 from .local_cli_api_contract import LOCAL_CLI_API_SCHEMA as _LOCAL_CLI_API_SCHEMA
 from .local_cli_api_contract import LocalCliApiError
 from .local_cli_capability_api import (
@@ -110,6 +111,19 @@ _LOGGER = logging.getLogger(__name__)
 
 _VALID_STATES = frozenset({"allowed", "blocked", "unset"})
 _DISCOVERY_TTL_SECONDS = 30.0
+# A failed host scan used to leave daemon.log empty, so a support bundle could
+# not say which of the stages below aborted the job. One event per stage names
+# the stage and the exception class; `failure_detail` keeps paths and secrets
+# out of the line, because daemon.log is an artifact an operator hands over.
+DISCOVERY_STAGE_FAILED_EVENT = "discovery_stage_failed"
+
+
+def record_discovery_stage_failure(stage: str, error: BaseException | None = None) -> None:
+    """Record one aborted discovery stage without logging what it was reading."""
+
+    detail = f"stage={stage}" + (f" {failure_detail(error)}" if error is not None else "")
+    _LOGGER.warning("discovery stage failed (%s)", detail)
+    record_background_event(DISCOVERY_STAGE_FAILED_EVENT, detail)
 
 
 def _client_discovery_job_id(payload: dict[str, object]) -> str | None:
@@ -383,13 +397,23 @@ class LocalCliApiService:
                             saturated = discover_observed_mcp_tools(
                                 self._store, seen_at=utc_now(), configured_servers=self._configured_server_names()
                             )
-                        except LocalCliCatalogLimitError:
+                        except LocalCliCatalogLimitError as error:
+                            record_discovery_stage_failure("catalog_limit_reached", error)
                             raise DiscoveryStageError("catalog_limit_reached") from None
-                        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
-                            _LOGGER.warning("observed MCP tool discovery failed", exc_info=True)
+                        except (
+                            OSError,
+                            RuntimeError,
+                            TypeError,
+                            ValueError,
+                            KeyError,
+                            UnicodeError,
+                            sqlite3.Error,
+                        ) as error:
+                            record_discovery_stage_failure("observed_provider_scan_failed", error)
                             raise DiscoveryStageError("observed_provider_scan_failed") from None
                         backfill_observed_local_clis(self._store, seen_at=utc_now(), home_dir=Path.home())
                         if saturated:
+                            record_discovery_stage_failure("catalog_limit_reached")
                             raise DiscoveryStageError("catalog_limit_reached")
 
                 return self._discovery_jobs.start(
@@ -885,8 +909,13 @@ class LocalCliApiService:
                 remote=remote,
                 remote_harnesses=remote_harnesses,
             )
-        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
+        except DiscoveryStageError:
+            # The scan below already recorded its own stage; re-wrapping it
+            # here would file a second record naming this wrapper instead.
+            raise
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error) as error:
             if strict:
+                record_discovery_stage_failure("configured_host_scan_failed:persist", error)
                 raise DiscoveryStageError("configured_host_scan_failed") from None
             return {}
 
@@ -926,11 +955,12 @@ class LocalCliApiService:
                 workspace_dir=workspace_dir,
                 detections=detections,
             )
-        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error) as error:
             # A failed read leaves no remote snapshot to reconcile against.
             self._remote_discovery_cache = None
             self._configured_names = {}
             if strict:
+                record_discovery_stage_failure("configured_host_scan_failed:scan", error)
                 raise DiscoveryStageError("configured_host_scan_failed") from None
             return ()
         self._discovery_cache = (now, servers)
@@ -943,8 +973,10 @@ class LocalCliApiService:
                 detections=detections,
             )
             harnesses = remote_scan_harnesses(detections, remote)
-        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error):
-            # A failed read lists none and must not forget any declaration.
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error) as error:
+            # A failed read lists none and must not forget any declaration. It
+            # does not fail the job, so the record is the only sign it happened.
+            record_discovery_stage_failure("remote_scan_skipped", error)
             remote, harnesses = (), None
         self._remote_discovery_cache = (now, remote, harnesses)
         return servers
