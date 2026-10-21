@@ -66,7 +66,7 @@ def _build_script_inputs() -> list[str]:
     """Collect the manifest and explicit source/trust records embedded by build.rs."""
     manifest = "contracts/extensions/core-defaults.v1.json"
     entries = json.loads((ROOT / manifest).read_text(encoding="utf-8"))["entries"]
-    script = (ROOT / "rust/crates/guard-command/build.rs").read_text(encoding="utf-8")
+    script = (ROOT / "rust/crates/guard-command-catalog-data/build.rs").read_text(encoding="utf-8")
     assert manifest in script
     assert "sources(root, &entries, true)" in script
     assert "sources(root, &entries, false)" in script
