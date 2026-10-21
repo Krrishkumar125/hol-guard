@@ -53,11 +53,13 @@ fn grep_filter_validates_pattern_file_options() {
 #[test]
 fn grep_filter_counts_a_pattern_file_as_the_pattern() {
     // Once -f supplies the pattern, the next positional is a file operand.
-    assert!(!safe(&["-f", "patterns.txt", ".env"]));
-    assert!(!safe(&["-fpatterns.txt", ".env"]));
-    assert!(!safe(&["-f", "patterns.txt", "/etc/passwd"]));
-    assert!(!safe(&["--file=patterns.txt", ".env"]));
-    assert!(!safe(&["-nf", "patterns.txt", ".env"]));
+    // The pattern file itself is allowed, so only that operand can refuse.
+    assert!(safe(&["-f", "src/patterns.txt", "src/main.py"]));
+    assert!(!safe(&["-f", "src/patterns.txt", ".env"]));
+    assert!(!safe(&["-fsrc/patterns.txt", ".env"]));
+    assert!(!safe(&["-f", "src/patterns.txt", "/etc/passwd"]));
+    assert!(!safe(&["--file=src/patterns.txt", ".env"]));
+    assert!(!safe(&["-nf", "src/patterns.txt", ".env"]));
 }
 
 #[test]
