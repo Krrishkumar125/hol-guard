@@ -36,13 +36,17 @@ def artifact_fact_risk_classes(facts: Mapping[str, object]) -> list[str]:
     return cast("list[str]", classes)
 
 
-def artifact_fact_explicit_permission_allow(facts: Mapping[str, object]) -> bool:
-    """Whether the resident found a verified explicit-permission allow."""
+def artifact_fact_skip_native_floor(facts: Mapping[str, object]) -> bool:
+    """Whether the resident says the native command floor is skipped.
 
-    allowed = facts.get("explicit_permission_allow")
-    if not isinstance(allowed, bool):
+    A missing or non-boolean answer is no answer: the hook fails closed rather
+    than guessing whether the floor applies.
+    """
+
+    skipped = facts.get("skip_native_floor")
+    if not isinstance(skipped, bool):
         raise HookArtifactFactsUnavailableError
-    return allowed
+    return skipped
 
 
 def _typed_text(value: object) -> str | None:

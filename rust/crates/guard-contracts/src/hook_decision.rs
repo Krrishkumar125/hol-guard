@@ -14,7 +14,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{CodexToolOutputFactsV1, NativeExtensionControlLayerV1};
+use crate::{
+    CodexToolOutputFactsV1, HookRouteInputsV1, HookRouteV1, NativeExtensionControlLayerV1,
+    NativePermissionPersistInputsV1, NativePermissionPersistPlanV1,
+};
 
 /// Schema discriminator for the request.
 pub const HOOK_DECISION_REQUEST_SCHEMA: &str = "guard-hook-decision-request.v1";
@@ -68,12 +71,20 @@ pub enum HookDecisionQueryV1 {
     ArtifactDirective {
         inputs: Box<ArtifactDirectiveInputsV1>,
     },
+    /// What to save for a Claude-native approval: the stored hash, the policy
+    /// action, the audit events and the inventory disposition.
+    NativePermissionPersistPlan {
+        inputs: Box<NativePermissionPersistInputsV1>,
+    },
     /// The artifact hook's review route: whether a review-tier or terminal
     /// verdict is recorded without a prompt, observed, answered natively or
     /// queued for approval.
     ArtifactReviewRoute {
         inputs: Box<ArtifactReviewRouteInputsV1>,
     },
+    /// The hook pipeline's dispatch route: which handlers answer a prepared
+    /// payload, in what order.
+    HookRoute { inputs: Box<HookRouteInputsV1> },
 }
 
 /// Facts the artifact hook's review route depends on. The transport gathers
@@ -395,7 +406,9 @@ pub enum HookDecisionPayloadV1 {
     },
     Finalize(Box<HookFinalV1>),
     ArtifactDirective(Box<HookResponseDirectiveV1>),
+    NativePermissionPersistPlan(Box<NativePermissionPersistPlanV1>),
     ArtifactReviewRoute(Box<ArtifactReviewRouteV1>),
+    HookRoute(Box<HookRouteV1>),
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.
         needs_facts: Vec<String>,

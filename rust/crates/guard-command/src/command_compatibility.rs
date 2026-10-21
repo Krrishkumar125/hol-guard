@@ -19,6 +19,8 @@ mod environment;
 mod git;
 #[path = "command_compatibility/github.rs"]
 mod github;
+#[path = "command_compatibility/settles.rs"]
+mod settles;
 
 pub use catalog::compatibility_rule_ids;
 pub(crate) use domains::docker_segment_settles_uncertainty;
@@ -30,8 +32,8 @@ pub(crate) use git::{
     repository_routes_verified as git_repository_routes_verified,
     rooted_hooks_inert as git_rooted_hooks_inert,
     runs_configured_program as git_runs_configured_program,
-    subcommand_settles_uncertainty as git_subcommand_settles_uncertainty,
 };
+pub(crate) use settles::segment_settles_uncertainty;
 
 /// Whether `name` changes nothing about how the Git command it prefixes runs:
 /// an inert output or locale setting, or the commit identity.

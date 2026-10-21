@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 import threading
 import time
 from contextlib import suppress
@@ -17,11 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..daemon.background_diagnostics import record_background_event
+from ..daemon.background_diagnostics import failure_detail, record_background_event
 from ..file_identity import full_stat_identity
 from ..native_resident_client import native_resident_client_request
 from ..native_runtime import _isolated_environment, native_runtime_status
-from ..secret_redaction import sanitize_secret
 from ..strict_json_pairs import unique_json_object
 from .authority import VerifiedDistribution
 
@@ -56,29 +54,6 @@ PREPARING = "native discovery preparing"
 # toward a failing preparation.
 _RETRYABLE_FAILURES = frozenset({"native discovery transport unavailable", "native discovery runtime changed"})
 _failures = 0
-_MAX_FAILURE_DETAIL = 160
-# Preparation wraps arbitrary OS errors, whose text carries the file that
-# failed. daemon.log is a support artifact, so every path-shaped run goes. A
-# quoted path may contain spaces, so a quoted run goes whole before the
-# unquoted runs are matched.
-_QUOTED_PATH = re.compile(r"'[^']*[/\\][^']*'|\"[^\"]*[/\\][^\"]*\"")
-_PATH_LIKE = re.compile(r"[^\s'\"]*[/\\][^\s'\"]*")
-_UNPRINTABLE = re.compile(r"[^\x20-\x7e]")
-
-
-def _failure_detail(error: BaseException) -> str:
-    """One bounded, path-free line naming a preparation failure."""
-
-    if isinstance(error, OSError) and (error.filename is not None or error.filename2 is not None):
-        # The file names are the only part of an OS error that could leak.
-        text = f"[Errno {error.errno}] {error.strerror}"
-    else:
-        text = str(error)
-    text = _UNPRINTABLE.sub(" ", text)
-    message = sanitize_secret(_PATH_LIKE.sub("<path>", _QUOTED_PATH.sub("<path>", text))).strip()
-    if len(message) > _MAX_FAILURE_DETAIL:
-        message = message[:_MAX_FAILURE_DETAIL] + "..."
-    return f"error={type(error).__name__}" + (f" detail={message}" if message else "")
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -264,7 +239,7 @@ def _prepare_ready(home):
         # catalog read answered 503, so a broken installed runtime could only
         # be found by probing the bundle. The thread stays non-fatal and the
         # backoff below is unchanged; this only records what failed.
-        record_background_event("catalog_preparation_failed", _failure_detail(error))
+        record_background_event("catalog_preparation_failed", failure_detail(error))
     finally:
         with _ready_lock:
             if _home == home:
@@ -305,7 +280,7 @@ def _refresh(home, store):
         # Complete previous view and active protection remain independent, so
         # this stays non-fatal; it is recorded because a publication that never
         # refreshes is otherwise indistinguishable from one that never ran.
-        record_background_event("catalog_publication_refresh_failed", _failure_detail(error))
+        record_background_event("catalog_publication_refresh_failed", failure_detail(error))
     finally:
         with _ready_lock:
             _refresh_worker = None
