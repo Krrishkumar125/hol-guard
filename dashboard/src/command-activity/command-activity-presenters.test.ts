@@ -121,12 +121,12 @@ assert(homeCommandActivityModel(analytics)?.health?.includes("incomplete") === t
 assert(commandHealthCopy(analytics)?.includes("incomplete") === true, "degraded health is explicit");
 assert(
   commandHealthCopy({ ...analytics, health: { ...analytics.health, last_error_class: "pre_record_failed" } }) ===
-    "Guard could not save some command checks. Counts may be incomplete.",
+    "Counts may be incomplete. Last recorded problem: Guard could not save some command checks.",
   "degraded health names the recorded cause",
 );
 assert(
   commandHealthCopy({ ...analytics, health: { ...analytics.health, last_error_class: "constructor" } }) ===
-    "Guard could not save some command evidence. Counts may be incomplete.",
+    "Counts may be incomplete. Last recorded problem: Guard could not save some command evidence.",
   "unknown error classes fall back to generic copy without prototype lookups",
 );
 assert(

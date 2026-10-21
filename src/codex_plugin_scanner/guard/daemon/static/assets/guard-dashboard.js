@@ -27080,7 +27080,7 @@ function commandHealthCopy(analytics) {
   if (analytics.health.status === "healthy") return null;
   const errorClass = analytics.health.last_error_class;
   const cause = errorClass !== null && Object.hasOwn(COMMAND_HEALTH_CAUSES, errorClass) ? COMMAND_HEALTH_CAUSES[errorClass] : "Guard could not save some command evidence.";
-  return `${cause} Counts may be incomplete.`;
+  return `Counts may be incomplete. Last recorded problem: ${cause}`;
 }
 function commandWindowLabel(analytics) {
   return `${analytics.window.days}-day window ending ${analytics.window.through}`;

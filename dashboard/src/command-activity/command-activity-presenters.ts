@@ -192,7 +192,9 @@ export function commandHealthCopy(analytics: CommandActivityAnalytics): string |
   const cause = errorClass !== null && Object.hasOwn(COMMAND_HEALTH_CAUSES, errorClass)
     ? COMMAND_HEALTH_CAUSES[errorClass]
     : "Guard could not save some command evidence.";
-  return `${cause} Counts may be incomplete.`;
+  // last_error_class is the most recent failure, not necessarily the one that
+  // left health degraded, so it is named as history rather than as the cause.
+  return `Counts may be incomplete. Last recorded problem: ${cause}`;
 }
 
 export function commandWindowLabel(analytics: CommandActivityAnalytics): string {

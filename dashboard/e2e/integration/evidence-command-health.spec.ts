@@ -39,7 +39,7 @@ test.describe("evidence: command evidence health", () => {
 
     await page.goto(commandsUrl());
     await expectNoErrorBoundary(page);
-    await expect(page.getByRole("region", { name: "Command activity summary" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Command activity summary" }).getByText("Commands checked")).toBeVisible();
     await expect(notice(page)).toHaveCount(0);
 
     // The failure stays on record; only the stale degraded flag is gone.
@@ -69,7 +69,7 @@ test.describe("evidence: command evidence health", () => {
     });
 
     await page.goto(commandsUrl());
-    await expect(notice(page)).toContainText("Guard could not save some command checks.");
+    await expect(notice(page)).toContainText("Last recorded problem: Guard could not save some command checks.");
     await notice(page).getByRole("button", { name: "Repair evidence" }).click();
 
     await expect(notice(page)).toContainText("Guard could not verify the command evidence store.");

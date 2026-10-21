@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -15,14 +15,13 @@ from codex_plugin_scanner.guard.daemon import command_activity_health_repair
 from codex_plugin_scanner.guard.daemon.command_activity_api import handle_command_activity_analytics
 from codex_plugin_scanner.guard.daemon.command_activity_health_repair import (
     COMMAND_ACTIVITY_AUTO_REPAIR_INTERVAL_SECONDS,
+    COMMAND_ACTIVITY_REPAIR_QUIET_SECONDS,
     auto_repair_command_activity_health,
     auto_repair_command_activity_health_if_degraded,
     reset_command_activity_auto_repair,
 )
 from codex_plugin_scanner.guard.store import GuardStore
-from tests.daemon_control_patching import patch_daemon_global
 from tests.guard_command_activity_api_support import seed
-from tests.native_command_test_support import real_native_command_evaluation
 
 _FAILED_AT = datetime(2026, 7, 18, 20, 4, tzinfo=timezone.utc)
 
@@ -41,11 +40,26 @@ def _clean_limiter() -> None:
     reset_command_activity_auto_repair()
 
 
-def _degraded_store(tmp_path: Path) -> GuardStore:
+def _degraded_store(tmp_path: Path, failed_at: datetime = _FAILED_AT) -> GuardStore:
     store = GuardStore(tmp_path / "guard-home", prime_policy_integrity=False)
     seed(store)
-    store.record_command_activity_persistence_failure(error_code="pre_record_failed", occurred_at=_FAILED_AT)
+    store.record_command_activity_persistence_failure(error_code="pre_record_failed", occurred_at=failed_at)
     return store
+
+
+def _count_probes(monkeypatch: pytest.MonkeyPatch) -> list[GuardStore]:
+    calls: list[GuardStore] = []
+
+    def probe(target: GuardStore) -> None:
+        calls.append(target)
+
+    monkeypatch.setattr(command_activity_health_repair, "_repair_command_activity_persistence_health", probe)
+    return calls
+
+
+def _ticks(*values: float):
+    ticks = iter(values)
+    return lambda: next(ticks)
 
 
 def _analytics_health(store: GuardStore) -> dict[str, object]:
@@ -56,12 +70,8 @@ def _analytics_health(store: GuardStore) -> dict[str, object]:
     return cast(dict[str, object], payload["health"])
 
 
-def test_degraded_health_from_a_past_failure_clears_on_the_next_dashboard_read(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_degraded_health_from_a_past_failure_clears_on_the_next_dashboard_read(tmp_path: Path) -> None:
     store = _degraded_store(tmp_path)
-    snapshot = real_native_command_evaluation("git status --porcelain=v1").snapshot
-    patch_daemon_global(monkeypatch, "current_extension_control_snapshot", lambda: snapshot)
 
     health = _analytics_health(store)
 
@@ -88,20 +98,35 @@ def test_healthy_reads_do_not_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 def test_a_store_that_stays_broken_is_probed_once_per_interval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = _degraded_store(tmp_path)
-    calls: list[GuardStore] = []
+    calls = _count_probes(monkeypatch)
+    monkeypatch.setattr(store, "maintain_command_activity", lambda **_kwargs: None)
+    clock = _ticks(
+        100.0,
+        100.0 + COMMAND_ACTIVITY_AUTO_REPAIR_INTERVAL_SECONDS / 2,
+        100.0 + COMMAND_ACTIVITY_AUTO_REPAIR_INTERVAL_SECONDS,
+    )
 
-    def unavailable(target: GuardStore) -> str:
-        calls.append(target)
-        return "native_evaluation_unavailable"
-
-    monkeypatch.setattr(command_activity_health_repair, "_repair_command_activity_persistence_health", unavailable)
-    clock = iter([100.0, 101.0, 100.0 + COMMAND_ACTIVITY_AUTO_REPAIR_INTERVAL_SECONDS])
-
-    assert auto_repair_command_activity_health(store, clock=lambda: next(clock)) is True
-    assert auto_repair_command_activity_health(store, clock=lambda: next(clock)) is False
-    assert auto_repair_command_activity_health(store, clock=lambda: next(clock)) is True
+    assert auto_repair_command_activity_health(store, clock=clock) is True
+    assert auto_repair_command_activity_health(store, clock=clock) is False
+    assert auto_repair_command_activity_health(store, clock=clock) is True
     assert len(calls) == 2
+
+
+def test_a_recent_failure_stays_visible_until_failures_stop(tmp_path: Path) -> None:
+    failed_at = datetime(2026, 7, 18, 20, 4, tzinfo=timezone.utc)
+    store = _degraded_store(tmp_path, failed_at)
+    quiet = timedelta(seconds=COMMAND_ACTIVITY_REPAIR_QUIET_SECONDS)
+    wall = iter([failed_at + quiet / 2, failed_at + quiet, failed_at + quiet])
+
+    def now() -> datetime:
+        return next(wall)
+
+    clock = _ticks(10.0, 10.0 + COMMAND_ACTIVITY_REPAIR_QUIET_SECONDS / 2)
+
+    assert auto_repair_command_activity_health(store, clock=clock, now=now) is False
     assert store.get_command_activity_persistence_health().active_error_count == 1
+    assert auto_repair_command_activity_health(store, clock=clock, now=now) is True
+    assert store.get_command_activity_persistence_health().active_error_count == 0
 
 
 def test_a_failing_probe_leaves_the_read_degraded_instead_of_erroring(
@@ -122,18 +147,10 @@ def test_a_failing_probe_leaves_the_read_degraded_instead_of_erroring(
 
 def test_runtime_reads_check_stored_health_once_per_interval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = _degraded_store(tmp_path)
-    calls: list[GuardStore] = []
-
-    def unavailable(target: GuardStore) -> str:
-        calls.append(target)
-        return "native_evaluation_unavailable"
-
-    monkeypatch.setattr(command_activity_health_repair, "_repair_command_activity_persistence_health", unavailable)
-    # check, attempt, then a second check inside the interval
-    ticks = iter([10.0, 10.0, 20.0])
-
-    def clock() -> float:
-        return next(ticks)
+    calls = _count_probes(monkeypatch)
+    monkeypatch.setattr(store, "maintain_command_activity", lambda **_kwargs: None)
+    # check and attempt, then a second check inside the check interval
+    clock = _ticks(10.0, 10.0, 11.0)
 
     assert auto_repair_command_activity_health_if_degraded(store, clock=clock) is True
     assert auto_repair_command_activity_health_if_degraded(store, clock=clock) is False
