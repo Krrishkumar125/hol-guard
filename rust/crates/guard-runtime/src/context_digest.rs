@@ -767,7 +767,7 @@ fn evaluate_request(
             result.guard_run_launch = Some(plans);
         }
         ContextDigestKindV1::GuardRunAuthorizedPrefixes { plans } => {
-            let prefixes = observe_value(Phase::ContextGuardRunLaunchPlans, || {
+            let prefixes = observe_value(Phase::ContextGuardRunAuthorizedPrefixes, || {
                 // The prefix prelude reads only the argv pair, the shared
                 // environment digest and reusability; the identity and cwd stay
                 // with the caller, so bind a single synthetic environment whose
