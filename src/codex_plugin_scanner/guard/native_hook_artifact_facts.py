@@ -86,26 +86,30 @@ def _wire_artifact(artifact: Mapping[str, object]) -> dict[str, object]:
     A caller that wants the digest its saved approvals are keyed by passes
     ``hash_metadata``: the metadata the artifact carried when that identity was
     fixed, which a hook stamps its runtime posture onto before asking for these
-    facts. The identity fields the digest covers then ride along with it, sent
-    unredacted because that hash redacts the arguments and the url itself.
-    Everything the facts themselves turn on travels either way.
+    facts. The identity fields the digest covers are sent unredacted, because
+    that hash redacts the arguments and the url itself.
+
+    Every field is named on every entry, including the identity ones a caller
+    that wants no digest leaves empty. The resident binds its reply to the
+    digest of the request as it parsed it, so an entry that omitted a field the
+    contract serializes would be answered under a digest this side never
+    computed and the reply would read as unbound.
     """
 
     entry: dict[str, object] = {
         "artifact_type": artifact["artifact_type"],
         "metadata": dict(cast("Mapping[str, object]", artifact.get("metadata") or {})),
         "configured_override": artifact.get("configured_override"),
+        "args": list(cast("Sequence[str]", artifact.get("args") or ())),
     }
-    hash_metadata = artifact.get("hash_metadata")
-    if hash_metadata is None:
-        return entry
-    entry["hash_metadata"] = dict(cast("Mapping[str, object]", hash_metadata))
-    entry["args"] = list(cast("Sequence[str]", artifact.get("args") or ()))
     for field in ("artifact_id", "name", "harness", "source_scope", "config_path"):
         entry[field] = str(artifact.get(field) or "")
     for field in ("command", "url", "transport", "publisher"):
         value = artifact.get(field)
         entry[field] = value if isinstance(value, str) else None
+    hash_metadata = artifact.get("hash_metadata")
+    if hash_metadata is not None:
+        entry["hash_metadata"] = dict(cast("Mapping[str, object]", hash_metadata))
     return entry
 
 

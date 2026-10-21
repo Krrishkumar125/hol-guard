@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard import native_hook_artifact_facts as bridge
 from codex_plugin_scanner.guard.cli import commands_support_runtime_artifact_policy as policy
 from codex_plugin_scanner.guard.models import GuardArtifact
 from codex_plugin_scanner.guard.native_hook_artifact_facts import HookArtifactFactsUnavailableError
@@ -190,3 +191,48 @@ def test_the_content_hash_is_the_residents_digest() -> None:
 def test_a_missing_or_malformed_digest_fails_closed(facts: dict[str, object]) -> None:
     with pytest.raises(HookArtifactFactsUnavailableError):
         policy.artifact_fact_content_hash(facts)
+
+
+def test_every_entry_names_every_field_the_contract_serializes() -> None:
+    """The resident binds its reply to the request as it parsed it.
+
+    An entry that left a contract field out would be answered under a digest
+    this side never computed, and the reply would read as unbound: the facts
+    would be unavailable for every caller that asks for no digest.
+    """
+
+    artifact = _artifact()
+    asked = {
+        "artifact_type": artifact.artifact_type,
+        "metadata": artifact.metadata,
+        "configured_override": None,
+        "artifact_id": artifact.artifact_id,
+        "name": artifact.name,
+        "harness": artifact.harness,
+        "source_scope": artifact.source_scope,
+        "config_path": artifact.config_path,
+        "command": artifact.command,
+        "args": list(artifact.args),
+        "url": artifact.url,
+        "transport": artifact.transport,
+        "publisher": artifact.publisher,
+    }
+    plain = bridge._wire_artifact(asked)
+    hashed = bridge._wire_artifact({**asked, "hash_metadata": artifact.metadata})
+    assert set(hashed) - set(plain) == {"hash_metadata"}
+    assert set(plain) == {
+        "artifact_type",
+        "metadata",
+        "configured_override",
+        "artifact_id",
+        "name",
+        "harness",
+        "source_scope",
+        "config_path",
+        "command",
+        "args",
+        "url",
+        "transport",
+        "publisher",
+    }
+    assert bridge._wire_artifact({"artifact_type": "tool_action_request"}).keys() == plain.keys()
