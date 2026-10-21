@@ -308,6 +308,41 @@ fn replacement_edges_take_part_in_permission_cycle_detection() {
 }
 
 #[test]
+fn permission_metadata_rules_are_enforced_before_output() {
+    let dependency = "command.scale-1.permission.destroy";
+    let cases = [
+        (
+            "typed capability",
+            "command_source_typed_capability_duplicate_or_unsupported",
+        ),
+        ("family", "command_source_family_owner_conflict"),
+        ("missing example", "command_source_permission_invalid"),
+        ("multiline example", "command_source_permission_invalid"),
+        ("duplicate dependency", "command_source_permission_invalid"),
+    ];
+    for (case, expected) in cases {
+        let sources = synthetic_pair(|index, entry| match (case, index) {
+            ("typed capability", 0) => entry["typed_capabilities"] = json!(["scale_capability"]),
+            ("typed capability", _) => entry["typed_capabilities"] = json!([" SCALE_CAPABILITY "]),
+            ("family", _) => entry["family"] = json!("shared-family"),
+            ("missing example", 0) => {
+                entry.as_object_mut().unwrap().remove("example_command");
+            }
+            ("multiline example", 0) => entry["example_command"] = json!("example-cli\ndestroy"),
+            ("duplicate dependency", 0) => entry["dependencies"] = json!([dependency, dependency]),
+            _ => {}
+        });
+        let mut output = Vec::new();
+        assert_eq!(
+            compile_pack_stream(stream(&sources).as_slice(), &mut output).unwrap_err(),
+            expected,
+            "{case}"
+        );
+        assert!(output.is_empty());
+    }
+}
+
+#[test]
 fn incremental_compilation_matches_clean_and_revalidates_raw_sources() {
     let mut sources = sources();
     sources.push(synthetic(0));
