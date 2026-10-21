@@ -1448,29 +1448,6 @@
    ]
   },
   {
-   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
-   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.local_read_operands",
-   "source_sha256": "b5c830f9abdd9f692575d989741c81e3377a0e4f3df9d16e35760be0f7061742",
-   "forbidden_symbols": [
-    "_bounded_local_read_glob_is_safe",
-    "_cat_file_operand_tokens",
-    "_local_read_operands_resolve_safely",
-    "_plain_file_operand_tokens",
-    "_ripgrep_args_expand_hidden_files",
-    "_search_command_has_no_pattern",
-    "_search_concrete_file_operand_tokens",
-    "_search_file_operand_roles",
-    "_search_file_operand_tokens",
-    "_search_glob_pattern_is_safe",
-    "_sed_file_operand_tokens",
-    "_shell_segment_file_operand_tokens",
-    "search_operands_are_safe"
-   ],
-   "native_replacements": [
-    "rust/crates/guard-command/src/shell_secret_read_support.rs"
-   ]
-  },
-  {
    "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
    "module": "codex_plugin_scanner.guard.runtime.shell_command_wrappers",
    "source_sha256": "b328f048cc1b0e167dd1c57aeb1eaff84e5db25b6ed582dd3ecf91e0dd44f87e",
@@ -1501,6 +1478,40 @@
    ],
    "native_replacements": [
     "rust/crates/guard-command/src/codex_output_source_paths.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/adapters/_modules/codex/codex_hook_response.py",
+   "module": "codex_plugin_scanner.guard.adapters._modules.codex.codex_hook_response",
+   "source_sha256": "54d07ed0e88ff3329f76c0e2e1ba3f0e6dca89394dcf3db3d38786cec82176b6",
+   "forbidden_symbols": [
+    "codex_hook_response"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/codex_hook_response.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.local_read_operands",
+   "source_sha256": "b5c830f9abdd9f692575d989741c81e3377a0e4f3df9d16e35760be0f7061742",
+   "forbidden_symbols": [
+    "_bounded_local_read_glob_is_safe",
+    "_cat_file_operand_tokens",
+    "_local_read_operands_resolve_safely",
+    "_plain_file_operand_tokens",
+    "_ripgrep_args_expand_hidden_files",
+    "_search_command_has_no_pattern",
+    "_search_concrete_file_operand_tokens",
+    "_search_file_operand_roles",
+    "_search_file_operand_tokens",
+    "_search_glob_pattern_is_safe",
+    "_sed_file_operand_tokens",
+    "_shell_segment_file_operand_tokens",
+    "search_operands_are_safe"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/shell_secret_read_support.rs"
    ]
   },
   {
@@ -1578,6 +1589,7 @@
   "tests/test_native_command_options.py",
   "tests/test_guard_node_semver.py",
   "tests/test_hook_source_paths.py",
+  "tests/test_codex_pretool_allow_schema.py",
   "tests/test_guard_sandbox.py"
  ],
  "retired_bodies": [
