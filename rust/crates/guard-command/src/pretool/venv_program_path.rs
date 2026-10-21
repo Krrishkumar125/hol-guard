@@ -24,11 +24,18 @@
 //!
 //! This proves only which file the word names. The basename still decides
 //! what the command may do with it.
+//!
+//! The bounded-read screen is deliberately not the gate here. It answers a
+//! different question, and both of its answers are wrong for this one: it
+//! canonicalizes the program, so the link an environment writes to its base
+//! interpreter admits a file outside the environment, while the hidden-path
+//! rule refuses `.venv/bin/python` itself. The word's own spelling and the
+//! location screens are what this rule owes.
 
 use std::path::Path;
 
 pub(super) fn environment_program(executable: &str, context: super::PathContext<'_>) -> bool {
-    if !super::read_paths::bounded_file_read_target(executable, context.home_dir, context.cwd) {
+    if !super::read_paths::bounded_path_spelling(executable) {
         return false;
     }
     let Ok(candidate) = guard_secure_fs::resolve_candidate(
@@ -44,7 +51,19 @@ pub(super) fn environment_program(executable: &str, context: super::PathContext<
     let Ok(binaries) = std::fs::canonicalize(parent) else {
         return false;
     };
-    if !binaries.join(program).is_file() {
+    let resolved = binaries.join(program);
+    if !resolved.is_file() {
+        return false;
+    }
+    // The directory above is canonical, so the system roots, another user's
+    // home, the sensitive families and the credential-named paths are read off
+    // a place no link can have dressed up.
+    if !super::read_paths::resolved_location_allowed(
+        &resolved,
+        context.home_dir,
+        context.cwd,
+        false,
+    ) {
         return false;
     }
     // POSIX environments keep their programs in `bin`, Windows ones in

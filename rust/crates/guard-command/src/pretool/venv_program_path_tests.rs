@@ -63,6 +63,22 @@ fn a_name_the_environment_does_not_hold_is_not_proven() {
     assert!(!proven(&root, ".venv/bin/ruff"));
 }
 
+#[test]
+fn a_parent_component_is_not_a_spelling_this_rule_proves() {
+    // Nothing downstream reads the word again, so the rule refuses a spelling
+    // whose meaning depends on where the shell starts rather than resolving it.
+    let root = root("parent");
+    program(&root, true, "python");
+    assert!(!proven(&root, ".venv/bin/../bin/python"));
+}
+
+#[test]
+fn a_glob_is_not_a_spelling_this_rule_proves() {
+    let root = root("glob");
+    program(&root, true, "python");
+    assert!(!proven(&root, ".venv/bin/pyth*n"));
+}
+
 #[cfg(unix)]
 #[test]
 fn the_interpreter_link_an_environment_writes_stays_inside_it() {
