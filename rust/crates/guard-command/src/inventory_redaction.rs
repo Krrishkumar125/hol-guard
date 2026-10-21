@@ -14,9 +14,11 @@
 //! * `isinstance(candidate, int)` accepts `bool`, and `str(True)` is `"True"`.
 //!
 //! The path half of the seam (`redact_local_path`, `_redact_known_path`,
-//! `_redact_command_value`) still lives in Python, so this module exports free
-//! functions rather than an `InventoryRedactionApi` implementor. The URL half
-//! below leans on [`crate::python_url`] for CPython's `urllib.parse`.
+//! `_redact_command_value`) lives in [`crate::inventory_path_redaction`], which
+//! reuses the pattern classes below. Both halves export free functions rather
+//! than an `InventoryRedactionApi` implementor until the resident operation
+//! that carries a request's home, workspace and working directory lands. The
+//! URL half below leans on [`crate::python_url`] for CPython's `urllib.parse`.
 //!
 //! `scripts/ci/generate_inventory_redaction_parity.py` records the corpus in
 //! `testdata/inventory_redaction_parity.json` that pins every case below.
@@ -33,13 +35,13 @@ use crate::python_netloc::ip_address_is_private;
 use crate::python_url::{parse_qsl_keep_blank, urlencode, urlsplit, urlunsplit};
 
 /// CPython `re` `\s`: Unicode `White_Space` plus the C0 separators Rust omits.
-const PYTHON_SPACE_CLASS: &str = r"\s\x{1c}-\x{1f}";
+pub(crate) const PYTHON_SPACE_CLASS: &str = r"\s\x{1c}-\x{1f}";
 
 /// CPython `re` `\w`: `str.isalnum()` plus `_`. Rust's `\w` also counts
 /// combining marks, connector punctuation and Join_Control, so `\b` lands in
 /// different places and a `\b`-anchored secret pattern would fail open on
 /// `e\u{301}token=abc`. Spell the class out instead of using `\b`.
-const PYTHON_WORD_CLASS: &str = r"\p{L}\p{N}_";
+pub(crate) const PYTHON_WORD_CLASS: &str = r"\p{L}\p{N}_";
 
 /// CPython `re.IGNORECASE` folds `\u{130}` and `\u{131}` onto `i`; Rust's
 /// simple case folding leaves both alone, so `credent\u{131}al` or
