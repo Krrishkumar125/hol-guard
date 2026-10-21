@@ -20,6 +20,7 @@
 //! `scripts/ci/generate_inventory_redaction_parity.py` records the corpus in
 //! `testdata/inventory_redaction_parity.json` that pins every case below.
 
+use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use fancy_regex::Regex as FancyRegex;
@@ -30,6 +31,34 @@ use crate::inventory_fingerprints::{python_float_repr, python_json, DEFAULT_SEPA
 
 /// CPython `re` `\s`: Unicode `White_Space` plus the C0 separators Rust omits.
 const PYTHON_SPACE_CLASS: &str = r"\s\x{1c}-\x{1f}";
+
+/// CPython `re` `\w`: `str.isalnum()` plus `_`. Rust's `\w` also counts
+/// combining marks, connector punctuation and Join_Control, so `\b` lands in
+/// different places and a `\b`-anchored secret pattern would fail open on
+/// `e\u{301}token=abc`. Spell the class out instead of using `\b`.
+const PYTHON_WORD_CLASS: &str = r"\p{L}\p{N}_";
+
+/// CPython `re.IGNORECASE` folds `\u{130}` and `\u{131}` onto `i`; Rust's
+/// simple case folding leaves both alone, so `credent\u{131}al` or
+/// `guard_l\u{131}ve_abc` would stay in the clear. Fold them before matching.
+/// `\u{17f}` needs no help: Rust already folds it onto `s`, as CPython does.
+fn fold_python_case_extras(value: &str) -> Cow<'_, str> {
+    if !value.contains(['\u{130}', '\u{131}']) {
+        return Cow::Borrowed(value);
+    }
+    Cow::Owned(
+        value
+            .chars()
+            .map(|c| {
+                if c == '\u{130}' || c == '\u{131}' {
+                    'i'
+                } else {
+                    c
+                }
+            })
+            .collect(),
+    )
+}
 
 /// `_SERIALIZER_REDACTED_VALUE`.
 pub const SERIALIZER_REDACTED_VALUE: &str = "[REDACTED]";
@@ -69,11 +98,13 @@ static SERIALIZER_UNSAFE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// `_SERIALIZER_SECRET_ASSIGNMENT_RE`. The `(?!redacted\b)` lookahead needs
-/// `fancy-regex`; the `regex` crate cannot express it.
+/// `fancy-regex`; the `regex` crate cannot express it. Every `\b` is written
+/// as a lookaround over CPython's word class for the reason given there.
 static SERIALIZER_SECRET_ASSIGNMENT_RE: LazyLock<FancyRegex> = LazyLock::new(|| {
     FancyRegex::new(&format!(
-        r"(?i)\b(?:api[_-]?key|authorization|password|secret|token|access[_-]?token|refresh[_-]?token)\b[{space}]*[:=][{space}]*(?!redacted\b)[^{space}]+",
+        r"(?i)(?<![{word}])(?:api[_-]?key|authorization|password|secret|token|access[_-]?token|refresh[_-]?token)(?![{word}])[{space}]*[:=][{space}]*(?!redacted(?![{word}]))[^{space}]+",
         space = PYTHON_SPACE_CLASS,
+        word = PYTHON_WORD_CLASS,
     ))
     .expect("secret assignment pattern")
 });
@@ -82,8 +113,18 @@ static SERIALIZER_SECRET_ASSIGNMENT_RE: LazyLock<FancyRegex> = LazyLock::new(|| 
 /// undecidable match counts as a match.
 fn matches_secret_assignment(value: &str) -> bool {
     SERIALIZER_SECRET_ASSIGNMENT_RE
-        .is_match(value)
+        .is_match(&fold_python_case_extras(value))
         .unwrap_or(true)
+}
+
+/// `_SENSITIVE_KEY_RE.search(key)` with CPython's case folding.
+fn matches_sensitive_key(key: &str) -> bool {
+    SENSITIVE_KEY_RE.is_match(&fold_python_case_extras(key))
+}
+
+/// `_SENSITIVE_VALUE_RE.search(value)` with CPython's case folding.
+fn matches_sensitive_value(value: &str) -> bool {
+    SENSITIVE_VALUE_RE.is_match(&fold_python_case_extras(value))
 }
 
 /// `_sanitize_serializer_string(value, *, parent_key="", parent_sensitive=False)`
@@ -91,11 +132,11 @@ pub fn sanitize_serializer_string(value: &str, parent_key: &str, parent_sensitiv
     if SAFE_SERIALIZED_MARKERS.contains(&value) {
         return value.to_string();
     }
-    if parent_sensitive || (!parent_key.is_empty() && SENSITIVE_KEY_RE.is_match(parent_key)) {
+    if parent_sensitive || (!parent_key.is_empty() && matches_sensitive_key(parent_key)) {
         return SERIALIZER_REDACTED_VALUE.to_string();
     }
     if SERIALIZER_UNSAFE_PATH_RE.is_match(value)
-        || SENSITIVE_VALUE_RE.is_match(value)
+        || matches_sensitive_value(value)
         || matches_secret_assignment(value)
     {
         return SERIALIZER_REDACTED_VALUE.to_string();
@@ -114,7 +155,7 @@ pub fn sanitize_serializer_string(value: &str, parent_key: &str, parent_sensitiv
 /// is already sorted; no producer emits two keys that collide this way.
 pub fn safe_json(value: &Value, parent_key: &str, parent_sensitive: bool) -> Value {
     let key_sensitive =
-        parent_sensitive || (!parent_key.is_empty() && SENSITIVE_KEY_RE.is_match(parent_key));
+        parent_sensitive || (!parent_key.is_empty() && matches_sensitive_key(parent_key));
     match value {
         Value::Object(entries) => {
             let mut projected = Map::new();
@@ -145,7 +186,7 @@ pub fn safe_json(value: &Value, parent_key: &str, parent_sensitive: bool) -> Val
 pub fn assert_serialized_inventory_payload_safe(payload: &Value) -> Result<(), String> {
     let encoded = python_json(payload, DEFAULT_SEPARATORS);
     if SERIALIZER_UNSAFE_PATH_RE.is_match(&encoded)
-        || SENSITIVE_VALUE_RE.is_match(&encoded)
+        || matches_sensitive_value(&encoded)
         || matches_secret_assignment(&encoded)
     {
         return Err("Inventory snapshot serialization produced unsafe payload.".to_string());

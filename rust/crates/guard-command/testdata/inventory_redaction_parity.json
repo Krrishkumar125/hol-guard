@@ -73,6 +73,18 @@
   },
   {
    "payload": {
+    "value": "guard_lıve_abc"
+   },
+   "safe": true
+  },
+  {
+   "payload": {
+    "value": "étoken=abc"
+   },
+   "safe": true
+  },
+  {
+   "payload": {
     "café": "value"
    },
    "safe": true
@@ -160,6 +172,22 @@
      "count": 3,
      "nested": "abc"
     }
+   }
+  },
+  {
+   "expected": {
+    "credentıal": "[REDACTED]"
+   },
+   "value": {
+    "credentıal": "abc"
+   }
+  },
+  {
+   "expected": {
+    "safe": "[REDACTED]"
+   },
+   "value": {
+    "safe": "guard_lıve_abc"
    }
   },
   {
@@ -634,6 +662,48 @@
    "parent_key": "",
    "parent_sensitive": false,
    "value": "token:\u001dabc"
+  },
+  {
+   "expected": "[REDACTED]",
+   "parent_key": "credentıal",
+   "parent_sensitive": false,
+   "value": "harmless"
+  },
+  {
+   "expected": "[REDACTED]",
+   "parent_key": "credentİal",
+   "parent_sensitive": false,
+   "value": "harmless"
+  },
+  {
+   "expected": "harmless",
+   "parent_key": "apııkey",
+   "parent_sensitive": false,
+   "value": "harmless"
+  },
+  {
+   "expected": "[REDACTED]",
+   "parent_key": "",
+   "parent_sensitive": false,
+   "value": "guard_lıve_abc"
+  },
+  {
+   "expected": "[REDACTED]",
+   "parent_key": "",
+   "parent_sensitive": false,
+   "value": "apı-key=abc"
+  },
+  {
+   "expected": "[REDACTED]",
+   "parent_key": "",
+   "parent_sensitive": false,
+   "value": "étoken=abc"
+  },
+  {
+   "expected": "[REDACTED]",
+   "parent_key": "",
+   "parent_sensitive": false,
+   "value": "x‿token=abc"
   },
   {
    "expected": "",
