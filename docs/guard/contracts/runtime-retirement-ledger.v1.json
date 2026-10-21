@@ -103,6 +103,7 @@
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
   "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
   "src/codex_plugin_scanner/guard/runtime/source_paths.py",
+  "src/codex_plugin_scanner/guard/runtime/sandbox.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/read_only_filters.py"
  ],
  "retired_tests": [
@@ -7050,6 +7051,209 @@
    "replacement_nodes": [],
    "status": "obsolete_implementation_assertion",
    "rationale": "SourceDecision is a plain Rust struct returned by value. Immutability is a property of the type, not something a runtime test can observe."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_sandbox_result_is_dataclass",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_sandbox_result_to_dict_truncates_output",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_sandbox_request_defaults",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_is_secret_path_ssh",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_is_secret_path_aws",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_is_secret_path_env",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_is_secret_path_benign",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_detect_network_attempts_curl",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_detect_network_attempts_https_url",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_detect_network_attempts_benign",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_build_env_clean_has_minimal_keys",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_build_env_minimal_preserves_inherited_paths_without_sensitive_values",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_build_env_passthrough_preserves_inherited_values",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_redact_env_hides_token",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_off_mode_returns_empty",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_benign_shell_script",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_clean_env_uses_private_workspace_for_home_and_tmpdir",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_detects_network_attempt_statically",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_escape_attempt_network_fixture",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_escape_attempt_secret_file_excluded",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_timeout_enforced",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_failure_safe_on_bad_interpreter",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_unexpected_write_detected",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_fork_bomb_limited",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_python_script_path",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_node_script_path",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_suspicious_mode_skips_benign",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_signals_detected_on_timeout",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_to_dict_keys_present",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
   }
  ],
  "preserved_tests": [
