@@ -1,9 +1,16 @@
 //! Build-time packaged command artifacts for `guard-command`.
 //!
 //! The zstd-19 catalog compilation, trust-map projection, and embedded blob
-//! digests live behind this leaf crate so an unrelated `guard-command` source
-//! edit no longer reruns catalog generation. Constants mirror the build
-//! outputs byte-for-byte; consumers keep their existing fail-closed decode.
+//! digests live behind this leaf crate, and the work reruns only for the
+//! declared compiler closure in `build_support/command_source_inputs.v1.json`:
+//! `guard-command`, `guard-command-build` and their path dependencies. An edit
+//! to a runtime crate outside that closure no longer reruns generation.
+//!
+//! An edit inside `guard-command` itself still does, and has to:
+//! `guard-command-build` compiles `guard-command/src/lib.rs` as its own `[lib]`,
+//! so that source is the compiler whose identity the catalog is bound to.
+//! Constants mirror the build outputs byte-for-byte; consumers keep their
+//! existing fail-closed decode.
 
 /// Authored trust-class projection (`contracts/extensions/trust/` core set).
 pub const TRUST_MAP_JSON: &[u8] =

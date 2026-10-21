@@ -24,6 +24,20 @@ def _crate_manifest(crate: str) -> dict:
     return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
+def _dependency_tables(manifest: dict, sections: tuple[str, ...]) -> list[dict]:
+    """Every table Cargo reads for those sections, platform-specific ones included.
+
+    A `[target.'cfg(unix)'.dependencies]` entry compiles into the crate on that
+    platform like any other dependency, so a closure that reads only the
+    top-level tables would let a path dependency enter the compiler unclassified
+    by spelling it under a cfg.
+    """
+    tables = [manifest.get(section, {}) for section in sections]
+    for platform in manifest.get("target", {}).values():
+        tables.extend(platform.get(section, {}) for section in sections)
+    return tables
+
+
 def _production_closure() -> set[str]:
     """Normal and build path-dependency closure; dev-only crates stay out."""
     seen: set[str] = set()
@@ -34,8 +48,8 @@ def _production_closure() -> set[str]:
             continue
         seen.add(crate)
         manifest = _crate_manifest(crate)
-        for section in ("dependencies", "build-dependencies"):
-            for spec in manifest.get(section, {}).values():
+        for table in _dependency_tables(manifest, ("dependencies", "build-dependencies")):
+            for spec in table.values():
                 path = spec.get("path") if isinstance(spec, dict) else None
                 if not path:
                     continue
@@ -82,6 +96,19 @@ def test_manifest_crates_match_the_production_closure() -> None:
         assert (WORKSPACE / "crates" / crate / "Cargo.toml").is_file(), crate
 
 
+def test_a_platform_specific_path_dependency_is_part_of_the_closure() -> None:
+    """A dependency spelled under a cfg compiles in like any other one."""
+    manifest = {
+        "dependencies": {"always": {"path": "../always"}},
+        "target": {
+            "cfg(unix)": {"dependencies": {"on-unix": {"path": "../on-unix"}}},
+            "cfg(windows)": {"build-dependencies": {"on-windows": {"path": "../on-windows"}}},
+        },
+    }
+    tables = _dependency_tables(manifest, ("dependencies", "build-dependencies"))
+    assert {name for table in tables for name in table} == {"always", "on-unix", "on-windows"}
+
+
 def test_runtime_only_crates_stay_outside_the_fingerprint() -> None:
     """Runtime domains must not re-enter the broad sweep this manifest replaces."""
     declared = set(_manifest()["crates"])
@@ -103,8 +130,9 @@ def test_runtime_only_crates_stay_outside_the_fingerprint() -> None:
 def _path_dependencies(crate: str) -> set[str]:
     manifest = _crate_manifest(crate)
     names = set()
-    for section in ("dependencies", "build-dependencies", "dev-dependencies"):
-        for dep_name, spec in manifest.get(section, {}).items():
+    sections = ("dependencies", "build-dependencies", "dev-dependencies")
+    for table in _dependency_tables(manifest, sections):
+        for dep_name, spec in table.items():
             if isinstance(spec, dict) and "path" in spec:
                 names.add(dep_name)
     return names
