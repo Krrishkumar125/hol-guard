@@ -93,7 +93,11 @@
   "src/codex_plugin_scanner/guard/policy_recipe.py",
   "src/codex_plugin_scanner/guard/runtime/network_public_suffix.py",
   "src/codex_plugin_scanner/guard/runtime/remote_approval_execution.py",
-  "src/codex_plugin_scanner/guard/runtime/resource_budget.py"
+  "src/codex_plugin_scanner/guard/runtime/resource_budget.py",
+  "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
+  "src/codex_plugin_scanner/guard/runtime/restricted_linux_paths.py",
+  "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
+  "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py"
  ],
  "retired_tests": [
   {
@@ -7010,16 +7014,6 @@
  "implementation_base_sha": "1dc81dd4319cdf18e4b1c0fd3d061f732601b188",
  "replaced_implementations": [
   {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "dd444d6d651697c0c7b7cf38d77bfa155e15adba183219fec85a393190789df1",
-   "remaining_role": "Portable native mapping/mount projections and legacy identity DTO only; stable image copying, noexec mounts and capability drop are native.",
-   "native_replacements": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
-   ],
-   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/linux_launch_parity.json"
-  },
-  {
    "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_namespace.py",
    "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
    "source_sha256": "a9b077f191f28ee2b82156bdd1f93aece68f6b4288bac81a2019490e1561f422",
@@ -7044,26 +7038,6 @@
    "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
    "source_sha256": "5892ba09cd8a077be5d8a345df131054115ff9f46e41ec9d4e1e93f62608e94c",
    "remaining_role": "Legacy fixed-locator constants and fail-closed compatibility entry only; the namespace invokes the packaged native kernel launcher directly.",
-   "native_replacements": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
-   ],
-   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/linux_launch_parity.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "db657bee3f0a23b44b23b9c1eb398babc0db4262d56477f8f179d94784c636df",
-   "remaining_role": "Typed projection of the native exact ELF loader result; bounded ELF parsing and system-image ownership checks are native.",
-   "native_replacements": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
-   ],
-   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/linux_launch_parity.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_paths.py",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "08fa4d90b10eff57b9e6e205ba4e025ecb0926828bb19df8bc97938ac88c1135",
-   "remaining_role": "Typed projection of the native private inode-index snapshot; native descriptor discovery and existing secret-path classification own admission.",
    "native_replacements": [
     "rust/crates/guard-runtime/src/restricted_linux_launch/mod.rs"
    ],
@@ -7112,18 +7086,6 @@
    "remaining_role": "Native transport projection of credential patterns and Seatbelt denials only; pattern construction and string escaping are native.",
    "native_replacements": [
     "rust/crates/guard-command/src/restricted_pytest/credentials.rs",
-    "rust/crates/guard-runtime/src/restricted_pytest_op.rs"
-   ],
-   "parity_fixture": "rust/crates/guard-command/tests/fixtures/contained_execution_parity.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
-   "base_commit": "1b76783140a37e849645f943984f587acaa52cfa",
-   "source_sha256": "0b7d2c667b1da815b33870865be842e46702a96a9bd8271dcafa1e98329a4e4a",
-   "remaining_role": "Bounded owner-only mapping input/result snapshot handoff and path-based ELF projection; ELF parsing and dependency-closure evidence are native.",
-   "native_replacements": [
-    "rust/crates/guard-command/src/restricted_pytest/mapping.rs",
-    "rust/crates/guard-command/src/restricted_pytest/mapping_elf.rs",
     "rust/crates/guard-runtime/src/restricted_pytest_op.rs"
    ],
    "parity_fixture": "rust/crates/guard-command/tests/fixtures/contained_execution_parity.json"
