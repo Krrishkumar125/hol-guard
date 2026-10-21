@@ -449,6 +449,44 @@ def test_daemon_aibom_refresh_skips_without_workspace_context(
 
 
 @pytest.mark.daemon_aibom_refresh
+def test_daemon_user_inventory_scan_uses_the_configured_home(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A daemon started with --home scans that home when no workspace is bound."""
+    store = GuardStore(tmp_path / "guard-home")
+    _seed_guard_cloud(store, workspace_id="workspace-alpha")
+    monkeypatch.setattr(
+        guard_daemon_module,
+        "sync_aibom_snapshots_if_due",
+        lambda _store, **_kwargs: {"synced": True},
+    )
+    user_inventory_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        guard_daemon_module,
+        "remember_user_inventory_if_due",
+        lambda _store, **kwargs: user_inventory_calls.append(kwargs) or {"collected": True, "items": 1},
+    )
+    home = tmp_path / "configured-home"
+    daemon = guard_daemon_module.GuardDaemonServer(
+        store,
+        host="127.0.0.1",
+        port=0,
+        idle_timeout_seconds=60,
+        home_dir=home,
+        aibom_refresh_interval_seconds=60,
+        aibom_refresh_backoff_seconds=0.05,
+    )
+    daemon.start()
+    try:
+        _wait_for_aibom_status(store, expected="missing_workspace_context")
+    finally:
+        daemon.stop()
+
+    assert user_inventory_calls and user_inventory_calls[0]["home_dir"] == home
+
+
+@pytest.mark.daemon_aibom_refresh
 def test_daemon_aibom_refresh_retries_returned_error_on_backoff(
     tmp_path: Path,
     monkeypatch,

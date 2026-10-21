@@ -4278,7 +4278,7 @@ class GuardDaemonServer:
                         self._server.store,
                         generated_at=refreshed_at,
                         min_interval_seconds=max(int(interval_seconds), 1),
-                        home_dir=home_dir,
+                        home_dir=home_dir if home_dir is not None else self._aibom_home_dir,
                     )
                     self._server.store.set_sync_payload(
                         "aibom_inventory_daemon",
