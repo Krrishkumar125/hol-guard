@@ -100,7 +100,9 @@ def granted_containment_response(
     from ..adapters.zcode_contained_tests import route_zcode_containment
 
     receipt = render_pre_tool(harness, granted, guard_home=guard_home, deadline=deadline)
-    sink = native_containment_sink(receipt, harness=harness, bridge=False, payload=payload, guard_home=guard_home)
+    sink = native_containment_sink(
+        receipt, harness=harness, bridge=False, payload=payload, guard_home=guard_home, deadline=deadline
+    )
     if sink.kept_because == "receipt_only":
         return receipt
     if sink.profile is None:

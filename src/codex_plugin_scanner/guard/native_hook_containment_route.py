@@ -19,6 +19,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import sys
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -28,6 +29,7 @@ from .native_hook_decision import (
     _INVALID,
     _MAX_REQUEST_BYTES,
     _OPERATION,
+    _UNAVAILABLE,
     NativeHookDecisionError,
 )
 from .native_resident_decision import resident_decide
@@ -71,9 +73,19 @@ def _text(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _ask(kind: str, inputs: Mapping[str, object], guard_home: Path | None, validate: Any) -> dict[str, Any]:
+def _ask(
+    kind: str, inputs: Mapping[str, object], guard_home: Path | None, validate: Any, deadline: float | None
+) -> dict[str, Any]:
+    # ``deadline`` is the hook's ``time.monotonic()`` deadline. The query never
+    # waits past it, and a spent deadline is an outage without asking, so a
+    # slow resident cannot hold the hook past what the harness allows.
+    timeout = _OPERATION.timeout_seconds
+    if deadline is not None:
+        timeout = min(timeout, deadline - time.monotonic())
+        if timeout <= 0:
+            raise NativeHookDecisionError(_UNAVAILABLE)
     return resident_decide(
-        dataclasses.replace(_OPERATION, feature=HOOK_DECISION_CONTAINMENT_ROUTE_FEATURE),
+        dataclasses.replace(_OPERATION, feature=HOOK_DECISION_CONTAINMENT_ROUTE_FEATURE, timeout_seconds=timeout),
         functools.partial(_resident_request, max_request_bytes=_MAX_REQUEST_BYTES),
         {"kind": kind, "inputs": dict(inputs)},
         guard_home,
@@ -82,7 +94,12 @@ def _ask(kind: str, inputs: Mapping[str, object], guard_home: Path | None, valid
 
 
 def native_containment_route(
-    result: Mapping[str, object], *, event_name: object, recording_only: bool, guard_home: Path | None
+    result: Mapping[str, object],
+    *,
+    event_name: object,
+    recording_only: bool,
+    guard_home: Path | None,
+    deadline: float | None = None,
 ) -> str:
     """Which containment step a native PreToolUse ``result`` takes: ``none``, ``sink`` or ``grant``."""
 
@@ -102,7 +119,7 @@ def native_containment_route(
         if set(payload) != {"kind", "route"} or not isinstance(route, str) or route not in _ROUTES:
             raise NativeHookDecisionError(_INVALID)
 
-    return str(_ask("containment_route", inputs, guard_home, validate)["route"])
+    return str(_ask("containment_route", inputs, guard_home, validate, deadline)["route"])
 
 
 def edge_containment_route(
@@ -112,6 +129,7 @@ def edge_containment_route(
     event_name: object,
     recording_only: bool,
     guard_home: Path | None,
+    deadline: float | None = None,
 ) -> str:
     """The route the resident stamped on its edge answer, or its ``containment_route`` answer.
 
@@ -123,7 +141,9 @@ def edge_containment_route(
     stamped = edge.get("containment_route")
     if isinstance(stamped, str) and stamped in _ROUTES:
         return stamped
-    return native_containment_route(result, event_name=event_name, recording_only=recording_only, guard_home=guard_home)
+    return native_containment_route(
+        result, event_name=event_name, recording_only=recording_only, guard_home=guard_home, deadline=deadline
+    )
 
 
 def native_containment_sink(
@@ -133,6 +153,7 @@ def native_containment_sink(
     bridge: bool,
     payload: Mapping[str, object],
     guard_home: Path | None,
+    deadline: float | None = None,
 ) -> ContainmentSink:
     """Whether the rendered receipt ``response`` for ``payload`` is rewritten into the sink."""
 
@@ -165,7 +186,7 @@ def native_containment_sink(
             # The sink runs the profile the receipt names, never another.
             raise NativeHookDecisionError(_INVALID)
 
-    answer = _ask("containment_sink", inputs, guard_home, validate)
+    answer = _ask("containment_sink", inputs, guard_home, validate, deadline)
     return ContainmentSink(answer["profile"], answer["kept_because"])
 
 

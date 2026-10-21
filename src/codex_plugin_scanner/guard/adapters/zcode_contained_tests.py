@@ -75,6 +75,7 @@ def route_zcode_containment(
     home_dir: Path,
     workspace: Path | None,
     sink: ContainmentSink | None = None,
+    deadline: float | None = None,
 ) -> dict[str, object]:
     """Rewrite at the authority edge so frozen/stdlib hook clients also work.
 
@@ -86,7 +87,9 @@ def route_zcode_containment(
     if workspace is None:
         return response
     if sink is None:
-        sink = native_containment_sink(response, harness=harness, bridge=False, payload=payload, guard_home=guard_home)
+        sink = native_containment_sink(
+            response, harness=harness, bridge=False, payload=payload, guard_home=guard_home, deadline=deadline
+        )
     if sink.profile is None:
         return response
     config = {

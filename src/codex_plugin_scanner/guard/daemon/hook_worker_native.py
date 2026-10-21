@@ -621,7 +621,12 @@ class HookWorkerNativeMixin:
                 # The resident routes the call, as on the CLI path; without its
                 # answer the host gets the outage shape, never a route picked here.
                 containment = edge_containment_route(
-                    edge, native_result, event_name=native_event, recording_only=recording_only, guard_home=guard_home
+                    edge,
+                    native_result,
+                    event_name=native_event,
+                    recording_only=recording_only,
+                    guard_home=guard_home,
+                    deadline=deadline,
                 )
                 contained = None
                 if containment == "grant":
@@ -704,6 +709,7 @@ class HookWorkerNativeMixin:
                         guard_home=guard_home,
                         home_dir=home_dir,
                         workspace=workspace,
+                        deadline=deadline,
                     )
                 except NativeHookDecisionError as error:
                     return _containment_outage(self, payload, native_harness, error, guard_home, deadline)

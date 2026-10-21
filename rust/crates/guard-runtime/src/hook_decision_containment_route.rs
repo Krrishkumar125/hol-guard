@@ -90,7 +90,7 @@ pub(crate) fn containment_route(
     })
 }
 
-/// The `containment_route` answer for a PreToolUse edge `result`, stamped on
+/// The `containment_route` answer for an edge `result`, stamped on
 /// the edge so a hook does not spend a second round trip asking for it. It
 /// reads the same fields the decision query sends.
 pub(crate) fn edge_route(event_name: &str, result: &Value, recording_only: bool) -> String {

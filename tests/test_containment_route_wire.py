@@ -10,6 +10,7 @@ The resident cases replay the retired Python tables on every host.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -122,6 +123,36 @@ def test_an_edge_without_a_route_asks_the_resident(monkeypatch: pytest.MonkeyPat
     )
     assert answer == "sink"
     assert [query["kind"] for _feature, query in asked] == ["containment_route"]
+
+
+def test_a_spent_hook_deadline_is_an_outage_without_asking(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[Any] = []
+    _resident_answering(monkeypatch, {"kind": "containment_route", "route": "none"}, asked)
+    with pytest.raises(NativeHookDecisionError):
+        route_module.native_containment_route(
+            {}, event_name="PreToolUse", recording_only=False, guard_home=None, deadline=time.monotonic() - 1
+        )
+    with pytest.raises(NativeHookDecisionError):
+        route_module.native_containment_sink(
+            _PYTEST, harness="claude-code", bridge=False, payload=_SHELL_CALL, guard_home=None, deadline=0.0
+        )
+    assert asked == []
+
+
+def test_the_query_waits_no_longer_than_the_hook_allows(monkeypatch: pytest.MonkeyPatch) -> None:
+    timeouts: list[float] = []
+
+    def decide(operation: Any, *_args: object) -> dict[str, Any]:
+        timeouts.append(operation.timeout_seconds)
+        return {"kind": "containment_route", "route": "none"}
+
+    monkeypatch.setattr(route_module, "resident_decide", decide)
+    route_module.native_containment_route({}, event_name="PreToolUse", recording_only=False, guard_home=None)
+    route_module.native_containment_route(
+        {}, event_name="PreToolUse", recording_only=False, guard_home=None, deadline=time.monotonic() + 0.5
+    )
+    assert timeouts[0] == route_module._OPERATION.timeout_seconds
+    assert 0 < timeouts[1] <= 0.5
 
 
 def test_the_sink_query_sends_the_receipt_call_and_host(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -240,9 +240,9 @@ def _decode_edge(payload: object) -> dict[str, Any] | None:
     if event_name == "PreToolUse" and payload_kind == "encrypted_payload_ref":
         return None
     if "containment_route" in payload and (
-        event_name != "PreToolUse"
-        or not isinstance(payload["containment_route"], str)
+        not isinstance(payload["containment_route"], str)
         or payload["containment_route"] not in {"none", "sink", "grant"}
+        or (event_name != "PreToolUse" and payload["containment_route"] != "none")
     ):
         return None
     receipt = payload.get("receipt")
