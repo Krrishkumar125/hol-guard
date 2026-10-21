@@ -101,6 +101,7 @@ from ..runtime.runner import (
     GuardSyncAuthorizationExpiredError,
     GuardSyncNotConfiguredError,
     _resolve_guard_sync_auth_context,
+    sync_network_protection_bundle_best_effort,
     sync_supply_chain_bundle,
 )
 from ..runtime.surface_server import GuardSurfaceRuntime
@@ -625,7 +626,9 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 registry=control_registry,
                 runtime=self.extension_control_runtime,
             )
-            self.local_cli_api = LocalCliApiService(store=self.store)
+            self.local_cli_api = LocalCliApiService(
+                store=self.store, record_exception=self.diagnostics.record_exception
+            )
             self.approval_attention = ApprovalAttentionCoordinator(
                 store=self.store,
                 runtime=self.runtime,
@@ -4122,6 +4125,9 @@ class GuardDaemonServer:
                     refreshed_at,
                 )
                 wait_seconds = backoff_seconds
+            # Separate endpoint: refresh it whether or not the supply-chain
+            # bundle synced.
+            sync_network_protection_bundle_best_effort(self._server.store)
             if self._shutdown_started.wait(wait_seconds):
                 return
 
