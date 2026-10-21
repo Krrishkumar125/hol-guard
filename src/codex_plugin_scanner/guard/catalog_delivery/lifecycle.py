@@ -7,6 +7,7 @@ import os
 import threading
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
+from functools import wraps
 from pathlib import Path
 from typing import Any, cast
 
@@ -62,6 +63,23 @@ def session():
                 _SESSION.reset(token)
     except transport.NativeSourceCompilerError as exc:
         raise NativePackLifecycleUnavailableError(f"native_pack_lifecycle_unavailable: {exc}") from exc
+
+
+def one_runtime(function):
+    """Verify and materialize the runtime once per operation, not once per record.
+
+    A `record` call outside a session re-reads, hashes and copies the packaged
+    executable before spawning it. An operation that authenticates several
+    records -- a store read, a projection capture, a reservation inside an open
+    write transaction -- pays that once with this.
+    """
+
+    @wraps(function)
+    def operation(*args, **kwargs):
+        with session():
+            return function(*args, **kwargs)
+
+    return operation
 
 
 def runtime_fingerprint() -> tuple[tuple[int, ...], ...]:

@@ -33,6 +33,7 @@ def _exists(connection):
     )
 
 
+@lifecycle.one_runtime
 def reserve(store, connection, draft, *, control_revision, snapshot_digest, catalog_digest, recorded_at, now=None):
     """Reserve with PREPARED controls, before the private anchor is advanced."""
     require_exclusive_command_control_mutation_lease(store.guard_home)
@@ -102,6 +103,7 @@ def reserve(store, connection, draft, *, control_revision, snapshot_digest, cata
     )
 
 
+@lifecycle.one_runtime
 def finish(store, connection, transition):
     """Install packs in the same transaction as the anchored control snapshot.
 
