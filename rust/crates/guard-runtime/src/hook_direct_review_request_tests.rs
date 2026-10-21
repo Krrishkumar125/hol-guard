@@ -242,6 +242,7 @@ fn false_and_float_zero_uncertainty_are_hint_candidates() {
     for count in [json!(false), json!(0.0)] {
         let result = json!({
             "minimum_action": "review",
+            "reason_code": "native_command_review_required",
             "command_extensions": {"binding": {"uncertainty_count": count, "observations_digest": "d"}},
         });
         let result = result.as_object().expect("result");
@@ -250,27 +251,73 @@ fn false_and_float_zero_uncertainty_are_hint_candidates() {
 }
 
 #[test]
-fn container_runtime_uncertain_observations_are_hint_candidates() {
+fn any_rule_uncertain_observations_are_hint_candidates() {
     let payload = json!({
         "tool_name": "Bash",
         "tool_input": {"command": "docker version --format '{{.Server.Version}}'"},
     });
     let payload = payload.as_object().expect("payload");
+    for (extension_id, rule_id) in [
+        (
+            "command.container-runtime",
+            "command.container-runtime.docker-sensitive",
+        ),
+        (
+            "command.kubernetes-secrets",
+            "command.kubernetes-secrets.secret-read",
+        ),
+        (
+            "command.data-protection",
+            "command.data-protection.file-upload",
+        ),
+    ] {
+        let result = json!({
+            "minimum_action": "review",
+            "reason_code": "native_command_review_required",
+            "command_extensions": {
+                "binding": {"uncertainty_count": 1, "observations_digest": "d"},
+                "observations": [
+                    {
+                        "extension_id": extension_id,
+                        "rule_id": rule_id,
+                        "uncertainty_reasons": ["matcher-failure"],
+                    }
+                ],
+            },
+        });
+        let result = result.as_object().expect("result");
+        assert_eq!(
+            allow_hint_candidate(payload, result),
+            Some(true),
+            "{rule_id}"
+        );
+    }
+    // Ruleless permission uncertainty cannot be settled by any one
+    // permission, so it is never a hint candidate.
     let result = json!({
         "minimum_action": "review",
+        "reason_code": "native_command_review_required",
         "command_extensions": {
             "binding": {"uncertainty_count": 1, "observations_digest": "d"},
-            "observations": [
-                {
-                    "extension_id": "command.container-runtime",
-                    "rule_id": "command.container-runtime.docker-sensitive",
-                    "uncertainty_reasons": ["matcher-failure"],
-                }
+            "observations": [],
+            "permission_observations": [
+                {"uncertainty_reasons": ["matcher-failure"]}
             ],
         },
     });
     let result = result.as_object().expect("result");
-    assert_eq!(allow_hint_candidate(payload, result), Some(true));
+    assert_eq!(allow_hint_candidate(payload, result), Some(false));
+    // A fixed PreTool floor reviews whatever the extensions say, so an
+    // extension Allow can never settle it and it is not a hint candidate.
+    let result = json!({
+        "minimum_action": "review",
+        "reason_code": "native_sensitive_access_review",
+        "command_extensions": {
+            "binding": {"uncertainty_count": 0, "observations_digest": "d"},
+        },
+    });
+    let result = result.as_object().expect("result");
+    assert_eq!(allow_hint_candidate(payload, result), Some(false));
 }
 
 #[cfg(windows)]

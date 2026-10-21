@@ -2112,33 +2112,23 @@ pub fn build_supply_chain_status_payload(
     payload
 }
 
-/// `_build_package_manager_protection` (:3171-3190).
+/// `_build_package_manager_protection`: the resident's protection projection.
+///
+/// The shape and the "which detected managers are unprotected" rule live in
+/// [`crate::shims::package_shim_protection_from_status`]; this only supplies
+/// the dashboard status and the default shim directory.
 pub fn build_package_manager_protection(
     store: &dyn SupplyChainStore,
     shims: &dyn ShimsApi,
 ) -> Map<String, Value> {
     let home_dir = expand_tilde_inner(Path::new("~"));
-    let status = dict_payload(Some(&shims.package_shim_dashboard_status(
-        &home_dir,
-        None,
-        store.guard_home(),
-    )))
+    let guard_home = store.guard_home();
+    let status = dict_payload(Some(
+        &shims.package_shim_dashboard_status(&home_dir, None, guard_home),
+    ))
     .unwrap_or_default();
-    let managed = status
-        .get("managed")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let supported_managers = shims.package_shim_supported_managers();
-    let mut protection = Map::new();
-    protection.insert("managed".into(), json!(managed));
-    protection.insert("supported_managers".into(), json!(supported_managers));
-    if let Some(s) = status.get("state") {
-        protection.insert("state".into(), s.clone());
-    }
-    if let Some(s) = status.get("detail") {
-        protection.insert("detail".into(), s.clone());
-    }
-    protection
+    let default_shim_dir = guard_home.join("package-shims").join("bin");
+    crate::shims::package_shim_protection_from_status(&status, &default_shim_dir.to_string_lossy())
 }
 
 /// `_call_sync_with_optional_auth_context` — retries with refreshed auth when

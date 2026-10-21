@@ -143,6 +143,16 @@ counts, hashes, and booleans. They exclude raw payloads, source, commands,
 prompts, content, secrets, tokens, and paths. The `workspace_bound` boolean may
 record that a workspace was present without disclosing its name or location.
 
+The Extensions allow hint is advisory presentation, not a decision: whether a
+paused review may carry an "enable this permission" hint is gated by one
+intentional mirror of the resident's `allow_hint_candidate` check in the
+Python control plane (`native_review_allow_hint._definite_review_binding` and
+`extension_allow_hint`). All three state the same rule — the pause must be
+the extension review itself (`native_command_review_required`) — and the
+recorded vectors in `rust/crates/guard-runtime/testdata/hook_direct_review/`
+pin the resident and daemon copies together. The settle proofs and the
+counterfactual that verifies a hint before it is stored remain Rust-owned.
+
 ## Harness route inventory
 
 The v2 contract maps all harnesses in `HARNESS_CONTRACTS`, including harnesses
