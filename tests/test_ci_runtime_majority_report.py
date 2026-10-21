@@ -403,6 +403,9 @@ def test_eager_audit_considers_every_in_scope_importer(tmp_path: Path) -> None:
     scope_path = tmp_path / DEFAULT_SCOPE
     scope = _scope()
     scope["python"]["roots"] = [{"module": "pkg.root", "surface": "test"}]
+    # This package has no lazy_dep.py, and the report refuses a scope that
+    # names a path which does not exist.
+    scope["python"]["reviewed_runtime"] = []
     _write(scope_path, json.dumps(scope))
     result = build_report(tmp_path, scope_path)
     [record] = [item for item in result["exclusions"] if item["path"] == "src/pkg/skipped.py"]
