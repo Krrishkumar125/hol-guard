@@ -157,12 +157,35 @@ def test_malicious_transfer_is_rejected_before_any_member_is_published(tmp_path,
     assert published(directory) == []
 
 
-def test_replaced_cached_transfer_is_rechecked_natively(tmp_path, native_hook_force):
+def test_replaced_cached_transfer_is_rechecked_natively_and_fetched_again(tmp_path, native_hook_force):
     data = malformed("valid")
     directory = tmp_path / "cache"
     digest = hashlib.sha256(data).hexdigest()
-    (directory / "archives").mkdir(parents=True)
-    (directory / "archives" / (digest + ".zip")).write_bytes(malformed("tampered"))
+    cached = directory / "archives" / (digest + ".zip")
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(malformed("tampered"))
+    fetched = []
+
+    def fetch(*_):
+        fetched.append(True)
+        return data
+
+    reference = {"sha256": digest, "length": len(data), "location": "synthetic-archive"}
+    # Native refuses the damaged cache entry before publishing anything from it;
+    # the transfer is then fetched once more instead of failing every refresh.
+    cache_io.stage_archive(directory, reference, fetch, invoke=native_invoke(native_hook_force))
+    assert fetched == [True]
+    assert cached.read_bytes() == data
+    assert published(directory) == [hashlib.sha256(b"{}").hexdigest() + ".json"]
+
+
+def test_cached_transfer_refused_again_after_refetch_publishes_nothing(tmp_path, native_hook_force):
+    data = malformed("compressed")
+    directory = tmp_path / "cache"
+    digest = hashlib.sha256(data).hexdigest()
+    cached = directory / "archives" / (digest + ".zip")
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(data)
     with pytest.raises(ValueError, match="offline_pack_invalid"):
         stage(directory, data, native_hook_force)
     assert published(directory) == []
