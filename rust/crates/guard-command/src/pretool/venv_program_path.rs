@@ -58,7 +58,12 @@ fn interpreter_name(name: &str) -> bool {
 }
 
 pub(super) fn environment_program(executable: &str, context: super::PathContext<'_>) -> bool {
-    if !super::read_paths::bounded_path_spelling(executable) {
+    // `~` is the shell's own name for the real home, and a relative root
+    // would resolve the spelling against Guard's working directory instead of
+    // the command's. Neither root is a guess this screen makes.
+    if !super::read_paths::verified_path_context(context.home_dir, context.cwd)
+        || !super::read_paths::bounded_path_spelling(executable)
+    {
         return false;
     }
     let Ok(candidate) = guard_secure_fs::resolve_candidate(
