@@ -17870,6 +17870,40 @@
       "expect": "not_allow"
     },
     {
+      "id": "neg-basename-command-substitution",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "basename \"$(touch marker.txt)\""
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-basename-suffix-command-substitution",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "basename -s \"$(touch marker.txt)\" src/main.rs"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
       "id": "sort-worktree-file",
       "fix_area": "shell",
       "harnesses": [

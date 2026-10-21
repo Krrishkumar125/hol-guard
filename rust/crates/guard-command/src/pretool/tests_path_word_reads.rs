@@ -58,6 +58,12 @@ fn an_unproven_path_word_still_takes_review() {
         "realpath --relative-to=/tmp Cargo.toml",
         "realpath --relative-base=/ Cargo.toml",
         "readlink --badoption Cargo.toml",
+        // The shell runs the substitution before the rewrite ever happens.
+        "basename \"$(touch marker.txt)\"",
+        "dirname \"$(touch marker.txt)\"",
+        "basename -s \"$(touch marker.txt)\" src/main.rs",
+        "basename --suffix=\"$(touch marker.txt)\" src/main.rs",
+        "basename -- \"`touch marker.txt`\"",
         // No operand to rewrite.
         "dirname",
         "basename",

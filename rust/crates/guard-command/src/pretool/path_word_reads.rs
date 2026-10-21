@@ -16,9 +16,15 @@
 
 const MAX_OPERANDS: usize = 16;
 
-/// A path word is printed back, never opened: bounded, single-line text.
+/// A path word is printed back, never opened: bounded, single-line text that
+/// the shell hands over as it was written. A word carrying a command
+/// substitution runs something this proof never screened before the rewrite
+/// ever happens, so it is not a path word at all.
 fn bounded_path_word(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 4096 && !value.contains(['\n', '\r', '\0'])
+    !value.is_empty()
+        && value.len() <= 4096
+        && !value.contains(['\n', '\r', '\0'])
+        && crate::sfrs_path_word_lookups::path_word_runs_nothing(value)
 }
 
 /// `dirname` and `basename`, which rewrite the operand without reading it.
