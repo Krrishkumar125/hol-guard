@@ -16,6 +16,7 @@ from typing import cast
 
 import codex_plugin_scanner
 from codex_plugin_scanner import __version__
+from codex_plugin_scanner.guard import native_execution
 from codex_plugin_scanner.guard.native_execution import contained_execute_native
 from codex_plugin_scanner.guard.native_policy_snapshot_publisher import ensure_native_launch_resident_verifier
 from codex_plugin_scanner.guard.store import GuardStore
@@ -118,14 +119,34 @@ def _probe() -> dict[str, object]:
             "additional_read_paths": [],
             "allow_outbound_network": False,
         }
-        result = contained_execute_native(
-            request,
-            policy,
-            guard_home=guard_home,
-            run_id=f"installed-analytics-probe-{uuid.uuid4().hex}",
-        )
+        # contained_execute_native folds every refusal into None. Keep the
+        # resident's own reply so a failed proof names the reason.
+        replies: list[object] = []
+        transport = native_execution.native_resident_client_request
+
+        def _recording_transport(**kwargs: object) -> object:
+            reply = transport(**kwargs)
+            replies.append(reply)
+            return reply
+
+        native_execution.native_resident_client_request = _recording_transport
+        try:
+            result = contained_execute_native(
+                request,
+                policy,
+                guard_home=guard_home,
+                run_id=f"installed-analytics-probe-{uuid.uuid4().hex}",
+            )
+        finally:
+            native_execution.native_resident_client_request = transport
         if result is None:
-            raise RuntimeError("installed containment proof could not reach the native runtime")
+            status = native_execution.native_runtime_status()
+            last = replies[-1] if replies else None
+            detail = last[:400].decode("utf-8", "replace") if isinstance(last, bytes) else repr(last)
+            raise RuntimeError(
+                "installed containment proof could not reach the native runtime "
+                f"(status={status.reason}, resident={detail})"
+            )
         stdout, stderr = str(result.get("stdout", "")), str(result.get("stderr", ""))
         exit_code = result.get("exit_code")
         written = destination.exists() and destination.read_text(encoding="utf-8") == "formatted\n"
