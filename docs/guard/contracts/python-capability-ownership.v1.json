@@ -1530,6 +1530,20 @@
    "native_replacements": [],
    "retirement": "dead_code",
    "removal_reason": "Static-first sandbox runner for isolated script analysis that no production caller ever imported. guard-command's sandbox.rs carries the same shape but is itself unreferenced and leaves apply_resource_limits a no-op, so it is not named as a behavioural replacement."
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/github_command_capabilities.py",
+   "module": "codex_plugin_scanner.guard.runtime.github_command_capabilities",
+   "source_sha256": "d85871ebfb6b0d82c4f376aea1efac82d7312bd9c896fc3d3c6a4eaae59cb735",
+   "forbidden_symbols": [
+    "classify_github_cli",
+    "static_markdown_pr_body_file_operand",
+    "_native_classification",
+    "_NATIVE_CACHE"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/github_command_capabilities.rs"
+   ]
   }
  ],
  "retired_test_paths": [
