@@ -150,6 +150,10 @@ const MERGES: &[&str] = &[
     "gh pr merge 5410 --repo example-org/app-portal --squash --delete-branch=false",
     "gh pr merge 12 --squash --delete-branch",
     "gh pr merge 12 --merge",
+    // A repository named after Guard is a remote name, not Guard itself.
+    "gh pr merge 5410 --repo example-org/hol-guard --squash --delete-branch=false",
+    "gh pr merge 5410 -R example-org/hol-guard --squash",
+    "gh pr merge 5410 --repo=example-org/hol-guard --squash",
     "git merge --ff-only feature",
     "git merge feature",
 ];
@@ -169,6 +173,20 @@ fn an_allowed_merge_permission_runs_the_merge_without_review() {
                 observed(&result)
             );
         }
+    }
+}
+
+#[test]
+fn an_allowed_merge_that_names_guard_outside_the_repository_still_waits_for_review() {
+    let (root, _cleanup) = checkout("guard-name");
+    let controls = every_permission("enabled");
+    for command in [
+        "gh pr merge 12 --squash --body-file .hol-guard/notes.md",
+        "gh pr merge 12 -Rexample-org/hol-guard --squash",
+        "gh repo clone example-org/hol-guard .hol-guard",
+    ] {
+        let result = decide(&root, "omp", command, &controls);
+        assert_ne!(result.decision, "allow", "{command}");
     }
 }
 
@@ -256,7 +274,7 @@ fn an_allowed_merge_runs_from_a_session_outside_the_checkout() {
         ("workspace-live-env", workspace.clone(), true),
     ] {
         for command in [
-            "gh pr merge 5410 --repo example-org/app-portal --squash --delete-branch=false",
+            "gh pr merge 5410 --repo example-org/hol-guard --squash --delete-branch=false",
             "gh pr merge 12 --squash",
         ] {
             let result = decide_in_session(&root, &cwd, command, &controls, live);

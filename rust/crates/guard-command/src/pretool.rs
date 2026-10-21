@@ -266,8 +266,24 @@ pub(crate) fn fixed_command_floor(model: &CanonicalCommandV1) -> bool {
 /// A Git alias, hook or config value can carry a program the parser never
 /// models; any argument naming Guard, other than a commit message, keeps the
 /// native decision.
+///
+/// The repository `gh` selects with `--repo` or `-R` is not such an argument:
+/// `owner/name` names a repository on the GitHub host, never a local file,
+/// program or process, so a repository called `hol-guard` keeps the Allow.
 fn names_guard_outside_message(segment: &crate::CommandSegmentV1) -> bool {
+    let github = crate::command_compatibility::basename(segment) == "gh";
+    let mut repository_value = false;
     arguments_outside_message(segment).any(|argument| {
+        let selected = std::mem::take(&mut repository_value);
+        if github {
+            repository_value = matches!(argument.as_str(), "--repo" | "-R");
+            let value = argument
+                .strip_prefix("--repo=")
+                .or(selected.then_some(argument.as_str()));
+            if value.is_some_and(crate::command_compatibility::github_repository_selector) {
+                return false;
+            }
+        }
         let lowered = argument.to_ascii_lowercase();
         ["hol-guard", "plugin-guard", ".hol-guard"]
             .iter()
