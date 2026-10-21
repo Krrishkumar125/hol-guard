@@ -44,6 +44,11 @@ def write(store, record):
         raise ValueError("pack_lifecycle_protected_write_mismatch")
 
 
+def floor_enrolled(store):
+    """True when a floor and its enrollment stamp are both already present."""
+    return read(store) is not None and _stamp(store) is not None
+
+
 def enroll_installed(store, authority):
     """Installation enrollment only; never invoked by activation/recovery.
 
