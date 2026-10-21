@@ -97,9 +97,7 @@ def _guard_run_launch_previews(
             environment=environment,
             launch_cwd=launch_cwd,
         )
-        return tuple(
-            _guard_run_plan_from_native(plan, environment=environment) for plan in native_plans
-        )
+        return tuple(_guard_run_plan_from_native(plan, environment=environment) for plan in native_plans)
 
 
 def _guard_run_finalize_authorized_launch_plan(
