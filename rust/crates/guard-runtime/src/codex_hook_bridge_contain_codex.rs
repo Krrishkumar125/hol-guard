@@ -83,17 +83,25 @@ pub(super) fn launching_codex_executable() -> Option<PathBuf> {
 
 /// The same walk on Windows, over one snapshot of every process's parent.
 /// Python started from its parent, the bridge's position, so this does too.
-/// An image that cannot be read does not end the walk: a protected or
-/// exited process proves nothing about its own parent's identity.
+/// A parent id outlives its process and can be reused, so each parent must
+/// have started no later than its child; one that started later, or whose
+/// start cannot be read, ends the walk. An image that cannot be read does
+/// not: the start time already proved the ancestor.
 #[cfg(windows)]
 pub(super) fn launching_codex_executable() -> Option<PathBuf> {
     use guard_runtime_windows_process::{process_parent_ids, running_process_image_path};
 
     let parents = process_parent_ids().ok()?;
-    let mut pid = *parents.get(&std::process::id())?;
+    let mut child = std::process::id();
+    let mut child_start = windows_start_time(child)?;
     for _ in 0..MAX_ANCESTORS {
+        let pid = parents.get(&child).copied().unwrap_or(0);
         // 0 is the idle process and 4 the kernel's System process.
         if pid <= 4 {
+            return None;
+        }
+        let start = windows_start_time(pid)?;
+        if start > child_start {
             return None;
         }
         if let Ok(path) = running_process_image_path(pid) {
@@ -101,9 +109,17 @@ pub(super) fn launching_codex_executable() -> Option<PathBuf> {
                 return Some(path);
             }
         }
-        pid = parents.get(&pid).copied().unwrap_or(0);
+        child = pid;
+        child_start = start;
     }
     None
+}
+
+/// A running process's creation time, as `windows:` and 16 hex digits.
+#[cfg(windows)]
+pub(super) fn windows_start_time(pid: u32) -> Option<u64> {
+    let marker = guard_runtime_windows_process::running_process_start_marker(pid).ok()?;
+    u64::from_str_radix(marker.strip_prefix("windows:")?, 16).ok()
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]

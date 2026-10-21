@@ -3,6 +3,7 @@
 //! the snapshot the sink reads.
 
 use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 use sha2::{Digest, Sha256};
 
@@ -223,4 +224,52 @@ fn a_call_powershell_cannot_quote_keeps_the_denial() {
     };
     let deny = parse_mapping_lone_surrogates(PYTHON_DENY).unwrap().value;
     assert_eq!(routed(&deny, &payload, false, &target), None::<PyVal>);
+}
+
+#[test]
+fn every_ancestor_started_before_its_child() {
+    use super::super::codex::windows_start_time;
+
+    let parents = guard_runtime_windows_process::process_parent_ids().unwrap();
+    let parent = parents[&std::process::id()];
+    let own = windows_start_time(std::process::id()).unwrap();
+    assert!(windows_start_time(parent).unwrap() <= own);
+    assert_eq!(windows_start_time(u32::MAX - 3), None);
+}
+
+/// Set a file's or directory's modification time two days back.
+fn age(path: &Path) {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_WRITE_ATTRIBUTES: u32 = 0x100;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    std::fs::OpenOptions::new()
+        .access_mode(FILE_WRITE_ATTRIBUTES)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+        .unwrap()
+        .set_modified(SystemTime::now() - Duration::from_secs(2 * 86_400))
+        .unwrap();
+}
+
+#[test]
+fn only_day_old_plain_snapshots_are_reclaimed() {
+    let temp = tempfile::tempdir().unwrap();
+    let make = |name: &str, old: bool| {
+        let directory = temp.path().join(name);
+        std::fs::create_dir(&directory).unwrap();
+        let request = directory.join(REQUEST_FILE_NAME);
+        std::fs::write(&request, b"{}").unwrap();
+        if old {
+            age(&request);
+            age(&directory);
+        }
+        directory
+    };
+    let stale = make(&format!("{REQUEST_DIRECTORY_PREFIX}stale"), true);
+    let fresh = make(&format!("{REQUEST_DIRECTORY_PREFIX}fresh"), false);
+    let other = make("unrelated-stale", true);
+    cleanup_stale_requests(temp.path());
+    assert!(!stale.exists());
+    assert!(fresh.join(REQUEST_FILE_NAME).exists());
+    assert!(other.join(REQUEST_FILE_NAME).exists());
 }

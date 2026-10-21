@@ -6,7 +6,8 @@
 
 use std::io::Write;
 use std::os::windows::fs::MetadataExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 const BOOTSTRAP_HEAD: &str = "import sys;sys.path.insert(0, ";
 const BOOTSTRAP_TAIL: &str =
@@ -18,6 +19,8 @@ const REQUEST_DIRECTORY_PREFIX: &str = "hol-guard-contained-test-";
 const REQUEST_FILE_NAME: &str = "request.json";
 const NAME_ATTEMPTS: usize = 16;
 const NAME_CHARACTERS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789_";
+const STALE_AFTER: Duration = Duration::from_secs(86_400);
+const MAX_SCANNED_ENTRIES: usize = 4096;
 
 /// `powershell_join(argv)`: each argument one single-quoted literal behind
 /// the call operator, or `None` for an argument Windows PowerShell 5.1
@@ -141,6 +144,7 @@ fn trusted_local_temp() -> Option<PathBuf> {
 /// behind.
 pub(super) fn write_snapshot(serialized: &[u8]) -> Option<PathBuf> {
     let temp = trusted_local_temp()?;
+    cleanup_stale_requests(&temp);
     for _ in 0..NAME_ATTEMPTS {
         let mut random = [0_u8; 8];
         getrandom::fill(&mut random).ok()?;
@@ -165,7 +169,46 @@ pub(super) fn write_snapshot(serialized: &[u8]) -> Option<PathBuf> {
     None
 }
 
-fn write_request(path: &std::path::Path, serialized: &[u8]) -> Option<()> {
+/// `cleanup_stale_zcode_requests` on Windows: a snapshot whose call never
+/// ran is reclaimed after a full day. Only a plain directory holding a plain
+/// request file is removed; a reparse point at either level is left alone.
+fn cleanup_stale_requests(temp: &Path) {
+    let Some(cutoff) = SystemTime::now().checked_sub(STALE_AFTER) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(temp) else {
+        return;
+    };
+    for entry in entries.take(MAX_SCANNED_ENTRIES).flatten() {
+        let named = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with(REQUEST_DIRECTORY_PREFIX));
+        if named {
+            let _ = reclaim(&entry.path(), cutoff);
+        }
+    }
+}
+
+fn reclaim(directory: &Path, cutoff: SystemTime) -> Option<()> {
+    let parent = std::fs::symlink_metadata(directory).ok()?;
+    if !plain(&parent) || !parent.is_dir() || parent.modified().ok()? > cutoff {
+        return None;
+    }
+    let request = directory.join(REQUEST_FILE_NAME);
+    let file = std::fs::symlink_metadata(&request).ok()?;
+    if !plain(&file) || !file.is_file() || file.modified().ok()? > cutoff {
+        return None;
+    }
+    std::fs::remove_file(&request).ok()?;
+    std::fs::remove_dir(directory).ok()
+}
+
+fn plain(metadata: &std::fs::Metadata) -> bool {
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT == 0
+}
+
+fn write_request(path: &Path, serialized: &[u8]) -> Option<()> {
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)

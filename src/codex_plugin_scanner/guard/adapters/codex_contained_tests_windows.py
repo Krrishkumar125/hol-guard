@@ -66,6 +66,23 @@ def _image_path(pid: int) -> Path | None:
         kernel32.CloseHandle(ctypes.c_void_p(handle))
 
 
+def _start_time(pid: int) -> int | None:
+    """A process's creation time as a FILETIME count, or ``None``."""
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
+    try:
+        times = [ctypes.c_uint64() for _ in range(4)]
+        if not kernel32.GetProcessTimes(ctypes.c_void_p(handle), *(ctypes.byref(time) for time in times)):
+            return None
+        return times[0].value
+    finally:
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
+
+
 def windows_codex_ancestor(is_codex: Callable[[str], bool], max_ancestors: int) -> Path | None:
     """The nearest ancestor whose image is Codex, or ``None``."""
 
@@ -73,14 +90,24 @@ def windows_codex_ancestor(is_codex: Callable[[str], bool], max_ancestors: int) 
         return None
     try:
         parents = _parents()
-        pid = os.getppid()
+        child = os.getpid()
+        child_start = _start_time(child)
+        if child_start is None:
+            return None
         for _ in range(max_ancestors):
+            pid = parents.get(child, 0)
             if pid <= 4:
+                return None
+            # A parent id outlives its process and can be reused: a parent
+            # that started after its child, or whose start cannot be read,
+            # is not this hook's ancestor.
+            start = _start_time(pid)
+            if start is None or start > child_start:
                 return None
             path = _image_path(pid)
             if path is not None and is_codex(path.name):
                 return path
-            pid = parents.get(pid, 0)
+            child, child_start = pid, start
     except OSError:
         return None
     return None
