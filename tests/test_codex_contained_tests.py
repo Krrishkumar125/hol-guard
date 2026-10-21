@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard.adapters import codex_contained_tests as route
-from codex_plugin_scanner.guard.adapters._modules.codex.codex_hook_response import codex_hook_response
 
 
 def receipt() -> dict[str, object]:
@@ -59,7 +58,7 @@ def test_current_codex_rewrites_to_the_contained_sink(tmp_path, monkeypatch):
         guard_home=tmp_path / "guard",
         home_dir=hook_home,
     )
-    shaped = codex_hook_response(result, event_name="PreToolUse")
+    shaped = result
     assert shaped["hookSpecificOutput"]["permissionDecision"] == "allow"
     argv = shlex.split(shaped["hookSpecificOutput"]["updatedInput"]["command"])
     assert "execute-contained-test" in argv
@@ -91,7 +90,7 @@ def test_old_or_unknown_codex_keeps_the_denial_with_an_update_hint(tmp_path, mon
         guard_home=tmp_path / "guard",
         home_dir=tmp_path / "hook-home",
     )
-    shaped = codex_hook_response(result, event_name="PreToolUse")
+    shaped = result
     assert shaped["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert "updatedInput" not in shaped["hookSpecificOutput"]
     assert shaped["hookSpecificOutput"]["permissionDecisionReason"].endswith(route.UPDATE_HINT)
@@ -187,7 +186,7 @@ def test_version_probe_stops_at_the_hook_deadline(tmp_path, monkeypatch):
         home_dir=tmp_path / "hook-home",
         deadline=50.25,
     )
-    shaped = codex_hook_response(allowed, event_name="PreToolUse")
+    shaped = allowed
     assert shaped["hookSpecificOutput"]["permissionDecision"] == "allow"
     assert recorded["timeout"] == 0.25
     allowed_argv = shlex.split(shaped["hookSpecificOutput"]["updatedInput"]["command"])
@@ -201,7 +200,7 @@ def test_version_probe_stops_at_the_hook_deadline(tmp_path, monkeypatch):
         home_dir=tmp_path / "hook-home",
         deadline=80.0,
     )
-    shaped_denial = codex_hook_response(denied, event_name="PreToolUse")
+    shaped_denial = denied
     assert shaped_denial["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert "updatedInput" not in shaped_denial["hookSpecificOutput"]
     assert recorded["timeout"] == 0.25
@@ -228,7 +227,7 @@ def test_linux_routes_the_workspace_sandbox(tmp_path, monkeypatch):
     result = route.route_codex_containment(
         native, hook_input=hook_input(tmp_path), guard_home=tmp_path / "guard", home_dir=tmp_path / "hook-home"
     )
-    shaped = codex_hook_response(result, event_name="PreToolUse")
+    shaped = result
     assert shaped["hookSpecificOutput"]["permissionDecision"] == "allow"
     argv = shlex.split(shaped["hookSpecificOutput"]["updatedInput"]["command"])
     Path(argv[argv.index("--request-file") + 1]).unlink()
@@ -241,30 +240,6 @@ def test_linux_walks_proc_to_the_launching_codex(monkeypatch):
     monkeypatch.setattr(route.os, "readlink", lambda path: executables[path])
     monkeypatch.setattr(route.Path, "read_text", lambda self, **_kwargs: "40 (sh (x) y) S 30 1 1")
     assert route.launching_codex_executable() == Path("/opt/codex/bin/codex")
-
-
-def test_codex_response_drops_allow_without_updated_input():
-    shaped = codex_hook_response(
-        {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}},
-        event_name="PreToolUse",
-    )
-    assert shaped == {"hookSpecificOutput": {"hookEventName": "PreToolUse"}}
-
-
-def test_policy_deny_overrides_an_updated_input_allow():
-    shaped = codex_hook_response(
-        {
-            "policy_action": "deny",
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "updatedInput": {"command": "true"},
-            },
-        },
-        event_name="PreToolUse",
-    )
-    assert shaped["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "updatedInput" not in shaped["hookSpecificOutput"]
 
 
 @pytest.mark.parametrize(
