@@ -52,13 +52,10 @@ fn string_list(case: &Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `None` in the corpus is Python's `None`; the mirror spells that as an empty
-/// `String` for the fields it types as `String`.
-fn optional_text(case: &Value, key: &str) -> String {
-    case.get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
+/// A fixture `null` is Python's `None`, and an empty string stays an empty
+/// string: the contract hashes the two differently.
+fn optional_text(case: &Value, key: &str) -> Option<String> {
+    case.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
 fn extra(case: &Value, keys: &[&str]) -> Map<String, Value> {
@@ -87,6 +84,23 @@ fn python_float_repr_matches_the_interpreter() {
         };
         assert_eq!(python_float_repr(value), expected, "repr of {expected}");
     }
+}
+
+/// JSON cannot carry a non-finite float, so the parity fixture cannot either.
+/// These are the spellings `repr` gives them in CPython 3.12.
+#[test]
+fn python_float_repr_spells_out_the_non_finite_values() {
+    assert_eq!(python_float_repr(f64::INFINITY), "inf");
+    assert_eq!(python_float_repr(f64::NEG_INFINITY), "-inf");
+    assert_eq!(python_float_repr(f64::NAN), "nan");
+    assert_eq!(python_float_repr(-f64::NAN), "nan");
+}
+
+#[test]
+fn python_float_repr_spells_non_finite_values_like_repr() {
+    assert_eq!(python_float_repr(f64::INFINITY), "inf");
+    assert_eq!(python_float_repr(f64::NEG_INFINITY), "-inf");
+    assert_eq!(python_float_repr(f64::NAN), "nan");
 }
 
 #[test]

@@ -96,6 +96,14 @@ fn collapse_python_whitespace(value: &str) -> String {
 /// `> 16` and a trailing `.0` otherwise. Rust's `{:e}` gives the same digits,
 /// so the only work here is placing the point the way CPython does.
 pub fn python_float_repr(value: f64) -> String {
+    // `float.__repr__` spells the non-finite values out; only the finite ones
+    // reach dtoa.
+    if value.is_nan() {
+        return "nan".to_string();
+    }
+    if value.is_infinite() {
+        return if value < 0.0 { "-inf" } else { "inf" }.to_string();
+    }
     if value == 0.0 {
         return if value.is_sign_negative() {
             "-0.0".to_string()
@@ -193,7 +201,21 @@ fn write_python_json(value: &Value, separators: JsonSeparators, output: &mut Str
         Value::Bool(false) => output.push_str("false"),
         Value::Number(number) => {
             if number.is_f64() {
-                output.push_str(&python_float_repr(number.as_f64().unwrap_or(0.0)));
+                let number = number.as_f64().unwrap_or(0.0);
+                // `json.dumps` writes the non-finite values with their JavaScript
+                // spelling rather than `repr`. `serde_json` cannot hold one, so
+                // this only guards a hand-built `Value`.
+                if number.is_nan() {
+                    output.push_str("NaN");
+                } else if number.is_infinite() {
+                    output.push_str(if number < 0.0 {
+                        "-Infinity"
+                    } else {
+                        "Infinity"
+                    });
+                } else {
+                    output.push_str(&python_float_repr(number));
+                }
             } else {
                 output.push_str(&number.to_string());
             }
@@ -296,18 +318,6 @@ fn extra_or<'a>(extra: &'a Map<String, Value>, key: &str, fallback: &'a Value) -
     extra.get(key).unwrap_or(fallback)
 }
 
-/// The mirror types `summary`/`detail` as `String`, and the rest of this
-/// contract already reads an empty one as Python's `None` (see
-/// `_inventory_source_json`). Keep that reading here so the digest matches a
-/// snapshot built from defaults.
-fn optional_text(value: &str) -> Value {
-    if value.is_empty() {
-        Value::Null
-    } else {
-        json!(value)
-    }
-}
-
 /// `_inventory_snapshot_content_hash(...)`.
 pub fn inventory_snapshot_content_hash(
     agent_type: &str,
@@ -358,7 +368,7 @@ pub fn inventory_snapshot_content_hash(
                 "finding_id": finding.finding_id,
                 "severity": finding.severity,
                 "source": finding.source,
-                "summary": optional_text(&finding.summary),
+                "summary": finding.summary,
                 "title": finding.title,
             })
         })
@@ -372,7 +382,7 @@ pub fn inventory_snapshot_content_hash(
         .iter()
         .map(|source| {
             json!({
-                "detail": optional_text(&source.detail),
+                "detail": source.detail,
                 "source_id": source.source_id,
                 "source_type": source.source_type,
                 "status": source.status,

@@ -378,7 +378,7 @@
   },
   {
    "agent_type": "claude-code",
-   "digest": "610384c74b229fcc79aca09ff94c1695a53e49b60cc934b7e818f2137a793406",
+   "digest": "c388d54cc98f54d2f6bdaf88988ab2afa80e9471f482b002534038a1b590b33d",
    "findings": [
     {
      "artifact_id": "a1",
@@ -400,6 +400,17 @@
      "severity": "low",
      "source": "metadata",
      "summary": "has summary",
+     "title": "Title"
+    },
+    {
+     "artifact_id": "a1",
+     "check_id": "c1",
+     "confidence": "high",
+     "evidence": {},
+     "finding_id": "f3",
+     "severity": "low",
+     "source": "metadata",
+     "summary": "",
      "title": "Title"
     }
    ],
@@ -525,6 +536,52 @@
      "captured_at": "2026-10-21T00:00:00Z",
      "detail": null,
      "source_id": "s1",
+     "source_type": "config",
+     "status": "available"
+    }
+   ]
+  },
+  {
+   "agent_type": "codex",
+   "digest": "2318daffdd38a41821dd569d733ff10c72e6e5cd4f8b6e716cd11cae96d647e9",
+   "findings": [
+    {
+     "artifact_id": "a1",
+     "check_id": "c1",
+     "confidence": "high",
+     "evidence": {},
+     "finding_id": "empty",
+     "severity": "low",
+     "source": "hol-detector",
+     "summary": "",
+     "title": "Title"
+    },
+    {
+     "artifact_id": "a1",
+     "check_id": "c1",
+     "confidence": "high",
+     "evidence": {},
+     "finding_id": "absent",
+     "severity": "low",
+     "source": "hol-detector",
+     "summary": null,
+     "title": "Title"
+    }
+   ],
+   "items": [],
+   "runtime_version": null,
+   "sources": [
+    {
+     "captured_at": "",
+     "detail": "",
+     "source_id": "empty",
+     "source_type": "config",
+     "status": "available"
+    },
+    {
+     "captured_at": null,
+     "detail": null,
+     "source_id": "absent",
      "source_type": "config",
      "status": "available"
     }

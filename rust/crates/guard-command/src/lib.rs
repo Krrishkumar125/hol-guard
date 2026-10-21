@@ -1,6 +1,12 @@
 #![forbid(unsafe_code)]
 pub mod action_lattice;
 pub mod approval_reuse;
+pub mod artifact_hash;
+#[cfg(test)]
+mod artifact_hash_tests;
+mod artifact_hash_url;
+#[cfg(test)]
+mod artifact_hash_url_tests;
 pub mod artifact_risk;
 pub mod bash_approval;
 pub mod benign_request_api;
@@ -153,6 +159,7 @@ pub mod native_command_extension_evidence;
 #[cfg(test)]
 mod native_command_extension_evidence_tests;
 pub mod native_command_program;
+pub mod network_url;
 pub mod npm_source_spec;
 pub mod ordered_json;
 #[cfg(unix)]
@@ -279,6 +286,7 @@ mod sfrs_node_templates;
 #[cfg(all(test, unix))]
 mod sfrs_node_vectors;
 mod sfrs_node_workflows;
+mod sfrs_path_word_lookups;
 mod sfrs_patterns;
 mod sfrs_perl_read_only;
 #[cfg(all(test, unix))]
@@ -301,6 +309,8 @@ mod sfrs_quote_parsing;
 mod sfrs_quote_tokens;
 #[cfg(all(test, unix))]
 mod sfrs_quote_vectors;
+#[cfg(test)]
+mod sfrs_read_only_filter_tests;
 mod sfrs_read_only_filters;
 pub mod sfrs_replay;
 mod sfrs_replay_context;
@@ -861,6 +871,8 @@ mod hook_evidence_writer_tests;
 pub mod hook_responses;
 pub mod inventory_agent_types;
 pub mod inventory_contract;
+#[cfg(test)]
+mod inventory_contract_tests;
 pub mod inventory_fingerprints;
 pub mod inventory_redaction;
 pub mod js_semver;
