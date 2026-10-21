@@ -14,7 +14,12 @@
 //! `CARGO_TARGET_TMPDIR` sits inside this repository, where the discovery
 //! walk would find the repository's own `.git` and answer a different
 //! question.
-#![cfg(unix)]
+//!
+//! Windows runs these too. A directory that is not there is exactly where
+//! the two platforms diverged: the drive-absolute proof canonicalizes its
+//! target, which cannot succeed for a name that does not exist, so every
+//! missing-directory route was reviewed there while unix allowed it. Only
+//! the cases that need a symlink or a unix device stay unix-only.
 
 use std::path::{Path, PathBuf};
 
@@ -27,7 +32,14 @@ struct Scratch {
 }
 
 fn scratch(name: &str) -> Scratch {
-    let root = std::fs::canonicalize("/tmp").unwrap().join(format!(
+    // `/tmp` is the owned temporary root the read screens recognize on unix;
+    // on Windows the per-user temporary directory is its counterpart, and
+    // neither has a repository above it.
+    #[cfg(unix)]
+    let base = std::path::PathBuf::from("/tmp");
+    #[cfg(windows)]
+    let base = std::env::temp_dir();
+    let root = std::fs::canonicalize(base).unwrap().join(format!(
         "guard-absent-repository-{name}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
@@ -134,17 +146,31 @@ fn git_read_routed_outside_the_read_screens_stays_reviewed() {
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let hidden = directory(&scratch.root, "home/.scratch-notes");
-    let plain = directory(&scratch.root, "home/Code/scratch-notes");
-    let link = scratch.root.join("home/Code/linked-notes");
-    std::os::unix::fs::symlink(&plain, &link).unwrap();
-    for command in [
+    let _plain = directory(&scratch.root, "home/Code/scratch-notes");
+    // A directory outside home that no agent owns, whichever platform.
+    #[cfg(unix)]
+    let outside = "/usr/share";
+    #[cfg(windows)]
+    let outside = "C:/Windows/System32";
+    // Only unix adds a symlinked case below.
+    #[cfg_attr(not(unix), allow(unused_mut))]
+    let mut commands = vec![
         "git -C .. status --short".to_owned(),
         "git -C ../scratch-notes log --oneline -1".to_owned(),
         format!("git -C {} status --short", fixture::shell_word(&hidden)),
-        format!("git -C {} status --short", fixture::shell_word(&link)),
-        "git -C /usr/share status --short".to_owned(),
+        format!("git -C {outside} status --short"),
         "git -C ~/.scratch-notes/draft status --short".to_owned(),
-    ] {
+    ];
+    #[cfg(unix)]
+    {
+        let link = scratch.root.join("home/Code/linked-notes");
+        std::os::unix::fs::symlink(&_plain, &link).unwrap();
+        commands.push(format!(
+            "git -C {} status --short",
+            fixture::shell_word(&link)
+        ));
+    }
+    for command in commands {
         assert_decision(&workspace, &home, &command, false);
     }
 }
@@ -177,6 +203,7 @@ fn git_read_routed_into_a_bare_repository_is_still_reviewed() {
 
 /// A symlinked spelling clears the literal screen: `docs/.` names nothing
 /// sensitive, but Git enters the directory the link points at.
+#[cfg(unix)]
 #[test]
 fn git_read_routed_through_a_link_to_a_sensitive_directory_is_reviewed() {
     let scratch = scratch("linked");
@@ -207,11 +234,19 @@ fn git_read_that_opens_files_without_a_repository_is_reviewed() {
     repository(&workspace);
     let plain = directory(&scratch.root, "home/Code/scratch-notes");
     std::fs::write(plain.join("notes.txt"), "fixture\n").unwrap();
+    // The second operand is only there to be opened. Windows has no
+    // `/dev/null` path, so an ordinary second file stands in for it.
+    #[cfg(unix)]
+    let other = "/dev/null";
+    #[cfg(windows)]
+    let other = "other.txt";
+    #[cfg(windows)]
+    std::fs::write(plain.join("other.txt"), "fixture\n").unwrap();
     let route = fixture::shell_word(&plain);
     for command in [
-        format!("git -C {route} diff notes.txt /dev/null"),
-        format!("git -C {route} diff --no-index notes.txt /dev/null"),
-        format!("git -C {route} diff --stat -- notes.txt /dev/null"),
+        format!("git -C {route} diff notes.txt {other}"),
+        format!("git -C {route} diff --no-index notes.txt {other}"),
+        format!("git -C {route} diff --stat -- notes.txt {other}"),
         format!("git -C {route} grep -n fixture"),
         format!("git -C {route} hash-object notes.txt"),
         format!("git -C {route} apply --check notes.txt"),
