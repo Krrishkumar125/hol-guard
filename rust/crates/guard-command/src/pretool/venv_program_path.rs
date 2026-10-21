@@ -1,4 +1,4 @@
-//! A marked virtual environment's own program, spelled by path.
+//! A marked virtual environment's own interpreter, spelled by path.
 //!
 //! The exact-safe floor refuses a path-spelled executable. A name looked up
 //! on `PATH` reaches a program the trusted-location screen has vetted, while
@@ -13,26 +13,49 @@
 //! out of. A command that names that file directly, the way an agent does
 //! when it would rather not activate, runs the same program.
 //!
-//! PEP 405 puts `pyvenv.cfg` directly above `bin`, and only `venv`,
-//! `virtualenv` and `uv` write it, so the marker is what admits the spelling:
-//! a directory called `.venv` with no marker beside it stays refused, and a
-//! marked environment under any other name is admitted. The directory is
-//! canonical before the marker is read, so no link can dress another place as
-//! an environment. The program file itself is not canonicalized: an
-//! environment links its interpreter to the base one it was built from, and
-//! following that link would lead out of the environment the marker proves.
+//! Three things have to hold together, because any one of them alone is a
+//! hole. PEP 405 puts `pyvenv.cfg` directly above `bin`, and only `venv`,
+//! `virtualenv` and `uv` write it, so the marker says the directory is an
+//! environment — but the agent writes the workspace, so it can write a marker
+//! and a `bin` beside it. The basename has to be an interpreter's, because
+//! the floor judges the command by that name: a file called `ls` or `git` in
+//! a marked `bin` would otherwise inherit the verdict of the program on
+//! `PATH` it is not. And the file has to resolve out of the environment, to a
+//! regular file outside the working directory, because that is what an
+//! environment's interpreter is: a link to the base interpreter it was built
+//! from. A script the session wrote at `bin/python` resolves to itself,
+//! inside the environment, and is refused.
+//!
+//! Windows environments copy the interpreter instead of linking it, so the
+//! copy resolves to itself inside the environment and keeps its review there.
+//! Nothing about a copy inside the workspace distinguishes it from a planted
+//! one by path alone, and reading both files to compare them is not a cost
+//! this screen pays; the activation route stays available on that platform.
 //!
 //! This proves only which file the word names. The basename still decides
 //! what the command may do with it.
 //!
 //! The bounded-read screen is deliberately not the gate here. It answers a
 //! different question, and both of its answers are wrong for this one: it
-//! canonicalizes the program, so the link an environment writes to its base
-//! interpreter admits a file outside the environment, while the hidden-path
-//! rule refuses `.venv/bin/python` itself. The word's own spelling and the
-//! location screens are what this rule owes.
+//! would admit the link's target as a readable path without asking where it
+//! leads, while the hidden-path rule refuses `.venv/bin/python` itself. The
+//! word's own spelling and the location screens are what this rule owes.
 
 use std::path::Path;
+
+/// A name a virtual environment tool writes for the interpreter itself:
+/// `python`, `python3`, `python3.12`, and the free-threaded `python3.13t`.
+fn interpreter_name(name: &str) -> bool {
+    let lowered = name.to_ascii_lowercase();
+    let stem = lowered.strip_suffix(".exe").unwrap_or(lowered.as_str());
+    if stem == "python" || stem == "python3" {
+        return true;
+    }
+    stem.strip_prefix("python3.").is_some_and(|version| {
+        let digits = version.strip_suffix('t').unwrap_or(version);
+        !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
+    })
+}
 
 pub(super) fn environment_program(executable: &str, context: super::PathContext<'_>) -> bool {
     if !super::read_paths::bounded_path_spelling(executable) {
@@ -48,26 +71,16 @@ pub(super) fn environment_program(executable: &str, context: super::PathContext<
     let (Some(parent), Some(program)) = (candidate.parent(), candidate.file_name()) else {
         return false;
     };
+    if !interpreter_name(&program.to_string_lossy()) {
+        return false;
+    }
     let Ok(binaries) = std::fs::canonicalize(parent) else {
         return false;
     };
-    let resolved = binaries.join(program);
-    if !resolved.is_file() {
-        return false;
-    }
-    // The directory above is canonical, so the system roots, another user's
-    // home, the sensitive families and the credential-named paths are read off
-    // a place no link can have dressed up.
-    if !super::read_paths::resolved_location_allowed(
-        &resolved,
-        context.home_dir,
-        context.cwd,
-        false,
-    ) {
-        return false;
-    }
     // POSIX environments keep their programs in `bin`, Windows ones in
-    // `Scripts`; the marker sits directly above either.
+    // `Scripts`; the marker sits directly above either. The directory is
+    // canonical before the marker is read, so no link can dress another place
+    // as an environment.
     if !binaries
         .file_name()
         .map(|name| name.to_string_lossy().to_ascii_lowercase())
@@ -75,9 +88,36 @@ pub(super) fn environment_program(executable: &str, context: super::PathContext<
     {
         return false;
     }
-    binaries
-        .parent()
-        .is_some_and(|root| root.join("pyvenv.cfg").is_file())
+    let Some(root) = binaries.parent() else {
+        return false;
+    };
+    if !root.join("pyvenv.cfg").is_file() {
+        return false;
+    }
+    let named = binaries.join(program);
+    // The directory above is canonical, so the system roots, another user's
+    // home, the sensitive families and the credential-named paths are read
+    // off a place no link can have dressed up.
+    if !super::read_paths::resolved_location_allowed(&named, context.home_dir, context.cwd, false) {
+        return false;
+    }
+    let Ok(resolved) = std::fs::canonicalize(&named) else {
+        return false;
+    };
+    if !resolved.is_file() || resolved.starts_with(root) {
+        return false;
+    }
+    // The working directory is the one place the session writes without
+    // review, so an interpreter the link reaches there is the planted file
+    // one step out. A working directory this screen cannot resolve leaves
+    // that question unanswered, which is the same answer. Where the link
+    // leads otherwise is not screened again: the location screen above has
+    // already read the name, and the places left are ones the session cannot
+    // write without a review of its own.
+    context
+        .cwd
+        .and_then(|cwd| std::fs::canonicalize(cwd).ok())
+        .is_some_and(|cwd| !resolved.starts_with(cwd))
 }
 
 #[cfg(test)]

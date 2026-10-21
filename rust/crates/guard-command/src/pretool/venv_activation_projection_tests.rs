@@ -162,6 +162,37 @@ fn an_argument_the_environment_also_names_is_not_a_later_command() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// `shell_tokens` reads a newline as whitespace, so a command after one
+/// follows a plain word rather than a control token. The environment's own
+/// program would run there once the activation has set `PATH`, and the floor
+/// would read the bare name instead.
+#[test]
+fn a_command_after_a_newline_keeps_the_command_unprojected() {
+    let root = root("newline");
+    environment(&root, true, &activation(&root), &["python", "pytest"]);
+    assert!(projected(&root, "source .venv/bin/activate && python -V\npytest -q").is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A group, a negation, a keyword, an assignment prefix and a runner that
+/// executes its own argument each start a command with no control token
+/// before it, so the text keeps its own reading.
+#[test]
+fn a_command_position_this_scan_cannot_see_keeps_the_command_unprojected() {
+    let root = root("hidden");
+    environment(&root, true, &activation(&root), &["python", "pytest"]);
+    for command in [
+        "source .venv/bin/activate && { pytest -q; }",
+        "source .venv/bin/activate && ! pytest -q",
+        "source .venv/bin/activate && LC_ALL=C pytest -q",
+        "source .venv/bin/activate && time pytest -q",
+        "source .venv/bin/activate && env pytest -q",
+    ] {
+        assert!(projected(&root, command).is_none(), "{command}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// An activation on its own exports the settings this scan has read and runs
 /// nothing else, so the floor reads it as the no-op it amounts to. Only the
 /// verdict asks that question: a caller that plans the call again runs the
