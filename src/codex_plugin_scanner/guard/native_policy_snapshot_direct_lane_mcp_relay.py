@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from .native_policy_snapshot_publisher import NativePolicySnapshotPublisher
 
 # The resident accepts the view below in its direct-lane binding.
-MCP_RELAY_DECIDE_FEATURE = "mcp-relay-decide-v1"
+MCP_RELAY_DECIDE_FEATURE = "mcp-relay-decide-v2"
 MCP_RELAY_BINDING_KEY = "mcp_relay"
 MCP_RELAY_VIEW_SCHEMA = "guard-mcp-relay-view.v2"
 # The harnesses whose MCP proxy the relay replaces.
