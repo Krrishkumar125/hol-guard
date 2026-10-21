@@ -142,13 +142,41 @@ def freeze_summary(reason: str, repository: str) -> str:
     )
 
 
+# Runs that only ever check a commit already on a protected branch.
+_UNGATED_EVENTS = frozenset({"push", "schedule"})
+
+
+def _default_branch_ref(env: Mapping[str, str]) -> str | None:
+    try:
+        with Path(env.get("GITHUB_EVENT_PATH", "")).open(encoding="utf-8") as handle:
+            branch = json.load(handle)["repository"]["default_branch"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return f"refs/heads/{branch}" if isinstance(branch, str) and branch else None
+
+
+def _gate_applies(env: Mapping[str, str]) -> bool:
+    event = env.get("EVENT_NAME")
+    if event == "pull_request":
+        return True
+    if event in _UNGATED_EVENTS:
+        return False
+    # A dispatched run on a pull request branch reports the same required check
+    # on the pull request's head commit, so it must not turn green during a
+    # freeze. Only a run on the default branch is exempt; if that cannot be
+    # read, the gate applies.
+    ref = env.get("GITHUB_REF")
+    return ref is None or ref != _default_branch_ref(env)
+
+
 def run_gate(env: Mapping[str, str], summary_path: str | None) -> int:
     """Fail the aggregate for a pull request while the freeze is active."""
-    if env.get("EVENT_NAME") != "pull_request":
+    if not _gate_applies(env):
         print("Not a pull request run; the merge freeze does not apply.")
         return 0
     repository = env.get("REPOSITORY", "")
-    number = env.get("PR_NUMBER", "")
+    number = env.get("PR_NUMBER", "") if env.get("EVENT_NAME") == "pull_request" else ""
+    # A run outside a pull request has no number, so no allowlist entry exempts it.
     pull = Pull(number=int(number) if number.isdecimal() else 0, head_sha="")
     verdict = decide(env.get(FREEZE_VARIABLE), env.get(ALLOW_VARIABLE), pull)
     print(verdict.reason)

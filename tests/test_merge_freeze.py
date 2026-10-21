@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -101,9 +102,40 @@ def test_gate_passes_when_not_frozen_or_exempt(tmp_path: Path) -> None:
     assert not summary.exists()
 
 
-@pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch", "merge_group"])
-def test_gate_only_applies_to_pull_requests(event: str) -> None:
+@pytest.mark.parametrize("event", ["push", "schedule"])
+def test_gate_does_not_apply_to_protected_branch_runs(event: str) -> None:
     assert freeze.run_gate(gate_env(EVENT_NAME=event), None) == 0
+
+
+def dispatch_env(tmp_path: Path, ref: str, **overrides: str) -> dict[str, str]:
+    payload = tmp_path / "event.json"
+    payload.write_text(json.dumps({"repository": {"default_branch": "main"}}), encoding="utf-8")
+    return gate_env(EVENT_NAME="workflow_dispatch", GITHUB_REF=ref, GITHUB_EVENT_PATH=str(payload), **overrides)
+
+
+def test_a_dispatched_run_on_a_pull_request_branch_is_held(tmp_path: Path) -> None:
+    """Its required check lands on the pull request's head commit."""
+    assert freeze.run_gate(dispatch_env(tmp_path, "refs/heads/feature"), None) == 1
+
+
+def test_a_dispatched_run_cannot_claim_an_allowlisted_number(tmp_path: Path) -> None:
+    env = dispatch_env(tmp_path, "refs/heads/feature", PR_NUMBER="7", MERGE_FREEZE_ALLOW="7")
+    assert freeze.run_gate(env, None) == 1
+
+
+def test_a_dispatched_run_on_the_default_branch_is_not_held(tmp_path: Path) -> None:
+    assert freeze.run_gate(dispatch_env(tmp_path, "refs/heads/main"), None) == 0
+
+
+def test_a_dispatched_run_with_an_unreadable_event_is_held(tmp_path: Path) -> None:
+    env = gate_env(
+        EVENT_NAME="workflow_dispatch", GITHUB_REF="refs/heads/main", GITHUB_EVENT_PATH=str(tmp_path / "missing")
+    )
+    assert freeze.run_gate(env, None) == 1
+
+
+def test_a_dispatched_run_passes_when_not_frozen(tmp_path: Path) -> None:
+    assert freeze.run_gate(dispatch_env(tmp_path, "refs/heads/feature", MERGE_FREEZE="false"), None) == 0
 
 
 def test_gate_ignores_a_release_please_branch_name() -> None:
@@ -156,7 +188,10 @@ def test_aggregate_runs_the_gate_after_the_existing_evaluation() -> None:
     assert checkout["with"]["sparse-checkout"] == "scripts/ci/merge_freeze.py"
     assert checkout["with"]["persist-credentials"] is False
     # The pull request must not supply the policy that judges it.
-    assert checkout["with"]["ref"] == "${{ github.event.pull_request.base.sha || github.sha }}"
+    assert (
+        checkout["with"]["ref"]
+        == "${{ github.event.pull_request.base.sha || github.event.repository.default_branch || github.sha }}"
+    )
     policy = f"{checkout['with']['path']}/scripts/ci/merge_freeze.py"
     assert 'exec python3 "$policy" gate' in gate["run"]
     assert f"policy={policy}" in gate["run"]
