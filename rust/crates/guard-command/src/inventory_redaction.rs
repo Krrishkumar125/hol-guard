@@ -82,8 +82,7 @@ static SENSITIVE_KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// `_SENSITIVE_VALUE_RE`, with `\s`/`\S` spelled out as `Py_UNICODE_ISSPACE`.
 static SENSITIVE_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(?i)(gh[pousr]_[a-z0-9_]+|sk-[a-z0-9_-]+|guard_live_[a-z0-9_-]+|bearer[{space}]+[^{space}]+)",
-        space = PYTHON_SPACE_CLASS,
+        r"(?i)(gh[pousr]_[a-z0-9_]+|sk-[a-z0-9_-]+|guard_live_[a-z0-9_-]+|bearer[{PYTHON_SPACE_CLASS}]+[^{PYTHON_SPACE_CLASS}]+)",
     ))
     .expect("sensitive value pattern")
 });
@@ -91,8 +90,7 @@ static SENSITIVE_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// `_SERIALIZER_UNSAFE_PATH_RE` over `_UNSAFE_PATH_MARKERS`.
 static SERIALIZER_UNSAFE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r#"(?i)(?:^|[{space}"'=:({{])(?:/Users/|/home/|/root/|\\Users\\|/var/folders/|/workspace/|/tmp/|/etc/|/mnt/)"#,
-        space = PYTHON_SPACE_CLASS,
+        r#"(?i)(?:^|[{PYTHON_SPACE_CLASS}"'=:({{])(?:/Users/|/home/|/root/|\\Users\\|/var/folders/|/workspace/|/tmp/|/etc/|/mnt/)"#,
     ))
     .expect("unsafe path pattern")
 });
@@ -102,9 +100,7 @@ static SERIALIZER_UNSAFE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// as a lookaround over CPython's word class for the reason given there.
 static SERIALIZER_SECRET_ASSIGNMENT_RE: LazyLock<FancyRegex> = LazyLock::new(|| {
     FancyRegex::new(&format!(
-        r"(?i)(?<![{word}])(?:api[_-]?key|authorization|password|secret|token|access[_-]?token|refresh[_-]?token)(?![{word}])[{space}]*[:=][{space}]*(?!redacted(?![{word}]))[^{space}]+",
-        space = PYTHON_SPACE_CLASS,
-        word = PYTHON_WORD_CLASS,
+        r"(?i)(?<![{PYTHON_WORD_CLASS}])(?:api[_-]?key|authorization|password|secret|token|access[_-]?token|refresh[_-]?token)(?![{PYTHON_WORD_CLASS}])[{PYTHON_SPACE_CLASS}]*[:=][{PYTHON_SPACE_CLASS}]*(?!redacted(?![{PYTHON_WORD_CLASS}]))[^{PYTHON_SPACE_CLASS}]+",
     ))
     .expect("secret assignment pattern")
 });
