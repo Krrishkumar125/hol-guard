@@ -862,6 +862,7 @@ pub mod hook_responses;
 pub mod inventory_agent_types;
 pub mod inventory_contract;
 pub mod inventory_fingerprints;
+pub mod inventory_path_redaction;
 pub mod inventory_redaction;
 pub mod js_semver;
 pub mod linux_artifact_supply_chain;
