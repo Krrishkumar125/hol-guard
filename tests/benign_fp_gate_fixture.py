@@ -86,6 +86,9 @@ class BenignFixture:
     tmp_org: Path
     scratch: Path
     stage: Path
+    # The same worktree named through a linked ancestor, as a macOS host spells
+    # any `/tmp` checkout: `/tmp` resolves to `/private/tmp`.
+    linked_worktree: Path
 
     def cleanup(self) -> None:
         """Remove the directories this fixture created outside its own root."""
@@ -134,6 +137,8 @@ class BenignFixture:
             "${FEATURE_APP}": str(feature_app_path(self.home)),
             # Private directory directly in /tmp holding the files a case stages before its commands.
             "${STAGE}": str(self.stage),
+            # Left unresolved on purpose: the link is what the case is about.
+            "${LINKED_WORKTREE}": str(self.linked_worktree),
         }
 
     def cwd(self, name: str) -> Path:
@@ -156,6 +161,7 @@ class BenignFixture:
             # A checkout whose `.gitignore` re-includes a hidden template, as most application repositories do.
             "ignore_negation": self.home / "Code" / "ignore-rules" / "billing-api",
             "feature_app": feature_app_path(self.home),
+            "linked_worktree": self.linked_worktree,
         }[name]
 
 
@@ -295,6 +301,13 @@ def build_fixture(root: Path) -> BenignFixture:
     # Fresh worktree package whose dependencies are installed only in the canonical checkout.
     _write(parent / "web" / "node_modules" / "left-pad" / "package.json", "{}\n")
     _write(worktree / "web" / "package.json", '{"private": true}\n')
+
+    # The project tree named through a link, the spelling a host hands the hook
+    # whenever an ancestor is a link. Kept beside the real tree so the case does
+    # not depend on how the host spells its own temp directory.
+    linked_projects = root / "linked-projects"
+    linked_projects.symlink_to(root / "projects")
+    linked_worktree = linked_projects / "parent-repo-feature"
 
     # Untracked child repository nested inside the parent working tree.
     nested.mkdir(parents=True)
@@ -472,6 +485,7 @@ def build_fixture(root: Path) -> BenignFixture:
         tmp_org,
         scratch,
         stage,
+        linked_worktree,
     )
     _write(fixture.scratch_copy, "export const reportWindow = 'report-window-marker';\n")
     _write(

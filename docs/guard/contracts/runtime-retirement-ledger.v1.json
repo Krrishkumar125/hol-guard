@@ -105,7 +105,9 @@
   "src/codex_plugin_scanner/guard/runtime/source_paths.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py",
-  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py"
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py",
+  "src/codex_plugin_scanner/guard/adapters/_modules/codex/codex_hook_response.py",
+  "src/codex_plugin_scanner/guard/runtime/sandbox.py"
  ],
  "retired_tests": [
   {
@@ -4723,50 +4725,9 @@
    "rationale": "Original clean-forward and binding-recheck outcomes replay in compiled Rust; actual native signed receipts cover forwarding with and without a policy store. Unsigned route fixtures now assert fail-closed behavior."
   },
   {
-   "old_node": "tests/test_guard_restricted_linux_paths.py::test_directory_replacement_during_discovery_fails_closed",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "4f45563b5abe2a3f37e947f3a8a09b6e7012fd036b35756fd23a71dca7ae6f9a",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::replaced_directory_cannot_redirect_descriptor_discovery"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
    "old_node": "tests/test_guard_restricted_linux_socket.py::test_failed_seccomp_installation_never_returns_success",
    "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
    "source_sha256": "0790e8023c57a52a4fba9ec7257d4fc7014879114095dd3127b47af62f27ad97",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts",
-    "rust/crates/guard-runtime/src/restricted_linux_launch/pipeline.rs::failed_kernel_stage_never_reaches_repository_execution"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
-   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_private_snapshot_is_an_independent_complete_copy",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "210062d0beceab553edc3f103a5b205a695ca8b204a8b577e69675ad823ea00a",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
-   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_unverified_snapshot_cannot_become_a_mapping",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "adb82f590dc8f1a3be2066899584061c3dfdfd23ffab54bc7ab37fbdc08e0159",
-   "replacement_nodes": [
-    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
-   ],
-   "status": "native_behavior_ported_requires_ci",
-   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
-  },
-  {
-   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_failed_capability_drop_prevents_repository_execution",
-   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
-   "source_sha256": "75bcab26d89ef15aadf223956c59c4223346778b84aeb6efc6291f23cf4ac417",
    "replacement_nodes": [
     "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts",
     "rust/crates/guard-runtime/src/restricted_linux_launch/pipeline.rs::failed_kernel_stage_never_reaches_repository_execution"
@@ -6703,25 +6664,45 @@
    "rationale": "The whole parametrized table moved to the Rust owner, case for case, including the four pairs the recorded parity fixture never carried: an exact-specifier mismatch, a zero-major caret with its minor pinned, a zero-major zero-minor caret at equality, and a prerelease mismatch."
   },
   {
-   "old_node": "tests/test_secret_file_request_service_regressions.py::test_local_read_rejects_missing_containment_root",
+   "old_node": "tests/test_guard_restricted_linux_paths.py::test_directory_replacement_during_discovery_fails_closed",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "4f45563b5abe2a3f37e947f3a8a09b6e7012fd036b35756fd23a71dca7ae6f9a",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/shell_secret_read_containment_tests.rs::local_read_rejects_missing_containment_root"
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::replaced_directory_cannot_redirect_descriptor_discovery"
    ],
-   "status": "native_behavior_ported_requires_ci"
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
   },
   {
-   "old_node": "tests/test_secret_file_request_service_regressions.py::test_local_read_rejects_symlink_loop_root",
+   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_private_snapshot_is_an_independent_complete_copy",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "210062d0beceab553edc3f103a5b205a695ca8b204a8b577e69675ad823ea00a",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/shell_secret_read_containment_tests.rs::local_read_rejects_symlink_loop_root"
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
    ],
-   "status": "native_behavior_ported_requires_ci"
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
   },
   {
-   "old_node": "tests/test_secret_file_request_service_regressions.py::test_ripgrep_hidden_mode_parser_handles_clusters_and_option_values",
+   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_unverified_snapshot_cannot_become_a_mapping",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "adb82f590dc8f1a3be2066899584061c3dfdfd23ffab54bc7ab37fbdc08e0159",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/shell_secret_read_containment_tests.rs::ripgrep_hidden_mode_parser_handles_clusters_and_option_values"
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts"
    ],
-   "status": "native_behavior_ported_requires_ci"
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_restricted_linux_mappings.py::test_failed_capability_drop_prevents_repository_execution",
+   "base_commit": "e9814d78ea81b24fe0c343b03d7fa5621d9bc452",
+   "source_sha256": "75bcab26d89ef15aadf223956c59c4223346778b84aeb6efc6291f23cf4ac417",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/restricted_linux_launch/tests.rs::original_python_kernel_plan_and_mount_contracts",
+    "rust/crates/guard-runtime/src/restricted_linux_launch/pipeline.rs::failed_kernel_stage_never_reaches_repository_execution"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Pinned original plan, path, permission and copy outcomes replay in Rust; native failure ordering and descriptor tests replace Python implementation mocks. Public native caller regression tests remain."
   },
   {
    "old_node": "tests/test_hook_source_paths.py::TestSourcePathIsAllowed::test_ts_file_under_src_allowed",
@@ -7052,6 +7033,290 @@
    "replacement_nodes": [],
    "status": "obsolete_implementation_assertion",
    "rationale": "SourceDecision is a plain Rust struct returned by value. Immutability is a property of the type, not something a runtime test can observe."
+  },
+  {
+   "old_node": "tests/test_codex_pretool_allow_schema.py::test_codex_pre_tool_response_omits_unsupported_allow",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "b178d3bf6c6b8a33f55b23197835c7ffb8c517938663a3c8821acca411e1da24",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
+  },
+  {
+   "old_node": "tests/test_codex_pretool_allow_schema.py::test_codex_pre_tool_warn_preserves_reason_as_system_message",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "b178d3bf6c6b8a33f55b23197835c7ffb8c517938663a3c8821acca411e1da24",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
+  },
+  {
+   "old_node": "tests/test_codex_pretool_allow_schema.py::test_codex_pre_tool_response_drops_invalid_permission_fields",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "b178d3bf6c6b8a33f55b23197835c7ffb8c517938663a3c8821acca411e1da24",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
+  },
+  {
+   "old_node": "tests/test_codex_signed_approval_handoff.py::test_codex_bridge_stdout_excludes_native_approval_aliases",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "4fae1440004a510ba16137fbb9c33e7fd717c1614b8327bd113249d308a89286",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::approval_aliases_never_reach_the_hook_response"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The approval aliases are stripped by the native shaper; the new Rust test asserts the same review response leaks none of them."
+  },
+  {
+   "old_node": "tests/test_codex_contained_tests.py::test_codex_response_drops_allow_without_updated_input",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "fb40c8a0ab431ab2ef33ad19488e2e139fbad3daec0970fd7f12a873978a3a2b",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
+  },
+  {
+   "old_node": "tests/test_codex_contained_tests.py::test_policy_deny_overrides_an_updated_input_allow",
+   "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
+   "source_sha256": "fb40c8a0ab431ab2ef33ad19488e2e139fbad3daec0970fd7f12a873978a3a2b",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::a_policy_deny_overrides_an_updated_input_allow"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "A Rust shaper test sends a policy deny with an allow that carries updatedInput and checks the response denies and drops the rewritten input."
+  },
+  {
+   "old_node": "tests/test_secret_file_request_service_regressions.py::test_local_read_rejects_missing_containment_root",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/shell_secret_read_containment_tests.rs::local_read_rejects_missing_containment_root"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_secret_file_request_service_regressions.py::test_local_read_rejects_symlink_loop_root",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/shell_secret_read_containment_tests.rs::local_read_rejects_symlink_loop_root"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_secret_file_request_service_regressions.py::test_ripgrep_hidden_mode_parser_handles_clusters_and_option_values",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/shell_secret_read_containment_tests.rs::ripgrep_hidden_mode_parser_handles_clusters_and_option_values"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_sandbox_result_is_dataclass",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_sandbox_result_to_dict_truncates_output",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_sandbox_request_defaults",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_is_secret_path_ssh",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_is_secret_path_aws",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_is_secret_path_env",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_is_secret_path_benign",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_detect_network_attempts_curl",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_detect_network_attempts_https_url",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_detect_network_attempts_benign",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_build_env_clean_has_minimal_keys",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_build_env_minimal_preserves_inherited_paths_without_sensitive_values",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_build_env_passthrough_preserves_inherited_values",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_redact_env_hides_token",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_off_mode_returns_empty",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_benign_shell_script",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_clean_env_uses_private_workspace_for_home_and_tmpdir",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_detects_network_attempt_statically",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_escape_attempt_network_fixture",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_escape_attempt_secret_file_excluded",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_timeout_enforced",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_failure_safe_on_bad_interpreter",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_unexpected_write_detected",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_fork_bomb_limited",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_python_script_path",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_node_script_path",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_run_sandbox_suspicious_mode_skips_benign",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_signals_detected_on_timeout",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_sandbox.py::test_to_dict_keys_present",
+   "source_sha256": "1a7fb9cc570330e37d7aed62c43115c283b892144e6a634595375c199d45616e",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserts the behaviour of runtime/sandbox.py, a static-first sandbox runner no production path ever imported. The module is deleted as dead code rather than replaced, so there is no native node that reproduces this assertion."
   }
  ],
  "preserved_tests": [

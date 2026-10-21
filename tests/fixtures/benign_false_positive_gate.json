@@ -7730,57 +7730,57 @@
       "expect": "allow"
     },
     {
-                  "id": "gauntlet-find-tool-home-report-word",
-                  "fix_area": "find",
-                  "harnesses": [
-                    "codex",
-                    "zcode",
-                    "claude-code",
-                    "omp",
-                    "cursor"
-                  ],
-                  "tool": "shell",
-                  "tool_input": {
-                    "command": "find ${HOME}/.report-lane -maxdepth 4 -name \"*web-client*\""
-                  },
-                  "cwd": "worktree",
-                  "expect": "allow"
-                },
-                {
-              "id": "gauntlet-find-tool-home-dir-word",
-              "fix_area": "find",
-              "harnesses": [
-                "codex",
-                "zcode",
-                "claude-code",
-                "omp",
-                "cursor"
-              ],
-              "tool": "shell",
-              "tool_input": {
-                "command": "find ${HOME}/.web-client -maxdepth 4 -type d -name \"*usage-rollup*\""
-              },
-              "cwd": "worktree",
-              "expect": "allow"
-            },
-            {
-          "id": "gauntlet-find-tool-home-skill-files",
-          "fix_area": "find",
-          "harnesses": [
-            "codex",
-            "zcode",
-            "claude-code",
-            "omp",
-            "cursor"
-          ],
-          "tool": "shell",
-          "tool_input": {
-            "command": "find ${HOME}/.web-client/skills/usage-rollup -type f"
-          },
-          "cwd": "worktree",
-          "expect": "allow"
-        },
-        {
+      "id": "gauntlet-find-tool-home-report-word",
+      "fix_area": "find",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.report-lane -maxdepth 4 -name \"*web-client*\""
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gauntlet-find-tool-home-dir-word",
+      "fix_area": "find",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.web-client -maxdepth 4 -type d -name \"*usage-rollup*\""
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gauntlet-find-tool-home-skill-files",
+      "fix_area": "find",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.web-client/skills/usage-rollup -type f"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "gauntlet-ls-tool-home-skills",
       "fix_area": "find",
       "harnesses": [
@@ -8996,7 +8996,13 @@
     {
       "id": "session-git-worktree-add-missing-parent",
       "fix_area": "git-sibling-worktree",
-      "harnesses": ["claude-code", "codex", "omp", "zcode", "cursor"],
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
       "tool": "shell",
       "tool_input": {
         "command": "git worktree add .worktrees/fresh-parent/review -b fix/nested-review origin/main"
@@ -9007,7 +9013,13 @@
     {
       "id": "session-git-worktree-add-missing-parent-dash-C",
       "fix_area": "git-sibling-worktree",
-      "harnesses": ["claude-code", "codex", "omp", "zcode", "cursor"],
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
       "tool": "shell",
       "tool_input": {
         "command": "git -C ${ORG}/app-portal worktree add -b fix/nested-review ${ORG}/reviews/pending/report origin/main"
@@ -9018,7 +9030,13 @@
     {
       "id": "session-git-worktree-add-missing-private-temporary-parent",
       "fix_area": "git-sibling-worktree",
-      "harnesses": ["claude-code", "codex", "omp", "zcode", "cursor"],
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
       "tool": "shell",
       "tool_input": {
         "command": "git worktree add -b fix/nested-temporary ${TMP_ORG}/reviews/pending/report HEAD"
@@ -9029,7 +9047,13 @@
     {
       "id": "neg-git-worktree-add-missing-protected-parent",
       "fix_area": "git-sibling-worktree",
-      "harnesses": ["claude-code", "codex", "omp", "zcode", "cursor"],
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
       "tool": "shell",
       "tool_input": {
         "command": "git worktree add .github/workflows/fresh-parent/review -b fix/nested-review origin/main"
@@ -17591,6 +17615,21 @@
       "cwd": "worktree",
       "expect": "not_allow",
       "contained_ok": true
+    },
+    {
+      "id": "omp-read-source-through-linked-workspace",
+      "fix_area": "read",
+      "harnesses": [
+        "omp"
+      ],
+      "tool": "read",
+      "event": "PostToolUse",
+      "tool_input": {
+        "path": "${LINKED_WORKTREE}/src/one.ts"
+      },
+      "source_ref": true,
+      "cwd": "linked_worktree",
+      "expect": "allow"
     }
   ],
   "mcp_cases": [
