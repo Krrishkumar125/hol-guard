@@ -378,6 +378,22 @@ fn an_admitted_installed_release_plans_without_the_network_after_the_source_move
         plan(serde_json::to_value(&reused).unwrap()).unwrap()["profile"],
         "remote"
     );
+    // Once a remote publication raises an epoch past the admitted release,
+    // reusing it would be an epoch rollback, so planning goes remote.
+    for (authority, revocation) in [(1, 0), (0, 1)] {
+        let mut raised = moved.clone();
+        raised.authority += authority;
+        raised.revocation += revocation;
+        let encoded = encode(&raised, &key).unwrap();
+        let response = evaluate(
+            &json!({"kind":"plan","key":hex::encode(key),"floor":encoded,
+            "selected":["command.external"],"retained":[],"active":Value::Null,
+            "active_engine":Value::Null,"registry":[],
+            "installed":serde_json::to_value(installed()).unwrap()}),
+        )
+        .unwrap();
+        assert_eq!(response["profile"], "remote");
+    }
 }
 
 #[test]

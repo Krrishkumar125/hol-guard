@@ -97,6 +97,38 @@ def test_every_preparation_failure_is_classified(error, cause):
     assert classify(error) == cause
 
 
+def _raised_while_handling(handled: BaseException, error: BaseException) -> BaseException:
+    try:
+        try:
+            raise handled
+        except BaseException:
+            raise error  # noqa: B904 - deliberately left implicit
+    except BaseException as exc:
+        return exc
+
+
+@pytest.mark.parametrize(
+    ("error", "cause"),
+    [
+        (MissingReleaseError("no such release"), "release_unavailable"),
+        (RevokedPackError("command.git", 7), "pack_revoked"),
+        (_wrapped(RevokedPackError("command.git", 7)), "pack_revoked"),
+    ],
+)
+def test_a_retried_network_error_does_not_hide_the_typed_failure(error, cause):
+    assert classify(_raised_while_handling(ConnectionResetError("reset"), error)) == cause
+
+
+def test_a_suppressed_context_is_not_a_cause():
+    try:
+        try:
+            raise ConnectionResetError("reset")
+        except ConnectionResetError:
+            raise ValueError("target catalog shape invalid") from None
+    except ValueError as exc:
+        assert classify(exc) == "internal"
+
+
 def test_failure_keeps_the_public_code_and_adds_a_cause_and_recovery():
     error = preparation_unavailable(OSError("cache read failed"), stage="candidate-preparation")
     assert isinstance(error, ExtensionControlApiError)

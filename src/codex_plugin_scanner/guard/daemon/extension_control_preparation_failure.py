@@ -56,14 +56,24 @@ _COMPILER_EXECUTION_MARKERS = (
 
 
 def _causes(exc: BaseException) -> Iterator[BaseException]:
-    """Walk the chained exceptions, because preparation rewraps what it caught."""
+    """Walk the chained exceptions, because preparation rewraps what it caught.
+
+    Follow the explicit cause first and the implicit context only where Python
+    would show it. A context that ``raise ... from`` suppressed is a failure the
+    code already handled, such as a retried network error.
+    """
 
     seen: set[int] = set()
     current: BaseException | None = exc
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         yield current
-        current = current.__cause__ or current.__context__
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif current.__suppress_context__:
+            current = None
+        else:
+            current = current.__context__
 
 
 def _named_cause(exc: BaseException) -> str | None:
@@ -95,16 +105,19 @@ _UNREACHABLE = (urllib.error.URLError, socket.gaierror, ssl.SSLError, Connection
 def classify(exc: BaseException) -> str:
     """Name the step that failed without quoting any part of the message."""
 
-    for error in _causes(exc):
-        if isinstance(error, urllib.error.HTTPError):
-            return "release_unavailable"
-        if type(error) is TimeoutError and _STORAGE_DEADLINE in str(error):
-            return "local_storage"
-        if isinstance(error, _UNREACHABLE):
-            return "offline"
+    if any(type(error) is TimeoutError and _STORAGE_DEADLINE in str(error) for error in _causes(exc)):
+        return "local_storage"
+    # A typed failure outranks any network error left in its context: a
+    # transport that retried past a dropped connection and then found the
+    # release missing or revoked must not report the pack as offline.
     named = _named_cause(exc)
     if named is not None:
         return named
+    for error in _causes(exc):
+        if isinstance(error, urllib.error.HTTPError):
+            return "release_unavailable"
+        if isinstance(error, _UNREACHABLE):
+            return "offline"
     if isinstance(exc, ValueError):
         if any(marker in str(exc) for marker in _PACK_AUTHORITY_MARKERS):
             return "pack_authority_unavailable"

@@ -219,12 +219,17 @@ pub(super) fn evaluate(input: &Value) -> Result<Value, String> {
             let mut admission = floor.clone();
             let mut installed_usable = false;
             if let Some(installed) = installed.as_ref() {
-                if floor.installed.as_ref() == Some(installed) {
+                if floor.installed.as_ref() == Some(installed)
+                    && installed.authority >= floor.authority
+                    && installed.revocation >= floor.revocation
+                {
                     // This floor already admitted exactly this release, so it
                     // stays usable without re-deriving it. Re-deriving it was
                     // the only reason a steady-state preview fell through to
                     // the remote profile, which needs the network for every
-                    // saved policy; the floor itself does not move here.
+                    // saved policy; the floor itself does not move here. A
+                    // remote publication that raised the epochs past it sends
+                    // it through `transition`, which refuses the rollback.
                     installed_usable = true;
                 } else {
                     match transition(&floor, installed, &input["ancestry"]) {
