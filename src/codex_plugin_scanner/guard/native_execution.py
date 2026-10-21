@@ -200,6 +200,7 @@ def _resident_request(
             "codex_request_resume",
             "daemon_route",
             "daemon_handler",
+            "extension_control",
             "hook_authority_state",
             "extension_control_authority",
             "hook_render",

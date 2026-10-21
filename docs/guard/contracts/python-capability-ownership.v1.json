@@ -1627,6 +1627,58 @@
    "native_replacements": [],
    "retirement": "dead_code",
    "removal_reason": "Bounded declared-output capture for contained workspace execution that no production caller ever imported. The native contained-execution path captures only stdout.bin and stderr.bin from its own run directory under its own budgets, so it does not carry this module's declared-output walk and is not named as a behavioural replacement."
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/github_command_capabilities.py",
+   "module": "codex_plugin_scanner.guard.runtime.github_command_capabilities",
+   "source_sha256": "d85871ebfb6b0d82c4f376aea1efac82d7312bd9c896fc3d3c6a4eaae59cb735",
+   "forbidden_symbols": [
+    "classify_github_cli",
+    "static_markdown_pr_body_file_operand",
+    "_native_classification",
+    "_NATIVE_CACHE"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/github_command_capabilities.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/read_only_filters.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.read_only_filters",
+   "source_sha256": "63ba263eb7a1f0e873a89fdf9f472f5e0da08f2eccde9bd030a55586c097e4ef",
+   "forbidden_symbols": [
+    "_attached_redirection_operator",
+    "_github_output_filter_segment_is_safe",
+    "_read_only_lookup_arg_is_redirection",
+    "_read_only_lookup_filter_grep_args_are_safe",
+    "_read_only_lookup_filter_rg_args_are_safe",
+    "_read_only_lookup_filter_segment_is_safe",
+    "_read_only_lookup_head_tail_args_are_safe",
+    "_read_only_lookup_may_be_primary",
+    "_read_only_lookup_sed_args_are_safe",
+    "_read_only_lookup_sed_script_is_print_only",
+    "_ripgrep_configuration_is_absent",
+    "_split_attached_redirection_token"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/sfrs_read_only_filters.rs",
+    "rust/crates/guard-command/src/sfrs_search_filters.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/extension_control_resolver.py",
+   "module": "codex_plugin_scanner.guard.runtime.extension_control_resolver",
+   "source_sha256": "9029cc540785062c666d6e6cf8737486ddf95619fee7b96939e2efc05040434d",
+   "forbidden_symbols": [
+    "_has_explicit_enabled_permission",
+    "_validate_layer_targets",
+    "_extension_closure",
+    "_permission_closure"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/extension_control.rs",
+    "rust/crates/guard-runtime/src/extension_control_op.rs"
+   ]
   }
  ],
  "retired_test_paths": [
@@ -1946,6 +1998,17 @@
    "native_replacements": [
     "rust/crates/guard-command/src/verified_npm.rs",
     "rust/crates/guard-runtime/src/verified_npm_op.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/extension_trust.py",
+   "source_sha256": "d2449a937ba3d7585994787c26ca452eaad05ef0fd714b6717120e78bc55278e",
+   "forbidden_symbols": [
+    "extension_is_active"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/extension_trust.rs",
+    "rust/crates/guard-runtime/src/extension_control_op.rs"
    ]
   }
  ]

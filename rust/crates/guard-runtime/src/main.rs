@@ -259,6 +259,7 @@ mod edge;
 mod edge_git_push;
 mod encrypted_secret_store;
 mod extension_control_authority_op;
+mod extension_control_op;
 #[path = "adapters/detection/gemini_detect.rs"]
 mod gemini_detect;
 mod git_execution_safety_binary;
@@ -445,7 +446,9 @@ mod hook_decision_artifact_reuse_step;
 mod hook_decision_artifact_review_route;
 #[cfg(all(test, unix))]
 mod hook_decision_benign_tool_action_tests;
+mod hook_decision_claude_permission_verdict;
 mod hook_decision_compose;
+mod hook_decision_containment_route;
 mod hook_decision_directive;
 mod hook_decision_finalize;
 mod hook_decision_hook_route;
@@ -575,6 +578,7 @@ mod native_hook_receipt;
 mod native_review_link;
 mod native_runtime_admission;
 mod native_runtime_resilience;
+mod network_protection;
 mod oauth_refresh;
 mod oauth_secret_authority;
 mod oci_bundle_evidence;

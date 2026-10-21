@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-DqU3nbr5.js","assets/chunks/harness-version-label-B5upMG3f.js","assets/chunks/connect-guard-cloud-button-nIjTkiyS.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-C03WpejL.js","assets/chunks/confirm-dialog-DKs42E8c.js","assets/chunks/extensions-workspace-DP3OEknX.js","assets/chunks/app-detail-workspace-By-Wp0bd.js","assets/chunks/policy-workspace-page-C5EQ5osf.js","assets/chunks/about-workspace-DRsCiD3h.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-DqU3nbr5.js","assets/chunks/harness-version-label-B5upMG3f.js","assets/chunks/connect-guard-cloud-button-nIjTkiyS.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-C03WpejL.js","assets/chunks/confirm-dialog-DKs42E8c.js","assets/chunks/extensions-workspace-mIiVHPcV.js","assets/chunks/app-detail-workspace-By-Wp0bd.js","assets/chunks/policy-workspace-page-toUA_hyd.js","assets/chunks/about-workspace-DRsCiD3h.js"])))=>i.map(i=>d[i]);
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -19111,6 +19111,34 @@ async function scheduleGuardUpdate(options) {
     error: stringValue$1(payload.error) ?? void 0
   };
 }
+async function requestGuardDesktopHandoff() {
+  if (isGuardDemoMode()) {
+    return { handoff_requested: false, latest_version: null };
+  }
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 1e4);
+  let response;
+  try {
+    response = await fetchWithGuardAuth("/v1/update", {
+      method: "POST",
+      redirect: "error",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ handoff_to_desktop: true }),
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = stringValue$1(payload.message) ?? stringValue$1(payload.error) ?? `Guard update failed with ${response.status}`;
+    throw new Error(message);
+  }
+  return {
+    handoff_requested: payload.handoff_requested === true,
+    latest_version: stringValue$1(payload.latest_version)
+  };
+}
 async function setGuardUpdateChannel(channel, proof) {
   if (isGuardDemoMode()) {
     return normalizeGuardUpdateStatus({
@@ -21008,6 +21036,28 @@ function updateStatusLabel(status) {
   }
   return `Version ${status.current_version}`;
 }
+function desktopUpdateBannerModel(status, embeddedInDesktop, dismissedVersion) {
+  if (!embeddedInDesktop) {
+    return null;
+  }
+  if (!status?.update_available || !status.latest_version) {
+    return null;
+  }
+  if (status.update_suppressed === true) {
+    return null;
+  }
+  if (dismissedVersion !== null && dismissedVersion === status.latest_version) {
+    return null;
+  }
+  return {
+    latestVersion: status.latest_version,
+    title: `HOL Guard ${status.latest_version} is ready`,
+    body: "The HOL Guard app installs this update and shows its progress. Your approvals and settings stay saved."
+  };
+}
+const DESKTOP_HANDOFF_OPENING_LABEL = "Opening the app updater…";
+const DESKTOP_HANDOFF_GUIDANCE = "If the updater didn't open, choose Check for Updates from the HOL Guard menu-bar icon.";
+const DESKTOP_HANDOFF_FAILED = "The request did not reach the app. Choose Check for Updates from the HOL Guard menu-bar icon.";
 function shouldPromptRecoveryReinstall(status) {
   return status?.recovery_reinstall_available === true && status?.auto_updatable !== true && status?.version_check?.update_available === true;
 }
@@ -27069,9 +27119,18 @@ function homeCommandActivityModel(analytics) {
     window: commandWindowLabel(analytics)
   };
 }
+const COMMAND_HEALTH_CAUSES = {
+  pre_record_failed: "Guard could not save some command checks.",
+  post_record_failed: "Guard could not save some command results.",
+  pre_native_control_unavailable: "Guard's policy engine was unavailable while saving some command checks.",
+  shadow_evaluation_failed: "Guard could not save some policy previews.",
+  maintenance_failed: "Guard could not finish evidence cleanup."
+};
 function commandHealthCopy(analytics) {
   if (analytics.health.status === "healthy") return null;
-  return "Command activity evidence is degraded. Counts may be incomplete.";
+  const errorClass = analytics.health.last_error_class;
+  const cause = errorClass !== null && Object.hasOwn(COMMAND_HEALTH_CAUSES, errorClass) ? COMMAND_HEALTH_CAUSES[errorClass] : "Guard could not save some command evidence.";
+  return `Counts may be incomplete. Last recorded problem: ${cause}`;
 }
 function commandWindowLabel(analytics) {
   return `${analytics.window.days}-day window ending ${analytics.window.through}`;
@@ -27551,6 +27610,35 @@ function commandActivityLoadFailed(current, requestId, _error) {
     previous: current.previous
   };
 }
+const PROTECTION_REPAIR_ROUTE = "/protection/repair";
+const REPAIR_FAILED_COPY = "Guard could not repair the command evidence store.";
+function CommandActivityHealthNotice(props) {
+  const [repair, setRepair] = reactExports.useState({ kind: "idle" });
+  const { onRepaired } = props;
+  const handleRepair = reactExports.useCallback(() => {
+    setRepair({ kind: "repairing" });
+    repairProtectionCheck("decision_stream").then((result) => {
+      if (result.repaired) {
+        setRepair({ kind: "idle" });
+        onRepaired();
+        return;
+      }
+      setRepair({ kind: "failed", message: result.message || REPAIR_FAILED_COPY });
+    }).catch((error) => {
+      setRepair({ kind: "failed", message: error instanceof Error && error.message ? error.message : REPAIR_FAILED_COPY });
+    });
+  }, [onRepaired]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900", role: "status", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 space-y-1", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: props.copy }),
+      repair.kind === "failed" ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs", children: repair.message }) : null
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 flex-wrap gap-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { variant: "outline", onClick: handleRepair, disabled: repair.kind === "repairing", children: repair.kind === "repairing" ? "Repairing…" : "Repair evidence" }),
+      repair.kind === "failed" ? /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { variant: "ghost", href: PROTECTION_REPAIR_ROUTE, children: "Open Protect repair" }) : null
+    ] })
+  ] });
+}
 function Metric(props) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-l-2 border-slate-200 pl-3", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-medium text-slate-500", children: props.label }),
@@ -27606,7 +27694,7 @@ function CommandActivitySummary(props) {
   const healthCopy = commandHealthCopy(analytics);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "min-w-0 max-w-full space-y-5", "aria-label": "Command activity summary", children: [
     props.outsideTableFilters ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700", role: "status", children: "Summary and trend totals do not include every active filter below." }) : null,
-    healthCopy ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900", role: "status", children: healthCopy }) : null,
+    healthCopy ? /* @__PURE__ */ jsxRuntimeExports.jsx(CommandActivityHealthNotice, { copy: healthCopy, onRepaired: props.onHealthRepaired }) : null,
     props.state.kind === "error" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900", role: "status", children: "Refresh failed. Showing the last loaded command activity summary." }) : null,
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid gap-4 sm:grid-cols-2 xl:grid-cols-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Metric, { label: "Commands checked", value: metrics.commandsChecked, detail: "One per recorded activity" }),
@@ -28531,7 +28619,8 @@ function CommandActivityWorkspace(props) {
       CommandActivitySummary,
       {
         state: activity.analytics,
-        outsideTableFilters: commandSummaryIsOutsideTableFilters(activity.filters)
+        outsideTableFilters: commandSummaryIsOutsideTableFilters(activity.filters),
+        onHealthRepaired: activity.retry
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600", children: commandExecutionEvidenceCopy(props.harness ?? null, hasPostProof) }),
@@ -35477,6 +35566,122 @@ class ErrorBoundary extends reactExports.Component {
     );
   }
 }
+const DISMISSED_KEY = "guard-desktop-update-dismissed";
+const HANDOFF_GUIDANCE_DELAY_MS = 6e3;
+function readDismissedDesktopUpdateVersion() {
+  try {
+    return window.sessionStorage.getItem(DISMISSED_KEY);
+  } catch {
+    return null;
+  }
+}
+function rememberDismissedDesktopUpdateVersion(version2) {
+  try {
+    window.sessionStorage.setItem(DISMISSED_KEY, version2);
+  } catch {
+  }
+}
+function GuardUpdateBanner(props) {
+  const { model, onDismiss } = props;
+  const [phase, setPhase] = reactExports.useState("idle");
+  const guidanceTimer = reactExports.useRef(null);
+  const attemptRef = reactExports.useRef(0);
+  reactExports.useEffect(() => {
+    attemptRef.current += 1;
+    if (guidanceTimer.current !== null) {
+      window.clearTimeout(guidanceTimer.current);
+      guidanceTimer.current = null;
+    }
+    setPhase("idle");
+  }, [model.latestVersion]);
+  reactExports.useEffect(
+    () => () => {
+      if (guidanceTimer.current !== null) {
+        window.clearTimeout(guidanceTimer.current);
+      }
+    },
+    []
+  );
+  const handleUpdate = reactExports.useCallback(() => {
+    if (phase === "requesting" || phase === "opening") {
+      return;
+    }
+    const attempt = attemptRef.current + 1;
+    attemptRef.current = attempt;
+    setPhase("requesting");
+    void requestGuardDesktopHandoff().then((result) => {
+      if (attemptRef.current !== attempt) {
+        return;
+      }
+      if (!result.handoff_requested) {
+        setPhase("failed");
+        return;
+      }
+      setPhase("opening");
+      guidanceTimer.current = window.setTimeout(() => {
+        if (attemptRef.current === attempt) {
+          setPhase("guidance");
+        }
+      }, HANDOFF_GUIDANCE_DELAY_MS);
+    }).catch(() => {
+      if (attemptRef.current === attempt) {
+        setPhase("failed");
+      }
+    });
+  }, [phase]);
+  const handleDismiss = reactExports.useCallback(() => {
+    rememberDismissedDesktopUpdateVersion(model.latestVersion);
+    onDismiss(model.latestVersion);
+  }, [model.latestVersion, onDismiss]);
+  const busy = phase === "requesting" || phase === "opening";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "flex flex-col gap-3 rounded-xl border border-brand-blue/30 bg-brand-blue/[0.06] px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+      role: "status",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            HiMiniArrowPath,
+            {
+              className: `mt-0.5 h-5 w-5 shrink-0 text-brand-blue ${busy ? "animate-spin" : ""}`,
+              "aria-hidden": "true"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-brand-dark", children: model.title }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-brand-dark/75", children: model.body }),
+            phase === "guidance" ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-brand-dark/75", children: DESKTOP_HANDOFF_GUIDANCE }) : null,
+            phase === "failed" ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-brand-dark/75", role: "alert", children: DESKTOP_HANDOFF_FAILED }) : null
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: handleUpdate,
+              disabled: busy,
+              "aria-label": "Update Guard in the HOL Guard app",
+              className: "inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-blue px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70",
+              children: busy ? DESKTOP_HANDOFF_OPENING_LABEL : "Update in the app"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: handleDismiss,
+              disabled: busy,
+              className: "inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-brand-dark disabled:cursor-not-allowed disabled:opacity-70",
+              children: "Not now"
+            }
+          )
+        ] })
+      ]
+    }
+  );
+}
 const PROTECTION_POSTURE_COPY = {
   protected: {
     label: "Protected",
@@ -35931,6 +36136,17 @@ function ApprovalCenterLayout(props) {
     onReinstallGuard,
     onSetUpdateChannel
   } = useGuardUpdate({ onReconnected: props.onGuardReconnected });
+  const [dismissedUpdateVersion, setDismissedUpdateVersion] = reactExports.useState(
+    () => readDismissedDesktopUpdateVersion()
+  );
+  const handleDismissUpdateBanner = reactExports.useCallback((version2) => {
+    setDismissedUpdateVersion(version2);
+  }, []);
+  const updateBannerModel = desktopUpdateBannerModel(
+    updateStatus,
+    dashboardEmbedsInDesktop(),
+    dismissedUpdateVersion
+  );
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-screen bg-white text-brand-dark", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       ShellNavigation,
@@ -35960,6 +36176,13 @@ function ApprovalCenterLayout(props) {
         "data-sidebar-collapsed": sidebarCollapsed ? "true" : "false",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("main", { id: "main-content", className: "guard-shell-main flex-1", tabIndex: -1, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "guard-shell-workspace", "data-view": props.view, children: [
+            updateBannerModel ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              GuardUpdateBanner,
+              {
+                model: updateBannerModel,
+                onDismiss: handleDismissUpdateBanner
+              }
+            ) }) : null,
             props.view === "inbox" && props.runtime.kind === "ready" && watchBannerModel(props.runtime.snapshot) !== null ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               InboxWatchBanner,
               {
@@ -36177,7 +36400,7 @@ const FleetWorkspace = lazyWorkspace("fleet-workspace", () => __vitePreload(() =
 const SettingsWorkspace = lazyWorkspace("settings-workspace", () => __vitePreload(() => import("./chunks/settings-workspace-C03WpejL.js"), true ? __vite__mapDeps([8,7,3,9,6]) : void 0).then((m) => ({ default: m.SettingsWorkspace })));
 const ExtensionsWorkspace = lazyWorkspace(
   "extensions-workspace",
-  () => __vitePreload(() => import("./chunks/extensions-workspace-DP3OEknX.js"), true ? __vite__mapDeps([10,9]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
+  () => __vitePreload(() => import("./chunks/extensions-workspace-mIiVHPcV.js"), true ? __vite__mapDeps([10,9]) : void 0).then((module) => ({ default: module.ExtensionsWorkspace }))
 );
 const AppDetailWorkspace = lazyWorkspace("app-detail-workspace", () => __vitePreload(() => import("./chunks/app-detail-workspace-By-Wp0bd.js"), true ? __vite__mapDeps([11,5]) : void 0).then((m) => ({ default: m.AppDetailWorkspace })));
 const HelpModal = lazyWorkspace("help-modal", () => __vitePreload(() => import("./chunks/help-modal-B0TZsHE3.js"), true ? [] : void 0).then((m) => ({ default: m.HelpModal })));
@@ -36187,7 +36410,7 @@ const SupplyChainHubWorkspace = lazyWorkspace(
 );
 const PolicyWorkspacePage = lazyWorkspace(
   "policy-workspace-page",
-  () => __vitePreload(() => import("./chunks/policy-workspace-page-C5EQ5osf.js"), true ? __vite__mapDeps([12,6]) : void 0).then((m) => ({ default: m.PolicyWorkspacePage }))
+  () => __vitePreload(() => import("./chunks/policy-workspace-page-toUA_hyd.js"), true ? __vite__mapDeps([12,6]) : void 0).then((m) => ({ default: m.PolicyWorkspacePage }))
 );
 const AboutWorkspace = lazyWorkspace(
   "about-workspace",
@@ -37315,8 +37538,8 @@ export {
   fetchCloudExceptions as dO,
   fetchCloudExceptionRequests as dP,
   downloadBlob as dQ,
-  PolicyStatField as dR,
-  PaginationControls as dS,
+  PaginationControls as dR,
+  PolicyStatField as dS,
   HiMiniArrowDownTray as dT,
   HiMiniInbox as dU,
   HiMiniQueueList as dV,
