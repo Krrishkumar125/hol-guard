@@ -1372,6 +1372,17 @@
    "removal_reason": "Resource budget and applied-control evidence scaffolding for an isolated-execution path that was never wired up."
   },
   {
+   "path": "src/codex_plugin_scanner/guard/runtime/node_semver.py",
+   "module": "codex_plugin_scanner.guard.runtime.node_semver",
+   "source_sha256": "534232af6dc97a8486104ebeccddf473518352a05497e962a4ca0e278e94ab61",
+   "forbidden_symbols": [
+    "node_semver_spec_matches"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/direct_tool_semver.rs"
+   ]
+  },
+  {
    "path": "src/codex_plugin_scanner/guard/runtime/source_paths.py",
    "module": "codex_plugin_scanner.guard.runtime.source_paths",
    "source_sha256": "e187c4541905d1db3e72ebc9b979fb2d22a24261bf18553fdd5ae7dfeb8cefa7",
@@ -1421,6 +1432,7 @@
   "tests/test_npm_source_spec.py",
   "tests/test_guard_github_pr_body_file.py",
   "tests/test_native_command_options.py",
+  "tests/test_guard_node_semver.py",
   "tests/test_hook_source_paths.py"
  ],
  "retired_bodies": [
