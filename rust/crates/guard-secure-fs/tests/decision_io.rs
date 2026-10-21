@@ -216,18 +216,49 @@ fn a_workspace_spelled_through_a_linked_ancestor_still_classifies_its_own_source
     );
     assert_eq!(allowed.resolved_path, fs::canonicalize(&linked_source).ok());
 
-    // A link planted in the tree is screened on the resolved path, so the
-    // relaxed order cannot present a credential store as ordinary source.
+    // A link planted below the root is still refused, so admitting the
+    // root's own linked ancestry cannot present a credential store as
+    // ordinary source.
     let planted = workspace.join("src/settings.ts");
     std::os::unix::fs::symlink(workspace.join(".env"), &planted).unwrap();
-    assert!(
-        !classify_source_path(
+    assert_eq!(
+        classify_source_path(
             linked_workspace.join("src/settings.ts").to_str().unwrap(),
             &linked_workspace,
             Some(&home),
             false,
         )
-        .allowed
+        .reason_code,
+        "symlink_in_path"
+    );
+
+    // Even when the link resolves to ordinary source inside the workspace.
+    let benign_link = workspace.join("src/alias.ts");
+    std::os::unix::fs::symlink(workspace.join("src/index.ts"), &benign_link).unwrap();
+    assert_eq!(
+        classify_source_path(
+            linked_workspace.join("src/alias.ts").to_str().unwrap(),
+            &linked_workspace,
+            Some(&home),
+            false,
+        )
+        .reason_code,
+        "symlink_in_path"
+    );
+
+    // A link inside the tree that points back at the root cannot stand in
+    // for the root and hide the components below itself.
+    let self_link = workspace.join("self");
+    std::os::unix::fs::symlink(&workspace, &self_link).unwrap();
+    assert_eq!(
+        classify_source_path(
+            linked_workspace.join("self/src/index.ts").to_str().unwrap(),
+            &linked_workspace,
+            Some(&home),
+            false,
+        )
+        .reason_code,
+        "symlink_in_path"
     );
 
     // A link that leaves the workspace is still refused for leaving it.

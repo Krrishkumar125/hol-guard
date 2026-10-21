@@ -17625,7 +17625,7 @@
       "tool": "read",
       "event": "PostToolUse",
       "tool_input": {
-        "path": "${LINKED_WORKTREE}/docs/review-notes.md"
+        "path": "${LINKED_WORKTREE}/src/one.ts"
       },
       "source_ref": true,
       "cwd": "linked_worktree",

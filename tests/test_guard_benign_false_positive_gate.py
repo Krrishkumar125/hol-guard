@@ -16,7 +16,6 @@ passing so stale markers get removed rather than hiding regressions.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
@@ -37,7 +36,7 @@ from tests.benign_fp_gate_connectors import allow_ready_cli, assert_connector_se
 from tests.benign_fp_gate_fixture import BenignFixture, build_fixture, route_codex
 from tests.benign_fp_gate_mcp import McpCase, mcp_cases, mcp_failure, replay
 from tests.benign_fp_gate_projects import host_tool_path
-from tests.gauntlet_replay import OMP_CONTAINED, cursor_hook_fields
+from tests.gauntlet_replay import OMP_CONTAINED, cursor_hook_fields, source_ref_payload
 from tests.native_gate_retry import BUDGET_MISS_REASONS, review_with_unavailable_retry
 
 pytestmark = pytest.mark.usefixtures("native_hook_force")
@@ -221,7 +220,10 @@ def _review(case: GateCase, fixture: BenignFixture, worker: HookWorker) -> tuple
     if case.tool_response is not None:
         payload["tool_response"] = case.tool_response
     if case.source_ref:
-        payload["guard_source_ref"] = _source_ref(payload["tool_input"], fixture.cwd(case.cwd))
+        tool_input = payload["tool_input"]
+        assert isinstance(tool_input, dict)
+        spelled = str(tool_input.get("path") or tool_input["file_path"])
+        payload["guard_source_ref"] = source_ref_payload(spelled, fixture.cwd(case.cwd))
     if case.harness == "cursor":
         payload.update(cursor_hook_fields(case.tool, payload))
     # Approval baselines stay from before the first attempt, so a retry never hides a row.
@@ -244,24 +246,6 @@ def _review(case: GateCase, fixture: BenignFixture, worker: HookWorker) -> tuple
     _ROWS[case.case_id] = approval_rows(worker.store, known)
     routed = _harness_route(case, result, payload, fixture)
     return routed, worker.store.count_approval_requests(status=None) - before
-
-
-def _source_ref(tool_input: object, cwd: Path) -> dict[str, object]:
-    """The proof Oh My Pi's extension attaches to a PostToolUse read.
-
-    The path keeps the spelling the tool was called with, so a host spelling
-    through a linked ancestor reaches classification exactly as it does live.
-    """
-    assert isinstance(tool_input, dict)
-    spelled = str(tool_input.get("path") or tool_input["file_path"])
-    text = (cwd / spelled).read_text(encoding="utf-8").rstrip("\n")
-    return {
-        "version": 1,
-        "path": spelled,
-        "output_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-        "output_chars": len(text),
-        "tool_input_path": spelled,
-    }
 
 
 def _harness_route(
@@ -317,10 +301,19 @@ def _decision(result: dict[str, object]) -> str:
 
 
 def _rendered_text(result: dict[str, object]) -> bool:
-    """True when the harness response carries text the agent or user would see."""
+    """True when the harness response carries text the agent or user would see.
+
+    ``notice`` is the PostToolUse display mode, not a message: every allowed
+    output review carries one, and ``none`` is the value that says the harness
+    shows nothing at all.
+    """
     specific = result.get("hookSpecificOutput")
     specific = specific if isinstance(specific, dict) else {}
-    return any(result.get(key) for key in _RENDERED_KEYS) or any(specific.get(key) for key in _RENDERED_SPECIFIC_KEYS)
+    if any(result.get(key) for key in _RENDERED_KEYS if key != "notice"):
+        return True
+    if result.get("notice") not in (None, "", "none"):
+        return True
+    return any(specific.get(key) for key in _RENDERED_SPECIFIC_KEYS)
 
 
 def _quiet_allow(result: dict[str, object], approvals: int) -> bool:
