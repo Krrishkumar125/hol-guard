@@ -120,7 +120,7 @@ const COMPONENTS: &[(&str, &str)] = &[
     ),
     (
         "guard-command-command-structured-matchers",
-        "../guard-command/src/command_structured_matchers.rs",
+        "../guard-command/src/command_structured_matchers/mod.rs",
     ),
     (
         "guard-command-executable-flag-contract",
