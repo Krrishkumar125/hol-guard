@@ -17,14 +17,14 @@ fn artifact(artifact_type: &str, metadata: Value) -> HookArtifactV1 {
         url: None,
         transport: None,
         publisher: None,
-        hash_metadata: None,
+        metadata_stamp: None,
     }
 }
 
 /// The artifact the digest tests below ask about, shaped like the hook's own:
 /// identity fields, redactable arguments and a url, and metadata that carries
 /// the posture a hook stamps after it has fixed the approval identity.
-fn hashed_artifact(metadata: Value, hash_metadata: Option<Value>) -> HookArtifactV1 {
+fn hashed_artifact(metadata: Value, metadata_stamp: Option<MetadataStampV1>) -> HookArtifactV1 {
     HookArtifactV1 {
         artifact_id: "shell:run".to_owned(),
         name: "run".to_owned(),
@@ -36,7 +36,7 @@ fn hashed_artifact(metadata: Value, hash_metadata: Option<Value>) -> HookArtifac
         url: Some("https://example.test/x?token=abc123".to_owned()),
         transport: Some("stdio".to_owned()),
         publisher: Some("local".to_owned()),
-        hash_metadata,
+        metadata_stamp,
         ..artifact("tool_action_request", metadata)
     }
 }
@@ -45,6 +45,20 @@ fn hashed_artifact(metadata: Value, hash_metadata: Option<Value>) -> HookArtifac
 /// holds it when it fixes the artifact's approval identity.
 fn identity_metadata() -> Value {
     json!({"action_class": "git status", "env_keys": ["PATH"], "reason_code": "r"})
+}
+
+/// A caller that stamped nothing: the digest covers the metadata as sent.
+fn no_stamp() -> MetadataStampV1 {
+    MetadataStampV1::default()
+}
+
+/// The stamp `_stamp_runtime_posture_metadata` leaves behind: two keys the
+/// hook added after it had fixed the artifact's approval identity.
+fn posture_stamp() -> MetadataStampV1 {
+    MetadataStampV1 {
+        added: vec!["risk_confidence".to_owned(), "risk_signals".to_owned()],
+        replaced: Map::new(),
+    }
 }
 
 /// The same metadata once `_stamp_runtime_posture_metadata` has run.
@@ -523,9 +537,10 @@ fn a_separator_padded_risk_label_is_still_recognized() {
 }
 
 #[test]
-fn an_artifact_asked_about_without_hash_metadata_carries_no_digest() {
-    // The policy facts are all a caller normally wants; the digest costs a
-    // second copy of the metadata on the wire, so it is asked for by name.
+fn an_artifact_asked_about_without_a_metadata_stamp_carries_no_digest() {
+    // The policy facts are all a caller normally wants, and a caller that
+    // asks for the digest has to say what it stamped, so the stamp's presence
+    // is the request for one.
     let value = facts("tool_action_request", stamped_metadata());
     assert_eq!(value.get("content_sha256"), None);
 }
@@ -535,10 +550,7 @@ fn the_digest_equals_the_python_artifact_hash() {
     // `consumer.service.artifact_hash` of this exact artifact under CPython
     // 3.12. A different value here silently invalidates every approval the
     // user has already granted for the artifact.
-    let value = evaluate(&hashed_artifact(
-        identity_metadata(),
-        Some(identity_metadata()),
-    ));
+    let value = evaluate(&hashed_artifact(identity_metadata(), Some(no_stamp())));
     assert_eq!(
         value["content_sha256"],
         json!("9eb6bb136e9179bc4e943813d356f27456ce7e505600234dd897653263a074cd")
@@ -551,10 +563,7 @@ fn the_digest_covers_the_metadata_before_the_posture_stamp() {
     // the same metadata before asking for its facts. The digest has to stay
     // the pre-stamp one, while the facts are still read from the stamped
     // metadata.
-    let value = evaluate(&hashed_artifact(
-        stamped_metadata(),
-        Some(identity_metadata()),
-    ));
+    let value = evaluate(&hashed_artifact(stamped_metadata(), Some(posture_stamp())));
     assert_eq!(
         value["content_sha256"],
         json!("9eb6bb136e9179bc4e943813d356f27456ce7e505600234dd897653263a074cd")
@@ -563,14 +572,33 @@ fn the_digest_covers_the_metadata_before_the_posture_stamp() {
 }
 
 #[test]
+fn a_stamp_that_overwrote_a_key_puts_the_identity_value_back() {
+    // `added` alone cannot recover a key the stamp wrote over, so `replaced`
+    // carries the value the identity held. Reaching the same digest as the
+    // unstamped artifact is what proves the metadata was recovered exactly.
+    let mut metadata = stamped_metadata();
+    metadata["reason_code"] = json!("stamped");
+    let mut replaced = Map::new();
+    replaced.insert("reason_code".to_owned(), json!("r"));
+    let value = evaluate(&hashed_artifact(
+        metadata,
+        Some(MetadataStampV1 {
+            replaced,
+            ..posture_stamp()
+        }),
+    ));
+    assert_eq!(
+        value["content_sha256"],
+        json!("9eb6bb136e9179bc4e943813d356f27456ce7e505600234dd897653263a074cd")
+    );
+}
+
+#[test]
 fn hashing_the_stamped_metadata_would_move_the_digest() {
     // `d49d9c73...` is `artifact_hash` of the stamped artifact under CPython
     // 3.12: proof that the pre-stamp metadata above is load-bearing rather
     // than a defensive copy.
-    let value = evaluate(&hashed_artifact(
-        stamped_metadata(),
-        Some(stamped_metadata()),
-    ));
+    let value = evaluate(&hashed_artifact(stamped_metadata(), Some(no_stamp())));
     assert_eq!(
         value["content_sha256"],
         json!("d49d9c732e7c991792dbd7290171c1417fc9949dbb4b13d107706aceefe68815")

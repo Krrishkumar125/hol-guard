@@ -86,8 +86,13 @@ def _wire_artifact(artifact: Mapping[str, object]) -> dict[str, object]:
     A caller that wants the digest its saved approvals are keyed by passes
     ``hash_metadata``: the metadata the artifact carried when that identity was
     fixed, which a hook stamps its runtime posture onto before asking for these
-    facts. The identity fields the digest covers are sent unredacted, because
-    that hash redacts the arguments and the url itself.
+    facts. Only the difference between the two goes on the wire, as
+    ``metadata_stamp``; sending the pre-stamp metadata whole would carry a
+    second full copy of a field with no size bound of its own, and a command
+    long enough to reach the metadata would push an otherwise acceptable
+    request past the envelope limit and leave the hook with no facts at all.
+    The identity fields the digest covers are sent unredacted, because that
+    hash redacts the arguments and the url itself.
 
     Every field is named on every entry, including the identity ones a caller
     that wants no digest leaves empty. The resident binds its reply to the
@@ -109,8 +114,27 @@ def _wire_artifact(artifact: Mapping[str, object]) -> dict[str, object]:
         entry[field] = value if isinstance(value, str) else None
     hash_metadata = artifact.get("hash_metadata")
     if hash_metadata is not None:
-        entry["hash_metadata"] = dict(cast("Mapping[str, object]", hash_metadata))
+        entry["metadata_stamp"] = _metadata_stamp(
+            cast("Mapping[str, object]", entry["metadata"]),
+            cast("Mapping[str, object]", hash_metadata),
+        )
     return entry
+
+
+def _metadata_stamp(metadata: Mapping[str, object], identity: Mapping[str, object]) -> dict[str, object]:
+    """What the caller stamped onto ``identity`` to reach ``metadata``.
+
+    The resident drops ``added`` from the metadata it was sent and puts
+    ``replaced`` back to recover the metadata the digest covers, so the two
+    differ on the wire by the keys the stamp touched rather than by a whole
+    copy. A key the stamp dropped is restored by ``replaced`` as well, since
+    putting a key back is the same operation whether or not it is still there.
+    """
+
+    return {
+        "added": sorted(key for key in metadata if key not in identity),
+        "replaced": {key: value for key, value in identity.items() if key not in metadata or metadata[key] != value},
+    }
 
 
 def _facts_for_batch(
@@ -127,7 +151,7 @@ def _facts_for_batch(
     }
     required_feature = (
         HOOK_ARTIFACT_FACTS_CONTENT_HASH_FEATURE
-        if any("hash_metadata" in entry for entry in entries)
+        if any("metadata_stamp" in entry for entry in entries)
         else HOOK_ARTIFACT_FACTS_FEATURE
     )
     try:

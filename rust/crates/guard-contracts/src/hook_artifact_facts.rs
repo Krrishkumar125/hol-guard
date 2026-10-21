@@ -6,7 +6,7 @@
 //! ships the artifact as it stands and the resident reads the metadata.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// Schema discriminator for the request.
 pub const HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA: &str = "guard-hook-artifact-facts-request.v1";
@@ -69,17 +69,35 @@ pub struct HookArtifactV1 {
     /// `GuardArtifact.publisher`.
     #[serde(default)]
     pub publisher: Option<String>,
-    /// Present when the caller asks for `content_sha256`: the metadata the
-    /// content hash is taken over.
+    /// Present when the caller asks for `content_sha256`: what the caller
+    /// stamped onto `metadata` after the artifact's approval identity was
+    /// fixed.
     ///
-    /// A hook fixes an artifact's approval identity before it stamps its
-    /// runtime posture onto the same metadata, so the digest a saved approval
-    /// is keyed by covers the artifact as it stood *before* that stamp, while
-    /// the facts above are read from the stamped metadata. Carrying both
-    /// keeps one round trip answering both questions without the resident
-    /// guessing which keys a caller added after the identity was fixed.
+    /// A hook fixes that identity before it stamps its runtime posture onto
+    /// the same metadata, so the digest a saved approval is keyed by covers
+    /// the artifact as it stood *before* the stamp, while the facts above are
+    /// read from the stamped metadata. Naming the stamp rather than carrying
+    /// a second full copy of the metadata keeps one round trip answering both
+    /// questions without the resident guessing which keys the caller added,
+    /// and keeps a large metadata from doubling the request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hash_metadata: Option<Value>,
+    pub metadata_stamp: Option<MetadataStampV1>,
+}
+
+/// What a caller added to an artifact's metadata after its identity was fixed.
+///
+/// Removing `added` from the stamped metadata and putting `replaced` back
+/// recovers the metadata the identity was taken over. An empty stamp says the
+/// caller stamped nothing, so the identity is the metadata as sent.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct MetadataStampV1 {
+    /// Keys the stamp introduced, absent from the metadata the digest covers.
+    #[serde(default)]
+    pub added: Vec<String>,
+    /// Keys the stamp overwrote, holding the value the identity carried.
+    #[serde(default)]
+    pub replaced: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

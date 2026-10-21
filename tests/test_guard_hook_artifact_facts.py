@@ -219,7 +219,7 @@ def test_every_entry_names_every_field_the_contract_serializes() -> None:
     }
     plain = bridge._wire_artifact(asked)
     hashed = bridge._wire_artifact({**asked, "hash_metadata": artifact.metadata})
-    assert set(hashed) - set(plain) == {"hash_metadata"}
+    assert set(hashed) - set(plain) == {"metadata_stamp"}
     assert set(plain) == {
         "artifact_type",
         "metadata",
@@ -236,3 +236,46 @@ def test_every_entry_names_every_field_the_contract_serializes() -> None:
         "publisher",
     }
     assert bridge._wire_artifact({"artifact_type": "tool_action_request"}).keys() == plain.keys()
+
+
+def test_the_identity_metadata_rides_as_the_stamp_rather_than_a_second_copy() -> None:
+    """A second full copy would push a large metadata past the envelope limit.
+
+    The metadata carries command text and has no size bound of its own, so a
+    request that fit before would stop fitting and the hook would be left with
+    no facts at all. Only the keys the stamp touched go on the wire.
+    """
+
+    artifact = _artifact()
+    identity = dict(artifact.metadata)
+    artifact.metadata["risk_signals"] = [{"category": "exfiltration"}]
+    artifact.metadata["risk_confidence"] = "strong"
+    entry = bridge._wire_artifact(
+        {"artifact_type": artifact.artifact_type, "metadata": artifact.metadata, "hash_metadata": identity}
+    )
+    assert entry["metadata_stamp"] == {"added": ["risk_confidence", "risk_signals"], "replaced": {}}
+
+
+def test_the_stamp_carries_back_a_key_the_caller_overwrote() -> None:
+    identity = {"action_class": "shell", "reason_code": "r"}
+    entry = bridge._wire_artifact(
+        {
+            "artifact_type": "tool_action_request",
+            "metadata": {"action_class": "shell", "reason_code": "stamped", "risk_confidence": "strong"},
+            "hash_metadata": identity,
+        }
+    )
+    assert entry["metadata_stamp"] == {"added": ["risk_confidence"], "replaced": {"reason_code": "r"}}
+
+
+def test_the_stamp_restores_a_key_the_caller_dropped() -> None:
+    """Putting a key back is the same operation whether or not it is still there."""
+
+    entry = bridge._wire_artifact(
+        {
+            "artifact_type": "tool_action_request",
+            "metadata": {"action_class": "shell"},
+            "hash_metadata": {"action_class": "shell", "reason_code": "r"},
+        }
+    )
+    assert entry["metadata_stamp"] == {"added": [], "replaced": {"reason_code": "r"}}
