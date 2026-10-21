@@ -58,9 +58,9 @@ fn every_canonical_action_floors_the_verdict() {
 }
 
 #[test]
-fn sandbox_required_keeps_its_containment_route() {
+fn sandbox_required_keeps_its_tier() {
     // The retired Python floor admitted only allow, review and block, so a
-    // contained command collapsed to a block and lost its containment route.
+    // sandbox-required review collapsed to a block floor.
     assert_eq!(
         floor("sandbox-required", "native_contained"),
         json!("sandbox-required")

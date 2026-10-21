@@ -2,8 +2,9 @@
 //!
 //! The resident pre-tool review returns a `minimum_action` for the command.
 //! This decides whether it floors the hook verdict: every canonical action
-//! does, `sandbox-required` included, so a command the review contains keeps
-//! its containment route instead of collapsing to a block. A contextual
+//! does, `sandbox-required` included, so the floor keeps that tier instead of
+//! collapsing it to a block. The floor only enters the policy actions: the
+//! containment rewrite itself is routed from the edge result. A contextual
 //! git-helper review is the one answer that does not, because the hook settles
 //! it from facts the review does not see.
 //!

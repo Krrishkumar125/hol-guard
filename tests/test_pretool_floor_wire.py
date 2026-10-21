@@ -136,7 +136,7 @@ def test_the_resident_floor_matches_the_retired_python_floor(native_approval_reu
         ("block", "native_destructive_command"): "block",
         # The contextual git-helper review is settled from the hook's own facts.
         ("review", "native_git_helper_context_review"): None,
-        # The retired floor turned this into a block; it keeps its containment route.
+        # The retired floor turned this into a block; it keeps its sandbox-required tier.
         ("sandbox-required", "native_git_readonly_containment_required"): "sandbox-required",
     }
     for (action, reason_code), expected in cases.items():
