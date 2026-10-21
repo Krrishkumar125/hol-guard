@@ -66,7 +66,7 @@ def _stub_effects(monkeypatch: pytest.MonkeyPatch) -> None:
     def edge_result(edge: object) -> object:
         return edge.get("result") if isinstance(edge, dict) else None
 
-    def route(inputs: dict[str, object], *, guard_home: object = None) -> route_module.NativeHookRoute:
+    def route(inputs: dict[str, object], **_kwargs: object) -> route_module.NativeHookRoute:
         assert inputs == now.facts
         return route_module.NativeHookRoute(*now.route)
 
@@ -230,7 +230,7 @@ def test_no_route_is_the_outage_response_and_no_handler_runs(monkeypatch: pytest
     case = _a_case("codex", "PreToolUse")
     vector = VECTOR_LIST[CASES.index(case)]
 
-    def outage(inputs: object, *, guard_home: object = None) -> None:
+    def outage(inputs: object, **_kwargs: object) -> None:
         raise decision.NativeHookDecisionError("native_hook_decision_unavailable")
 
     monkeypatch.setattr(pipeline, "native_hook_route", outage)
@@ -303,7 +303,12 @@ _ROUTE = {
 }
 
 
-def _resident_answering(monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any], asked: list[str]) -> None:
+def _resident_answering(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, Any],
+    asked: list[str],
+    timeouts: list[float] | None = None,
+) -> None:
     status = SimpleNamespace(
         available=True,
         compatible=True,
@@ -315,8 +320,12 @@ def _resident_answering(monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any]
     monkeypatch.setattr(shared, "_resolve_digest_home", lambda _home: Path("/tmp/hook-decision-home"))
     monkeypatch.setattr(shared, "ensure_resident_prerequisite", lambda _home: True)
 
-    def transport(*, request: dict[str, Any], required_feature: str, **_kwargs: object) -> dict[str, Any]:
+    def transport(
+        *, request: dict[str, Any], required_feature: str, timeout_seconds: float, **_kwargs: object
+    ) -> dict[str, Any]:
         asked.append(required_feature)
+        if timeouts is not None:
+            timeouts.append(timeout_seconds)
         assert request["query"] == {"kind": "hook_route", "inputs": _FACTS}
         return {
             "schema": "guard-hook-decision-result.v1",
@@ -327,7 +336,7 @@ def _resident_answering(monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any]
             "payload": payload,
         }
 
-    monkeypatch.setattr(decision, "_resident_request", transport)
+    monkeypatch.setattr(route_module, "_resident_request", transport)
 
 
 def test_a_bound_route_is_decoded_behind_its_capability(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -336,6 +345,71 @@ def test_a_bound_route_is_decoded_behind_its_capability(monkeypatch: pytest.Monk
     answer = route_module.native_hook_route(_FACTS)
     assert answer == route_module.NativeHookRoute(tuple(_ROUTE["plan"]), "PreToolUse")  # type: ignore[arg-type]
     assert asked == [route_module.HOOK_DECISION_HOOK_ROUTE_FEATURE]
+
+
+@pytest.mark.parametrize(
+    ("budget", "waited"), [(None, 5.0), (30.0, 5.0), (0.7, 0.7)], ids=("no-hint", "roomy", "tight")
+)
+def test_the_route_never_waits_past_what_the_harness_allows(
+    monkeypatch: pytest.MonkeyPatch, budget: float | None, waited: float
+) -> None:
+    timeouts: list[float] = []
+    _resident_answering(monkeypatch, _ROUTE, [], timeouts)
+    route_module.native_hook_route(_FACTS, budget_seconds=budget)
+    assert timeouts == [waited]
+
+
+@pytest.mark.parametrize("budget", (0.0, -1.5))
+def test_an_exhausted_budget_is_an_outage_without_asking_the_resident(
+    monkeypatch: pytest.MonkeyPatch, budget: float
+) -> None:
+    asked: list[str] = []
+    _resident_answering(monkeypatch, _ROUTE, asked)
+    with pytest.raises(decision.NativeHookDecisionError):
+        route_module.native_hook_route(_FACTS, budget_seconds=budget)
+    assert asked == []
+
+
+def test_the_budget_is_what_remains_of_the_timing_anchored_at_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(route_run.time, "monotonic", lambda: 100.0)
+    assert route_run.route_budget_seconds({"deadline": 102.5}) == 2.5
+    assert route_run.route_budget_seconds({"deadline": 99.0}) == -1.0
+    assert route_run.route_budget_seconds({"edge_budget_seconds": 3.0}) == 3.0
+    assert route_run.route_budget_seconds({}) is None
+
+
+def test_the_pipeline_hands_the_route_the_remaining_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_effects(monkeypatch)
+    case = _a_case("codex", "PreToolUse")
+    vector = VECTOR_LIST[CASES.index(case)]
+    budgets: list[object] = []
+
+    def route(inputs: object, **kwargs: object) -> route_module.NativeHookRoute:
+        budgets.append(kwargs["budget_seconds"])
+        return route_module.NativeHookRoute(*_Current.route)
+
+    monkeypatch.setattr(pipeline, "native_hook_route", route)
+    monkeypatch.setattr(pipeline, "route_budget_seconds", lambda timing: 1.25)
+    _run_pipeline(case, vector, rec.WORLDS[0])
+    assert budgets == [1.25]
+
+
+@pytest.mark.parametrize("event", ("PermissionRequest", "Stop", "Notification"))
+def test_a_claude_control_event_without_a_route_is_the_outage_response(
+    monkeypatch: pytest.MonkeyPatch, event: str
+) -> None:
+    """With no route there is no handler: not Claude's own dialog, not a Stop discard."""
+    _stub_effects(monkeypatch)
+    case = _a_case("claude-code", event)
+    vector = VECTOR_LIST[CASES.index(case)]
+
+    def outage(inputs: object, **_kwargs: object) -> None:
+        raise decision.NativeHookDecisionError("native_hook_decision_unavailable")
+
+    monkeypatch.setattr(pipeline, "native_hook_route", outage)
+    trace, rc = _run_pipeline(case, vector, rec.WORLDS[0])
+    assert [entry[:1] for entry in trace] == [["unavailable"]]
+    assert rc == rec.RC["unavailable"]
 
 
 @pytest.mark.parametrize(

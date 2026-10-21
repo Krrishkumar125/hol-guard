@@ -36,7 +36,13 @@ from .commands_hook_native_eval import evaluate_native_artifact_hook
 from .commands_hook_native_finish import finalize_native_artifact_hook
 from .commands_hook_native_prepare import prepare_native_hook_state
 from .commands_hook_native_review import review_native_artifact_hook
-from .commands_hook_native_route import NativeHandler, NativeHookRun, hook_route_inputs, run_route_plan
+from .commands_hook_native_route import (
+    NativeHandler,
+    NativeHookRun,
+    hook_route_inputs,
+    route_budget_seconds,
+    run_route_plan,
+)
 from .commands_hook_native_route_handlers import HANDLERS
 from .commands_hook_native_state import NativeArtifactHookState
 from .commands_parser_helpers import *
@@ -154,7 +160,9 @@ def run_native_hook_pipeline(
         copilot_tool_call_present=copilot_runtime_tool_call is not None,
     )
     try:
-        route = native_hook_route(inputs, guard_home=context.guard_home)
+        route = native_hook_route(
+            inputs, guard_home=context.guard_home, budget_seconds=route_budget_seconds(edge_timing)
+        )
     except NativeHookDecisionError as error:
         # No route means no handler to run: the host outage response, never a guess.
         return _emit_native_unavailable(

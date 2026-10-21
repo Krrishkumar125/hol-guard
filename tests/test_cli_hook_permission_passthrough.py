@@ -23,7 +23,7 @@ def test_permission_request_gets_no_decision(monkeypatch: pytest.MonkeyPatch, ha
     payload = {"hook_event_name": event_name, "tool_name": "Bash", "tool_input": {"command": "pwd"}}
     asked: list[dict[str, object]] = []
 
-    def route(inputs: dict[str, object], *, guard_home: object = None) -> NativeHookRoute:
+    def route(inputs: dict[str, object], **_kwargs: object) -> NativeHookRoute:
         asked.append(inputs)
         return NativeHookRoute((PASSTHROUGH_HANDLER,), "PermissionRequest")
 

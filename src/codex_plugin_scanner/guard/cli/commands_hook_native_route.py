@@ -11,6 +11,7 @@ with the host outage response instead.
 from __future__ import annotations
 
 import argparse
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -109,6 +110,14 @@ def hook_route_inputs(
     }
 
 
+def route_budget_seconds(edge_timing: Mapping[str, float]) -> float | None:
+    """What the harness still allows this hook, from the timing anchored at CLI entry."""
+    deadline = edge_timing.get("deadline")
+    if deadline is not None:
+        return deadline - time.monotonic()
+    return edge_timing.get("edge_budget_seconds")
+
+
 def run_route_plan(run: NativeHookRun, plan: Sequence[str], handlers: Mapping[str, NativeHandler]) -> int:
     """Run the planned handlers in order until one answers."""
     for name in plan:
@@ -125,5 +134,6 @@ __all__ = [
     "NativeHandler",
     "NativeHookRun",
     "hook_route_inputs",
+    "route_budget_seconds",
     "run_route_plan",
 ]
