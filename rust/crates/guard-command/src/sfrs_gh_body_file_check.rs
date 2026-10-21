@@ -428,8 +428,19 @@ mod unix_tests {
         let body_directory = home.join("CascadeProjects").join("proposal-worktree");
         fs::create_dir_all(&workspace).unwrap();
         fs::create_dir_all(&body_directory).unwrap();
+        // The check refuses group-writable directories and bodies, so a
+        // permissive umask must not decide the outcome.
+        for directory in [
+            &home,
+            &home.join("CascadeProjects"),
+            &workspace,
+            &body_directory,
+        ] {
+            fs::set_permissions(directory, fs::Permissions::from_mode(0o700)).unwrap();
+        }
         let body = body_directory.join("PR_BODY_PROTECTION.md");
         fs::write(&body, "## Summary\n- Focused change.\n").unwrap();
+        fs::set_permissions(&body, fs::Permissions::from_mode(0o600)).unwrap();
 
         assert!(is_safe(
             "~/CascadeProjects/proposal-worktree/PR_BODY_PROTECTION.md",
