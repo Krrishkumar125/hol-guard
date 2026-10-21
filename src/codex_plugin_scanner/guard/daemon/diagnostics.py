@@ -138,9 +138,15 @@ class DaemonDiagnostics:
         event: str,
         *,
         detail: str | None = None,
-        exc_info: tuple[type[BaseException], BaseException, TracebackType | None] | None = None,
+        exc_info: tuple[type[BaseException], BaseException, TracebackType | None] | bool | None = None,
     ) -> bool:
-        if exc_info is None:
+        if exc_info is False:
+            # As in `logging`, False asks for no traceback. The caller has
+            # already reduced the failure to a bounded, path-free line, and a
+            # traceback would put the absolute path it was reading back into
+            # daemon.log - the artifact an operator hands over.
+            exc_info = None
+        elif exc_info is None:
             exception_type, exception, traceback = sys.exc_info()
             if exception_type is not None and exception is not None:
                 exc_info = (exception_type, exception, traceback)

@@ -900,14 +900,24 @@ class LocalCliApiService:
         finally:
             notify_native_policy_mutation(self._store.guard_home)
 
-    def _record_discovery_failure(self, event: str) -> None:
-        """Record the exception being handled under ``event`` in daemon.log."""
+    def _record_discovery_failure(self, event: str, error: BaseException | None = None) -> None:
+        """Name a discovery failure in daemon.log, without its traceback.
 
-        _LOGGER.warning("%s", event, exc_info=True)
+        daemon.log is a support artifact an operator hands over. A traceback
+        carries the absolute path and the username of whatever the scan was
+        reading - an `OSError` names the file that failed outright - so
+        neither sink gets one. The exception class is what separates a
+        permission problem from malformed configuration, and the stage record
+        beside it names which scan stopped.
+        """
+
+        failure = error if error is not None else sys.exc_info()[1]
+        name = type(failure).__name__
+        _LOGGER.warning("%s (error=%s)", event, name)
         # A service built without `__init__` (as some tests do) has no recorder.
         record_exception = getattr(self, "_record_exception", None)
         if record_exception is not None:
-            record_exception(event, detail=type(sys.exc_info()[1]).__name__)
+            record_exception(event, detail=name, exc_info=False)
 
     def _observe_harness_mcp_servers(self, *, strict: bool = False, fresh: bool = False) -> dict[str, str]:
         try:

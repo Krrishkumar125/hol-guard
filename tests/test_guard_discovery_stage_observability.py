@@ -260,3 +260,43 @@ def test_a_failed_discovery_job_leaves_a_record(recorded) -> None:
     # The message of an uncaught provider exception is unbounded text no
     # redactor can clean, and daemon.log is handed to support.
     assert "worker exploded" not in detail
+
+
+def test_a_failed_configured_scan_logs_no_path(tmp_path: Path, monkeypatch) -> None:
+    """The daemon's own record names the exception class and nothing it read.
+
+    `record_exception` falls back to `sys.exc_info()`, and the daemon log
+    formatter writes that traceback out whole. An `OSError` carries the
+    absolute path it could not open, so the fallback used to put the reader's
+    home directory and username into the support artifact.
+    """
+
+    import json
+
+    from codex_plugin_scanner.guard.daemon.diagnostics import DaemonDiagnostics
+
+    home = tmp_path / "home"
+    home.mkdir()
+    secret = home / ".codex" / "config.toml"
+    monkeypatch.setattr("codex_plugin_scanner.guard.daemon.local_cli_api.Path.home", staticmethod(lambda: home))
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.local_cli_api.discover_harness_mcp_servers",
+        lambda **_kwargs: (_ for _ in ()).throw(PermissionError(13, "Permission denied", str(secret))),
+    )
+    diagnostics = DaemonDiagnostics(tmp_path / "guard-home")
+    try:
+        service = LocalCliApiService(store=GuardStore(home), record_exception=diagnostics.record_exception)
+        assert service.discover_items().get("discovery_issue") == "configured_host_scan_failed"
+    finally:
+        assert diagnostics.close(timeout_seconds=1.0) is True
+
+    written = diagnostics.log_path.read_text(encoding="utf-8")
+    failure = next(
+        json.loads(line)
+        for line in written.splitlines()
+        if json.loads(line)["event"] == "local_cli_configured_discovery_failed"
+    )
+    assert failure["detail"] == "PermissionError"
+    assert "exception" not in failure
+    assert str(secret) not in written
+    assert str(home) not in written
