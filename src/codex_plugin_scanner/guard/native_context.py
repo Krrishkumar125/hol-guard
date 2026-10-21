@@ -111,6 +111,11 @@ _RESULT_CODES = {
 _UNCACHEABLE_DIGEST_KINDS = frozenset(
     {
         "generic_hook_approval_context",
+        # Builds a launch identity per previewed argv, so it reads the
+        # executable's bytes, and it carries the prepared launch
+        # environment: a cached reply would both hide an executable that
+        # changed between two calls and retain granted credentials.
+        "guard_run_launch_plans",
         "mcp_launch_environment",
         "runtime_executable_identity",
         "runtime_hook_approval_context",
