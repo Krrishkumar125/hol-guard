@@ -101,6 +101,29 @@ def test_a_bound_route_is_decoded_behind_its_capability(monkeypatch: pytest.Monk
     ]
 
 
+@pytest.mark.parametrize("route", ["none", "sink", "grant"])
+def test_the_route_stamped_on_the_edge_needs_no_second_round_trip(monkeypatch: pytest.MonkeyPatch, route: str) -> None:
+    asked: list[Any] = []
+    _resident_answering(monkeypatch, {"kind": "containment_route", "route": "none"}, asked)
+    edge = {"containment_route": route}
+    answer = route_module.edge_containment_route(
+        edge, {"minimum_action": "allow"}, event_name="PreToolUse", recording_only=False, guard_home=None
+    )
+    assert (answer, asked) == (route, [])
+
+
+@pytest.mark.parametrize("stamped", [None, "allow", ["sink"]])
+def test_an_edge_without_a_route_asks_the_resident(monkeypatch: pytest.MonkeyPatch, stamped: object) -> None:
+    asked: list[Any] = []
+    _resident_answering(monkeypatch, {"kind": "containment_route", "route": "sink"}, asked)
+    edge = {} if stamped is None else {"containment_route": stamped}
+    answer = route_module.edge_containment_route(
+        edge, {"minimum_action": "sandbox-required"}, event_name="PreToolUse", recording_only=False, guard_home=None
+    )
+    assert answer == "sink"
+    assert [query["kind"] for _feature, query in asked] == ["containment_route"]
+
+
 def test_the_sink_query_sends_the_receipt_call_and_host(monkeypatch: pytest.MonkeyPatch) -> None:
     asked: list[Any] = []
     _resident_answering(

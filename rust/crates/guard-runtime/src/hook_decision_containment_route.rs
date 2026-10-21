@@ -25,6 +25,7 @@ use guard_contracts::{
     ContainmentRouteInputsV1, ContainmentRouteV1, ContainmentSinkInputsV1, ContainmentSinkV1,
     NATIVE_BASH_DELIVERY_REASON,
 };
+use serde_json::Value;
 
 use crate::hook_direct::saved_decision::overridable_action_type;
 use crate::local_cli_hook_contained::OUTSIDE_ROOTS_REASON;
@@ -87,6 +88,25 @@ pub(crate) fn containment_route(
     Ok(ContainmentRouteV1 {
         route: route(inputs).to_owned(),
     })
+}
+
+/// The `containment_route` answer for a PreToolUse edge `result`, stamped on
+/// the edge so a hook does not spend a second round trip asking for it. It
+/// reads the same fields the decision query sends.
+pub(crate) fn edge_route(event_name: &str, result: &Value, recording_only: bool) -> String {
+    let text = |key: &str| result.get(key).and_then(Value::as_str).map(str::to_owned);
+    let inputs = ContainmentRouteInputsV1 {
+        event_name: Some(event_name.to_owned()),
+        recording_only,
+        minimum_action: text("minimum_action"),
+        policy_action: text("policy_action"),
+        reason_code: text("reason_code"),
+        action_type: result
+            .get("action")
+            .and_then(|action| action.get("action_type"))
+            .cloned(),
+    };
+    route(&inputs).to_owned()
 }
 
 fn route(inputs: &ContainmentRouteInputsV1) -> &'static str {

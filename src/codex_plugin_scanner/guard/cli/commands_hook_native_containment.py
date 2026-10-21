@@ -23,7 +23,7 @@ from ..action_lattice import normalize_guard_action
 from ..adapters.zcode_contained_tests import route_zcode_containment
 from ..daemon.hook_contained_grant import granted_containment_response
 from ..daemon.hook_fail_closed import render_pre_tool
-from ..native_hook_containment_route import native_containment_route
+from ..native_hook_containment_route import edge_containment_route
 from .commands_support_command_activity import record_pre_hook_command_activity_best_effort
 
 if TYPE_CHECKING:
@@ -46,7 +46,8 @@ def emit_native_containment_route(
     result = edge.get("result")
     if not isinstance(result, Mapping):
         return None
-    route = native_containment_route(
+    route = edge_containment_route(
+        edge,
         result,
         event_name=edge.get("event_name"),
         recording_only=bool(edge.get("recording_only")),

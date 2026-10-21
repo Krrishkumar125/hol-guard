@@ -120,13 +120,11 @@ def edge_unavailable(run: NativeHookRun) -> int | None:
 
 
 def containment(run: NativeHookRun) -> int | None:
-    try:
-        return emit_native_containment_route(
-            run.edge, run.payload, run.context, run.runtime_workspace, run.output_stream, run.store
-        )
-    except NativeHookDecisionError as error:
-        # The resident routes the call; without its answer the host gets the outage shape.
-        return run.unavailable(error.code)
+    # A missing route answer raises NativeHookDecisionError; the hook authority
+    # answers it with the host outage response, as the recorded ladder did.
+    return emit_native_containment_route(
+        run.edge, run.payload, run.context, run.runtime_workspace, run.output_stream, run.store
+    )
 
 
 def copilot_pretool(run: NativeHookRun) -> int | None:

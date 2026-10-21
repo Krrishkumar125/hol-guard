@@ -454,13 +454,22 @@ def _assert_containment_routed_by_resident() -> None:
             raise RuntimeError(f"{name} does not ask the resident whether the sink takes the call")
     cli = ast.parse(_read(_CONTAINMENT_CLI), filename=str(_CONTAINMENT_CLI))
     emit = _top_level_function(cli, "emit_native_containment_route", _CONTAINMENT_CLI)
-    if "native_containment_route" not in _ordered_call_names(emit):
+    if "edge_containment_route" not in _ordered_call_names(emit):
         raise RuntimeError("CLI containment does not ask the resident for the route")
     if any(isinstance(node, ast.Constant) and node.value == "sandbox-required" for node in ast.walk(emit)):
         raise RuntimeError("CLI containment still picks the route from the result's action")
-    if "native_containment_route(" not in _read(_CONTAINMENT_DAEMON):
+    if "edge_containment_route(" not in _read(_CONTAINMENT_DAEMON):
         raise RuntimeError("daemon containment does not ask the resident for the route")
+    if "edge_route(" not in _read(Path("rust/crates/guard-runtime/src/edge.rs")):
+        raise RuntimeError("the resident's PreToolUse edge does not carry its containment route")
     transport = ast.parse(_read(_CONTAINMENT_TRANSPORT), filename=str(_CONTAINMENT_TRANSPORT))
+    # The route stamped on the edge is the resident's; without one the
+    # transport asks, and it never reads the result's action itself.
+    from_edge = _top_level_function(transport, "edge_containment_route", _CONTAINMENT_TRANSPORT)
+    if "native_containment_route" not in _ordered_call_names(from_edge) or any(
+        isinstance(node, ast.Constant) and node.value == "sandbox-required" for node in ast.walk(from_edge)
+    ):
+        raise RuntimeError("the edge route is not the resident's answer")
     for name in ("native_containment_route", "native_containment_sink"):
         fn = _top_level_function(transport, name, _CONTAINMENT_TRANSPORT)
         raises_outage = any(

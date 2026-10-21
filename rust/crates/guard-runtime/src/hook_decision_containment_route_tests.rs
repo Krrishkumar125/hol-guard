@@ -394,3 +394,55 @@ fn malformed_queries_are_errors_not_routes() {
         )
     ));
 }
+
+#[test]
+fn the_edge_carries_the_route_the_query_answers() {
+    // The edge stamps the route so a hook does not ask for it again; it must
+    // be the same answer the query gives for the same result.
+    let cases = [
+        (
+            "sandbox-required",
+            "sandbox-required",
+            "native_contained_python_eval",
+            "shell",
+            false,
+        ),
+        (
+            "review",
+            "sandbox-required",
+            "native_contained_python_eval",
+            "shell",
+            false,
+        ),
+        ("review", "review", OUTSIDE_ROOTS, "shell", false),
+        ("review", "review", OUTSIDE_ROOTS, "guard_control", false),
+        ("review", "review", "ordinary_review", "shell", false),
+        ("allow", "allow", "allowed", "shell", false),
+        (
+            "sandbox-required",
+            "sandbox-required",
+            "native_contained_python_eval",
+            "shell",
+            true,
+        ),
+    ];
+    for (minimum, policy, reason, action_type, recording_only) in cases {
+        let result = json!({
+            "minimum_action": minimum,
+            "policy_action": policy,
+            "reason_code": reason,
+            "action": {"action_type": action_type},
+        });
+        let mut inputs = route_inputs(minimum, policy, reason);
+        inputs["action_type"] = json!(action_type);
+        inputs["recording_only"] = json!(recording_only);
+        assert_eq!(
+            super::edge_route("PreToolUse", &result, recording_only),
+            route(&inputs),
+            "{result}"
+        );
+    }
+    let bare = json!({"minimum_action": "sandbox-required"});
+    assert_eq!(super::edge_route("PreToolUse", &bare, false), "sink");
+    assert_eq!(super::edge_route("PostToolUse", &bare, false), "none");
+}

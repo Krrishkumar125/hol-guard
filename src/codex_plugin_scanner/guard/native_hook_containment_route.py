@@ -105,6 +105,27 @@ def native_containment_route(
     return str(_ask("containment_route", inputs, guard_home, validate)["route"])
 
 
+def edge_containment_route(
+    edge: Mapping[str, object],
+    result: Mapping[str, object],
+    *,
+    event_name: object,
+    recording_only: bool,
+    guard_home: Path | None,
+) -> str:
+    """The route the resident stamped on its edge answer, or its ``containment_route`` answer.
+
+    The resident computes the route when it produces a PreToolUse edge, so a
+    hook routes the call without a second round trip. An edge that does not
+    carry one is asked about; Python never picks a route itself.
+    """
+
+    stamped = edge.get("containment_route")
+    if isinstance(stamped, str) and stamped in _ROUTES:
+        return stamped
+    return native_containment_route(result, event_name=event_name, recording_only=recording_only, guard_home=guard_home)
+
+
 def native_containment_sink(
     response: Mapping[str, object],
     *,
@@ -151,6 +172,7 @@ def native_containment_sink(
 __all__ = [
     "HOOK_DECISION_CONTAINMENT_ROUTE_FEATURE",
     "ContainmentSink",
+    "edge_containment_route",
     "host_platform",
     "native_containment_route",
     "native_containment_sink",

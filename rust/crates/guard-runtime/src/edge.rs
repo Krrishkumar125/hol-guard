@@ -451,6 +451,13 @@ fn evaluate_validated_envelope(
         envelope.recording_only,
     )
     .map(Value::Object);
+    let containment_route = (event_name == "PreToolUse").then(|| {
+        crate::hook_decision_containment_route::edge_route(
+            &event_name,
+            &result,
+            envelope.recording_only,
+        )
+    });
     crate::encode_response(&GuardHookEdgeResultV2 {
         schema: GUARD_HOOK_EDGE_RESULT_V2_SCHEMA.to_owned(),
         authority: "rust".to_owned(),
@@ -460,6 +467,7 @@ fn evaluate_validated_envelope(
         payload_kind: kind,
         result,
         harness_response,
+        containment_route,
         receipt,
     })
 }

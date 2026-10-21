@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from ..cli.commands_support_command_activity import hook_post_succeeded
 from ..native_codex_binding_capture import CodexBindingCaptureWriter
-from ..native_hook_containment_route import native_containment_route
+from ..native_hook_containment_route import edge_containment_route
 from ..native_hook_decision import NativeHookDecisionError
 from ..native_policy_snapshot_constants import NativePolicySnapshotError
 from ..native_policy_snapshot_harness_postures import recording_only_for_binding
@@ -620,8 +620,8 @@ class HookWorkerNativeMixin:
             try:
                 # The resident routes the call, as on the CLI path; without its
                 # answer the host gets the outage shape, never a route picked here.
-                containment = native_containment_route(
-                    native_result, event_name=native_event, recording_only=recording_only, guard_home=guard_home
+                containment = edge_containment_route(
+                    edge, native_result, event_name=native_event, recording_only=recording_only, guard_home=guard_home
                 )
                 contained = None
                 if containment == "grant":
@@ -871,6 +871,7 @@ class HookWorkerNativeMixin:
             "result": native_result,
             "receipt": dict(receipt) if isinstance(receipt, Mapping) else None,
             "recording_only": recording_only,
+            "containment_route": edge.get("containment_route"),
             "failure_reason_code": None,
         }
 
