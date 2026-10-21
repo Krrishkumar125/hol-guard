@@ -398,8 +398,9 @@ pub(super) fn exact_safe_segment_with_context(
             )
         }
         "sort" | "uniq" | "cut" | "tr" => {
-            segment.pipeline_index > 0
-                && super::stdin_filters::safe_arguments(basename, &segment.arguments)
+            (segment.pipeline_index > 0
+                && super::stdin_filters::safe_arguments(basename, &segment.arguments))
+                || super::stdin_filters::safe_file_arguments(basename, &segment.arguments, context)
         }
         "rg" | "grep" | "fd" => {
             (match basename {
