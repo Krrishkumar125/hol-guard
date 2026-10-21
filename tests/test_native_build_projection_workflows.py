@@ -97,7 +97,9 @@ def test_native_identity_watches_production_inputs_not_the_whole_test_tree() -> 
     """Verify native identity watches production inputs not the whole test tree."""
     identity = (ROOT / "rust/build_support/command_identity.rs").read_text()
     assert 'root.join("crates").display()' not in identity
-    assert 'collect(&directory.join("src"), &mut files)' in identity
+    assert 'read_dir(root.join("crates"))' not in identity
+    assert "command_source_inputs.v1.json" in identity
+    assert 'collect(&directory.join("src"), files)' in identity
     assert 'root.join("Cargo.lock")' in identity
     assert 'root.join("Cargo.toml")' in identity
     assert 'println!("cargo:rerun-if-changed={}", directory.display())' in identity
