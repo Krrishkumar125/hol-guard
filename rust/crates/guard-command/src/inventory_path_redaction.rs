@@ -179,7 +179,11 @@ fn parse_native(text: &str) -> (String, String, Vec<String>) {
 /// with no root, so `PureWindowsPath` calls it relative; `///` is a drive of
 /// three separators and no root at all; and `C:///x` has a one-separator root
 /// however many separators were typed.
-#[cfg(windows)]
+///
+/// Only the Windows build parses paths with it, but every build compiles it
+/// under `cfg(test)` so its parity tests run on the platforms CI covers rather
+/// than sitting unbuilt behind `cfg(windows)`.
+#[cfg(any(windows, test))]
 fn split_root(text: &str) -> (String, String, String) {
     let normalized = text.replace('/', "\\");
     let bytes = normalized.as_bytes();
@@ -219,18 +223,23 @@ fn split_root(text: &str) -> (String, String, String) {
             normalized[share_end + 1..].to_owned(),
         );
     }
-    if bytes.get(1) == Some(&b':') {
-        if separator(2) {
+    // `ntpath.splitroot` tests the second *character* for the colon, so a drive
+    // letter may be any character, not only an ASCII one. Reading byte 1 would
+    // see a continuation byte for a path like `\u{e9}:\\Users\\alice` and call an
+    // absolute path relative, which would send it back unredacted.
+    if let Some((colon, ':')) = normalized.char_indices().nth(1) {
+        let drive_end = colon + 1;
+        if separator(drive_end) {
             return (
-                normalized[..2].to_owned(),
+                normalized[..drive_end].to_owned(),
                 "\\".to_owned(),
-                normalized[3..].to_owned(),
+                normalized[drive_end + 1..].to_owned(),
             );
         }
         return (
-            normalized[..2].to_owned(),
+            normalized[..drive_end].to_owned(),
             String::new(),
-            normalized[2..].to_owned(),
+            normalized[drive_end..].to_owned(),
         );
     }
     (String::new(), String::new(), normalized)

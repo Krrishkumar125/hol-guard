@@ -30,6 +30,24 @@ fn flag(case: &Value, key: &str) -> bool {
     case.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// The corpus is only evidence for the release it was recorded on: `urlsplit`
+/// has changed its stripping and its netloc checks between releases, so a
+/// fixture regenerated elsewhere would quietly rewrite what this port is held
+/// to. The generator refuses any other interpreter; this names the release on
+/// the reading side as well.
+#[test]
+fn the_fixture_records_the_modeled_cpython_release() {
+    let document: Value = serde_json::from_str(PARITY).expect("parity fixture parses");
+    let version = document
+        .get("python_version")
+        .and_then(Value::as_str)
+        .expect("fixture field python_version");
+    assert!(
+        version.starts_with("3.12."),
+        "fixture recorded on CPython {version}, not the modeled 3.12 release",
+    );
+}
+
 #[test]
 fn urlsplit_matches_python() {
     for case in cases() {

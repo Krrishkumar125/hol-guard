@@ -21,12 +21,19 @@ the output and none of them is the Rust default:
 
 Run this after changing the URL half of the redaction module and commit the
 regenerated fixture; `python_url_tests.rs` and `inventory_redaction_tests.rs`
-read it.
+read it. Run it from the repository root on the interpreter the project
+targets. `urllib.parse` is not frozen across releases, so a different
+interpreter would record cases the port was never written against and the
+fixture would still look green:
+
+    uv run --python 3.12 --no-project python \
+        scripts/ci/generate_inventory_url_parity.py
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -37,6 +44,11 @@ from codex_plugin_scanner.guard.inventory_contract_redaction import (
 )
 
 FIXTURE = Path("rust/crates/guard-command/testdata/inventory_url_parity.json")
+SCRIPT = "scripts/ci/generate_inventory_url_parity.py"
+
+#: The release the Rust port models, and the one the rest of the repository
+#: pins its parity generators and CI environments to (`uv ... --python 3.12`).
+TARGET_PYTHON = (3, 12)
 
 SPLIT_URLS: list[str] = [
     "https://example.test/path?a=1#frag",
@@ -182,9 +194,22 @@ def _split_case(url: str) -> dict[str, object]:
     }
 
 
+def _require_target_interpreter() -> str:
+    """Return the running version, refusing anything but the modeled release."""
+    running = ".".join(str(part) for part in sys.version_info[:3])
+    if sys.version_info[:2] != TARGET_PYTHON:
+        target = ".".join(str(part) for part in TARGET_PYTHON)
+        raise SystemExit(
+            f"this corpus models CPython {target} and is running on {running}; "
+            f"rerun it as: uv run --python {target} --no-project python {SCRIPT}"
+        )
+    return running
+
+
 def build_document() -> dict[str, object]:
     """Collect every recorded URL behaviour into the fixture payload."""
     return {
+        "python_version": _require_target_interpreter(),
         "classify_endpoint_host": [
             {"value": value, "expected": classify_endpoint_host(value)} for value in CLASSIFY_HOSTS
         ],

@@ -103,6 +103,33 @@ fn tree_parity_is_posix_only() {
     );
 }
 
+/// `ntpath.splitroot` reads the second *character* for the colon, so a drive
+/// letter needs no ASCII first byte. Reading byte 1 instead sees a UTF-8
+/// continuation byte here, finds no drive, and calls the path relative —
+/// which `redact_known_path` answers by returning the value unchanged, so the
+/// whole private path would be exported on Windows.
+#[test]
+fn a_non_ascii_drive_letter_is_still_a_drive() {
+    assert_eq!(
+        split_root("\u{e9}:\\Users\\alice\\secret"),
+        (
+            "\u{e9}:".to_owned(),
+            "\\".to_owned(),
+            "Users\\alice\\secret".to_owned(),
+        ),
+    );
+}
+
+/// The same drive without the separator after it: a drive and no root, which
+/// is what makes `PureWindowsPath('\u{e9}:Users')` relative.
+#[test]
+fn a_non_ascii_drive_without_a_root_keeps_its_tail() {
+    assert_eq!(
+        split_root("\u{e9}:Users"),
+        ("\u{e9}:".to_owned(), String::new(), "Users".to_owned()),
+    );
+}
+
 #[cfg(unix)]
 mod tree {
     use std::fs;
