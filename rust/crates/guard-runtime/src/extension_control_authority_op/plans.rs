@@ -86,7 +86,7 @@ fn utc_micros(text: &str) -> Option<i64> {
     from_isoformat(text)?.utc_micros()
 }
 
-fn sealed(payload: Value, key: &[u8], purpose: &str) -> Res<Value> {
+pub(super) fn sealed(payload: Value, key: &[u8], purpose: &str) -> Res<Value> {
     let Value::Object(payload) = payload else {
         return Err(degraded("authority record is not encodable"));
     };
@@ -101,14 +101,14 @@ fn with_pack(mut payload: Value, pack_record_digest: Option<&str>) -> Value {
     payload
 }
 
-fn plan(outcome: &str, fields: Map<String, Value>) -> Value {
+pub(super) fn plan(outcome: &str, fields: Map<String, Value>) -> Value {
     let mut plan = fields;
     plan.insert("outcome".to_owned(), json!(outcome));
     json!({ "plan": plan })
 }
 
 impl Ctx<'_> {
-    fn anchor(&self) -> Res<Option<Anchor>> {
+    pub(super) fn anchor(&self) -> Res<Option<Anchor>> {
         let key = self.require_key()?;
         self.request
             .anchor_json
@@ -117,7 +117,7 @@ impl Ctx<'_> {
             .transpose()
     }
 
-    fn snapshot_row(&self) -> Res<Option<Row>> {
+    pub(super) fn snapshot_row(&self) -> Res<Option<Row>> {
         query_row(
             self.connection,
             "select * from extension_control_authority_snapshot where singleton = 1",

@@ -9,7 +9,6 @@ import pytest
 from codex_plugin_scanner.guard.catalog_delivery import activation_store, preparation, preparation_authority, transport
 from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import ObjectStore, encoded
 from codex_plugin_scanner.guard.catalog_delivery.pack_store import PackReader
-from codex_plugin_scanner.guard.catalog_delivery.policy_lookup import lookup
 from codex_plugin_scanner.guard.daemon import extension_control_prepared as candidates
 from codex_plugin_scanner.guard.daemon.extension_control_api import ExtensionControlApiError, ExtensionControlApiService
 from codex_plugin_scanner.guard.daemon.extension_control_targets import request_metadata
@@ -29,6 +28,7 @@ from codex_plugin_scanner.guard.runtime.extension_control_contract import (
 )
 from codex_plugin_scanner.guard.runtime.extension_control_runtime import ExtensionControlRuntime
 from codex_plugin_scanner.guard.runtime.generated_command_catalog import GeneratedCommandCatalog
+from tests.delivery_scripts import script
 from tests.guard_extension_control_authority_fixtures import _PASSWORD, MemorySecretStore, _store
 from tests.guard_extension_control_authority_fixtures import (
     _allow_local_terminal_confirmation as _allow_local_terminal_confirmation,
@@ -42,6 +42,8 @@ from tests.test_guard_extension_control_prepared import flow as flow
 from tests.test_native_command_control_binding_publisher import (
     _pinned_integrity_material_and_resident_key as _pinned_integrity_material_and_resident_key,
 )
+
+lookup = script("extension_delivery_policy_lookup").lookup
 
 
 @pytest.fixture

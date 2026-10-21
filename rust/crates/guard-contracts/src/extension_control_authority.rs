@@ -10,11 +10,13 @@
 //! credential store, so the transport reads them and ships them here along
 //! with the clock.
 //!
-//! The op never writes. The `commit_plan`, `resume_plan` and `rollback_plan`
-//! ops decide a writer's next step -- the checks a commit must pass, the
-//! records it seals, and whether a prepared transition is resumed, committed
-//! or abandoned -- and the caller performs that step under the exclusive
-//! authority lease. When a read finds work only a writer may do --
+//! The op never writes. The `commit_plan`, `resume_plan`, `rollback_plan`,
+//! `bootstrap_plan`, `migrate_plan` and `restore_plan` ops decide a writer's
+//! next step -- the checks a commit, bootstrap, catalog migration or
+//! last-good restore must pass, the records it seals, and whether a prepared
+//! transition is resumed, committed or abandoned -- and the caller performs
+//! that step under the exclusive authority lease. `seal_anchor` and
+//! `seal_manifest` seal the anchor and catalog manifest records it stores. When a read finds work only a writer may do --
 //! restoring the last-good export, resuming or abandoning a prepared
 //! transition, or committing a catalog migration -- it answers with an
 //! `action` naming that work and the authenticated inputs it needs. The caller
@@ -54,7 +56,8 @@ pub struct ExtensionControlAuthorityRequestV1 {
     /// `read`, `read_composed`, `sync_manifest`, `compose_managed`,
     /// `managed_activation`, `managed_revision`, `load_manifest`,
     /// `validate_chain`, `history`, `commit_plan`, `resume_plan`,
-    /// `rollback_plan` or `anchor`.
+    /// `rollback_plan`, `bootstrap_plan`, `migrate_plan`, `restore_plan`,
+    /// `seal_anchor`, `seal_manifest` or `anchor`.
     pub op: String,
     /// Authority authentication key bytes (base64url, no padding); absent
     /// when the credential store holds none.
@@ -102,12 +105,16 @@ pub struct ExtensionControlAuthorityRequestV1 {
     /// `validate_chain`: the committed head to validate up to.
     /// `resume_plan`: the prepared transition to resume.
     /// `rollback_plan`: the committed head the prepared transition sits on.
+    /// `seal_anchor`: the revision the anchor pins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_digest: Option<String>,
-    /// `commit_plan` / `rollback_plan`: the caller's clock, as Python's
-    /// `datetime.now(timezone.utc).isoformat()` spells it.
+    /// `seal_anchor`: `prepared`, `anchored` or `committed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    /// The caller's clock, as Python's `datetime.now(timezone.utc).isoformat()`
+    /// spells it, for the plan ops and `seal_manifest`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub now: Option<String>,
     /// `history`: how many prior snapshots to list.
@@ -116,6 +123,19 @@ pub struct ExtensionControlAuthorityRequestV1 {
     /// `commit_plan`: the mutation the caller's proof was validated against.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<ExtensionControlCommitV1>,
+    /// `migrate_plan`: the rebinding a read's `migrate_catalog` action named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_migration: Option<ExtensionControlCatalogMigrationV1>,
+}
+
+/// A catalog migration as the read's `migrate_catalog` action named it: the
+/// committed head it starts from and the layers rebound to `catalog_digest`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ExtensionControlCatalogMigrationV1 {
+    pub previous_revision: i64,
+    pub previous_catalog_digest: String,
+    pub layers: Value,
 }
 
 /// One requested extension-control commit. The identities are sent as the

@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import cast
 
@@ -16,14 +15,10 @@ from .native_extension_control_authority import (
 )
 from .runtime.command_extensions import CommandSafetyExtensionRegistry
 from .runtime.extension_control_authority import (
-    SNAPSHOT_PURPOSE,
-    TRANSITION_PURPOSE,
     AuthorityAnchor,
     AuthorityPhase,
     ExtensionControlAuthorityError,
     ExtensionControlAuthorityView,
-    authenticated_record,
-    layers_to_json,
 )
 from .runtime.extension_control_contract import ExtensionControlLayer
 from .store_extension_control_authority_catalog_events import (
@@ -31,7 +26,7 @@ from .store_extension_control_authority_catalog_events import (
     build_catalog_migration_payload,
     insert_catalog_migration_event,
 )
-from .store_extension_control_authority_support import _now, _private_hash
+from .store_extension_control_authority_support import _now, _plan_int, _plan_map, _plan_record
 
 
 class ExtensionControlAuthorityCatalogMixin:
@@ -85,17 +80,15 @@ class ExtensionControlAuthorityCatalogMixin:
         manifest: dict[str, str],
         replace: bool = False,
     ) -> None:
-        manifest_json = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
-        recorded_at = _now()
-        record_json, record_digest, record_mac = authenticated_record(
-            {
-                "catalog_digest": registry.catalog_digest,
-                "manifest_json": manifest_json,
-                "recorded_at": recorded_at,
-            },
+        sealed = self._extension_control_authority_op(
+            "seal_manifest",
             key=key,
-            purpose=self._catalog_manifest_purpose,
+            catalog_digest=registry.catalog_digest,
+            current_manifest=manifest,
+            now=_now(),
         )
+        record_json, record_digest, record_mac = _plan_record(sealed, "record")
+        manifest_json, recorded_at = str(sealed["manifest_json"]), str(sealed["recorded_at"])
         self._invalidate_native_extension_control_policy()
         with self._connect() as connection:
             if replace:
@@ -184,48 +177,27 @@ class ExtensionControlAuthorityCatalogMixin:
             raise ExtensionControlAuthorityError("invalid extension control catalog migration")
         layers = layers_from_wire(action.get("layers"))
         retired_targets = tuple(str(target) for target in cast(list[object], action.get("retired_targets") or []))
-        layers_json = layers_to_json(layers)
-        self._validate_serialized_layers(layers_json)
-        with self._connect() as connection:
-            snapshot = connection.execute(
-                "select snapshot_digest, catalog_digest from extension_control_authority_snapshot where singleton = 1"
-            ).fetchone()
-        if snapshot is None or str(snapshot["catalog_digest"]) != previous_catalog_digest:
-            raise ExtensionControlAuthorityError("extension control catalog migration source changed")
-        previous_digest = str(snapshot["snapshot_digest"])
-        revision = previous_revision + 1
-        created_at = _now()
-        migration_ref = f"catalog-migration:{previous_catalog_digest}:{catalog_digest}:{previous_revision}"
-        actor_hash = _private_hash("trusted-catalog-migration", key=key, purpose="actor")
-        idempotency_hash = _private_hash(migration_ref, key=key, purpose="idempotency")
-        nonce_hash = _private_hash(migration_ref, key=key, purpose="nonce")
-        snapshot_json, snapshot_digest, snapshot_mac = authenticated_record(
-            {
-                "revision": revision,
-                "catalog_digest": catalog_digest,
-                "layers_json": layers_json,
-                "previous_digest": previous_digest,
-                "committed_at": created_at,
-            },
+        reply = self._extension_control_authority_op(
+            "migrate_plan",
             key=key,
-            purpose=SNAPSHOT_PURPOSE,
-        )
-        transition_json, transition_digest, transition_mac = authenticated_record(
-            {
-                "revision": revision,
+            catalog_digest=catalog_digest,
+            now=_now(),
+            catalog_migration={
                 "previous_revision": previous_revision,
-                "previous_digest": previous_digest,
-                "snapshot_digest": snapshot_digest,
-                "catalog_digest": catalog_digest,
-                "actor_id_hash": actor_hash,
-                "idempotency_key_hash": idempotency_hash,
-                "nonce_hash": nonce_hash,
-                "created_at": created_at,
-                "phase": AuthorityPhase.PREPARED.value,
+                "previous_catalog_digest": previous_catalog_digest,
+                "layers": action.get("layers"),
             },
-            key=key,
-            purpose=TRANSITION_PURPOSE,
         )
+        plan = _plan_map(reply, "plan")
+        if plan.get("outcome") != "migrate":
+            raise ExtensionControlAuthorityError("invalid extension control catalog migration")
+        revision = _plan_int(plan, "revision")
+        previous_digest, created_at = str(plan["previous_digest"]), str(plan["created_at"])
+        layers_json = str(plan["layers_json"])
+        hashes = _plan_map(plan, "hashes")
+        actor_hash, idempotency_hash, nonce_hash = (str(hashes[name]) for name in ("actor", "idempotency", "nonce"))
+        snapshot_json, snapshot_digest, snapshot_mac = _plan_record(plan, "snapshot")
+        transition_json, transition_digest, transition_mac = _plan_record(plan, "transition")
         with self._connect() as connection:
             connection.execute(
                 """

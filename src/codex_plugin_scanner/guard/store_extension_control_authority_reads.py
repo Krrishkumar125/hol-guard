@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, cast
 
 from .managed_controls_policy_bundle import MANAGED_CONTROLS_LAST_GOOD_STATE_KEY
 from .native_extension_control_authority import (
-    anchor_from_wire,
     extension_control_authority,
     layers_from_wire,
     manifest_from_wire,
@@ -345,7 +344,7 @@ class ExtensionControlAuthorityReadsMixin:
             kind = action.get("action")
             if kind == "restore_last_good":
                 with suppress(Exception):
-                    self._restore_last_good_authority(anchor_from_wire(action.get("anchor")), key=key)
+                    self._restore_last_good_authority(key=key)
                 attempted["restore_attempted"] = True
             elif kind == "resume_pending":
                 resumed = self._resume_pending_catalog_migration(action, key=key)
