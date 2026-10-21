@@ -42,7 +42,7 @@ function preparationSentence(cause: string | undefined, recovery: Recovery): str
     // would naming a recovery command, because none of them prune the state
     // the request is built from. The log is the one place that says what grew.
     case "native_request_too_large":
-      return `${KEPT} Guard's local protection data has grown past what its runtime accepts in one request. Retrying sends the same request again and reinstalling Guard will not change it; the Guard daemon log records which data grew.`;
+      return `${KEPT} Guard's local protection data has grown past what its runtime accepts in one request. Retrying sends the same request again and reinstalling Guard will not change it; the Guard daemon log records the request that grew and how far past the bound it got.`;
     default:
       return `${KEPT} Try again; if it keeps failing, the Guard daemon log records the exact cause.`;
   }

@@ -109,7 +109,7 @@ const tooLarge = protectionChangeErrorMessage(
 assert.match(tooLarge, /grown past/);
 assert.match(tooLarge, /reinstalling Guard will not change it/);
 assert.match(tooLarge, /Retrying sends the same request again/);
-assert.match(tooLarge, /daemon log records which data grew/);
+assert.match(tooLarge, /daemon log records the request that grew and how far past the bound it got/);
 assert.doesNotMatch(tooLarge, /Reinstall or update Guard/);
 // No local command prunes the state this request is built from, so naming one
 // would swap a reinstall dead end for a recover-authority dead end.

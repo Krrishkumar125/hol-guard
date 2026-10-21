@@ -314,10 +314,31 @@ def _verified_executable(raw: bytes):  # type: ignore[no-untyped-def]
         raise NativeSourceCompilerError("source compiler could not be started") from exc
 
 
-def _reject_oversized_request(payload: bytes, limit: int = _MAX_REQUEST_BYTES) -> None:
-    """Refuse a request the runtime would refuse, before spawning it."""
+def _reject_oversized_request(
+    payload: bytes,
+    limit: int = _MAX_REQUEST_BYTES,
+    *,
+    subcommand: str | None = None,
+) -> None:
+    """Refuse a request the runtime would refuse, before spawning it.
+
+    The two numbers go in the message because they are the only thing that
+    tells an operator anything: the refusal is reported to them as local Guard
+    data having outgrown one request, and `failure_detail` carries this text
+    into the daemon log. A cause code alone would say that it grew without
+    saying which request carried it or how far past the bound it got. Neither
+    number is a path or a secret.
+    """
     if len(payload) > limit:
-        raise NativeRequestTooLargeError("compiler request exceeds the native input bound")
+        raise NativeRequestTooLargeError(
+            f"{subcommand or 'compiler'} request is {len(payload)} bytes,"
+            f" past the {limit} byte native input bound"
+        )
+
+
+def _spawned_subcommand(arguments: list[str]) -> str | None:
+    """Name the subcommand about to be spawned, for the refusal message."""
+    return arguments[1] if len(arguments) > 1 else None
 
 
 def _run_bounded(
@@ -333,7 +354,7 @@ def _run_bounded(
     # covers all of them, and it happens before `Popen`. `limit` is the bound
     # the chosen subcommand is read against, which is not the same number for
     # the compiler front end and the resident protocol.
-    _reject_oversized_request(payload, limit)
+    _reject_oversized_request(payload, limit, subcommand=_spawned_subcommand(arguments))
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
         raise NativeSourceCompilerError("source compiler timeout must be positive and finite")
     try:

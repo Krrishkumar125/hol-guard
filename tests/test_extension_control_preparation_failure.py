@@ -244,6 +244,36 @@ def test_an_oversized_native_request_is_not_answered_with_a_reinstall():
     }
 
 
+def test_the_daemon_log_records_the_request_that_grew_and_by_how_much(monkeypatch):
+    """The dashboard sends the operator to the log, so the log has to answer.
+
+    `native_request_too_large` is the one cause with no retry and no command
+    behind it, so the sentence the operator reads points at the daemon log
+    instead. That is only worth doing if the record names the request and the
+    size it reached; a bare cause code repeats what they already saw.
+    """
+
+    from codex_plugin_scanner.guard.catalog_delivery import lifecycle
+    from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport
+
+    monkeypatch.setattr(lifecycle._Session, "executable", lambda self: Path("/nonexistent/hol-guard-runtime"))
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("a request past the lifecycle bound must not reach Popen")
+
+    monkeypatch.setattr(transport.subprocess, "Popen", refuse)
+
+    with pytest.raises(ValueError) as raised:
+        lifecycle.invoke("preparation", history="x" * (transport._MAX_NATIVE_REQUEST_BYTES + 1))
+
+    taken = _recorded(raised.value)
+    assert len(taken) == 1
+    _event, detail = taken[0]
+    assert "cause=native_request_too_large" in detail
+    assert "pack-lifecycle request is" in detail
+    assert f"past the {transport._MAX_NATIVE_REQUEST_BYTES} byte native input bound" in detail
+
+
 def test_a_lifecycle_request_the_compiler_bound_would_have_passed_is_still_refused(monkeypatch):
     """The two subcommands are read against different bounds.
 
