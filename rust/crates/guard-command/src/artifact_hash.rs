@@ -9,7 +9,7 @@
 //! and the volatile keys dropped only for a normalized prompt request.
 
 use guard_contracts::write_python_default_json;
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::artifact_hash_url::{parse_qsl, urlencode, urlsplit, urlunsplit};
@@ -24,14 +24,8 @@ const PROMPT_FILE_HASH_VOLATILE_METADATA_KEYS: [&str; 6] = [
     "runtime_request_summary",
 ];
 const SECRET_QUERY_TOKENS: [&str; 4] = ["key", "token", "auth", "secret"];
-const SECRET_METADATA_TOKENS: [&str; 6] = [
-    "key",
-    "token",
-    "auth",
-    "secret",
-    "password",
-    "credential",
-];
+const SECRET_METADATA_TOKENS: [&str; 6] =
+    ["key", "token", "auth", "secret", "password", "credential"];
 const REDACTED: &str = "*****";
 
 /// `artifact_hash(artifact)` over a `GuardArtifact` serialized as its fields.
@@ -85,7 +79,9 @@ fn hash_payload(artifact: &Map<String, Value>) -> Value {
     let mut payload = to_dict(artifact);
     let mut metadata = metadata_of(artifact);
     let normalized_prompt = text(artifact, "artifact_type") == "prompt_request"
-        && metadata.get("normalized_path").is_some_and(Value::is_string);
+        && metadata
+            .get("normalized_path")
+            .is_some_and(Value::is_string);
     if normalized_prompt {
         let redacted = payload
             .get("metadata")
@@ -188,7 +184,9 @@ fn redact_url(value: &str) -> String {
 /// `_redact_arg`: mask an inline header or query-style credential.
 fn redact_arg(value: &str) -> String {
     let lowered = value.to_lowercase();
-    if lowered.contains("authorization:") || lowered.contains("api-key:") || lowered.contains("bearer ")
+    if lowered.contains("authorization:")
+        || lowered.contains("api-key:")
+        || lowered.contains("bearer ")
     {
         let prefix = value.split_once(':').map_or(value, |(prefix, _)| prefix);
         return format!("{prefix}: {REDACTED}");

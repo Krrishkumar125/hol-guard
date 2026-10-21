@@ -15,9 +15,33 @@ const SCHEME_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
 const UNRESERVED: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-~";
 /// `urllib.parse.uses_netloc`, which decides when `urlunsplit` restores `//`.
 const USES_NETLOC: [&str; 27] = [
-    "", "ftp", "http", "gopher", "nntp", "telnet", "imap", "wais", "file", "mms", "https",
-    "shttp", "snews", "prospero", "rtsp", "rtsps", "rtspu", "rsync", "svn", "svn+ssh", "sftp",
-    "nfs", "git", "git+ssh", "ws", "wss", "itms-services",
+    "",
+    "ftp",
+    "http",
+    "gopher",
+    "nntp",
+    "telnet",
+    "imap",
+    "wais",
+    "file",
+    "mms",
+    "https",
+    "shttp",
+    "snews",
+    "prospero",
+    "rtsp",
+    "rtsps",
+    "rtspu",
+    "rsync",
+    "svn",
+    "svn+ssh",
+    "sftp",
+    "nfs",
+    "git",
+    "git+ssh",
+    "ws",
+    "wss",
+    "itms-services",
 ];
 
 /// The five-item result of `urlsplit`.
@@ -59,7 +83,9 @@ pub(crate) fn urlsplit(url: &str) -> Option<SplitUrl> {
         }
         if open && close {
             let after_open = netloc.split_once('[').map_or("", |(_, tail)| tail);
-            let bracketed = after_open.split_once(']').map_or(after_open, |(host, _)| host);
+            let bracketed = after_open
+                .split_once(']')
+                .map_or(after_open, |(host, _)| host);
             if !bracketed_host_is_valid(bracketed) {
                 return None;
             }
@@ -224,7 +250,10 @@ fn unquote_ascii(run: &str) -> String {
     let mut bytes = chunks.next().unwrap_or_default().as_bytes().to_vec();
     for chunk in chunks {
         let raw = chunk.as_bytes();
-        match (raw.first().and_then(hex_value), raw.get(1).and_then(hex_value)) {
+        match (
+            raw.first().and_then(hex_value),
+            raw.get(1).and_then(hex_value),
+        ) {
             (Some(high), Some(low)) => {
                 bytes.push(high * 16 + low);
                 bytes.extend_from_slice(&raw[2..]);
