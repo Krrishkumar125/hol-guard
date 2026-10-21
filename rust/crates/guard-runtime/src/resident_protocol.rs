@@ -266,6 +266,7 @@ pub(crate) enum ResidentOperationV1 {
     ApprovalProofDecide(ApprovalProofRequestV1),
     CursorObserverProof(CursorObserverProofRequestV1),
     HookAuthorityState(HookAuthorityStateRequestV1),
+    ExtensionControlAuthority(guard_contracts::ExtensionControlAuthorityRequestV1),
     PolicyIntegrityRows(PolicyIntegrityRowsRequestV1),
     HookDecide(HookDecisionRequestV1),
     DaemonRoute(DaemonRouteRequestV1),

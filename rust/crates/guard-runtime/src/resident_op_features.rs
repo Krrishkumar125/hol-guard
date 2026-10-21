@@ -78,6 +78,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::APPROVAL_PROOF_CLAIM_ROW_FEATURE,
     guard_contracts::CURSOR_OBSERVER_PROOF_FEATURE,
     guard_contracts::HOOK_AUTHORITY_STATE_FEATURE,
+    guard_contracts::EXTENSION_CONTROL_AUTHORITY_FEATURE,
     guard_contracts::HOOK_AUTHORITY_STATE_SESSION_OPS_FEATURE,
     guard_contracts::POLICY_INTEGRITY_ROWS_FEATURE,
     guard_contracts::POLICY_INTEGRITY_GENERATION_FEATURE,
