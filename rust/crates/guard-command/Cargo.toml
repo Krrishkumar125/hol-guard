@@ -112,10 +112,6 @@ name = "pretool_windows_sibling_project_root"
 path = "tests/pretool_windows_sibling_project_root.rs"
 
 [[test]]
-name = "pretool_windows_working_directory_projection"
-path = "tests/pretool_windows_working_directory_projection.rs"
-
-[[test]]
 name = "shim_admin_vectors"
 path = "tests/shim_admin_vectors.rs"
 

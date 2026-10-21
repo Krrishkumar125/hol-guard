@@ -8,11 +8,9 @@
 //! harness spells it with, and the narrow set of uses the projection
 //! recognizes must stay narrow.
 
-#[allow(dead_code)]
-#[path = "support/git_helper_fixture.rs"]
-mod git_helper_fixture;
-
-use git_helper_fixture::FixtureCleanup;
+// Compiled into the `pretool_windows_sibling_repository_writes` binary, which
+// owns the shared fixture module, so the Windows lane links one executable.
+use super::git_helper_fixture::{self, FixtureCleanup};
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
