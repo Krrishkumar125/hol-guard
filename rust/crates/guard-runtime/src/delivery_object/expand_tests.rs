@@ -97,6 +97,32 @@ fn a_concat_object_may_end_with_a_newline() {
 }
 
 #[test]
+fn a_concat_object_written_in_declaration_order_is_refused() {
+    // These are the bytes the pack writer would emit if serde_json kept
+    // insertion order: `schema` before `parts`, and the reference's fields in
+    // the order `ObjectRef` declares them. The reader joins parts only from a
+    // canonical object, so it has to refuse this one, and the writer sorts the
+    // keys for exactly that reason.
+    let dir = tempfile::tempdir().unwrap();
+    put(dir.path(), b"one");
+    let sha = digest(b"one");
+    let part = format!(r#"{{"sha256":"{sha}","length":3,"expanded_length":3,"kind":"data"}}"#);
+    let bytes = format!(r#"{{"schema":"{PACK}","parts":[{part}]}}"#).into_bytes();
+    put(dir.path(), &bytes);
+    assert_eq!(
+        expand(dir.path(), "pack", &concat_ref(&bytes, 3)).unwrap_err(),
+        "pack concat invalid"
+    );
+    let sorted = guard_policy_snapshot::canonical_json_bytes(
+        &serde_json::from_slice::<Value>(&bytes).unwrap(),
+    )
+    .unwrap();
+    put(dir.path(), &sorted);
+    let out = expand(dir.path(), "pack", &concat_ref(&sorted, 3)).unwrap();
+    assert_eq!(bytes_of(&out), b"one");
+}
+
+#[test]
 fn a_located_walk_joins_its_parts_and_checks_each_location() {
     let dir = tempfile::tempdir().unwrap();
     put(dir.path(), b"left");
