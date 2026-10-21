@@ -207,15 +207,20 @@ def runtime_artifact(run: NativeHookRun) -> int | None:
 
 
 def claude_permission_request(run: NativeHookRun) -> int | None:
-    return run_native_claude_permission_request(
-        run.args,
-        config=run.config,
-        output_stream=run.output_stream,
-        payload=run.payload,
-        runtime_artifact=run.runtime_artifact,
-        runtime_workspace=run.runtime_workspace,
-        store=run.store,
-    )
+    try:
+        return run_native_claude_permission_request(
+            run.args,
+            config=run.config,
+            output_stream=run.output_stream,
+            payload=run.payload,
+            runtime_artifact=run.runtime_artifact,
+            runtime_workspace=run.runtime_workspace,
+            store=run.store,
+        )
+    except NativeHookDecisionError as error:
+        # The resident picks the dialog's verdict; without its answer the host
+        # gets the outage response, never a verdict computed here.
+        return run.unavailable(error.code)
 
 
 def claude_permission_prompt(run: NativeHookRun) -> int | None:

@@ -444,6 +444,7 @@ mod hook_decision_artifact_reuse_step;
 mod hook_decision_artifact_review_route;
 #[cfg(all(test, unix))]
 mod hook_decision_benign_tool_action_tests;
+mod hook_decision_claude_permission_verdict;
 mod hook_decision_compose;
 mod hook_decision_directive;
 mod hook_decision_finalize;

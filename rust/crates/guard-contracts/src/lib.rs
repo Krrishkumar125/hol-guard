@@ -164,6 +164,8 @@ mod hook_decision_artifact_reuse_step;
 pub use hook_decision_artifact_reuse_step::*;
 mod hook_route;
 pub use hook_route::*;
+mod claude_permission_verdict;
+pub use claude_permission_verdict::*;
 mod hook_decision_permission_persist;
 pub use hook_decision_permission_persist::*;
 mod daemon_handler;
