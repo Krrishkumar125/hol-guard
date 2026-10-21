@@ -220,7 +220,11 @@ fn write_python_json(value: &Value, separators: JsonSeparators, output: &mut Str
                 }
                 write_python_string(key, output);
                 output.push_str(separators.key);
-                write_python_json(entries.get(*key).unwrap_or(&Value::Null), output);
+                write_python_json(
+                    entries.get(*key).unwrap_or(&Value::Null),
+                    separators,
+                    output,
+                );
             }
             output.push('}');
         }
