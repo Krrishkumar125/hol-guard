@@ -1448,6 +1448,29 @@
    ]
   },
   {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.local_read_operands",
+   "source_sha256": "b5c830f9abdd9f692575d989741c81e3377a0e4f3df9d16e35760be0f7061742",
+   "forbidden_symbols": [
+    "_bounded_local_read_glob_is_safe",
+    "_cat_file_operand_tokens",
+    "_local_read_operands_resolve_safely",
+    "_plain_file_operand_tokens",
+    "_ripgrep_args_expand_hidden_files",
+    "_search_command_has_no_pattern",
+    "_search_concrete_file_operand_tokens",
+    "_search_file_operand_roles",
+    "_search_file_operand_tokens",
+    "_search_glob_pattern_is_safe",
+    "_sed_file_operand_tokens",
+    "_shell_segment_file_operand_tokens",
+    "search_operands_are_safe"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/shell_secret_read_support.rs"
+   ]
+  },
+  {
    "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
    "module": "codex_plugin_scanner.guard.runtime.shell_command_wrappers",
    "source_sha256": "b328f048cc1b0e167dd1c57aeb1eaff84e5db25b6ed582dd3ecf91e0dd44f87e",
@@ -1479,68 +1502,6 @@
    "native_replacements": [
     "rust/crates/guard-command/src/codex_output_source_paths.rs"
    ]
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/adapters/_modules/codex/codex_hook_response.py",
-   "module": "codex_plugin_scanner.guard.adapters._modules.codex.codex_hook_response",
-   "source_sha256": "54d07ed0e88ff3329f76c0e2e1ba3f0e6dca89394dcf3db3d38786cec82176b6",
-   "forbidden_symbols": [
-    "codex_hook_response"
-   ],
-   "native_replacements": [
-    "rust/crates/guard-runtime/src/codex_hook_response.rs"
-   ]
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
-   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.local_read_operands",
-   "source_sha256": "b5c830f9abdd9f692575d989741c81e3377a0e4f3df9d16e35760be0f7061742",
-   "forbidden_symbols": [
-    "_bounded_local_read_glob_is_safe",
-    "_cat_file_operand_tokens",
-    "_local_read_operands_resolve_safely",
-    "_plain_file_operand_tokens",
-    "_ripgrep_args_expand_hidden_files",
-    "_search_command_has_no_pattern",
-    "_search_concrete_file_operand_tokens",
-    "_search_file_operand_roles",
-    "_search_file_operand_tokens",
-    "_search_glob_pattern_is_safe",
-    "_sed_file_operand_tokens",
-    "_shell_segment_file_operand_tokens",
-    "search_operands_are_safe"
-   ],
-   "native_replacements": [
-    "rust/crates/guard-command/src/shell_secret_read_support.rs"
-   ]
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/sandbox.py",
-   "module": "codex_plugin_scanner.guard.runtime.sandbox",
-   "source_sha256": "db7bde370c9682b5c24e3fca3f266317660e3c966cedfdca548a6f1a524cca6d",
-   "forbidden_symbols": [
-    "SandboxLanguage",
-    "EnvPolicy",
-    "SandboxAnalysisMode",
-    "_DEFAULT_MAX_PROCESSES",
-    "_SECRET_PATH_PATTERNS",
-    "_NETWORK_SYSCALL_PATTERNS",
-    "SandboxRequest",
-    "SandboxResult",
-    "_is_secret_path",
-    "_detect_network_attempts",
-    "_build_env",
-    "_redact_env",
-    "_write_sandbox_files",
-    "_language_argv",
-    "_scan_writes",
-    "_audit_combined_output",
-    "run_sandbox",
-    "_static_only_analysis"
-   ],
-   "native_replacements": [],
-   "retirement": "dead_code",
-   "removal_reason": "Static-first sandbox runner for isolated script analysis that no production caller ever imported. guard-command's sandbox.rs carries the same shape but is itself unreferenced and leaves apply_resource_limits a no-op, so it is not named as a behavioural replacement."
   },
   {
    "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
@@ -1597,7 +1558,73 @@
    ],
    "native_replacements": [],
    "retirement": "dead_code",
-   "removal_reason": "Bounded declared-output capture for contained workspace execution that no production caller ever imported. The native contained-execution path captures only stdout.bin and stderr.bin from its own run directory under its own budgets, so it does not carry this module's declared-output walk and is not named as a behavioural replacement."
+   "removal_reason": "Bounded declared-output capture for contained workspace execution that no production caller ever imported. The native contained-execution path captures only stdout.bin and stderr.bin from its own run directory under its own budgets, so it does not carry this module's declared-output walk and is not named as a behavioural replacement.",
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.github_pr_expansion",
+   "source_sha256": "bc3b313be283818515d58f0742461ba430775b0da3dd50cd21bffc7c6ae57ed9",
+   "forbidden_symbols": [
+    "_gh_pr_body_args_start_index",
+    "_gh_pr_create_body_args_have_substitution",
+    "_gh_pr_create_body_args_start_index",
+    "_gh_pr_create_body_has_shell_command_substitution",
+    "_gh_pr_create_has_active_shell_expansion",
+    "_gh_pr_edit_has_shell_command_substitution",
+    "_gh_pr_env_split_string_payloads_with_active_expansion",
+    "_is_pytest_python_interpreter_command",
+    "_literal_python_argv",
+    "_python_call_imports_pytest",
+    "_python_call_resolves_pytest_main",
+    "_python_call_runs_pytest_module",
+    "_shell_token_has_active_expansion",
+    "_skip_command_builtin_options",
+    "_skip_env_wrapper_options",
+    "_skip_shell_case_header",
+    "_skip_shell_select_header",
+    "_skip_sudo_wrapper_options"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/sfrs_gh_pr_expansion.rs",
+    "rust/crates/guard-command/src/sfrs_pytest_target.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/adapters/_modules/codex/codex_hook_response.py",
+   "module": "codex_plugin_scanner.guard.adapters._modules.codex.codex_hook_response",
+   "source_sha256": "54d07ed0e88ff3329f76c0e2e1ba3f0e6dca89394dcf3db3d38786cec82176b6",
+   "forbidden_symbols": [
+    "codex_hook_response"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/codex_hook_response.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/sandbox.py",
+   "module": "codex_plugin_scanner.guard.runtime.sandbox",
+   "source_sha256": "db7bde370c9682b5c24e3fca3f266317660e3c966cedfdca548a6f1a524cca6d",
+   "forbidden_symbols": [
+    "SandboxLanguage",
+    "EnvPolicy",
+    "SandboxAnalysisMode",
+    "_DEFAULT_MAX_PROCESSES",
+    "_SECRET_PATH_PATTERNS",
+    "_NETWORK_SYSCALL_PATTERNS",
+    "SandboxRequest",
+    "SandboxResult",
+    "_is_secret_path",
+    "_detect_network_attempts",
+    "_build_env",
+    "_redact_env",
+    "_write_sandbox_files",
+    "_language_argv",
+    "_scan_writes",
+    "_audit_combined_output",
+    "run_sandbox",
+    "_static_only_analysis"
+   ],
+   "native_replacements": [],
+   "retirement": "dead_code",
+   "removal_reason": "Static-first sandbox runner for isolated script analysis that no production caller ever imported. guard-command's sandbox.rs carries the same shape but is itself unreferenced and leaves apply_resource_limits a no-op, so it is not named as a behavioural replacement."
   }
  ],
  "retired_test_paths": [
@@ -1851,20 +1878,6 @@
     "_SHELL_ALIAS_DEFINITION",
     "_DEFERRED_GITHUB_EFFECT",
     "parse_env_wrapper"
-   ],
-   "native_replacements": [
-    "rust/crates/guard-command/src/shell_request_authority.rs",
-    "rust/crates/guard-runtime/src/shell_request_authority_op.rs"
-   ]
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_expansion.py",
-   "source_sha256": "1d245cfc7dd004faba76f35dd631f1d6561945610a6f7e1f1e0236feeb74cf68",
-   "forbidden_symbols": [
-    "parse_env_wrapper",
-    "_SHELL_CONTROL_PREFIX_TOKENS",
-    "_SUDO_OPTION_VALUE_FLAGS",
-    "_leading_shell_redirection_tokens_consumed"
    ],
    "native_replacements": [
     "rust/crates/guard-command/src/shell_request_authority.rs",
