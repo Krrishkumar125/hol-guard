@@ -18,6 +18,7 @@ from typing import cast
 
 from .edge_events import build_policy_event
 from .extension_control_events import extension_control_change_payload
+from .native_extension_control import compose_control_layers
 from .runtime.extension_control_authority import (
     AuthorityAnchor,
     AuthorityHealth,
@@ -33,7 +34,6 @@ from .runtime.extension_control_contract import (
     ExtensionControl,
     ExtensionControlLayer,
 )
-from .runtime.extension_control_resolver import compose_control_layers
 from .store_base import (
     EncryptedFileSecretStore,
     MigratingFallbackSecretStore,
