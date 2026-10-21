@@ -113,15 +113,11 @@ fn a_statement_from_another_workflow_or_source_is_refused() {
         ),
         ("/predicate/runDetails/builder/id", json!("other"), builder),
         (
-            &format!("{WORKFLOW}/repository"),
+            &repository,
             json!("https://github.com/example/other"),
             builder,
         ),
-        (
-            &format!("{WORKFLOW}/ref"),
-            json!("refs/heads/other"),
-            builder,
-        ),
+        (&reference, json!("refs/heads/other"), builder),
         (WORKFLOW, workflow, builder),
         (
             "/predicate/buildDefinition/resolvedDependencies",
@@ -133,11 +129,7 @@ fn a_statement_from_another_workflow_or_source_is_refused() {
             json!([]),
             source,
         ),
-        (
-            &format!("{dependency}/gitCommit"),
-            json!("0".repeat(40)),
-            source,
-        ),
+        (&commit, json!("0".repeat(40)), source),
         (dependency.as_str(), pinned, source),
         ("/subject", json!([]), "distribution_subject_count_invalid"),
         (

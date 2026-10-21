@@ -199,7 +199,7 @@ pub(super) fn validate(input: &Value) -> Result<Value, String> {
     {
         return reject("distribution_identity_invalid");
     }
-    if !root["authority_epoch"].as_u64().is_some_and(|n| n > 0) {
+    if root["authority_epoch"].as_u64().is_none_or(|n| n == 0) {
         return reject("distribution_epoch_invalid");
     }
     if !publication(&root["publication_id"]) {

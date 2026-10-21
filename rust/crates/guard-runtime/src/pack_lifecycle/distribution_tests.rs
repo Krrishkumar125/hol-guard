@@ -135,10 +135,7 @@ fn the_validity_window_is_bounded_and_integer_only() {
     for (pointer, to, code) in cases {
         expect(with(pointer, to), code, pointer);
     }
-    assert_eq!(
-        check(&with("/expires_at", json!(1000 + week)), 1500).is_ok(),
-        true
-    );
+    assert!(check(&with("/expires_at", json!(1000 + week)), 1500).is_ok());
     assert!(check(&with("/issued_at", json!(1800)), 1500).is_ok());
     for now in [
         json!(-1),
@@ -230,6 +227,8 @@ fn directory_and_policy_must_describe_the_same_release() {
 fn index_references_and_locations_are_exact() {
     let index = "distribution_index_reference_invalid";
     let located = root()["directory"]["index"].clone();
+    let mut member = located["location"].clone();
+    member["member"] = json!("object-x.json");
     let cases = [
         ("/directory/index/length", json!(65537), index),
         ("/directory/index/expanded_length", json!(99), index),
@@ -246,8 +245,8 @@ fn index_references_and_locations_are_exact() {
             "distribution_location_identity_invalid",
         ),
         (
-            "/directory/index/location/member",
-            json!("object-x.json"),
+            "/directory/index/location",
+            member,
             "distribution_location_container_invalid",
         ),
     ];
