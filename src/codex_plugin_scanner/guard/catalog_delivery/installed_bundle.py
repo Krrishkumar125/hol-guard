@@ -75,6 +75,23 @@ def _package() -> Path:
     return Path(__file__).absolute().parents[2]
 
 
+def _installation_root() -> Path:
+    """The directory the installer or the frozen runtime chose for this package.
+
+    A frozen build extracts under the per-user temporary directory, which macOS
+    reaches through the ``/var`` symlink and several Linux distributions through
+    a symlinked ``/tmp``; a packaged install can sit behind a Windows junction.
+    None of those are caller-controlled, so reads of the program's own data
+    files resolve that prefix once and keep rejecting symlinks below it.
+    """
+
+    return _package()
+
+
+def _read_installed(path: Path, *, limit: int) -> bytes:
+    return read_bytes(path, limit=limit, anchor=_installation_root())
+
+
 def compatibility_payloads(family: str) -> tuple[dict[str, Any], ...] | None:
     """Explicit offline legacy API; never load the library on decision paths.
 
@@ -91,7 +108,7 @@ def compatibility_payloads(family: str) -> tuple[dict[str, Any], ...] | None:
     def read_asset(path: Path, *, limit: int) -> bytes:
         # Offline traversals commonly read thousands of members in one bounded
         # container. Keep at most two containers, scoped to this explicit read.
-        return read_bytes(path, limit=limit)
+        return _read_installed(path, limit=limit)
 
     try:
         result = run_source_compiler(
@@ -173,7 +190,7 @@ def _advertised() -> bool:
     for name in ("runtime-manifest.json", "source-compiler-manifest.json"):
         path = package / "_native" / name
         present = path.exists() or path.is_symlink()
-        manifests.append(decode(read_bytes(path, limit=65536)) if present else None)
+        manifests.append(decode(_read_installed(path, limit=65536)) if present else None)
     answer = _native_metadata(
         "installed-presence", bundle=directory.exists() or directory.is_symlink(), manifests=manifests
     )
@@ -195,11 +212,11 @@ class VerifiedInstalledBundle:
         return cast(dict[str, Any], decode(self.data))
 
     def fetch(self, target_location: dict[str, Any], max_bytes: int) -> bytes:
-        return self._fetch(target_location, max_bytes, read_bytes)
+        return self._fetch(target_location, max_bytes, _read_installed)
 
     def preparation_fetch(self):
         """Keep one bounded container for the current native preparation."""
-        reader = lru_cache(maxsize=1)(read_bytes)
+        reader = lru_cache(maxsize=1)(_read_installed)
         return lambda location, maximum: self._fetch(location, maximum, reader)
 
     def _fetch(self, target_location: dict[str, Any], max_bytes: int, read_asset) -> bytes:
@@ -251,12 +268,12 @@ def load_installed_bundle() -> VerifiedInstalledBundle:
 def _load_installed_bundle() -> VerifiedInstalledBundle:
     package = _package()
     native = package / "_native"
-    runtime = decode(read_bytes(native / "runtime-manifest.json", limit=65536))
-    compiler = decode(read_bytes(native / "source-compiler-manifest.json", limit=65536))
+    runtime = decode(_read_installed(native / "runtime-manifest.json", limit=65536))
+    compiler = decode(_read_installed(native / "source-compiler-manifest.json", limit=65536))
     evidence = {"runtime_manifest": runtime, "compiler_manifest": compiler}
     plan = _native_metadata("installed-plan", **evidence)
-    binary = read_bytes(native / cast(str, plan["executable"]), limit=cast(int, plan["size"]))
-    data = read_bytes(package / "guard/contracts/data/extensions/command-pack-bundle" / MANIFEST, limit=65536)
+    binary = _read_installed(native / cast(str, plan["executable"]), limit=cast(int, plan["size"]))
+    data = _read_installed(package / "guard/contracts/data/extensions/command-pack-bundle" / MANIFEST, limit=65536)
     identity = _native_metadata(
         "installed",
         **evidence,

@@ -19,9 +19,9 @@ import {
   type EffectiveExtensionControls,
   type ExtensionCatalogSummary,
 } from "../extension-controls-api";
-import { loadCatalogReadModel, type CatalogReadModel } from "../extension-catalog-v2";
+import { CATALOG_PREPARATION_FAILED, loadCatalogReadModel, type CatalogReadModel } from "../extension-catalog-v2";
 import { CatalogExtensionDetail } from "./catalog-extension-detail";
-import { PROTECTION_DATA_UNSETTLED_MESSAGE, PROTECTION_SAVE_UNSETTLED_MESSAGE, loadConsistentProtectionData } from "./consistent-protection-load";
+import { CATALOG_PREPARATION_DEGRADED_MESSAGE, PROTECTION_DATA_UNSETTLED_MESSAGE, PROTECTION_SAVE_UNSETTLED_MESSAGE, loadConsistentProtectionData } from "./consistent-protection-load";
 import { buildExtensionMutation, randomToken } from "./extension-mutation";
 
 export { buildExtensionMutation };
@@ -407,6 +407,10 @@ export function ProtectionCenterWorkspace(props: {
   const status = state.kind === "ready" ? deriveProtectionStatus(state.effective) : null;
   const healthBroken = state.kind === "ready" && state.effective.health !== "protected";
   const dataUnsettled = state.kind === "ready" && state.unsettled;
+  // The daemon could not prepare its verified catalog, so this page is reading
+  // the catalog the daemon already holds. Everything on it still works, so the
+  // reader gets a notice rather than a page they cannot get past.
+  const catalogDegraded = state.kind === "ready" && state.catalog.degraded === CATALOG_PREPARATION_FAILED;
 
   return (
     <div className="w-full" data-testid="extensions-workspace">
@@ -430,6 +434,15 @@ export function ProtectionCenterWorkspace(props: {
           onCheckAgain={handleCheckAgain}
           onOpenApprovalSettings={handleOpenApprovalSettings}
         />
+      ) : null}
+      {catalogDegraded ? (
+        <p
+          role="status"
+          data-testid="catalog-preparation-degraded"
+          className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          {CATALOG_PREPARATION_DEGRADED_MESSAGE}
+        </p>
       ) : null}
       {dataUnsettled ? (
         <p

@@ -380,3 +380,36 @@ test("a catalog the daemon has not finished binding still lists every extension"
   await card.press("Enter");
   await expect(page.getByTestId("protection-module-detail")).toBeVisible();
 });
+
+// A frozen build extracts under a symlinked temporary prefix, so every read of
+// its own installed data files failed and the daemon answered
+// catalog_read_preparation_failed on every attempt. The page used to become a
+// dead end: no list, no policies, and a "Try again" that re-ran the same
+// unresolvable read. The legacy catalog is served from the registry the daemon
+// already holds in memory, so the page falls back to it, says what is reduced
+// and still edits policy.
+test("a daemon that cannot prepare its catalog still lists extensions and edits policy", async ({ page }) => {
+  await mount(page);
+  // Registered after mount so it wins: Playwright matches the newest route first.
+  await page.route("**/v2/extension-controls/catalog/index**", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "catalog_read_preparation_failed" }),
+    });
+  });
+  await page.goto(`/extensions?guardDaemon=${DAEMON_ORIGIN}`);
+
+  await expect(page.getByRole("heading", { name: "Extensions", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Extensions unavailable" })).toHaveCount(0);
+  await expect(page.getByTestId("catalog-preparation-degraded")).toBeVisible();
+  await expect(page.getByTestId("catalog-preparation-degraded")).toContainText("your policy changes still save");
+
+  await page.getByRole("button", { name: /^Git/ }).click();
+  await expect(page.getByTestId("protection-module-detail")).toBeVisible();
+  await page.getByRole("tab", { name: "Permissions" }).click();
+  const quickApply = page.getByRole("group", { name: "Quick apply to 1 changeable settings" });
+  await quickApply.getByRole("button", { name: "Deny all" }).click();
+  await expect(page.getByText("1 unsaved setting change.")).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Block" })).toHaveAttribute("aria-checked", "true");
+});

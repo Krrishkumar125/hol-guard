@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { REFRESH_DEADLINE_MS, refreshEffectiveExtensionControls } from "../extension-controls-api";
 import {
+  CATALOG_PREPARATION_DEGRADED_MESSAGE,
   CONSISTENT_LOAD_RETRY_DELAYS_MS,
   PROTECTION_DATA_UNSETTLED_MESSAGE,
   PROTECTION_SAVE_UNSETTLED_MESSAGE,
@@ -130,3 +131,11 @@ assert.match(PROTECTION_DATA_UNSETTLED_MESSAGE, /cannot be saved yet/);
 assert.ok(!/stays safe/.test(PROTECTION_DATA_UNSETTLED_MESSAGE));
 assert.match(PROTECTION_SAVE_UNSETTLED_MESSAGE, /current protection is unchanged/);
 assert.match(PROTECTION_SAVE_UNSETTLED_MESSAGE, /reload this page in a few seconds/);
+
+// The legacy catalog the page falls back to accepts policy edits, so this
+// notice must say the list is complete and saving still works, and must not
+// read as a protection failure the reader has to clear before continuing.
+assert.match(CATALOG_PREPARATION_DEGRADED_MESSAGE, /Every extension is here/);
+assert.match(CATALOG_PREPARATION_DEGRADED_MESSAGE, /your policy changes still save/);
+assert.ok(!/cannot be saved/.test(CATALOG_PREPARATION_DEGRADED_MESSAGE));
+assert.ok(!/protection (is off|has stopped)/.test(CATALOG_PREPARATION_DEGRADED_MESSAGE));

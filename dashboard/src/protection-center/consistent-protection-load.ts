@@ -7,6 +7,13 @@ import { refreshEffectiveExtensionControls } from "../extension-controls-api";
 export const PROTECTION_DATA_UNSETTLED_MESSAGE =
   "Guard is still settling a protection update, so a few extensions may read as out of date and changes cannot be saved yet. Reload this page in a few seconds.";
 
+// Shown beside the extension list, never in place of it. The daemon failed to
+// prepare its verified catalog, so the page is reading the catalog the daemon
+// already holds. Every extension is listed and every policy change still saves,
+// so this says what is reduced without taking the page away.
+export const CATALOG_PREPARATION_DEGRADED_MESSAGE =
+  "Guard could not rebuild its extension list, so this page is showing the list Guard already had. Every extension is here and your policy changes still save. Updating HOL Guard restores the rebuilt list; Guard writes the reason to its log at ~/.hol-guard/logs/daemon.log.";
+
 export const PROTECTION_SAVE_UNSETTLED_MESSAGE =
   "Guard could not save this protection change, so your current protection is unchanged. Guard is still settling a protection update; reload this page in a few seconds, then make the change again.";
 
