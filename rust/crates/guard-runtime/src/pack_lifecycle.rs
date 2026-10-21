@@ -5,8 +5,10 @@ use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 mod current;
+mod distribution;
 mod floor;
 mod installed_asset;
+pub(crate) mod location;
 mod migration;
 mod offline;
 mod release;
@@ -134,6 +136,9 @@ pub(super) fn evaluate(input: &Value) -> Result<Value, String> {
     }
     if input["kind"] == "offline" {
         return offline::evaluate(input);
+    }
+    if input["kind"] == "distribution" {
+        return distribution::evaluate(input);
     }
     if input["kind"] == "active-security" {
         return crate::active_pack_security::evaluate(input);

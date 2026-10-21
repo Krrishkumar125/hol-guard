@@ -10,6 +10,7 @@ from pathlib import Path
 
 from extension_delivery_located_store import LocatedStore
 from extension_delivery_objects import entries, lookup_entry
+from extension_delivery_runtime import pinned_runtime
 from notify_merged_extension_claimants import GitHubApi
 from reconcile_extension_claim_notices import pending_entries
 
@@ -68,4 +69,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with pinned_runtime():
+        main()

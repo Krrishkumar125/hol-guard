@@ -13,6 +13,7 @@ import extension_artifact_bundle as legacy
 import extension_delivery_github as provider
 from extension_delivery_inventory import publication_inventory, read_plan
 from extension_delivery_legacy import UNAVAILABLE, unavailable_marker
+from extension_delivery_runtime import pinned_runtime
 from extension_delivery_selector import select
 from extension_delivery_source import verify_sources
 
@@ -146,4 +147,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with pinned_runtime():
+        main()
