@@ -310,6 +310,42 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
         "evaluate_package_request_artifact",
         lambda **kwargs: evaluate_package_request(**kwargs, now="2026-05-19T01:00:00Z"),
     )
+    trace: list[str] = []
+    from codex_plugin_scanner.guard.cli import commands_hook_native_eval as _eval_module
+    from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker as _HookWorker
+
+    _real_step = _eval_module.native_artifact_reuse_step
+    _real_edge = _HookWorker.review_native_edge_decision
+
+    def _traced_step(inputs, *, guard_home):
+        lookup = inputs.get("lookup", {})
+        codes = [(r.get("code"), r.get("approval_claim_disposition")) for r in lookup.get("reasons", [])]
+        trace.append(
+            f"STEP claim={inputs.get('claim_saved_approval')} claimed={inputs.get('claimed') is not None} "
+            f"stored={(inputs.get('stored') or {}).get('action')} current={inputs.get('current_action')} "
+            f"mode={lookup.get('mode')} policy={lookup.get('evaluation_policy_action')} reasons={codes}"
+        )
+        try:
+            plan = _real_step(inputs, guard_home=guard_home)
+        except Exception as error:
+            trace.append(f"STEP-ERR {error!r}")
+            raise
+        trace.append(f"PLAN {plan!r}"[:700])
+        return plan
+
+    def _traced_edge(self, **kwargs):
+        edge = _real_edge(self, **kwargs)
+        result = edge.get("result") if isinstance(edge, dict) else None
+        if isinstance(result, dict):
+            summary = {key: result.get(key) for key in ("reason_code", "minimum_action", "policy_action", "decision")}
+        else:
+            summary = edge.get("failure_reason_code") if isinstance(edge, dict) else edge
+        trace.append(f"EDGE {summary}")
+        return edge
+
+    monkeypatch.setattr(_eval_module, "native_artifact_reuse_step", _traced_step)
+    monkeypatch.setattr(_HookWorker, "review_native_edge_decision", _traced_edge)
+
     monkeypatch.setattr(install_integrity, "warn_if_shadowed", lambda: None)
     monkeypatch.setattr(interaction_module, "open_browser_url", lambda _url: True)
     monkeypatch.setattr(
@@ -381,7 +417,22 @@ def test_guard_hook_requires_review_for_repository_local_vitest_run(
     retry_capture = capsys.readouterr()
 
     assert retry_rc == 0
-    assert retry_capture.out == ""
+    assert retry_capture.out == "", "\n".join(
+        [
+            *trace,
+            f"ERR {retry_capture.err[:300]!r}",
+            f"OUT {retry_capture.out[:200]!r}",
+            *(
+                f"EVIDENCE {item['details'].get('decision')} "
+                f"{[reason['code'] for reason in item['details'].get('reasons', [])]}"
+                for item in store.list_evidence()[:4]
+            ),
+            *(
+                f"REQUEST {item['request_id'][:6]} {item.get('status')} {item.get('policy_action')}"
+                for item in store.list_approval_requests(limit=5)
+            ),
+        ]
+    )
     assert retry_capture.err == ""
     assert store.list_approval_requests(status="pending", limit=5) == []
 
