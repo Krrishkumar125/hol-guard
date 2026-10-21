@@ -82,7 +82,8 @@
   "src/codex_plugin_scanner/guard/runtime/command_tui_runner_extensions.py",
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_hook_bridge_flow.py",
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_bridge_failure_reason.py",
-  "src/codex_plugin_scanner/guard/adapters/codex_daemon_start_wait.py"
+  "src/codex_plugin_scanner/guard/adapters/codex_daemon_start_wait.py",
+  "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py"
  ],
  "retired_tests": [
   {
@@ -6375,6 +6376,33 @@
    ],
    "status": "obsolete_implementation_assertion",
    "rationale": "Exercises the retired Python executing layer of the Claude daemon hook bridge, which now only launches the native command. Python no longer decodes the hook body: the native child reads the bytes and forwards them."
+  },
+  {
+   "old_node": "tests/test_native_command_options.py::test_public_option_helpers_replay_native_original_vectors",
+   "source_sha256": "c93813c59088f5fa73613d4bcbdb371c5cf20f1b7918428b7d5a69a8fb1bcb4b",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/shell_helpers_vectors_tests.rs::original_python_option_helpers_replay"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Replayed a sample of the option vectors in tests/fixtures/shell-helper-python.v1.json through the retired Python caller. The Rust test replays every option vector in the same fixture against the resident."
+  },
+  {
+   "old_node": "tests/test_native_command_options.py::test_option_cache_reuses_native_results_and_rechecks_runtime",
+   "source_sha256": "c93813c59088f5fa73613d4bcbdb371c5cf20f1b7918428b7d5a69a8fb1bcb4b",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/shell_helpers_vectors_tests.rs::original_python_option_helpers_replay"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserted the retired Python caller's lru_cache of native option results. The cache was deleted with the module; the resident answers each option call directly, so there is no Python cache to reuse or skip."
+  },
+  {
+   "old_node": "tests/test_native_command_options.py::test_option_cache_does_not_store_native_errors",
+   "source_sha256": "c93813c59088f5fa73613d4bcbdb371c5cf20f1b7918428b7d5a69a8fb1bcb4b",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/shell_helpers_vectors_tests.rs::original_python_option_helpers_replay"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserted the retired Python caller's lru_cache of native option results. The cache was deleted with the module; the resident answers each option call directly, so there is no Python cache to reuse or skip."
   }
  ],
  "preserved_tests": [
@@ -6860,18 +6888,6 @@
     "rust/crates/guard-runtime/src/decision_authority_op.rs"
    ],
    "parity_fixture": "tests/fixtures/decision_authority_vectors.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py",
-   "base_commit": "da723a48b221c135cbce3bade1bab3ddb4959044",
-   "source_sha256": "cf9143df681b5db68cd5f03f12028dda0ad4e88ad9a9f7c9e09c330af7f2dd68",
-   "remaining_role": "Public option DTO and bound resident projection only; flag assignments and conservative parse verdicts retired.",
-   "native_replacements": [
-    "rust/crates/guard-command/src/command_option_parsing.rs",
-    "rust/crates/guard-command/src/command_argument_semantics.rs",
-    "rust/crates/guard-command/src/shell_helpers.rs"
-   ],
-   "parity_fixture": "tests/fixtures/shell-helper-python.v1.json"
   },
   {
    "path": "src/codex_plugin_scanner/guard/runtime/interpreter_options.py",
