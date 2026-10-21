@@ -234,9 +234,6 @@ def render_generic_hook(
             policy_action=policy_action,
             reason=json_reason,
             envelope=envelope,
-            # One settled status for the document and the process: the
-            # directive carries the native verdict's exit code already.
-            exit_code=exit_code(),
             system_message=(
                 directive_system_message(directive, policy_action=policy_action, reason=reason) if artifact else None
             ),
