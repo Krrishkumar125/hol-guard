@@ -332,3 +332,71 @@ def test_live_approval_hint_skips_extra_payload_keys_and_resolves_launch_cwd(mon
     assert calls[0]["cwd"] == sub_cwd.resolve()
     assert hint_calls[0]["cwd"] == sub_cwd.resolve()
     assert hint_calls[0]["deadline"] is not None
+
+
+def test_live_approval_hint_declines_when_the_stored_launch_directory_is_unrecoverable(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from codex_plugin_scanner.guard.daemon import native_review_allow_hint as module
+
+    fixture = real_native_review_fixture("git fetch origin main", cwd=tmp_path, home_dir=tmp_path)
+    reviewed = project_native_review_fixture(fixture, cwd=tmp_path, home_dir=tmp_path)
+    calls: list[dict[str, object]] = []
+
+    def review(_command: str, **kwargs: object):
+        calls.append(kwargs)
+        return reviewed
+
+    monkeypatch.setattr(module, "review_command_native", review)
+    home = tmp_path / "home"
+    project = home / "project"
+    project.mkdir(parents=True)
+    monkeypatch.setattr(module.Path, "home", classmethod(lambda _cls: home))
+
+    def approval(cwd: str) -> dict[str, object]:
+        return {
+            "status": "pending",
+            "workspace": str(tmp_path),
+            "raw_command_text": "git fetch origin main",
+            "action_envelope_json": {
+                "action_type": "shell_command",
+                "command": "git fetch origin main",
+                "raw_payload_redacted": {
+                    "cwd": cwd,
+                    "tool_name": "Shell",
+                    "tool_input": {"command": "git fetch origin main", "working_directory": cwd},
+                },
+            },
+        }
+
+    assert (
+        module.live_approval_extension_allow_hint(
+            approval(".../project"), guard_home=tmp_path, snapshot=fixture.snapshot
+        )
+        is None
+    )
+    assert calls == []
+
+    hint = module.live_approval_extension_allow_hint(
+        approval("~/project"), guard_home=tmp_path, snapshot=fixture.snapshot
+    )
+    assert hint is not None
+    assert calls[0]["cwd"] == project.resolve()
+
+
+def test_python_and_resident_command_only_keys_stay_identical() -> None:
+    import re
+
+    from codex_plugin_scanner.guard.daemon import native_review_allow_hint as module
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "rust"
+        / "crates"
+        / "guard-runtime"
+        / "src"
+        / "hook_direct_review_request.rs"
+    ).read_text(encoding="utf-8")
+    block = re.search(r"const COMMAND_ONLY_INPUT_KEYS: \[&str; \d+\] = \[(.*?)\];", source, re.DOTALL)
+    assert block is not None
+    assert set(re.findall(r'"([^"]+)"', block.group(1))) == set(module._COMMAND_ONLY_INPUT_KEYS)
