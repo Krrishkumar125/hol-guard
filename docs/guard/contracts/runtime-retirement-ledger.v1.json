@@ -88,7 +88,12 @@
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_body_safety.py",
   "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py",
   "src/codex_plugin_scanner/guard/runtime/executable_flag_contract.py",
-  "src/codex_plugin_scanner/guard/runtime/workspace_path_guard.py"
+  "src/codex_plugin_scanner/guard/runtime/workspace_path_guard.py",
+  "src/codex_plugin_scanner/guard/evaluation_codex_event_trace.py",
+  "src/codex_plugin_scanner/guard/policy_recipe.py",
+  "src/codex_plugin_scanner/guard/runtime/network_public_suffix.py",
+  "src/codex_plugin_scanner/guard/runtime/remote_approval_execution.py",
+  "src/codex_plugin_scanner/guard/runtime/resource_budget.py"
  ],
  "retired_tests": [
   {
