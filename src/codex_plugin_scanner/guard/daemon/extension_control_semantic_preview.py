@@ -7,7 +7,7 @@ enforcement uses, so neither the daemon nor the dashboard carries policy truth.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Final
 
@@ -28,18 +28,137 @@ _FIELDS: Final = (
 )
 
 
-def _render(value: object, invalid: Callable[[], RuntimeError]) -> dict[str, object]:
-    """The resident's preview, in the field order the dashboard renders and digests."""
+_MAX_CHANGED_TARGETS: Final = 4096
+_MAX_LIST_ITEMS: Final = 4096
+_MAX_WARNINGS: Final = 64
+_TARGET_KINDS: Final = frozenset({"extension", "permission"})
+_EXPLICIT_STATES: Final = frozenset({"inherited", "enabled", "disabled"})
+_EFFECTIVE_STATES: Final = frozenset({"allowed", "blocked"})
+_ID_LISTS: Final = (
+    "affected_permission_ids",
+    "affected_rule_ids",
+    "affected_extension_ids",
+    "dependency_permission_ids",
+    "implied_permission_ids",
+    "conflict_permission_ids",
+    "provenance",
+)
+_OPTIONAL_TARGET_STRINGS: Final = ("baseline_risk", "baseline_floor", "extension_name")
+_TARGET_FIELDS: Final = frozenset(
+    {
+        "target",
+        "extension_id",
+        "label",
+        "before_explicit",
+        "after_explicit",
+        "before_effective",
+        "after_effective",
+        "warnings",
+        *_ID_LISTS,
+    }
+)
+_COUNT_FIELDS: Final = ("changed_target_count", "affected_permission_count", "affected_rule_count")
+_SUMMARY_FIELDS: Final = ("newly_blocked_permissions", "newly_allowed_permissions", "effective_change_count")
+_LOCKDOWN_FIELDS: Final = ("before", "after", "changed")
 
-    if not isinstance(value, dict) or set(value) != set(_FIELDS) or value["schema_version"] != SEMANTIC_PREVIEW_SCHEMA:
-        raise invalid()
-    if not isinstance(value["changed_targets"], list) or value["changed_target_count"] != len(value["changed_targets"]):
-        raise invalid()
-    if not all(isinstance(value[name], dict) for name in ("global_lockdown", "summary")):
-        raise invalid()
-    if type(value["approval_required"]) is not bool:
-        raise invalid()
-    return {name: value[name] for name in _FIELDS}
+
+def _keys(value: object, required: Iterable[str], optional: Iterable[str] = ()) -> dict[str, object]:
+    """``value`` when it is a dict with every required key and no key outside ``required`` and ``optional``."""
+
+    required_keys = set(required)
+    if not isinstance(value, dict) or not required_keys <= set(value) <= required_keys | set(optional):
+        raise TypeError
+    return value
+
+
+def _count(value: object) -> int:
+    if type(value) is not int or value < 0:
+        raise TypeError
+    return value
+
+
+def _text(value: object) -> str:
+    if not isinstance(value, str):
+        raise TypeError
+    return value
+
+
+def _texts(value: object) -> None:
+    if not isinstance(value, list) or len(value) > _MAX_LIST_ITEMS:
+        raise TypeError
+    for item in value:
+        _text(item)
+
+
+def _warning(value: object) -> None:
+    entry = _keys(value, ("code", "message"), ("target_id", "count"))
+    _text(entry["code"])
+    _text(entry["message"])
+    if "target_id" in entry:
+        _text(entry["target_id"])
+    if "count" in entry:
+        _count(entry["count"])
+
+
+def _changed_target(value: object) -> None:
+    """The shape of one changed target. Which targets change, and how, is the resident's alone."""
+
+    entry = _keys(value, _TARGET_FIELDS, _OPTIONAL_TARGET_STRINGS)
+    target = _keys(entry["target"], ("kind", "target_id"))
+    if target["kind"] not in _TARGET_KINDS:
+        raise TypeError
+    _text(target["target_id"])
+    _text(entry["extension_id"])
+    _text(entry["label"])
+    for name in ("before_explicit", "after_explicit"):
+        if entry[name] not in _EXPLICIT_STATES:
+            raise TypeError
+    for name in ("before_effective", "after_effective"):
+        if entry[name] not in _EFFECTIVE_STATES:
+            raise TypeError
+    for name in _ID_LISTS:
+        _texts(entry[name])
+    for name in _OPTIONAL_TARGET_STRINGS:
+        if name in entry:
+            _text(entry[name])
+    warnings = entry["warnings"]
+    if not isinstance(warnings, list) or len(warnings) > _MAX_WARNINGS:
+        raise TypeError
+    for warning in warnings:
+        _warning(warning)
+
+
+def _render(value: object, invalid: Callable[[], RuntimeError]) -> dict[str, object]:
+    """The resident's preview, in the field order the dashboard renders and digests.
+
+    Checks shape only, all the way down: the dashboard and the apply digest read
+    nested fields, so a reply whose nested shape is wrong is refused here rather
+    than rendered or hashed. The values are the resident's.
+    """
+
+    try:
+        fields = _keys(value, _FIELDS)
+        if fields["schema_version"] != SEMANTIC_PREVIEW_SCHEMA or type(fields["approval_required"]) is not bool:
+            raise TypeError
+        counts = {name: _count(fields[name]) for name in _COUNT_FIELDS}
+        targets = fields["changed_targets"]
+        if (
+            not isinstance(targets, list)
+            or len(targets) > _MAX_CHANGED_TARGETS
+            or counts["changed_target_count"] != len(targets)
+        ):
+            raise TypeError
+        for target in targets:
+            _changed_target(target)
+        lockdown = _keys(fields["global_lockdown"], _LOCKDOWN_FIELDS)
+        if any(type(lockdown[name]) is not bool for name in _LOCKDOWN_FIELDS):
+            raise TypeError
+        summary = _keys(fields["summary"], _SUMMARY_FIELDS)
+        for name in _SUMMARY_FIELDS:
+            _count(summary[name])
+    except TypeError:
+        raise invalid() from None
+    return {name: fields[name] for name in _FIELDS}
 
 
 def build_extension_control_semantic_preview(

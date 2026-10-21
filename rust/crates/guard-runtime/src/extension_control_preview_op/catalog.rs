@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use guard_command::extension_control::ControlClosure;
 use guard_contracts::{
     ExtensionControlPreviewExtensionV1, ExtensionControlPreviewPermissionV1,
     ExtensionControlPreviewRegistryV1, ExtensionControlRegistryExtensionV1,
@@ -43,6 +44,16 @@ pub(super) fn resolver_projection(
             })
             .collect(),
     }
+}
+
+/// What each catalog permission and each changed extension pulls in,
+/// resolved once against the catalog. Every resolution of a preview compares
+/// these against its own layers instead of walking the catalog again.
+pub(super) struct Closures {
+    /// One per catalog permission, in catalog order.
+    pub(super) permissions: Vec<ControlClosure>,
+    /// One per distinct changed extension, by canonical id.
+    pub(super) extensions: Vec<(String, ControlClosure)>,
 }
 
 /// Catalog lookups for the preview. Extensions resolve through the resolver
@@ -99,6 +110,47 @@ impl<'a> PreviewCatalog<'a> {
         self.permissions
             .get(normalize(permission_id).as_str())
             .copied()
+    }
+
+    /// The closure of every catalog permission and of each named extension.
+    /// `None` once the closures hold more than `max_entries` entries in all,
+    /// before the walk has gone further than that.
+    pub(super) fn closures(
+        &self,
+        extension_ids: &[String],
+        max_entries: usize,
+    ) -> Option<Closures> {
+        let mut entries = 0usize;
+        let mut within_budget = |closure: &ControlClosure| {
+            entries = entries.saturating_add(closure.size());
+            entries <= max_entries
+        };
+        let mut permissions = Vec::with_capacity(self.registry.permissions.len());
+        for permission in &self.registry.permissions {
+            let ids = [permission.permission_id.clone()];
+            let closure = ControlClosure::of(self.resolver, &[], &ids);
+            if !within_budget(&closure) {
+                return None;
+            }
+            permissions.push(closure);
+        }
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        let mut extensions = Vec::new();
+        for extension_id in extension_ids {
+            if !seen.insert(extension_id.as_str()) {
+                continue;
+            }
+            let closure =
+                ControlClosure::of(self.resolver, std::slice::from_ref(extension_id), &[]);
+            if !within_budget(&closure) {
+                return None;
+            }
+            extensions.push((extension_id.clone(), closure));
+        }
+        Some(Closures {
+            permissions,
+            extensions,
+        })
     }
 
     /// Rules owned by the named permissions, sorted and bounded.

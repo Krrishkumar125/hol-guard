@@ -376,3 +376,6 @@ fn a_broken_catalog_or_layer_is_refused() {
     assert_eq!(result.code, "native_extension_control_layer_invalid");
     assert!(result.payload.is_none());
 }
+
+#[path = "extension_control_preview_op_limits_tests.rs"]
+mod limits;

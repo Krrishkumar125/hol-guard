@@ -8,10 +8,11 @@
 //! never carries its own copy of policy truth. A target's affected permissions
 //! are the ones whose effective state that target alone changes.
 
+mod budget;
 mod catalog;
 mod layers;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 use guard_contracts::{
     ExtensionControlPreviewChangedTargetV1, ExtensionControlPreviewExtensionV1,
@@ -22,7 +23,8 @@ use guard_contracts::{
     EXTENSION_CONTROL_SEMANTIC_PREVIEW_SCHEMA,
 };
 
-use crate::extension_control_op::RequestRegistry;
+use crate::extension_control_op::{RequestRegistry, TOO_MANY_ITEMS};
+use budget::{closure_budget, ReplyBudget};
 use catalog::{bounded, sorted_bounded, union_bounded, PreviewCatalog};
 use layers::{
     explicit_state, layers_with_target_reverted, local_controls, provenance, resolve_effective,
@@ -63,13 +65,7 @@ pub(crate) fn semantic_preview(
     let known_keys: Vec<&TargetKey> = changed_keys
         .iter()
         .copied()
-        .filter(|(kind, target_id)| {
-            if kind == PERMISSION {
-                catalog.permission(target_id).is_some()
-            } else {
-                catalog.extension(target_id).is_some()
-            }
-        })
+        .filter(|key| is_known(&catalog, key))
         .collect();
     let changed_extension_ids: Vec<String> = known_keys
         .iter()
@@ -78,17 +74,28 @@ pub(crate) fn semantic_preview(
         .map(|extension| extension.extension_id.clone())
         .collect();
 
-    let current = resolve_effective(&catalog, current_layers, &changed_extension_ids)?;
-    let proposed = resolve_effective(&catalog, proposed_layers, &changed_extension_ids)?;
-    let mut reverted_by_key: HashMap<&TargetKey, Effective> = HashMap::new();
-    for key in &known_keys {
-        let reverted = layers_with_target_reverted(
-            current_layers,
-            proposed_layers,
-            (key.0.as_str(), key.1.as_str()),
-        );
-        reverted_by_key.insert(*key, resolve_effective(&catalog, &reverted, &[])?);
-    }
+    // Every catalog permission's closure is resolved once; each resolution
+    // below only compares it with its own layers. The work the preview may
+    // take is bounded before any of it is done.
+    let resolutions = known_keys.len() + 2;
+    let closures = catalog
+        .closures(
+            &changed_extension_ids,
+            closure_budget(&catalog, current_layers, proposed_layers, resolutions)?,
+        )
+        .ok_or_else(|| TOO_MANY_ITEMS.to_owned())?;
+    let current = resolve_effective(
+        &catalog,
+        current_layers,
+        &closures.permissions,
+        &closures.extensions,
+    )?;
+    let proposed = resolve_effective(
+        &catalog,
+        proposed_layers,
+        &closures.permissions,
+        &closures.extensions,
+    )?;
 
     let context = PreviewContext {
         catalog: &catalog,
@@ -97,16 +104,26 @@ pub(crate) fn semantic_preview(
         current: &current,
         proposed: &proposed,
     };
+    let mut reply = ReplyBudget::default();
     let mut changed_targets = Vec::new();
     let mut all_affected_permission_ids: BTreeSet<String> = BTreeSet::new();
     let mut all_affected_rule_ids: BTreeSet<String> = BTreeSet::new();
     for key in changed_keys {
-        let Some(reverted) = reverted_by_key.get(key) else {
+        if !is_known(&catalog, key) {
+            continue;
+        }
+        // One reverted resolution at a time: only its marginal effect on this
+        // target is kept, so memory does not grow with the changed targets.
+        let reverted_layers = layers_with_target_reverted(
+            current_layers,
+            proposed_layers,
+            (key.0.as_str(), key.1.as_str()),
+        );
+        let reverted = resolve_effective(&catalog, &reverted_layers, &closures.permissions, &[])?;
+        let Some(target) = context.changed_target(key, &reverted) else {
             continue;
         };
-        let Some(target) = context.changed_target(key, reverted) else {
-            continue;
-        };
+        reply.admit(&target)?;
         all_affected_permission_ids.extend(target.affected_permission_ids.iter().cloned());
         all_affected_rule_ids.extend(target.affected_rule_ids.iter().cloned());
         changed_targets.push(target);
@@ -133,6 +150,15 @@ pub(crate) fn semantic_preview(
             effective_change_count: newly_blocked + newly_allowed,
         },
     })
+}
+
+/// Whether the catalog has an entry for the changed target.
+fn is_known(catalog: &PreviewCatalog<'_>, (kind, target_id): &TargetKey) -> bool {
+    if kind == PERMISSION {
+        catalog.permission(target_id).is_some()
+    } else {
+        catalog.extension(target_id).is_some()
+    }
 }
 
 /// Permissions allowed before and not after (`to_blocked`), or the reverse.

@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use guard_command::extension_control::{
-    compose_control_layers, resolve_extension_controls, ControlSurface, MAX_CONTROL_LAYERS,
+    compose_control_layers, ControlClosure, ControlSurface, PreparedControls, MAX_CONTROL_LAYERS,
 };
 use guard_contracts::{NativeExtensionControlLayerV1, NativeExtensionControlV1};
 
@@ -155,47 +155,41 @@ impl Effective {
     }
 }
 
-/// Resolve every catalog permission, one at a time, and each named extension
-/// against `layers` on the command-evaluation surface, as command evaluation
-/// resolves them. Only the first `MAX_CONTROL_LAYERS + 1` layers are read,
-/// the slice the resolver itself bounds to.
+/// What each catalog permission and each named extension is, against `layers`
+/// on the command-evaluation surface, as command evaluation resolves them.
+/// The layers are composed and validated once; each permission and extension
+/// is then compared, through its precomputed closure, with what they disable.
+/// Only the first `MAX_CONTROL_LAYERS + 1` layers are read, the slice the
+/// resolver itself bounds to.
 pub(super) fn resolve_effective(
     catalog: &PreviewCatalog<'_>,
     layers: &[NativeExtensionControlLayerV1],
-    extension_ids: &[String],
+    permission_closures: &[ControlClosure],
+    extension_closures: &[(String, ControlClosure)],
 ) -> Result<Effective, String> {
     let bounded = &layers[..layers.len().min(MAX_CONTROL_LAYERS + 1)];
     let typed = typed_layers(bounded)?;
-    let resolver = catalog.resolver();
-    let blocked = |extensions: &[String], permissions: &[String]| {
-        resolve_extension_controls(
-            &typed,
-            Some(resolver),
-            extensions,
-            permissions,
-            ControlSurface::CommandEvaluation,
-            &[],
-            None,
-        )
-        .blocked
-    };
+    let prepared = PreparedControls::new(
+        &typed,
+        Some(catalog.resolver()),
+        ControlSurface::CommandEvaluation,
+        None,
+    );
     let permission_allowed = catalog
         .registry
         .permissions
         .iter()
-        .map(|permission| {
-            let ids = [permission.permission_id.clone()];
-            (permission.permission_id.clone(), !blocked(&[], &ids))
-        })
-        .collect();
-    let extension_blocked = extension_ids
-        .iter()
-        .map(|extension_id| {
+        .zip(permission_closures)
+        .map(|(permission, closure)| {
             (
-                extension_id.clone(),
-                blocked(std::slice::from_ref(extension_id), &[]),
+                permission.permission_id.clone(),
+                !prepared.blocked_by(closure),
             )
         })
+        .collect();
+    let extension_blocked = extension_closures
+        .iter()
+        .map(|(extension_id, closure)| (extension_id.clone(), prepared.blocked_by(closure)))
         .collect();
     Ok(Effective {
         global_lockdown: compose_control_layers(&typed).global_lockdown,

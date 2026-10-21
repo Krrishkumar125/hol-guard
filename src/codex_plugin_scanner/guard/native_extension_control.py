@@ -40,6 +40,10 @@ if TYPE_CHECKING:
 
 EXTENSION_CONTROL_FEATURE: Final = "extension-control-v1"
 _TIMEOUT_SECONDS: Final = 5.0
+# The resident client clamps a deadline to a per-operation ceiling
+# (``EXTENSION_CONTROL_TIMEOUT_CEILING_MS`` in ``managed_resident_client_timeout.rs``)
+# and the daemon client waits ``_EXTENSION_MUTATION_REQUEST_TIMEOUT_S`` for the
+# whole call; raising this raises both.
 _PREVIEW_TIMEOUT_SECONDS: Final = 15.0
 # The resident bounds one request to 4 MiB of canonical JSON, 4096 items and 64
 # scenarios; larger questions are split across requests below those bounds. The
@@ -52,6 +56,13 @@ _MAX_CONCURRENT_ASKS: Final = 4
 _SLOTS: Final = threading.BoundedSemaphore(_MAX_CONCURRENT_ASKS)
 _OPT_STR: Final = (str, type(None))
 _OPT_BOOL: Final = (bool, type(None))
+
+
+# Refusals of a preview too costly for one answer: the work bound and the reply
+# bound. They name the request, not a broken runtime, so callers report a limit.
+PREVIEW_LIMIT_CODES: Final = frozenset(
+    {"native_extension_control_too_many_items", "native_extension_control_reply_too_large"}
+)
 
 
 class NativeExtensionControlError(RuntimeError):

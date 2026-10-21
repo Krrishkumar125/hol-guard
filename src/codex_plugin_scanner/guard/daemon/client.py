@@ -127,6 +127,12 @@ class GuardDaemonResponseSchemaError(GuardDaemonRequestError):
 
 
 _DEFAULT_REQUEST_TIMEOUT_S: float = 5.0
+# A preview resolves the semantic consequences in the resident, which is
+# granted fifteen seconds (``_PREVIEW_TIMEOUT_SECONDS`` in
+# ``native_extension_control``); applying a mutation recomputes that preview
+# before it writes. The daemon answers only when done, so the client waits
+# longer than the resident does, with room for the write.
+_EXTENSION_MUTATION_REQUEST_TIMEOUT_S: float = 30.0
 _STATUS_REQUEST_TIMEOUT_S: float = 0.25
 _MAX_GET_RESPONSE_BYTES: int = MAX_DAEMON_GET_RESPONSE_BYTES
 
@@ -255,13 +261,13 @@ class GuardSurfaceDaemonClient:
         return self._post("/v1/extension-controls/acknowledge-degraded", payload)
 
     def preview_extension_controls(self, payload: dict[str, object]) -> dict[str, object]:
-        return self._post("/v1/extension-controls/preview", payload)
+        return self._post("/v1/extension-controls/preview", payload, timeout=_EXTENSION_MUTATION_REQUEST_TIMEOUT_S)
 
     def inspect_command(self, payload: dict[str, object]) -> dict[str, object]:
         return self._post("/v1/extension-controls/inspect", payload)
 
     def apply_extension_controls(self, payload: dict[str, object]) -> dict[str, object]:
-        return self._post("/v1/extension-controls/apply", payload)
+        return self._post("/v1/extension-controls/apply", payload, timeout=_EXTENSION_MUTATION_REQUEST_TIMEOUT_S)
 
     def containment_health(self) -> dict[str, object]:
         response = self._get("/v1/runtime/containment-health", timeout=5.0)
