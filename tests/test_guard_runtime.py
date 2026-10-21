@@ -95,6 +95,7 @@ from codex_plugin_scanner.guard.store import (
 )
 from codex_plugin_scanner.guard.synced_policy import synced_policy_payload
 from tests.guard_signed_approval_fixtures import write_synthetic_daemon_auth_token
+from tests.native_permission_plan_stub import answer_persist_plans
 from tests.policy_bundle_signing_helpers import (
     policy_bundle_test_keyring,
     policy_bundle_test_verification_key,
@@ -9991,7 +9992,8 @@ def test_guard_hook_claude_signed_unseen_pending_cannot_bootstrap_allow(tmp_path
     )
 
 
-def test_guard_hook_claude_native_allow_preserves_authoritative_warn_inventory(tmp_path):
+def test_guard_hook_claude_native_allow_preserves_authoritative_warn_inventory(tmp_path, monkeypatch):
+    asked = answer_persist_plans(monkeypatch)
     store = GuardStore(tmp_path / "home")
     session_id = "session-claude-native-allow-authoritative-warn"
     artifact = GuardArtifact(
@@ -10030,12 +10032,15 @@ def test_guard_hook_claude_native_allow_preserves_authoritative_warn_inventory(t
     )
 
     inventory = store.find_inventory_item(artifact.artifact_id)
+    assert [query["authoritative_action"] for query in asked] == ["warn"]
     assert observed is True
     assert saved is False
     assert store.list_policy_decisions("claude-code") == []
     assert inventory is not None
     assert inventory["last_policy_action"] == "warn"
     assert isinstance(inventory["last_approved_at"], str)
+    retained = store.list_events(event_name="claude/native_permission_current_policy_retained")
+    assert len(retained) == 1
 
 
 def test_guard_hook_claude_ask_user_question_unsigned_legacy_pending_state_cannot_persist_decision(tmp_path):
