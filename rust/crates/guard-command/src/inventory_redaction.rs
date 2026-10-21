@@ -323,7 +323,7 @@ pub fn redact_headers(header_names: &[String]) -> Vec<(String, String)> {
         if redacted.iter().any(|(seen, _)| *seen == key) {
             continue;
         }
-        let presence = if SENSITIVE_KEY_RE.is_match(name) {
+        let presence = if matches_sensitive_key(name) {
             "present_redacted"
         } else {
             "present"
@@ -361,7 +361,7 @@ pub fn redact_url(value: &str) -> String {
         parse_qsl_keep_blank(&parsed.query.replace(';', "&"))
             .into_iter()
             .map(|(key, item)| {
-                let item = if SENSITIVE_KEY_RE.is_match(&key) {
+                let item = if matches_sensitive_key(&key) {
                     "redacted".to_string()
                 } else {
                     item

@@ -194,6 +194,22 @@
     "api-key",
     "api_key"
    ]
+  },
+  {
+   "expected": [
+    [
+     "x-credentıal",
+     "present_redacted"
+    ],
+    [
+     "x-tıken",
+     "present"
+    ]
+   ],
+   "names": [
+    "X-Credentıal",
+    "X-Tıken"
+   ]
   }
  ],
  "redact_url": [
@@ -224,6 +240,14 @@
   {
    "expected": "https://example.test/path?blank=&novalue=&=orphan",
    "url": "https://example.test/path?blank=&novalue&=orphan"
+  },
+  {
+   "expected": "https://example.test/path?credent%C4%B1al=redacted",
+   "url": "https://example.test/path?credent%C4%B1al=hunter2"
+  },
+  {
+   "expected": "https://example.test/path?t%C4%B1ken=hunter2",
+   "url": "https://example.test/path?t%C4%B1ken=hunter2"
   },
   {
    "expected": "https://example.test/path?name=a+b%2Bc",
@@ -292,6 +316,14 @@
   {
    "expected": "https://example.test/sp ace?token=redacted",
    "url": "https://example.test/sp ace?token=x"
+  },
+  {
+   "expected": "https:////double-slash-path?token=redacted",
+   "url": "https:////double-slash-path?token=x"
+  },
+  {
+   "expected": "https:relative-path?token=redacted",
+   "url": "https:relative-path?token=x"
   },
   {
    "expected": "",
@@ -706,6 +738,42 @@
    "query": "",
    "scheme": "https",
    "url": "https:///empty-netloc"
+  },
+  {
+   "error": false,
+   "fragment": "",
+   "hostname": null,
+   "netloc": "",
+   "path": "//double-slash-path",
+   "port": null,
+   "port_error": false,
+   "query": "",
+   "scheme": "https",
+   "url": "https:////double-slash-path"
+  },
+  {
+   "error": false,
+   "fragment": "",
+   "hostname": null,
+   "netloc": "",
+   "path": "relative-path",
+   "port": null,
+   "port_error": false,
+   "query": "",
+   "scheme": "https",
+   "url": "https:relative-path"
+  },
+  {
+   "error": false,
+   "fragment": "",
+   "hostname": null,
+   "netloc": "",
+   "path": "",
+   "port": null,
+   "port_error": false,
+   "query": "",
+   "scheme": "https",
+   "url": "https:"
   }
  ]
 }

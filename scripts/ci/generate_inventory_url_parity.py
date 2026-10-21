@@ -77,6 +77,11 @@ SPLIT_URLS: list[str] = [
     "",
     "https://",
     "https:///empty-netloc",
+    # `urlunsplit` rebuilds an empty netloc differently across CPython patch
+    # releases; these pin the behaviour of the version CI runs.
+    "https:////double-slash-path",
+    "https:relative-path",
+    "https:",
 ]
 
 REDACT_URLS: list[str] = [
@@ -87,6 +92,9 @@ REDACT_URLS: list[str] = [
     "https://user:hunter2@example.test/path",
     "https://example.test:8443/path?a=1;b=2",
     "https://example.test/path?blank=&novalue&=orphan",
+    # CPython `re.IGNORECASE` folds U+0131 onto `i`, so this key is sensitive.
+    "https://example.test/path?credent%C4%B1al=hunter2",
+    "https://example.test/path?t%C4%B1ken=hunter2",
     "https://example.test/path?name=a%20b%2Bc",
     "https://example.test/path?name=%C3%A9caf%C3%A9",
     "https://example.test/path?name=%C3é",
@@ -104,6 +112,10 @@ REDACT_URLS: list[str] = [
     "//example.test/scheme-relative?token=x",
     "https://example.test/path#frag?not-a-query",
     "https://example.test/sp ace?token=x",
+    # `redact_url` rebuilds through `urlunsplit`, whose empty-netloc rules
+    # changed across CPython patch releases; pin the version CI runs.
+    "https:////double-slash-path?token=x",
+    "https:relative-path?token=x",
     "",
 ]
 
@@ -139,6 +151,7 @@ HEADER_NAMES: list[list[str]] = [
     ["Authorization", "authorization"],
     ["X-Auth-Token", "x-bearer", "x-password", "x-credential", "x-secret"],
     ["apiXkey", "api-key", "api_key"],
+    ["X-Credent\u0131al", "X-T\u0131ken"],
 ]
 
 
