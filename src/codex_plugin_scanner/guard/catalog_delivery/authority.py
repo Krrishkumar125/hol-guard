@@ -95,12 +95,14 @@ def _native(operation, **fields):
     try:
         return lifecycle.invoke("distribution", operation=operation, **fields)
     except ValueError as error:
+        # A refusal judges the release data, so it drops the transport error:
+        # left in the chain, that error reads as a broken installed runtime.
         for code in re.findall(r"distribution_[a-z_]+", str(error)):
             reason = _REASONS.get(code)
             if code == "distribution_expired":
-                raise ExpiredDistributionError(reason) from error
+                raise ExpiredDistributionError(reason) from None
             if reason is not None:
-                raise ValueError(reason) from error
+                raise ValueError(reason) from None
         raise
 
 

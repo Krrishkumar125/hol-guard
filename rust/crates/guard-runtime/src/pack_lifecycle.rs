@@ -339,8 +339,11 @@ pub(super) fn evaluate(input: &Value) -> Result<Value, String> {
     }
 }
 
+/// The request is held to the stdin frame every runtime subcommand reads. Each
+/// operation bounds its own fields, and a signed provenance statement within
+/// its bound can grow past a smaller frame once its quotes are escaped.
 pub(super) fn run(bytes: &[u8]) -> Result<Value, String> {
-    if bytes.len() > 1024 * 1024 {
+    if bytes.len() > crate::MAX_NATIVE_REQUEST_BYTES {
         return Err("pack_lifecycle_request_too_large".into());
     }
     let input: Value = serde_json::from_slice(bytes).map_err(|_| "pack_lifecycle_invalid")?;

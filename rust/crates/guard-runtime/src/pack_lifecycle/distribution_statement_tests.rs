@@ -180,3 +180,19 @@ fn a_statement_payload_is_checked_before_it_is_parsed() {
     let bad = attest_text(&text, TYPE, SUBJECT, "short");
     assert_eq!(bad, Err("distribution_request_invalid".into()));
 }
+
+#[test]
+fn an_escape_heavy_statement_within_its_bound_reaches_the_validator() {
+    // Every quote and backslash doubles when the request is encoded.
+    let payload = format!("\"{}\"", "\\\"".repeat(300 * 1024));
+    let request = json!({
+        "kind": "distribution", "operation": "provenance-statement", "content_type": TYPE,
+        "payload": payload, "subject": SUBJECT, "digest": DIGEST, "source": SOURCE,
+    })
+    .to_string();
+    assert!(payload.len() < 1024 * 1024 && request.len() > 1024 * 1024);
+    assert_eq!(
+        crate::pack_lifecycle::run(request.as_bytes()),
+        Err("distribution_statement_type_invalid".into())
+    );
+}
