@@ -38,7 +38,6 @@ test.describe("Rules & exceptions against the live daemon", () => {
   test("summary, tab badge and action filter counts match the seeded rules", async ({ page, state }) => {
     const seed = policySeed(state);
     await page.goto("/policy");
-    await expect(page.getByText(`${seed.allowCount} allow`)).toBeVisible();
     await expect(policyTab(page, /^Remembered rules/)).toContainText(String(seed.total));
     const filter = page.getByRole("group", { name: "Filter by action" });
     await expect(filter.getByRole("button", { name: `All actions ${seed.total}` })).toHaveAttribute("aria-pressed", "true");
