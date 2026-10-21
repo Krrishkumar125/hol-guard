@@ -191,6 +191,27 @@ def test_cached_transfer_refused_again_after_refetch_publishes_nothing(tmp_path,
     assert published(directory) == []
 
 
+def test_unavailable_runtime_keeps_the_cached_transfer(tmp_path):
+    data = malformed("valid")
+    directory = tmp_path / "cache"
+    digest = hashlib.sha256(data).hexdigest()
+    cached = directory / "archives" / (digest + ".zip")
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(data)
+
+    def fetch(*_):
+        raise AssertionError("fetched while the runtime was unavailable")
+
+    def unavailable(*_, **__):
+        raise ValueError("native_pack_lifecycle_unavailable: source compiler timed out")
+
+    reference = {"sha256": digest, "length": len(data), "location": "synthetic-archive"}
+    with pytest.raises(ValueError, match="native_pack_lifecycle_unavailable"):
+        cache_io.stage_archive(directory, reference, fetch, invoke=unavailable)
+    assert cached.read_bytes() == data
+    assert not (directory / "objects").exists()
+
+
 @pytest.mark.parametrize(
     "reference", [{"sha256": "../" + "0" * 61, "length": 1}, {"sha256": "0" * 64, "length": 32 * 1024 * 1024 + 1}]
 )

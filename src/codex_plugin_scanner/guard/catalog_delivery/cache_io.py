@@ -114,9 +114,12 @@ def stage_archive(directory, reference, fetch, *, invoke=None, objects=None):
     else:
         try:
             admitted = admit()
-        except ValueError:
-            # A cached transfer native refuses is discarded and fetched once
-            # more, so one damaged file cannot fail every later refresh.
+        except ValueError as error:
+            # Only a cached transfer native refuses is discarded and fetched
+            # once more, so one damaged file cannot fail every later refresh.
+            # An unavailable runtime says nothing about the bytes; the entry stays.
+            if "offline_pack_invalid" not in str(error):
+                raise
             path.unlink(missing_ok=True)
             transfer()
             admitted = admit()
