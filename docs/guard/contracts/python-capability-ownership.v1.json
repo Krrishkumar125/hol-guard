@@ -1370,6 +1370,21 @@
    "native_replacements": [],
    "retirement": "dead_code",
    "removal_reason": "Resource budget and applied-control evidence scaffolding for an isolated-execution path that was never wired up."
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/data_flow.py",
+   "module": "codex_plugin_scanner.guard.runtime.data_flow",
+   "source_sha256": "35368cd7d9b631b1f23d61b822b39b6198e7631c1fc78eb553aba44a17192be4",
+   "forbidden_symbols": [
+    "ShellPipe",
+    "extract_command_segments",
+    "extract_input_redirects",
+    "extract_pipes"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/data_flow.rs",
+    "rust/crates/guard-runtime/src/shell_helpers_op.rs"
+   ]
   }
  ],
  "retired_test_paths": [
