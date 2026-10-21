@@ -19,7 +19,8 @@
 //! the two platforms diverged: the drive-absolute proof canonicalizes its
 //! target, which cannot succeed for a name that does not exist, so every
 //! missing-directory route was reviewed there while unix allowed it. Only
-//! the cases that need a symlink or a unix device stay unix-only.
+//! the cases that need a symlink, a unix device or the unix owned temporary
+//! root stay unix-only.
 
 use std::path::{Path, PathBuf};
 
@@ -86,16 +87,21 @@ fn git_read_routed_to_a_directory_without_a_repository_is_allowed() {
     let workspace = directory(&scratch.root, "home/Code/app-portal");
     repository(&workspace);
     let plain = directory(&scratch.root, "home/Code/scratch-notes");
-    // A plain directory below the shared temporary root, where agents leave
-    // scratch work: owned by the home owner and writable by no one else.
-    let temporary = directory(&scratch.root, "probe-notes");
     for command in [
         format!("git -C {} status --short", fixture::shell_word(&plain)),
         format!("git -C {} status", fixture::shell_word(&plain)),
         format!("git -C {} log --oneline -3", fixture::shell_word(&plain)),
-        format!("git -C {} status --short", fixture::shell_word(&temporary)),
         "git -C ~/Code/scratch-notes diff --stat".to_owned(),
     ] {
+        assert_decision(&workspace, &home, &command, true);
+    }
+    // A plain directory below the shared temporary root, where agents leave
+    // scratch work: owned by the home owner and writable by no one else.
+    // Only unix recognizes that root as owned, so Windows keeps its review.
+    #[cfg(unix)]
+    {
+        let temporary = directory(&scratch.root, "probe-notes");
+        let command = format!("git -C {} status --short", fixture::shell_word(&temporary));
         assert_decision(&workspace, &home, &command, true);
     }
 }
