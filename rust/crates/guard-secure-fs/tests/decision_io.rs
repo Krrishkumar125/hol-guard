@@ -232,6 +232,23 @@ fn a_workspace_spelled_through_a_linked_ancestor_still_classifies_its_own_source
         "symlink_in_path"
     );
 
+    // A target outside `SENSITIVE_SEARCH_BASENAMES` is refused on the same
+    // rule. The in-workspace screens never see it, so the link check is what
+    // keeps a credential file from arriving under a source-shaped name.
+    fs::write(workspace.join("src/deploy.key"), "SYNTHETIC_FIXTURE\n").unwrap();
+    let planted_family = workspace.join("src/config.ts");
+    std::os::unix::fs::symlink(workspace.join("src/deploy.key"), &planted_family).unwrap();
+    assert_eq!(
+        classify_source_path(
+            linked_workspace.join("src/config.ts").to_str().unwrap(),
+            &linked_workspace,
+            Some(&home),
+            false,
+        )
+        .reason_code,
+        "symlink_in_path"
+    );
+
     // Even when the link resolves to ordinary source inside the workspace.
     let benign_link = workspace.join("src/alias.ts");
     std::os::unix::fs::symlink(workspace.join("src/index.ts"), &benign_link).unwrap();

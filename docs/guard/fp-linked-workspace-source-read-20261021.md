@@ -50,16 +50,25 @@ directory's spelling.
 
 ## The fix
 
-Canonicalize first and refuse a traversed link only when the resolved target
-leaves the canonicalized workspace. The containment comparison on the canonical
-path is the authoritative escape check, and it is what the read then opens:
-`read_bounded` is given `resolved_path`, the canonical leaf, so relaxing the
-order introduces no time-of-check gap.
+Canonicalize first, then decide which ancestry the link belongs to. The
+workspace root's own ancestry belongs to the host: macOS resolves `/tmp` to
+`/private/tmp`, and a linked home, `/var` or `/Volumes` behaves the same way,
+so refusing on those denied every read in an ordinary checkout. The root is
+taken as the shortest ancestor that canonicalizes to the workspace, which is
+what admits that host spelling.
 
-A link that stays inside the workspace keeps its screen. The in-workspace
-branch already derives its parts from `candidate.strip_prefix(&workspace)`, so
-a link planted in the tree that points at `.env`, `.git` or any other sensitive
-family is refused on the resolved path.
+Everything below that root is unchanged: `link_below_workspace` walks each
+component under the root and refuses on the first link it finds, whatever the
+link resolves to. A planted `src/settings.ts -> .env` is denied, and so is a
+planted `src/alias.ts -> src/index.ts` that resolves to ordinary source. An
+internal link is not a supported read. The rule is deliberately about the link
+itself rather than its target, because the target is what a planted link gets
+to choose.
+
+The containment comparison on the canonical path remains the authoritative
+escape check, and it is what the read then opens: `read_bounded` is given
+`resolved_path`, the canonical leaf, so canonicalizing first introduces no
+time-of-check gap.
 
 `review_source` also reported an exhausted scan budget as `no_output_to_review`
 while `review_inline` reported `scanner_budget_exhausted` for the same
