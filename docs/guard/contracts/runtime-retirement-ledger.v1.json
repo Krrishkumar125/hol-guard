@@ -84,6 +84,8 @@
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_bridge_failure_reason.py",
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_start_wait.py",
   "src/codex_plugin_scanner/guard/runtime/npm_source_spec.py",
+  "src/codex_plugin_scanner/guard/runtime/github_pr_body_file.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_body_safety.py",
   "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py"
  ],
  "retired_tests": [
@@ -6552,6 +6554,83 @@
    ],
    "status": "obsolete_implementation_assertion",
    "rationale": "Resolved the output filter programs in Python; the resident resolves them in the same op as the npm proof."
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_accepts_bounded_owner_controlled_markdown",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::bounded_owner_controlled_markdown_is_accepted_for_both_line_endings"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_accepts_canonical_markdown_name",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::canonical_pr_body_names_are_accepted_and_other_markdown_is_not"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_arbitrary_markdown_name",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::canonical_pr_body_names_are_accepted_and_other_markdown_is_not"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_pr_body_marker_only_as_suffix",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::canonical_pr_body_names_are_accepted_and_other_markdown_is_not"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_accepts_named_body_in_user_cascade_projects",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_named_body_under_cascade_projects_is_authored_outside_the_working_tree"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_oversized_markdown",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::oversized_empty_and_sensitive_bodies_are_refused"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_sensitive_path",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::oversized_empty_and_sensitive_bodies_are_refused"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_padded_operand",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_padded_or_symlinked_operand_never_resolves"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_group_or_world_writable_file",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_shared_body_or_a_shared_parent_directory_is_refused"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_writable_intermediate_directory",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_shared_body_or_a_shared_parent_directory_is_refused"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_windows_body_file_reader_binds_locked_path_and_descriptor_identity",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::existing_locked_service_preserves_static_body_files_and_rejects_aliases"
+   ],
+   "status": "native_behavior_ported_requires_ci"
   },
   {
    "old_node": "tests/test_native_command_options.py::test_public_option_helpers_replay_native_original_vectors",
