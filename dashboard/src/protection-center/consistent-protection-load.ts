@@ -8,11 +8,15 @@ export const PROTECTION_DATA_UNSETTLED_MESSAGE =
   "Guard is still settling a protection update, so a few extensions may read as out of date and changes cannot be saved yet. Reload this page in a few seconds.";
 
 // Shown beside the extension list, never in place of it. The daemon failed to
-// prepare its verified catalog, so the page is reading the catalog the daemon
-// already holds. Every extension is listed and every policy change still saves,
-// so this says what is reduced without taking the page away.
+// prepare its verified catalog, so the page reads the catalog the daemon
+// already holds. That list is whatever registry the daemon bound at startup,
+// which a failed installed-authority migration can leave short of a rebuilt
+// one, and the preview a save depends on prepares from the same installed
+// bundle, so it can still be refused. The notice therefore says what is
+// reduced and promises neither completeness nor a successful save; it keeps
+// the page in reach instead of taking it away.
 export const CATALOG_PREPARATION_DEGRADED_MESSAGE =
-  "Guard could not rebuild its extension list, so this page is showing the list Guard already had. Every extension is here and your policy changes still save. Updating HOL Guard restores the rebuilt list; Guard writes the reason to its log at ~/.hol-guard/logs/daemon.log.";
+  "Guard could not rebuild its extension list, so this page is showing the list Guard already had. It may not have every extension, and a policy change can still be refused until Guard rebuilds. Updating HOL Guard restores the rebuilt list; Guard writes the reason to its log at ~/.hol-guard/logs/daemon.log.";
 
 export const PROTECTION_SAVE_UNSETTLED_MESSAGE =
   "Guard could not save this protection change, so your current protection is unchanged. Guard is still settling a protection update; reload this page in a few seconds, then make the change again.";
@@ -22,6 +26,25 @@ export const PROTECTION_SAVE_UNSETTLED_MESSAGE =
 // transition moves them one at a time, and the daemon converges on its next
 // control refresh (every 5 s). Retry across that window before showing the
 // list as unsettled.
+// A refresh keeps the model it already rendered only when the fresh read
+// describes the same catalog in the same way: same digest, same protocol, and
+// the same degraded mode. Recovery from a degraded read can land the identical
+// digest and protocol, so leaving `degraded` out of this comparison keeps the
+// earlier model and with it a notice that no longer describes the page.
+export function reusableCatalogModel<
+  C extends { readonly catalog_digest: string; readonly protocol: string; readonly degraded?: string },
+>(previous: C | null | undefined, fresh: C): C {
+  if (
+    previous &&
+    previous.catalog_digest === fresh.catalog_digest &&
+    previous.protocol === fresh.protocol &&
+    previous.degraded === fresh.degraded
+  ) {
+    return previous;
+  }
+  return fresh;
+}
+
 export const CONSISTENT_LOAD_RETRY_DELAYS_MS: readonly number[] = [250, 1000, 2000, 4000];
 
 type Digested = { readonly catalog_digest: string };

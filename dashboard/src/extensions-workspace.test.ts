@@ -464,6 +464,11 @@ assert.match(
 assert.match(workspaceHostSource, /CATALOG_PREPARATION_DEGRADED_MESSAGE/);
 assert.match(
   workspaceHostSource,
+  /const catalog = reusableCatalogModel\(previous, fresh\);/,
+  "model reuse compares the degraded mode too, so the notice cannot outlive the failure",
+);
+assert.match(
+  workspaceHostSource,
   /const catalogDegraded = state\.kind === "ready" && state\.catalog\.degraded === CATALOG_PREPARATION_FAILED;/,
   "the notice is derived from a ready state, so it can never stand in for the list",
 );

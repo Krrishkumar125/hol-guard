@@ -6,6 +6,7 @@ import {
   PROTECTION_DATA_UNSETTLED_MESSAGE,
   PROTECTION_SAVE_UNSETTLED_MESSAGE,
   loadConsistentProtectionData,
+  reusableCatalogModel,
 } from "./consistent-protection-load";
 
 const sequence = (...digests: string[]) => {
@@ -132,10 +133,45 @@ assert.ok(!/stays safe/.test(PROTECTION_DATA_UNSETTLED_MESSAGE));
 assert.match(PROTECTION_SAVE_UNSETTLED_MESSAGE, /current protection is unchanged/);
 assert.match(PROTECTION_SAVE_UNSETTLED_MESSAGE, /reload this page in a few seconds/);
 
-// The legacy catalog the page falls back to accepts policy edits, so this
-// notice must say the list is complete and saving still works, and must not
-// read as a protection failure the reader has to clear before continuing.
-assert.match(CATALOG_PREPARATION_DEGRADED_MESSAGE, /Every extension is here/);
-assert.match(CATALOG_PREPARATION_DEGRADED_MESSAGE, /your policy changes still save/);
-assert.ok(!/cannot be saved/.test(CATALOG_PREPARATION_DEGRADED_MESSAGE));
+// The fallback read comes from whatever registry the daemon bound, and the
+// preview a save depends on prepares from the same installed bundle that just
+// failed, so this notice must promise neither a complete list nor a successful
+// save. It must still read as a reduction rather than a protection failure the
+// reader has to clear before continuing.
+assert.match(CATALOG_PREPARATION_DEGRADED_MESSAGE, /the list Guard already had/);
+assert.match(CATALOG_PREPARATION_DEGRADED_MESSAGE, /may not have every extension/);
+assert.match(CATALOG_PREPARATION_DEGRADED_MESSAGE, /can still be refused/);
+assert.ok(!/Every extension is here/.test(CATALOG_PREPARATION_DEGRADED_MESSAGE));
+assert.ok(!/policy changes still save/.test(CATALOG_PREPARATION_DEGRADED_MESSAGE));
 assert.ok(!/protection (is off|has stopped)/.test(CATALOG_PREPARATION_DEGRADED_MESSAGE));
+
+// A degraded read and the rebuilt read that recovers from it can carry the same
+// catalog digest, because the daemon serves the same registry either way. The
+// refresh must take the fresh model then, or the notice outlives the failure.
+const degradedModel = { catalog_digest: "same-digest", protocol: "v1", degraded: "catalog_read_preparation_failed" };
+const recoveredModel = { catalog_digest: "same-digest", protocol: "v1", degraded: undefined };
+assert.equal(
+  reusableCatalogModel(degradedModel, recoveredModel),
+  recoveredModel,
+  "a same-digest refresh that is no longer degraded must replace the degraded model",
+);
+assert.equal(
+  reusableCatalogModel(recoveredModel, degradedModel),
+  degradedModel,
+  "a same-digest refresh that has become degraded must replace the healthy model",
+);
+assert.equal(
+  reusableCatalogModel(degradedModel, { ...degradedModel }),
+  degradedModel,
+  "an unchanged degraded read keeps its model, and with it the details already loaded",
+);
+assert.equal(
+  reusableCatalogModel(recoveredModel, { ...recoveredModel }),
+  recoveredModel,
+  "an unchanged healthy read keeps its model",
+);
+assert.notEqual(
+  reusableCatalogModel(recoveredModel, { ...recoveredModel, catalog_digest: "next-digest" }),
+  recoveredModel,
+  "a changed digest always takes the fresh model",
+);

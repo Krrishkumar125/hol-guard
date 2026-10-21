@@ -6067,8 +6067,14 @@ function CatalogExtensionDetail(props) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(ProtectionModuleDetail, { ...detailProps, extension: state.extension });
 }
 const PROTECTION_DATA_UNSETTLED_MESSAGE = "Guard is still settling a protection update, so a few extensions may read as out of date and changes cannot be saved yet. Reload this page in a few seconds.";
-const CATALOG_PREPARATION_DEGRADED_MESSAGE = "Guard could not rebuild its extension list, so this page is showing the list Guard already had. Every extension is here and your policy changes still save. Updating HOL Guard restores the rebuilt list; Guard writes the reason to its log at ~/.hol-guard/logs/daemon.log.";
+const CATALOG_PREPARATION_DEGRADED_MESSAGE = "Guard could not rebuild its extension list, so this page is showing the list Guard already had. It may not have every extension, and a policy change can still be refused until Guard rebuilds. Updating HOL Guard restores the rebuilt list; Guard writes the reason to its log at ~/.hol-guard/logs/daemon.log.";
 const PROTECTION_SAVE_UNSETTLED_MESSAGE = "Guard could not save this protection change, so your current protection is unchanged. Guard is still settling a protection update; reload this page in a few seconds, then make the change again.";
+function reusableCatalogModel(previous, fresh) {
+  if (previous && previous.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol && previous.degraded === fresh.degraded) {
+    return previous;
+  }
+  return fresh;
+}
 const CONSISTENT_LOAD_RETRY_DELAYS_MS = [250, 1e3, 2e3, 4e3];
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function loadConsistentProtectionData(loadCatalog, loadEffective, options = {}) {
@@ -9578,7 +9584,7 @@ function ProtectionCenterWorkspace(props) {
       try {
         const { catalog: fresh, effective, consistent } = await loadConsistentProtectionData(loadCatalogReadModel, fetchEffectiveExtensionControls);
         const previous = catalogRef.current;
-        const catalog = previous?.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol ? previous : fresh;
+        const catalog = reusableCatalogModel(previous, fresh);
         catalogRef.current = catalog;
         unsettledRef.current = !consistent;
         setState({ kind: "ready", catalog, effective, unsettled: !consistent });

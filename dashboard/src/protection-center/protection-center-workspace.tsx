@@ -21,7 +21,7 @@ import {
 } from "../extension-controls-api";
 import { CATALOG_PREPARATION_FAILED, loadCatalogReadModel, type CatalogReadModel } from "../extension-catalog-v2";
 import { CatalogExtensionDetail } from "./catalog-extension-detail";
-import { CATALOG_PREPARATION_DEGRADED_MESSAGE, PROTECTION_DATA_UNSETTLED_MESSAGE, PROTECTION_SAVE_UNSETTLED_MESSAGE, loadConsistentProtectionData } from "./consistent-protection-load";
+import { CATALOG_PREPARATION_DEGRADED_MESSAGE, PROTECTION_DATA_UNSETTLED_MESSAGE, PROTECTION_SAVE_UNSETTLED_MESSAGE, loadConsistentProtectionData, reusableCatalogModel } from "./consistent-protection-load";
 import { buildExtensionMutation, randomToken } from "./extension-mutation";
 
 export { buildExtensionMutation };
@@ -126,7 +126,7 @@ export function ProtectionCenterWorkspace(props: {
         const { catalog: fresh, effective, consistent } = await loadConsistentProtectionData(loadCatalogReadModel, fetchEffectiveExtensionControls);
         // An unchanged catalog keeps its model (and loaded details); effective state always refreshes.
         const previous = catalogRef.current;
-        const catalog = previous?.catalog_digest === fresh.catalog_digest && previous.protocol === fresh.protocol ? previous : fresh;
+        const catalog = reusableCatalogModel(previous, fresh);
         catalogRef.current = catalog;
         // A pair that never agreed still renders. The daemon refuses a mutation
         // carrying the wrong catalog digest, so the list is shown with a notice

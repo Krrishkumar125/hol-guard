@@ -403,7 +403,7 @@ test("a daemon that cannot prepare its catalog still lists extensions and edits 
   await expect(page.getByRole("heading", { name: "Extensions", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Extensions unavailable" })).toHaveCount(0);
   await expect(page.getByTestId("catalog-preparation-degraded")).toBeVisible();
-  await expect(page.getByTestId("catalog-preparation-degraded")).toContainText("your policy changes still save");
+  await expect(page.getByTestId("catalog-preparation-degraded")).toContainText("the list Guard already had");
 
   await page.getByRole("button", { name: /^Git/ }).click();
   await expect(page.getByTestId("protection-module-detail")).toBeVisible();
