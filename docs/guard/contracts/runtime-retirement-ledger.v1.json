@@ -94,6 +94,7 @@
   "src/codex_plugin_scanner/guard/runtime/network_public_suffix.py",
   "src/codex_plugin_scanner/guard/runtime/remote_approval_execution.py",
   "src/codex_plugin_scanner/guard/runtime/resource_budget.py",
+  "src/codex_plugin_scanner/guard/runtime/node_semver.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
@@ -6684,6 +6685,15 @@
     "rust/crates/guard-command/src/workspace_path_guard_tests.rs::a_symlink_out_of_the_workspace_resolves_to_nothing"
    ],
    "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_node_semver.py::test_node_semver_spec_matches_conservative_subset",
+   "source_sha256": "4f4c9dd349343eee71164b607ec2072d19dd01935f991163e2a0a4841bedfcbe",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_semver_tests.rs::semver_matches_only_the_provable_subset"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The whole parametrized table moved to the Rust owner, case for case, including the four pairs the recorded parity fixture never carried: an exact-specifier mismatch, a zero-major caret with its minor pinned, a zero-major zero-minor caret at equality, and a prerelease mismatch."
   },
   {
    "old_node": "tests/test_guard_restricted_linux_elf.py::test_static_image_does_not_receive_an_unneeded_loader",
