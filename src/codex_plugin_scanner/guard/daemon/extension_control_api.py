@@ -171,7 +171,7 @@ class ExtensionControlApiService:
         snapshot = self._runtime.current() if not reread else self._live_snapshot(read_only=True)
         return effective_controls_payload(self._registry, snapshot, self._store)
 
-    def _live_snapshot(self, *, read_only: bool = False) -> ExtensionControlRuntimeSnapshot:
+    def _live_snapshot(self, *, read_only: bool = False, apply_locked: bool = False) -> ExtensionControlRuntimeSnapshot:
         """The snapshot a draft is built on, re-read from durable authority.
 
         The in-process snapshot only advances when this daemon commits, so a
@@ -196,6 +196,10 @@ class ExtensionControlApiService:
         `read_only` keeps the read on the shared lock and off the write path, so
         a caller that only renders the controls cannot settle a pending catalog
         migration on the operator's behalf.
+
+        `apply_locked` is for a caller that already holds the apply lock. That
+        lock is not reentrant, so taking it again here would deadlock the
+        apply that asked for the snapshot.
         """
 
         registry = self._registry
@@ -209,6 +213,8 @@ class ExtensionControlApiService:
                 current.managed_revision,
             ):
                 return current
+            if apply_locked:
+                return self._runtime.refresh(view)
             with self._apply_lock:
                 # The read above runs without the apply lock, so an apply or a
                 # daemon refresh can install a newer snapshot, or rebind this
@@ -483,7 +489,7 @@ class ExtensionControlApiService:
         if candidate is not None and expired((candidate,)):
             raise ExtensionControlApiError(409, "prepared_preview_expired")
         registry = self._registry if candidate is None else candidate.registry
-        current = self._live_snapshot(read_only=True)
+        current = self._live_snapshot(read_only=True, apply_locked=True)
         if candidate is not None and (
             current.managed_revision != candidate.managed_revision
             or tuple(layer for layer in current.layers if layer.kind is ControlLayerKind.SIGNED_CLOUD)

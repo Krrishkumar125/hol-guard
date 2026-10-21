@@ -8,6 +8,7 @@ has to keep the two bindings together on its own.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -304,3 +305,36 @@ def test_a_read_that_loses_the_race_serves_what_the_writer_installed(
     assert installed.revision == _REVISION + 2
     # The snapshot the writer installed is still current, so its rebind holds.
     assert api.rebind_registry(core, installed=installed) is True
+
+
+def test_an_apply_that_reads_a_newer_view_does_not_wait_on_its_own_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The apply path re-reads authority while it holds the apply lock.
+
+    The lock is not reentrant. When the durable view is newer than the runtime,
+    installing it must not try to take the lock the apply already holds, or the
+    apply waits on itself and the daemon stops answering extension mutations.
+    """
+
+    store = GuardStore(tmp_path / "guard-home")
+    core = BUILT_IN_COMMAND_EXTENSION_REGISTRY
+    runtime = ExtensionControlRuntime(_protected(core.catalog_digest))
+    api = ExtensionControlApiService(store=store, registry=core, runtime=runtime)
+    monkeypatch.setattr(
+        store,
+        "read_extension_control_authority_for_registry",
+        lambda registry, *, read_only=False: _protected(registry.catalog_digest, revision=_REVISION + 1),
+    )
+    result: list[ExtensionControlRuntimeSnapshot] = []
+
+    def read_under_the_apply_lock() -> None:
+        with api._apply_lock:
+            result.append(api._live_snapshot(read_only=True, apply_locked=True))
+
+    worker = threading.Thread(target=read_under_the_apply_lock, daemon=True)
+    worker.start()
+    worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert [snapshot.revision for snapshot in result] == [_REVISION + 1]
