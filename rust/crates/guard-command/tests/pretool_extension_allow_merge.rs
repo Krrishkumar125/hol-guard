@@ -116,8 +116,10 @@ fn observed(result: &guard_contracts::PreToolResultV1) -> String {
         .iter()
         .map(|observation| {
             format!(
-                "{}{:?}",
-                observation.rule_id, observation.uncertainty_reasons
+                "{}{:?}@{:?}",
+                observation.rule_id,
+                observation.uncertainty_reasons,
+                observation.effective_segment_indexes
             )
         })
         .collect();
@@ -126,14 +128,20 @@ fn observed(result: &guard_contracts::PreToolResultV1) -> String {
         .iter()
         .map(|observation| {
             format!(
-                "{}{:?}",
-                observation.permission_id, observation.uncertainty_reasons
+                "{}{:?}@{:?}",
+                observation.permission_id,
+                observation.uncertainty_reasons,
+                observation
+                    .matcher_evidence
+                    .iter()
+                    .map(|evidence| evidence.segment_index)
+                    .collect::<Vec<_>>()
             )
         })
         .collect();
     format!(
-        "rules {rules:?} permissions {permissions:?} error {:?}",
-        extensions.evaluation_error
+        "bounded {} sensitive {} rules {rules:?} permissions {permissions:?} error {:?}",
+        result.action.bounded, result.action.sensitive_target, extensions.evaluation_error
     )
 }
 
@@ -174,4 +182,96 @@ fn a_merge_without_an_allow_still_waits_for_review() {
             assert_ne!(result.decision, "allow", "{harness}: {command}");
         }
     }
+}
+
+/// The context an agent's hook stamps from a real shell: the session started
+/// in a directory that is not itself a checkout, `PATH` puts user-writable
+/// tool directories first, and the environment carries a GitHub token and a
+/// pager without `GIT_CONFIG_NOSYSTEM`.
+fn decide_in_session(
+    root: &Path,
+    cwd: &Path,
+    command: &str,
+    controls: &guard_command::native_command_controls::CompiledNativeCommandControls,
+    live_environment: bool,
+) -> guard_contracts::PreToolResultV1 {
+    use sha2::{Digest, Sha256};
+    let tools = root.join(".local/bin");
+    std::fs::create_dir_all(&tools).unwrap();
+    let path = format!("{}:{}", tools.display(), std::env::var("PATH").unwrap());
+    let home = root.to_str().unwrap().to_owned();
+    let mut environment = std::collections::BTreeMap::from([
+        ("PATH", path.clone()),
+        ("HOME", home.clone()),
+    ]);
+    if live_environment {
+        environment.insert("GITHUB_TOKEN", "redacted".to_owned());
+        environment.insert("PAGER", "less".to_owned());
+        environment.insert("TERM", "xterm-256color".to_owned());
+        environment.insert("SHELL", "/bin/zsh".to_owned());
+    } else {
+        environment.insert("GIT_CONFIG_NOSYSTEM", "1".to_owned());
+    }
+    let context = guard_contracts::GuardExecutionEnvironmentV1 {
+        path,
+        environment_names: environment.keys().map(|key| (*key).to_owned()).collect(),
+        environment_digest: hex::encode(Sha256::digest(
+            serde_json::to_vec(&environment).unwrap(),
+        )),
+        home: Some(home.clone()),
+        git_pager_disabled: false,
+        pager_disabled: live_environment,
+        xdg_config_home: None,
+        git_config_no_system: !live_environment,
+        library_search_paths: Default::default(),
+    };
+    guard_command::pretool::evaluate_pre_tool_envelope_with_execution_context(
+        "omp",
+        "PreToolUse",
+        &json!({"tool_name":"bash", "tool_input":{"command":command}}),
+        Some(controls),
+        None,
+        guard_command::pretool::PathContext {
+            home_dir: Some(&home),
+            cwd: cwd.to_str(),
+            cdpath_unset: false,
+            rustup_override_absent: false,
+            npm_config_inert: false,
+            pip_config_inert: false,
+            shell_home_matches: false,
+            ripgrep_config_absent: false,
+            psql_environment: Default::default(),
+        },
+        Some(&context),
+    )
+}
+
+#[test]
+fn an_allowed_merge_runs_from_a_session_outside_the_checkout() {
+    let (root, _cleanup) = checkout("session");
+    let workspace = root.join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let controls = every_permission("enabled");
+    let mut failures = Vec::new();
+    for (label, cwd, live) in [
+        ("checkout", root.join("project"), false),
+        ("checkout-live-env", root.join("project"), true),
+        ("workspace", workspace.clone(), false),
+        ("workspace-live-env", workspace.clone(), true),
+    ] {
+        for command in [
+            "gh pr merge 5410 --repo example-org/app-portal --squash --delete-branch=false",
+            "gh pr merge 12 --squash",
+        ] {
+            let result = decide_in_session(&root, &cwd, command, &controls, live);
+            if result.decision != "allow" {
+                failures.push(format!(
+                    "{label}: {command}: {} ({})",
+                    result.reason_code,
+                    observed(&result)
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
 }
