@@ -540,6 +540,52 @@
      "status": "available"
     }
    ]
+  },
+  {
+   "agent_type": "codex",
+   "digest": "2318daffdd38a41821dd569d733ff10c72e6e5cd4f8b6e716cd11cae96d647e9",
+   "findings": [
+    {
+     "artifact_id": "a1",
+     "check_id": "c1",
+     "confidence": "high",
+     "evidence": {},
+     "finding_id": "empty",
+     "severity": "low",
+     "source": "hol-detector",
+     "summary": "",
+     "title": "Title"
+    },
+    {
+     "artifact_id": "a1",
+     "check_id": "c1",
+     "confidence": "high",
+     "evidence": {},
+     "finding_id": "absent",
+     "severity": "low",
+     "source": "hol-detector",
+     "summary": null,
+     "title": "Title"
+    }
+   ],
+   "items": [],
+   "runtime_version": null,
+   "sources": [
+    {
+     "captured_at": "",
+     "detail": "",
+     "source_id": "empty",
+     "source_type": "config",
+     "status": "available"
+    },
+    {
+     "captured_at": null,
+     "detail": null,
+     "source_id": "absent",
+     "source_type": "config",
+     "status": "available"
+    }
+   ]
   }
  ],
  "stable_snapshot_value": [

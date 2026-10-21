@@ -203,6 +203,21 @@ SNAPSHOTS: tuple[dict[str, object], ...] = (
         "findings": (_finding(evidence={"generatedAt": "drop", "kept": 0.25}),),
         "sources": (_source(captured_at="2026-10-21T00:00:00Z", detail=None),),
     },
+    {
+        # `summary`/`detail`/`captured_at` are `str | None`, so an explicitly
+        # empty one hashes differently from an absent one.
+        "agent_type": "codex",
+        "runtime_version": None,
+        "items": (),
+        "findings": (
+            _finding(finding_id="empty", summary=""),
+            _finding(finding_id="absent", summary=None),
+        ),
+        "sources": (
+            _source(source_id="empty", captured_at="", detail=""),
+            _source(source_id="absent"),
+        ),
+    },
 )
 
 
