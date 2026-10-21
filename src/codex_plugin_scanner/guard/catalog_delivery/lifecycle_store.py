@@ -6,10 +6,10 @@ import contextlib
 import json
 import os
 import tempfile
+import time
 
 from ..native_command_control_authority_io import require_exclusive_command_control_mutation_lease
 from ..native_command_control_authority_store import _key
-from ..native_policy_snapshot_constants import NATIVE_RUNTIME_STATE_DIRECTORY
 from . import lifecycle
 
 PREFIX = "guard-command-pack-lifecycle"
@@ -17,6 +17,11 @@ STAMP = "guard-command-pack-lifecycle-enrolled"
 # A native request carries a bounded payload. Control history grows without
 # bound, so hand the native walk a file once the chain outgrows the request.
 LEGACY_HISTORY_INLINE_BYTES = 1024 * 1024
+SPILL_PREFIX = "legacy-history-"
+SPILL_SUFFIX = ".jsonl"
+# A spill lives for one native call. Anything older than this outlived the
+# process that wrote it, so no live migration can still be reading it.
+SPILL_ORPHAN_SECONDS = 60 * 60
 
 
 def _stamp(store):
@@ -109,9 +114,14 @@ def legacy_transport(store, connection=None):
     if sum(len(item["record"]) for item in history if item) <= LEGACY_HISTORY_INLINE_BYTES:
         yield evidence
         return
-    directory = store.guard_home / NATIVE_RUNTIME_STATE_DIRECTORY
-    directory.mkdir(parents=True, exist_ok=True)
-    handle, spilled = tempfile.mkstemp(prefix="legacy-history-", suffix=".jsonl", dir=directory)
+    from ..native_policy_snapshot_windows_support import _runtime_state_directory
+
+    # The runtime state directory is private state: provision it the way every
+    # other writer does, so a default umask cannot leave it world-readable and
+    # fail the authority reads this migration exists to restore.
+    directory = _runtime_state_directory(store.guard_home)
+    _discard_orphaned_spills(directory)
+    handle, spilled = tempfile.mkstemp(prefix=SPILL_PREFIX, suffix=SPILL_SUFFIX, dir=directory)
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             for item in history:
@@ -120,6 +130,24 @@ def legacy_transport(store, connection=None):
     finally:
         with contextlib.suppress(OSError):
             os.unlink(spilled)
+
+
+def _discard_orphaned_spills(directory):
+    """Drop chains a terminated process left behind.
+
+    The ordinary exit removes its own file, but a crash during migration
+    strands a full history, and interrupted retries accumulate copies of it.
+    Only files older than a call could possibly be are removed, so a migration
+    running in another process keeps the chain it is still streaming.
+    """
+    stale = time.time() - SPILL_ORPHAN_SECONDS
+    with contextlib.suppress(OSError):
+        for entry in os.scandir(directory):
+            if not entry.name.startswith(SPILL_PREFIX) or not entry.name.endswith(SPILL_SUFFIX):
+                continue
+            with contextlib.suppress(OSError):
+                if entry.is_file(follow_symlinks=False) and entry.stat(follow_symlinks=False).st_mtime < stale:
+                    os.unlink(entry.path)
 
 
 def legacy_evidence(store, connection=None):
