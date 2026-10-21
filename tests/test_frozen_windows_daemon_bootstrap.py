@@ -7,6 +7,7 @@ import os
 import subprocess
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -280,7 +281,7 @@ class _StateDirSampler:
 
     def __init__(self, guard_home: Path) -> None:
         self._runtime_dir = guard_home / "native-runtime"
-        self._events: list[str] = []
+        self._events: deque[str] = deque(maxlen=self._MAX_EVENTS)
         self._dropped = 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="resident-state-sampler", daemon=True)
@@ -311,9 +312,8 @@ class _StateDirSampler:
         return entries
 
     def _record(self, line: str) -> None:
-        if len(self._events) >= self._MAX_EVENTS:
-            self._dropped += 1
-            return
+        if len(self._events) == self._MAX_EVENTS:
+            self._dropped += 1  # the append below evicts the oldest event
         self._events.append(f"{_utc_clock(time.time())} {line}")
 
     def _run(self) -> None:
@@ -332,8 +332,8 @@ class _StateDirSampler:
             self._stop.wait(self._INTERVAL_SECONDS)
 
     def report(self) -> str:
-        dropped = f"\n({self._dropped} later events dropped)" if self._dropped else ""
-        return "--- native-runtime state timeline ---\n" + "\n".join(self._events) + dropped
+        dropped = f"({self._dropped} earlier events dropped)\n" if self._dropped else ""
+        return "--- native-runtime state timeline ---\n" + dropped + "\n".join(self._events)
 
 
 def _safe_read(path: Path) -> str:
