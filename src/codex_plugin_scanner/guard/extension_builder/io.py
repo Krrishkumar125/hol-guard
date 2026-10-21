@@ -36,14 +36,20 @@ def checked_path(path: Path, *, anchor: Path | None = None) -> Path:
     """Reject symlinks in every existing component without resolving through them.
 
     ``anchor`` names a root the installer or the operating system chose, not the
-    caller: the frozen bundle's extraction directory, or the directory the
-    package was installed into. Platforms put those roots behind symlinks we do
-    not control -- macOS resolves the per-user ``TMPDIR`` through ``/var``,
-    several Linux distributions symlink ``/tmp``, and a Windows profile can sit
-    behind a junction -- so refusing to read through the prefix refuses to read
-    the program's own data files. The anchor is resolved exactly once and every
-    component strictly below it is still rejected when it is a symlink, which is
-    the part an attacker who can write into the tree would have to plant.
+    caller: the frozen bundle's extraction directory, the directory the package
+    was installed into, or the directory above the Guard home. Platforms put
+    those roots behind symlinks we do not control -- macOS resolves the
+    per-user ``TMPDIR`` through ``/var``, several Linux distributions symlink
+    ``/tmp``, Fedora Silverblue reaches ``/home`` through a symlink to
+    ``var/home``, and a Windows profile can sit behind a directory symlink
+    (``mklink /D``) -- so refusing to read through the prefix refuses to read
+    the program's own data files. A Windows junction (``mklink /J``) is not one
+    of these cases: ``Path.is_symlink`` is measured False for a junction, so an
+    ancestor walk passes through it unchanged.
+
+    The anchor is resolved exactly once and every component strictly below it
+    is still rejected when it is a symlink, which is the part an attacker who
+    can write into the tree would have to plant.
     """
 
     absolute = path.absolute()
