@@ -75,12 +75,18 @@ def publish(directory, source, publication):
     verify_sources(Path(__file__).resolve().parents[1], source, generated=True)
     assets = publication_inventory(directory, verified, Path(__file__).resolve().parents[1])
     rows = read_plan(directory, assets, source, publication)
-    # Fail closed if the signed release evidence is absent before any upload.
-    # Content integrity is still authorized by the verified distribution root.
-    data_provenance = directory / "extension-data.intoto.jsonl"
-    data_provenance_spec = spec(data_provenance, MAX_PROVENANCE_BYTES)
-    if not data_provenance_spec["length"]:
-        raise ValueError("extension data provenance bundle is empty")
+    # Every release carries the signed distribution root, which already binds
+    # each data asset in it by digest. Reusing the attested root bundle keeps
+    # the published evidence verifiable under the authority subject bounds,
+    # the way the legacy compatibility release already reuses it.
+    anchor = {name: directory / name for name in (ROOT_ASSET, PROVENANCE_ASSET)}
+    anchor_specs = {
+        name: spec(path, MAX_PROVENANCE_BYTES if name == PROVENANCE_ASSET else 65536) for name, path in anchor.items()
+    }
+
+    def verify(bundle):
+        verify_distribution(data, bundle, expected_source_sha=source, now=int(time.time()))
+
     provider.verify_repository()
     pending = defaultdict(dict)
     for row in rows:
@@ -109,23 +115,16 @@ def publish(directory, source, publication):
             else:
                 provider.verify_asset(remote[name], row)
     for tag, expected in sorted(pending.items()):
+        if set(anchor) & set(expected):
+            raise ValueError("data release inventory collides with the distribution root")
         paths = {name: directory / "assets" / tag / name for name in expected}
-        proof_name = "extension-data.intoto.jsonl"
-        if proof_name in expected:
-            raise ValueError("extension data release already includes a provenance asset")
-        paths[proof_name] = data_provenance
-        expected = {**expected, proof_name: data_provenance_spec}
-        provider.publish_assets(tag, source, paths, expected)
+        provider.publish_assets(
+            tag, source, {**paths, **anchor}, {**expected, **anchor_specs}, verify_existing_provenance=verify
+        )
     publish_legacy(directory, root, source)
-    paths = {name: directory / name for name in (ROOT_ASSET, PROVENANCE_ASSET)}
-    expected = {
-        name: spec(path, MAX_PROVENANCE_BYTES if name == PROVENANCE_ASSET else 65536) for name, path in paths.items()
-    }
-
-    def verify(bundle):
-        verify_distribution(data, bundle, expected_source_sha=source, now=int(time.time()))
-
-    provider.publish_assets(root_tag(source, publication), source, paths, expected, verify_existing_provenance=verify)
+    provider.publish_assets(
+        root_tag(source, publication), source, anchor, anchor_specs, verify_existing_provenance=verify
+    )
     selected = select(
         {
             "schema": "guard.extension-distribution-selector.v2",
