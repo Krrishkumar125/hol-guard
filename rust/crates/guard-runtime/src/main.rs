@@ -454,6 +454,7 @@ mod hook_decision_native_facts;
 mod hook_decision_native_facts_tests;
 mod hook_decision_native_permission_persist;
 mod hook_decision_op;
+mod hook_decision_pretool_floor;
 mod hook_decision_settle;
 mod hook_direct;
 mod hook_direct_counters;

@@ -351,15 +351,17 @@ pub fn _normalize_redaction_report(report: &Value) -> Map<String, Value> {
             return out;
         }
     };
-    let raw_secrets = report_obj
-        .get("rawSecretsIncluded")
-        .or_else(|| report_obj.get("raw_secret_values"))
-        .or_else(|| report_obj.get("raw_secrets_included"))
+    // Python walks these alternatives with `is None`, so a key that is present
+    // and null falls through to the next spelling instead of settling the
+    // answer. `get` alone returns `Some(Null)` and would stop the walk early.
+    let present = |key: &str| report_obj.get(key).filter(|value| !value.is_null());
+    let raw_secrets = present("rawSecretsIncluded")
+        .or_else(|| present("raw_secret_values"))
+        .or_else(|| present("raw_secrets_included"))
         .cloned()
         .unwrap_or(json!(false));
-    let redacted_fields = report_obj
-        .get("redactedFields")
-        .or_else(|| report_obj.get("redacted_fields"))
+    let redacted_fields = present("redactedFields")
+        .or_else(|| present("redacted_fields"))
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();

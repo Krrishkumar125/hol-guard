@@ -1,6 +1,12 @@
 #![forbid(unsafe_code)]
 pub mod action_lattice;
 pub mod approval_reuse;
+pub mod artifact_hash;
+#[cfg(test)]
+mod artifact_hash_tests;
+mod artifact_hash_url;
+#[cfg(test)]
+mod artifact_hash_url_tests;
 pub mod artifact_risk;
 pub mod bash_approval;
 pub mod benign_request_api;
@@ -860,6 +866,8 @@ pub mod hook_evidence_writer;
 mod hook_evidence_writer_tests;
 pub mod hook_responses;
 pub mod inventory_contract;
+#[cfg(test)]
+mod inventory_contract_tests;
 pub mod js_semver;
 pub mod linux_artifact_supply_chain;
 #[cfg(any(unix, windows))]

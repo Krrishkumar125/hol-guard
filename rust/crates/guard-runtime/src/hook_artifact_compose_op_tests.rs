@@ -179,6 +179,39 @@ fn unknown_actions_never_lower_the_composed_action() {
     }
 }
 
+#[test]
+fn a_cli_grant_never_settles_below_a_reapproval_floor() {
+    let settle = |granted: &str, floor: Value| {
+        resident(envelope(
+            HOOK_ARTIFACT_COMPOSE_REQUEST_SCHEMA,
+            json!({
+                "kind": "grant_settle", "current_action": "require-reapproval",
+                "policy_action": "require-reapproval",
+                "approval_context_action": "require-reapproval",
+                "granted_action": granted, "native_floor": floor,
+            }),
+        ))
+        .unwrap()["payload"]
+            .clone()
+    };
+    // An allowed CLI grant does not stand in for re-approving the wrapper.
+    let held = settle("allow", json!("require-reapproval"));
+    for key in [
+        "current_policy_action",
+        "policy_action",
+        "approval_context_policy_action",
+    ] {
+        assert_eq!(held[key], "require-reapproval", "{key}");
+    }
+    // A blocked CLI grant still raises it.
+    assert_eq!(
+        settle("block", json!("require-reapproval"))["policy_action"],
+        "block"
+    );
+    // Without that floor the grant settles the action as before.
+    assert_eq!(settle("allow", Value::Null)["policy_action"], "allow");
+}
+
 fn edge(event: &str, fields: Value) -> NativeEdgeFactsV1 {
     NativeEdgeFactsV1 {
         event_name: Some(event.to_owned()),
