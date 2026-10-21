@@ -27,13 +27,23 @@ from ..group_write_trust import writable_only_by_owner
 from ..runtime.extension_control_limits import MAX_NATIVE_COMMAND_PROGRAM_BYTES
 from .native_executable_root import ExecutableMaterializationError, verified_executable
 
-# Mirrors `MAX_NATIVE_REQUEST_BYTES` in rust/crates/guard-contracts, which is
-# what the runtime's own stdin reader enforces. It used to be 8 MiB here, so a
-# request between the two numbers passed the Python check and was then refused
-# by a process this side had already spawned.
-_MAX_REQUEST_BYTES = 6 * 1024 * 1024
-# The token the runtime writes to stderr, with an empty stdout, when the
-# request it was handed is past that bound.
+# Mirrors `MAX_SOURCE_INPUT_BYTES` in rust/crates/guard-command, which is what
+# the compiler front end's own stdin readers enforce. Every subcommand this
+# module spawns is dispatched by `source_cli` before the runtime's resident
+# path, so the smaller `MAX_NATIVE_REQUEST_BYTES` the resident protocol uses is
+# not the bound these requests are read against.
+_MAX_REQUEST_BYTES = 8 * 1024 * 1024
+# Mirrors `MAX_NATIVE_REQUEST_BYTES` in rust/crates/guard-contracts. The pack
+# lifecycle subcommand is read by the runtime's own `read_stdin_bounded`, not
+# by `source_cli`, so it is held to this smaller frame. Keeping both numbers
+# here is what lets one transport refuse each request against the bound the
+# process it is about to spawn will actually read it against.
+_MAX_NATIVE_REQUEST_BYTES = 6 * 1024 * 1024
+# The token the runtime writes to stderr, with an empty stdout, when a request
+# it reads on the resident path is past the bound that path enforces. A
+# compiler subcommand refuses an oversized request with a token it also uses
+# for malformed input, so that one cannot be read as a size refusal; the
+# pre-spawn check below is what classifies these.
 _REQUEST_TOO_LARGE_CODE = "native_request_too_large"
 _MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 _MAX_MANIFEST_BYTES = 64 * 1024
@@ -304,9 +314,9 @@ def _verified_executable(raw: bytes):  # type: ignore[no-untyped-def]
         raise NativeSourceCompilerError("source compiler could not be started") from exc
 
 
-def _reject_oversized_request(payload: bytes) -> None:
+def _reject_oversized_request(payload: bytes, limit: int = _MAX_REQUEST_BYTES) -> None:
     """Refuse a request the runtime would refuse, before spawning it."""
-    if len(payload) > _MAX_REQUEST_BYTES:
+    if len(payload) > limit:
         raise NativeRequestTooLargeError("compiler request exceeds the native input bound")
 
 
@@ -315,12 +325,15 @@ def _run_bounded(
     payload: bytes,
     *,
     timeout: float,
+    limit: int = _MAX_REQUEST_BYTES,
 ) -> tuple[int, bytes, bytes]:
     # Every caller reaches the runtime through here, including the pack
     # lifecycle adapter, which encodes its own JSON and never passes through
     # `_canonical_request`. Checking the bytes here is the only place that
-    # covers all of them, and it happens before `Popen`.
-    _reject_oversized_request(payload)
+    # covers all of them, and it happens before `Popen`. `limit` is the bound
+    # the chosen subcommand is read against, which is not the same number for
+    # the compiler front end and the resident protocol.
+    _reject_oversized_request(payload, limit)
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
         raise NativeSourceCompilerError("source compiler timeout must be positive and finite")
     try:

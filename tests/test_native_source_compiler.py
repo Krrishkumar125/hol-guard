@@ -315,14 +315,67 @@ def test_an_oversized_request_is_refused_before_a_process_is_spawned(monkeypatch
         compiler._run_bounded(["/nonexistent/hol-guard-runtime"], oversized, timeout=5.0)
 
 
-def test_the_python_request_bound_matches_the_bound_the_runtime_enforces() -> None:
-    """`MAX_NATIVE_REQUEST_BYTES` in guard-contracts is what stdin is read against.
+def test_the_python_request_bound_matches_the_bound_the_compiler_enforces() -> None:
+    """`MAX_SOURCE_INPUT_BYTES` in guard-command is what stdin is read against.
 
-    A larger number here passes requests the runtime then refuses, which is how
-    an oversized request used to be discovered only after a failed subprocess.
+    A larger number here passes requests the compiler then refuses, which is how
+    an oversized request used to be discovered only after a failed subprocess. A
+    smaller one refuses requests the compiler would have read: the resident
+    protocol's 6 MiB bound does not apply to these subcommands, because
+    `source_cli` dispatches them before the resident path.
     """
 
-    assert compiler._MAX_REQUEST_BYTES == 6 * 1024 * 1024
+    assert compiler._MAX_REQUEST_BYTES == 8 * 1024 * 1024
+
+
+def test_the_lifecycle_bound_mirrors_the_frame_the_resident_protocol_reads() -> None:
+    """`MAX_NATIVE_REQUEST_BYTES` in guard-contracts bounds `pack-lifecycle`."""
+
+    assert compiler._MAX_NATIVE_REQUEST_BYTES == 6 * 1024 * 1024
+    assert compiler._MAX_NATIVE_REQUEST_BYTES < compiler._MAX_REQUEST_BYTES
+
+
+def test_a_compiler_request_between_the_two_bounds_still_reaches_the_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The smaller frame belongs to `pack-lifecycle`, not to these subcommands.
+
+    A compiler request this size is one `source_cli` reads, so refusing it here
+    would reject valid input in the name of a bound that never applied to it.
+    """
+
+    spawned: list[int] = []
+
+    def record(*args: object, **kwargs: object) -> None:
+        spawned.append(1)
+        raise OSError("spawn stops here; the bound already let this request through")
+
+    monkeypatch.setattr(compiler.subprocess, "Popen", record)
+    between = b"x" * (compiler._MAX_NATIVE_REQUEST_BYTES + 1024)
+    assert len(between) < compiler._MAX_REQUEST_BYTES
+    with pytest.raises(compiler.NativeSourceCompilerError) as raised:
+        compiler._run_bounded(["/nonexistent/hol-guard-runtime"], between, timeout=5.0)
+    assert not isinstance(raised.value, compiler.NativeRequestTooLargeError)
+    assert spawned == [1]
+
+
+def test_the_lifecycle_subcommand_is_held_to_the_smaller_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same transport, the same bytes, refused because the bound differs."""
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("a request past the lifecycle bound must not reach Popen")
+
+    monkeypatch.setattr(compiler.subprocess, "Popen", refuse)
+    between = b"x" * (compiler._MAX_NATIVE_REQUEST_BYTES + 1024)
+    with pytest.raises(compiler.NativeRequestTooLargeError):
+        compiler._run_bounded(
+            ["/nonexistent/hol-guard-runtime", "pack-lifecycle", "--stdin"],
+            between,
+            timeout=5.0,
+            limit=compiler._MAX_NATIVE_REQUEST_BYTES,
+        )
 
 
 def test_a_runtime_refusal_on_stderr_is_not_reported_as_unreadable_output() -> None:

@@ -35,9 +35,13 @@ _CAUSE_RECOVERY_ACTIONS = {
     "local_storage": "repair_local_cache",
     # The request outgrew the one frame the runtime reads. The install is
     # intact, so `repair_guard_installation` would be a lie, and the request is
-    # rebuilt byte-for-byte on a retry. What has grown is local Guard state, so
-    # the only surface that can shrink it is the local cache.
-    "native_request_too_large": "repair_local_cache",
+    # rebuilt byte-for-byte on a retry, so `retry_pack_preparation` is another.
+    # No local command prunes the state the request is built from either:
+    # `recover-authority` answers `authority_not_recoverable` on a healthy
+    # authority and would leave that state untouched if it ran. What the daemon
+    # log does carry is which record grew, so that is what this points at
+    # rather than a command that cannot change the outcome.
+    "native_request_too_large": "inspect_daemon_log",
     "offline": "retry_when_reachable",
     # The control authority is already protected when preparation runs, so
     # `recover-authority` answers `authority_not_recoverable` here. What is

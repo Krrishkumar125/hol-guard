@@ -240,8 +240,40 @@ def test_an_oversized_native_request_is_not_answered_with_a_reinstall():
     assert error.to_payload() == {
         "error": "pack_preparation_unavailable",
         "cause": "native_request_too_large",
-        "recovery": {"action": "repair_local_cache"},
+        "recovery": {"action": "inspect_daemon_log"},
     }
+
+
+def test_a_lifecycle_request_the_compiler_bound_would_have_passed_is_still_refused(monkeypatch):
+    """The two subcommands are read against different bounds.
+
+    `pack-lifecycle` is read by the runtime's own stdin reader at 6 MiB, while
+    the compiler front end reads 8 MiB. A request between the two is one the
+    runtime refuses, so holding the lifecycle path to the larger number sends a
+    process that is certain to fail and reports the refusal as a broken install.
+    """
+
+    from codex_plugin_scanner.guard.catalog_delivery import lifecycle
+    from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport
+
+    assert transport._MAX_NATIVE_REQUEST_BYTES < transport._MAX_REQUEST_BYTES
+
+    monkeypatch.setattr(lifecycle._Session, "executable", lambda self: Path("/nonexistent/hol-guard-runtime"))
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("a request past the lifecycle bound must not reach Popen")
+
+    monkeypatch.setattr(transport.subprocess, "Popen", refuse)
+
+    between = "x" * (transport._MAX_NATIVE_REQUEST_BYTES + 1024)
+    assert len(between) < transport._MAX_REQUEST_BYTES
+
+    with pytest.raises(ValueError) as raised:
+        lifecycle.invoke("preparation", history=between)
+
+    payload = preparation_unavailable(raised.value, stage="candidate-preparation").to_payload()
+    assert payload["cause"] == "native_request_too_large"
+    assert payload["recovery"] == {"action": "inspect_daemon_log"}
 
 
 def test_a_request_past_the_bound_reaches_that_answer_through_the_lifecycle_adapter(monkeypatch):
@@ -260,10 +292,10 @@ def test_a_request_past_the_bound_reaches_that_answer_through_the_lifecycle_adap
     monkeypatch.setattr(transport.subprocess, "Popen", refuse)
 
     with pytest.raises(ValueError) as raised:
-        lifecycle.invoke("preparation", history="x" * (transport._MAX_REQUEST_BYTES + 1))
+        lifecycle.invoke("preparation", history="x" * (transport._MAX_NATIVE_REQUEST_BYTES + 1))
 
     error = preparation_unavailable(raised.value, stage="candidate-preparation")
     payload = error.to_payload()
     assert payload["cause"] == "native_request_too_large"
-    assert payload["recovery"] == {"action": "repair_local_cache"}
+    assert payload["recovery"] == {"action": "inspect_daemon_log"}
     assert payload["recovery"] != {"action": "repair_guard_installation"}

@@ -73,10 +73,15 @@ for (const code of CODES) {
 
 // Preparation runs before the daemon commits anything, so every one of its
 // causes can say the existing protection survived, and each says what to do.
+// A request the runtime will not read is the one cause a retry cannot clear,
+// so it is the one that must not end in "try again"; it still has to say what
+// the operator can look at, which the assertions further down pin down.
 for (const cause of CAUSES) {
   const message = protectionChangeErrorMessage(apiError("pack_preparation_unavailable", cause));
   assert.match(message, /current protection is unchanged/);
-  assert.match(message, /try again/i);
+  if (cause !== "native_request_too_large") {
+    assert.match(message, /try again/i);
+  }
 }
 
 assert.match(
@@ -104,7 +109,12 @@ const tooLarge = protectionChangeErrorMessage(
 assert.match(tooLarge, /grown past/);
 assert.match(tooLarge, /reinstalling Guard will not change it/);
 assert.match(tooLarge, /Retrying sends the same request again/);
+assert.match(tooLarge, /daemon log records which data grew/);
 assert.doesNotMatch(tooLarge, /Reinstall or update Guard/);
+// No local command prunes the state this request is built from, so naming one
+// would swap a reinstall dead end for a recover-authority dead end.
+assert.doesNotMatch(tooLarge, /hol-guard command controls/);
+assert.doesNotMatch(tooLarge, /try again/);
 
 // A compiler that would not start or ran out of time is not a broken install,
 // so it must not ask for a reinstall.
