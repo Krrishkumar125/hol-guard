@@ -9,6 +9,7 @@
     "guard-command-build",
     "guard-command-catalog-data",
     "guard-contracts",
+    "guard-hook-payload",
     "guard-rules",
     "guard-runtime-windows-process",
     "guard-scanner",
@@ -17,15 +18,8 @@
   "crate_files": {
     "guard-command": [
       "src/action_lattice.rs",
-      "src/adapters/hook/hook_adapter_cline_tables.rs",
       "src/adapters/hook/hook_adapter_envelope_tables.rs",
       "src/adapters/hook/hook_adapter_envelope_text.rs",
-      "src/adapters/hook/hook_adapter_prepare.rs",
-      "src/adapters/hook/hook_adapter_prepare_cline.rs",
-      "src/adapters/hook/hook_adapter_prepare_cursor.rs",
-      "src/adapters/hook/hook_adapter_pyjson.rs",
-      "src/adapters/hook/hook_adapter_pytext.rs",
-      "src/adapters/hook/hook_adapter_value.rs",
       "src/approval_reuse.rs",
       "src/audit_receipt.rs",
       "src/bundle_metadata.rs",

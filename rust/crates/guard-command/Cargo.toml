@@ -19,6 +19,7 @@ guard-command-catalog-data = { path = "../guard-command-catalog-data" }
 guard-scanner = { path = "../guard-scanner" }
 guard-secure-fs = { path = "../guard-secure-fs" }
 guard-contracts = { path = "../guard-contracts" }
+guard-hook-payload = { path = "../guard-hook-payload" }
 guard-runtime-windows-process = { path = "../guard-runtime-windows-process" }
 regex.workspace = true
 fancy-regex.workspace = true

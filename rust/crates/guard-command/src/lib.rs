@@ -445,8 +445,6 @@ pub mod egress_proxy_credentials;
 mod egress_spool;
 pub mod false_positive_rules;
 pub mod guard_sync_transport;
-#[path = "adapters/hook/hook_adapter_cline_tables.rs"]
-mod hook_adapter_cline_tables;
 #[path = "adapters/hook/hook_adapter_envelope.rs"]
 pub mod hook_adapter_envelope;
 #[path = "adapters/hook/hook_adapter_envelope_tables.rs"]
@@ -458,22 +456,14 @@ mod hook_adapter_envelope_text;
 mod hook_adapter_omp_tests;
 #[path = "adapters/hook/hook_adapter_paths.rs"]
 pub mod hook_adapter_paths;
-#[path = "adapters/hook/hook_adapter_prepare.rs"]
-pub mod hook_adapter_prepare;
-#[path = "adapters/hook/hook_adapter_prepare_cline.rs"]
-pub mod hook_adapter_prepare_cline;
-#[path = "adapters/hook/hook_adapter_prepare_cursor.rs"]
-mod hook_adapter_prepare_cursor;
-#[path = "adapters/hook/hook_adapter_pyjson.rs"]
-mod hook_adapter_pyjson;
-#[path = "adapters/hook/hook_adapter_pytext.rs"]
-mod hook_adapter_pytext;
+use guard_hook_payload::{hook_adapter_cline_tables, hook_adapter_pyjson, hook_adapter_pytext};
+pub use guard_hook_payload::{
+    hook_adapter_prepare, hook_adapter_prepare_cline, hook_adapter_value,
+};
 #[path = "adapters/hook/hook_adapter_redact.rs"]
 mod hook_adapter_redact;
 #[path = "adapters/hook/hook_adapter_secret_path.rs"]
 mod hook_adapter_secret_path;
-#[path = "adapters/hook/hook_adapter_value.rs"]
-pub mod hook_adapter_value;
 #[cfg(all(test, unix))]
 #[path = "adapters/hook/hook_adapter_vector_tests.rs"]
 mod hook_adapter_vector_tests;
