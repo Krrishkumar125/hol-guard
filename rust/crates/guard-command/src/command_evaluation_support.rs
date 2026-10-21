@@ -43,26 +43,6 @@ fn settles_docker_uncertainty(command: &CanonicalCommand) -> bool {
             .all(crate::command_compatibility::docker_segment_settles_uncertainty)
 }
 
-/// Whether every segment an uncertain observation names stays inside what
-/// its text proves, so an explicit Allow for its rule may settle it,
-/// whichever extension owns the rule. An observation that names no segment
-/// (a matcher that failed before it could attribute one) never settles.
-fn observation_segments_settle(command: &CanonicalCommand, segment_indexes: &[u32]) -> bool {
-    command.confidence == "exact"
-        && !segment_indexes.is_empty()
-        && segment_indexes.iter().all(|index| {
-            command
-                .segments
-                .get(*index as usize)
-                .is_some_and(|segment| {
-                    crate::command_compatibility::segment_settles_uncertainty(
-                        segment,
-                        crate::pretool::PathContext::default(),
-                    )
-                })
-        })
-}
-
 /// Whether every segment of the command stays inside what its text proves.
 /// Uncertainty evidence is unattributed (`segment:unknown`), so it settles
 /// only when the whole command settles, never one named segment.
@@ -82,19 +62,16 @@ pub(crate) fn effective_observation_uncertainties(
     observations: &[NativeCommandExtensionObservation],
     explicitly_enabled_rule_ids: &BTreeSet<String>,
 ) -> Vec<UncertaintyKind> {
+    // Enforcement settles an enabled rule only when every segment of the
+    // command stays inside its proof, so the counterfactual must demand the
+    // same: an observation whose own segments settle still reviews here
+    // when a peer segment steers, interprets, or changes authority.
+    if !command_settles_uncertainty(command) {
+        return extension_uncertainties(observations);
+    }
     let filtered: Vec<_> = observations
         .iter()
-        .filter(|observation| {
-            !(explicitly_enabled_rule_ids.contains(&observation.rule_id)
-                && observation_segments_settle(
-                    command,
-                    &observation
-                        .effective_evidence()
-                        .iter()
-                        .map(|evidence| evidence.segment_index)
-                        .collect::<Vec<_>>(),
-                ))
-        })
+        .filter(|observation| !explicitly_enabled_rule_ids.contains(&observation.rule_id))
         .cloned()
         .collect();
     extension_uncertainties(&filtered)

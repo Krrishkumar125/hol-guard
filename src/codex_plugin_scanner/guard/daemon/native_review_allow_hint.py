@@ -105,6 +105,12 @@ def _definite_review_binding(native_result: Mapping[str, object]) -> Mapping[str
 
     if native_result.get("minimum_action") not in ("review", "require-reapproval"):
         return None
+    # The hint promises an extension Allow settles the pause, which is only
+    # ever true when the pause is the extension review itself. A fixed
+    # PreTool floor (sensitive access, Guard self-protection, ...) carries
+    # its own reason and reviews whatever the extensions say.
+    if native_result.get("reason_code") != "native_command_review_required":
+        return None
     evidence = native_result.get("command_extensions")
     if not isinstance(evidence, Mapping) or evidence.get("evaluation_error"):
         return None

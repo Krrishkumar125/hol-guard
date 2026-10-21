@@ -196,6 +196,14 @@ def test_no_hint_when_secret_read_floor_remains(tmp_path: Path) -> None:
     assert hint is None
 
 
+def test_no_hint_for_a_definite_secret_read(tmp_path: Path) -> None:
+    # The pause is the sensitive-access floor, not the extension review:
+    # it reviews whatever the extensions say, so no Allow can settle it.
+    _evaluation, hint = _hint("kubectl get secret db-credentials -o yaml", tmp_path)
+
+    assert hint is None
+
+
 def test_validated_hint_rejects_malformed_values() -> None:
     digest = "a" * 64
     good = {

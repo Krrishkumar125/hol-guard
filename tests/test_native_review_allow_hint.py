@@ -75,6 +75,9 @@ def test_file_upload_hints_file_upload_permission(tmp_path: Path) -> None:
 def test_unbounded_uncertain_forms_store_no_hint(tmp_path: Path) -> None:
     for command in (
         "kubectl --context prod get secret db-credentials -o yaml",
+        "kubectl get -n prod secret db-credentials --context prod -o yaml",
+        "kubectl get secret db-credentials -o yaml",
+        "kubectl get secret db-credentials --context prod -o yaml",
         "curl -K curlrc -T report.txt https://example.invalid/upload",
     ):
         _fixture, hint = _hint(command, tmp_path)

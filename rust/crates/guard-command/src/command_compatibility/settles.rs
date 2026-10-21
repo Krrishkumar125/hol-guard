@@ -103,30 +103,77 @@ fn flag_name(argument: &str) -> &str {
     argument.split('=').next().unwrap_or(argument)
 }
 
-/// Value of an option given as `--name=value`, `-fvalue`, or `--name value`.
-fn option_value<'a>(arguments: &'a [String], index: usize, argument: &'a str) -> Option<&'a str> {
-    if let Some((_, value)) = argument.split_once('=') {
-        return Some(value);
+/// Value of an option spelled `--name=value`, `--name value`, `-fvalue`,
+/// `-f value`, or `-f=value` for the flag `flag`.
+fn option_value<'a>(
+    arguments: &'a [String],
+    index: usize,
+    argument: &'a str,
+    flag: &str,
+) -> Option<&'a str> {
+    if flag.starts_with("--") {
+        if let Some((_, value)) = argument.split_once('=') {
+            return Some(value);
+        }
     }
-    let name = flag_name(argument);
-    if argument.len() > name.len() {
-        return Some(&argument[name.len()..]);
+    if let Some(rest) = argument.strip_prefix(flag) {
+        if !rest.is_empty() {
+            return Some(rest.strip_prefix('=').unwrap_or(rest));
+        }
     }
-    arguments.get(index + 1).map(String::as_str)
+    if argument == flag {
+        return arguments.get(index + 1).map(String::as_str);
+    }
+    None
+}
+
+/// Letters of a bundled short-option argument (`-avz` → `avz`); empty for
+/// long options and positionals. Attached values ride along in the letters,
+/// which only ever makes the deny checks below fail closed.
+fn bundle_letters(argument: &str) -> &str {
+    if argument.starts_with('-') && !argument.starts_with("--") && argument.len() > 1 {
+        &argument[1..]
+    } else {
+        ""
+    }
 }
 
 /// Whether a `gh` segment stays inside what its text proves. Field values
 /// loaded from files (`-F`/`--field name=@path`), bodies loaded with
-/// `--input` or any `--*-file` option, jq programs that reach the
-/// environment or load a module, and shell expansion inside a value all put
-/// content Guard never read into the request, so they never settle. Literal
-/// `--raw-field` values (an `@mention` is text, not a file) and GraphQL
-/// variables declared in the document stay settleable.
+/// `--input`, a `-F` body file outside `api`, or any `--*-file` option, jq
+/// programs that reach the environment or load a module, an alternate
+/// `--hostname`, and shell expansion inside a value all put content or an
+/// authority Guard never read into the request, so they never settle.
+/// Literal `--raw-field` values (an `@mention` is text, not a file) and
+/// GraphQL variables declared in the document stay settleable.
+///
+/// An unmodeled subcommand is the one deliberate exception to "a program
+/// Guard never read": the unknown GitHub permission's own catalog example
+/// is `gh extension run custom-tool`, so enabling it *is* the user's
+/// consent to the unverified class. The bounds above still apply to it.
 fn github_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
     if !inert_environment(segment) {
         return false;
     }
     let arguments = &segment.arguments;
+    // The first word that is not an option (or an option's value) names the
+    // subcommand; `-F` is a typed field only under `api`.
+    let subcommand = {
+        let mut candidate: Option<&str> = None;
+        let mut index = 0;
+        while let Some(argument) = arguments.get(index) {
+            index += 1;
+            if matches!(argument.as_str(), "-R" | "--repo" | "--hostname") {
+                index += 1;
+                continue;
+            }
+            if !argument.starts_with('-') {
+                candidate = Some(argument);
+                break;
+            }
+        }
+        candidate
+    };
     // A `$name` settles only as a GraphQL variable the same text declares
     // (`mutation($id:ID!)`); any other `$` — `$HOME`, `${...}`, `$(...)` —
     // is a value the shell or the server resolves, not the text Guard read.
@@ -158,11 +205,23 @@ fn github_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
             }
         }
         let name = flag_name(argument);
-        if name == "--input" || name.ends_with("-file") {
+        if name == "--input" || name == "--hostname" || name.ends_with("-file") {
             return false;
         }
-        if matches!(name, "-F" | "--field") {
-            let Some(value) = option_value(arguments, index, argument) else {
+        let field_flag = if argument.starts_with("-F") && !argument.starts_with("--") {
+            Some("-F")
+        } else if name == "--field" {
+            Some("--field")
+        } else {
+            None
+        };
+        if let Some(flag) = field_flag {
+            // Outside `api`, `-F` is `--body-file`: its value is a path to a
+            // file whose contents Guard never read.
+            if flag == "-F" && subcommand != Some("api") {
+                return false;
+            }
+            let Some(value) = option_value(arguments, index, argument, flag) else {
                 return false;
             };
             let field_value = value.split_once('=').map_or(value, |(_, rest)| rest);
@@ -170,8 +229,15 @@ fn github_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
                 return false;
             }
         }
-        if matches!(name, "--jq" | "-q") {
-            let Some(value) = option_value(arguments, index, argument) else {
+        let jq_flag = if name == "--jq" {
+            Some("--jq")
+        } else if argument.starts_with("-q") && !argument.starts_with("--") {
+            Some("-q")
+        } else {
+            None
+        };
+        if let Some(flag) = jq_flag {
+            let Some(value) = option_value(arguments, index, argument, flag) else {
                 return false;
             };
             let lowered = value.to_ascii_lowercase();
@@ -196,19 +262,28 @@ fn kubernetes_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
     let mut subcommand: Option<&str> = None;
     while let Some(argument) = arguments.get(index) {
         index += 1;
+        let name = flag_name(argument);
+        // Cobra takes global flags anywhere on the line, so an authority
+        // flag after the verb changes who answers exactly as one before it
+        // does. `-s` is the short `--server`.
+        if KUBECTL_AUTHORITY_FLAGS.contains(&name)
+            || (argument.starts_with("-s") && !argument.starts_with("--"))
+        {
+            return false;
+        }
         if subcommand.is_some() {
             // Only read shapes settle, and only with output the command
             // renders itself: no raw API path, no file of resources to act
             // on, and no output format that reads a template file.
-            let name = flag_name(argument);
             if matches!(name, "--raw" | "-f" | "--filename" | "-k" | "--kustomize") {
                 return false;
             }
-            if matches!(name, "-o" | "--output") {
-                let value = argument
-                    .split_once('=')
-                    .map(|(_, value)| value)
-                    .or_else(|| arguments.get(index).map(String::as_str));
+            let is_output = name == "-o"
+                || name == "--output"
+                || (argument.starts_with("-o") && !argument.starts_with("--"));
+            if is_output {
+                let flag = if name == "--output" { "--output" } else { "-o" };
+                let value = option_value(arguments, index - 1, argument, flag);
                 if !value.is_some_and(super::domains::output_format_reads_no_file) {
                     return false;
                 }
@@ -219,24 +294,60 @@ fn kubernetes_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
             return false;
         }
         if argument.starts_with("--") {
-            let name = flag_name(argument);
-            if KUBECTL_AUTHORITY_FLAGS.contains(&name) {
-                return false;
-            }
             if KUBECTL_GLOBAL_VALUE_FLAGS.contains(&name) && !argument.contains('=') {
                 index += 1;
             }
             continue;
         }
         if argument.starts_with('-') && argument.len() > 1 {
+            // Only `-n` may stand before the verb; any other short flag may
+            // carry a value this proof does not model, so it fails closed.
             if argument == "-n" {
                 index += 1;
+                continue;
             }
-            continue;
+            return false;
         }
         subcommand = Some(argument);
     }
     matches!(subcommand, Some("get" | "describe"))
+}
+
+/// Whether an ssh-family segment (ssh, scp, sftp) stays inside what its
+/// text proves. A config file (`-F`), a control or jump program (`-S`,
+/// `-J`), an sftp batch file (`-b`), and `-o` values that name a proxy or a
+/// local command all hand execution to something Guard never read, in any
+/// spelling: separate, attached, or bundled.
+fn ssh_family_segment_settles_uncertainty(segment: &CommandSegmentV1, sftp: bool) -> bool {
+    if !inert_environment(segment) {
+        return false;
+    }
+    let arguments = &segment.arguments;
+    for (index, argument) in arguments.iter().enumerate() {
+        if argument == "--" {
+            break;
+        }
+        if argument.starts_with("-o") && !argument.starts_with("--") {
+            let Some(value) = option_value(arguments, index, argument, "-o") else {
+                return false;
+            };
+            let lowered = value.to_ascii_lowercase();
+            if lowered.contains("proxy") || lowered.contains("localcommand") {
+                return false;
+            }
+            continue;
+        }
+        if matches!(flag_name(argument), "-S" | "-F" | "-J") {
+            return false;
+        }
+        if bundle_letters(argument)
+            .chars()
+            .any(|letter| matches!(letter, 'S' | 'F' | 'J') || (sftp && letter == 'b'))
+        {
+            return false;
+        }
+    }
+    true
 }
 
 fn network_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
@@ -249,18 +360,21 @@ fn network_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
             .iter()
             .any(|argument| names.iter().any(|name| flag_name(argument) == *name))
     };
-    let option_value_mentions_proxy = arguments.iter().enumerate().any(|(index, argument)| {
-        let lowered = argument.to_ascii_lowercase();
-        (lowered.starts_with("-oproxy") && lowered.len() > 3)
-            || (flag_name(argument) == "-o"
-                && arguments
-                    .get(index + 1)
-                    .is_some_and(|value| value.to_ascii_lowercase().contains("proxy")))
-    });
+    // A forbidden letter anywhere in a short-option bundle (`-sK`, `-avze`)
+    // reaches the same option as its separate spelling.
+    let bundled = |letter: char| {
+        arguments
+            .iter()
+            .any(|argument| bundle_letters(argument).contains(letter))
+    };
     match basename(segment).as_str() {
         // A config file carries instructions this text never showed.
-        "curl" => !any(&["-K", "--config"]),
-        "wget" => !any(&["-i", "--input-file", "--config"]),
+        "curl" => !any(&["-K", "--config"]) && !bundled('K'),
+        // An input file lists more URLs to fetch; `--execute` runs wgetrc
+        // commands this text never showed.
+        "wget" => {
+            !any(&["-i", "--input-file", "--config", "--execute"]) && !bundled('i') && !bundled('e')
+        }
         // `-e`/`-c` run a program; a script file runs commands from disk.
         "nc" | "netcat" => {
             !any(&["--exec", "--sh-exec"])
@@ -270,11 +384,150 @@ fn network_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
                         && argument[1..].chars().any(|flag| matches!(flag, 'e' | 'c'))
                 })
         }
-        "scp" => !any(&["-S", "-F", "-J"]) && !option_value_mentions_proxy,
-        "sftp" => !any(&["-S", "-F", "-J", "-b"]) && !option_value_mentions_proxy,
-        "rsync" => !any(&["-e", "--rsh", "--rsync-path", "--daemon", "--config"]),
-        "ftp" => !any(&["-s"]),
+        "rsync" => !any(&["-e", "--rsh", "--rsync-path", "--daemon", "--config"]) && !bundled('e'),
+        "ftp" => !any(&["-s"]) && !bundled('s'),
         _ => true,
+    }
+}
+
+/// Whether a `sed` segment's scripts are fully visible in its text. A
+/// script file (`-f`) is text Guard never read; an `e` command or the
+/// `e`/`w` substitution flags run a program or write a file the script
+/// names. One substitution or transliteration, with an optional address,
+/// is all that settles — the same bound the in-place-edit proof uses.
+fn sed_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
+    if !inert_environment(segment) {
+        return false;
+    }
+    let arguments = &segment.arguments;
+    let mut scripts: Vec<&str> = Vec::new();
+    let mut positional: Vec<&str> = Vec::new();
+    let mut index = 0;
+    while let Some(argument) = arguments.get(index) {
+        index += 1;
+        if matches!(argument.as_str(), "-f" | "--file") || argument.starts_with("--file=") {
+            return false;
+        }
+        if argument.starts_with("-f") && !argument.starts_with("--") {
+            return false;
+        }
+        if matches!(argument.as_str(), "-e" | "--expression") {
+            match arguments.get(index) {
+                Some(script) => {
+                    scripts.push(script);
+                    index += 1;
+                }
+                None => return false,
+            }
+            continue;
+        }
+        if let Some(script) = argument.strip_prefix("--expression=") {
+            scripts.push(script);
+            continue;
+        }
+        if argument.starts_with("-e") && !argument.starts_with("--") && argument.len() > 2 {
+            scripts.push(&argument[2..]);
+            continue;
+        }
+        if argument.starts_with('-') && argument.len() > 1 {
+            // `-i` (either dialect's spelling), `-E`, `-n` and friends: the
+            // script still has to prove itself below. The BSD `-i ''`
+            // spelling leaves an empty first positional, which the script
+            // check rejects — fail closed rather than guess.
+            continue;
+        }
+        positional.push(argument);
+    }
+    if scripts.is_empty() {
+        match positional.first() {
+            Some(script) => scripts.push(script),
+            None => return false,
+        }
+    }
+    scripts.iter().all(|script| sed_script_settles(script))
+}
+
+/// Scan one sed address (`12`, `$`, `/regex/`, with an optional `,second`)
+/// starting at `index`; returns the index just past it.
+fn scan_sed_address(bytes: &[u8], mut index: usize) -> Option<usize> {
+    let first = *bytes.get(index)?;
+    if first == b'$' {
+        index += 1;
+    } else if first.is_ascii_digit() {
+        while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+        }
+    } else if first == b'/' {
+        index = scan_sed_delimited(bytes, index + 1, b'/')?;
+    } else {
+        return Some(index);
+    }
+    if bytes.get(index) == Some(&b',') {
+        let second = *bytes.get(index + 1)?;
+        if second == b'$' {
+            index += 2;
+        } else if second.is_ascii_digit() {
+            index += 1;
+            while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+                index += 1;
+            }
+        } else if second == b'/' {
+            index = scan_sed_delimited(bytes, index + 2, b'/')?;
+        } else {
+            return None;
+        }
+    }
+    Some(index)
+}
+
+/// Scan to the next unescaped `delimiter`; returns the index just past it.
+fn scan_sed_delimited(bytes: &[u8], mut index: usize, delimiter: u8) -> Option<usize> {
+    while let Some(byte) = bytes.get(index) {
+        index += 1;
+        match byte {
+            b'\\' => index += 1,
+            byte if *byte == delimiter => return Some(index),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn sed_script_settles(script: &str) -> bool {
+    let bytes = script.as_bytes();
+    if script.is_empty() || script.len() > 1024 || script.contains('\n') {
+        return false;
+    }
+    let Some(mut index) = scan_sed_address(bytes, 0) else {
+        return false;
+    };
+    let command = bytes.get(index).copied();
+    index += 1;
+    let delimiter = bytes.get(index).copied().unwrap_or(0);
+    if !matches!(
+        delimiter,
+        b'/' | b'|' | b'#' | b',' | b':' | b'@' | b'!' | b'%' | b'+' | b'~' | b'_' | b'='
+    ) {
+        return false;
+    }
+    index += 1;
+    let Some(next) = scan_sed_delimited(bytes, index, delimiter) else {
+        return false;
+    };
+    index = next;
+    match command {
+        Some(b's') => {
+            let Some(next) = scan_sed_delimited(bytes, index, delimiter) else {
+                return false;
+            };
+            // Substitution flags only: `e` executes the result as a command
+            // and `w` writes it to a file, so both stay reviewed.
+            bytes[next..]
+                .iter()
+                .all(|flag| matches!(flag, b'g' | b'p' | b'i' | b'm' | b'0'..=b'9'))
+        }
+        Some(b'y') => scan_sed_delimited(bytes, index, delimiter) == Some(bytes.len()),
+        _ => false,
     }
 }
 
@@ -296,9 +549,13 @@ pub(crate) fn segment_settles_uncertainty(
         "docker" => super::domains::docker_segment_settles_uncertainty(segment),
         "gh" => github_segment_settles_uncertainty(segment),
         "kubectl" | "oc" => kubernetes_segment_settles_uncertainty(segment),
-        "curl" | "wget" | "nc" | "netcat" | "scp" | "rsync" | "sftp" | "ftp" => {
+        "ssh" => ssh_family_segment_settles_uncertainty(segment, false),
+        "scp" => ssh_family_segment_settles_uncertainty(segment, false),
+        "sftp" => ssh_family_segment_settles_uncertainty(segment, true),
+        "curl" | "wget" | "nc" | "netcat" | "rsync" | "ftp" => {
             network_segment_settles_uncertainty(segment)
         }
+        "sed" | "gsed" => sed_segment_settles_uncertainty(segment),
         name if INTERPRETERS.contains(&name) || name.starts_with("python") => false,
         "find" => {
             inert_environment(segment)
@@ -354,6 +611,14 @@ mod tests {
         assert!(settles("rm", &["-rf", "build"]));
         assert!(settles("gh", &["some-unmodeled-command"]));
         assert!(settles("docker", &["ps"]));
+        assert!(settles(
+            "kubectl",
+            &["get", "pods", "-n", "prod", "-o", "yaml"]
+        ));
+        assert!(settles("ssh", &["host", "ls", "-la"]));
+        assert!(settles("scp", &["report.txt", "host:/tmp/"]));
+        assert!(settles("sed", &["-i", "s|old|new|", "src/app.ts"]));
+        assert!(settles("sed", &["-i", "1,3s|a|b|g", "src/app.ts"]));
     }
 
     #[test]
@@ -381,6 +646,55 @@ mod tests {
         assert!(!settles("rsync", &["-e", "sh", "f", "host:/tmp/"]));
         assert!(!settles("nc", &["-e", "/bin/sh", "host", "4444"]));
         assert!(!settles("find", &[".", "-exec", "rm", "{}", ";"]));
+        // Bundled and attached spellings reach the same options.
+        assert!(!settles("curl", &["-sK", "curlrc", "https://h"]));
+        assert!(!settles("curl", &["-Kcurlrc", "https://h"]));
+        assert!(!settles("rsync", &["-avze", "ssh", "f", "host:/tmp/"]));
+        assert!(!settles("wget", &["--execute=robots=off", "https://h"]));
+        assert!(!settles("wget", &["-i", "urls.txt"]));
+        // kubectl authority flags bind after the verb too (cobra takes
+        // global flags anywhere), and `-s` is the short `--server`.
+        assert!(!settles(
+            "kubectl",
+            &["get", "secret", "db", "--context", "prod", "-o", "yaml"]
+        ));
+        assert!(!settles(
+            "kubectl",
+            &["get", "secret", "db", "--kubeconfig=prod.yaml"]
+        ));
+        assert!(!settles(
+            "kubectl",
+            &["-s", "https://other.invalid:8443", "get", "pods"]
+        ));
+        assert!(!settles(
+            "kubectl",
+            &["get", "pods", "-ogo-template-file=./tmpl"]
+        ));
+        // ssh-family programs and keyword options.
+        assert!(!settles("ssh", &["-o", "ProxyCommand=sh -c x", "host"]));
+        assert!(!settles("ssh", &["-oProxyJump=bastion", "host"]));
+        assert!(!settles("scp", &["-Sprog", "f", "host:/tmp/"]));
+        assert!(!settles(
+            "scp",
+            &["-o", "LocalCommand=touch x", "f", "host:/tmp/"]
+        ));
+        assert!(!settles("sftp", &["-b", "batch.txt", "host"]));
+        // Outside `gh api`, `-F` is a body file; an alternate host is a
+        // different authority.
+        assert!(!settles(
+            "gh",
+            &["issue", "create", "--title", "Bug", "-F", "notes.md"]
+        ));
+        assert!(!settles(
+            "gh",
+            &["api", "--hostname", "ghe.invalid", "user"]
+        ));
+        assert!(!settles("gh", &["api", "x/y", "-Fcontent=@file.txt"]));
+        // A sed script from a file, or one that executes or writes, is text
+        // Guard never bounded.
+        assert!(!settles("sed", &["-i", "-f", "script.sed", "f.txt"]));
+        assert!(!settles("sed", &["-i", "s|a|b|e", "f.txt"]));
+        assert!(!settles("sed", &["-i", "s|a|b|w out.txt", "f.txt"]));
         // Interpreters run text the attribution only sampled.
         assert!(!settles("python3", &["-c", "import os"]));
         assert!(!settles("sh", &["-c", "rm -rf build"]));

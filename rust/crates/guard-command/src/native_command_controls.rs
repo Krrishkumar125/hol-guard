@@ -488,6 +488,10 @@ mod uncertainty_regressions;
 mod precedence_regressions;
 
 #[cfg(test)]
+#[path = "native_command_precedence_generic_tests.rs"]
+mod precedence_generic_regressions;
+
+#[cfg(test)]
 #[path = "native_command_compound_controls_tests.rs"]
 mod compound_regressions;
 

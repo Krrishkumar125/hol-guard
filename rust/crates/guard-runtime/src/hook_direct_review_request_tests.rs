@@ -242,6 +242,7 @@ fn false_and_float_zero_uncertainty_are_hint_candidates() {
     for count in [json!(false), json!(0.0)] {
         let result = json!({
             "minimum_action": "review",
+            "reason_code": "native_command_review_required",
             "command_extensions": {"binding": {"uncertainty_count": count, "observations_digest": "d"}},
         });
         let result = result.as_object().expect("result");
@@ -272,6 +273,7 @@ fn any_rule_uncertain_observations_are_hint_candidates() {
     ] {
         let result = json!({
             "minimum_action": "review",
+            "reason_code": "native_command_review_required",
             "command_extensions": {
                 "binding": {"uncertainty_count": 1, "observations_digest": "d"},
                 "observations": [
@@ -294,12 +296,24 @@ fn any_rule_uncertain_observations_are_hint_candidates() {
     // permission, so it is never a hint candidate.
     let result = json!({
         "minimum_action": "review",
+        "reason_code": "native_command_review_required",
         "command_extensions": {
             "binding": {"uncertainty_count": 1, "observations_digest": "d"},
             "observations": [],
             "permission_observations": [
                 {"uncertainty_reasons": ["matcher-failure"]}
             ],
+        },
+    });
+    let result = result.as_object().expect("result");
+    assert_eq!(allow_hint_candidate(payload, result), Some(false));
+    // A fixed PreTool floor reviews whatever the extensions say, so an
+    // extension Allow can never settle it and it is not a hint candidate.
+    let result = json!({
+        "minimum_action": "review",
+        "reason_code": "native_sensitive_access_review",
+        "command_extensions": {
+            "binding": {"uncertainty_count": 0, "observations_digest": "d"},
         },
     });
     let result = result.as_object().expect("result");
