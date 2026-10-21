@@ -161,3 +161,25 @@ fn the_interpreter_link_an_environment_writes_leads_to_its_base() {
     assert!(proven(&root, ".venv/bin/python"));
     assert!(proven(&root, ".venv/bin/python3.12"));
 }
+
+/// `~` is the shell's own name for the real home, and a relative root
+/// resolves the spelling against Guard's working directory rather than the
+/// command's, so a context without absolute roots proves nothing.
+#[cfg(unix)]
+#[test]
+fn a_context_without_absolute_roots_proves_nothing() {
+    let root = root("context");
+    let base = root.join("base/python3.12");
+    linked(&root, true, "python", &base);
+    let cwd = root.join("project").to_str().unwrap().to_owned();
+    for home in [None, Some("relative/home")] {
+        assert!(!environment_program(
+            ".venv/bin/python",
+            PathContext {
+                home_dir: home,
+                cwd: Some(&cwd),
+                ..Default::default()
+            }
+        ));
+    }
+}
