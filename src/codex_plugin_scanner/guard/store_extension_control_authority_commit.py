@@ -91,7 +91,13 @@ class ExtensionControlAuthorityCommitMixin:
             from .catalog_delivery.preparation_authority import load_installed_bundle
 
             installed = load_installed_bundle()
-            if installed is not None:
+            if installed is not None and not lifecycle_store.floor_enrolled(self):
+                # Startup migration now enrolls the floor on an install that
+                # carries no legacy controls, so by the time an operator
+                # enrolls the authority the floor is usually already there.
+                # Enrolling it a second time is refused, and that refusal
+                # would fail the enrollment the operator is waiting on. A
+                # floor without its stamp still goes through the refusal.
                 lifecycle_store.enroll_installed(self, installed)
             return self._bootstrap_extension_control_authority(catalog_digest, key=None)
 
