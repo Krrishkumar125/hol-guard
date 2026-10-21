@@ -95,6 +95,7 @@
   "src/codex_plugin_scanner/guard/runtime/remote_approval_execution.py",
   "src/codex_plugin_scanner/guard/runtime/resource_budget.py",
   "src/codex_plugin_scanner/guard/runtime/node_semver.py",
+  "src/codex_plugin_scanner/guard/runtime/data_flow.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_elf.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
@@ -7494,17 +7495,6 @@
    "remaining_role": "Public option payload DTO and bound resident projection only; option and operand admission retired.",
    "native_replacements": [
     "rust/crates/guard-command/src/shell_interpreter_options.rs",
-    "rust/crates/guard-runtime/src/shell_helpers_op.rs"
-   ],
-   "parity_fixture": "tests/fixtures/shell-helper-python.v1.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/data_flow.py",
-   "base_commit": "da723a48b221c135cbce3bade1bab3ddb4959044",
-   "source_sha256": "2cae49b5d617d61d89f7b6da5788f75652e8c4043088902267c50adec50c9d09",
-   "remaining_role": "Public structures and native transport only; segmentation, pipe and redirect semantics retired.",
-   "native_replacements": [
-    "rust/crates/guard-command/src/data_flow.rs",
     "rust/crates/guard-runtime/src/shell_helpers_op.rs"
    ],
    "parity_fixture": "tests/fixtures/shell-helper-python.v1.json"

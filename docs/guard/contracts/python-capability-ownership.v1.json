@@ -1383,6 +1383,21 @@
    ]
   },
   {
+   "path": "src/codex_plugin_scanner/guard/runtime/data_flow.py",
+   "module": "codex_plugin_scanner.guard.runtime.data_flow",
+   "source_sha256": "35368cd7d9b631b1f23d61b822b39b6198e7631c1fc78eb553aba44a17192be4",
+   "forbidden_symbols": [
+    "ShellPipe",
+    "extract_command_segments",
+    "extract_input_redirects",
+    "extract_pipes"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/data_flow.rs",
+    "rust/crates/guard-runtime/src/shell_helpers_op.rs"
+   ]
+  },
+  {
    "path": "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
    "module": "codex_plugin_scanner.guard.runtime.restricted_linux_mappings",
    "source_sha256": "83c1af1a284ca1f4a3fd861ffd6565f086e9110e98b83e1ef9c5edd17ff04c3f",
