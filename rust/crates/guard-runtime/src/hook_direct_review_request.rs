@@ -508,9 +508,7 @@ pub(super) fn allow_hint_candidate(payload: &Map<String, Value>, result: &Object
     // ever true when the pause is the extension review itself. A fixed
     // PreTool floor (sensitive access, Guard self-protection, ...) carries
     // its own reason and reviews whatever the extensions say.
-    if result.get("reason_code").and_then(Value::as_str)
-        != Some("native_command_review_required")
-    {
+    if result.get("reason_code").and_then(Value::as_str) != Some("native_command_review_required") {
         return Some(false);
     }
     let Some(evidence) = result.get("command_extensions").and_then(Value::as_object) else {
