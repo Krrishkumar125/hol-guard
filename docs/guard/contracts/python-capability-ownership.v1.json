@@ -1463,6 +1463,18 @@
    "native_replacements": [
     "rust/crates/guard-command/src/sfrs_pytest_target.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.python_pytest_entrypoints",
+   "source_sha256": "763d5b1cbb56a0a4999f028572c78bf23ae820824f57df4cea288324ef833df0",
+   "forbidden_symbols": [
+    "_python_segment_targets_module",
+    "_pytest_args_from_python"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/sfrs_selectors.rs"
+   ]
   }
  ],
  "retired_test_paths": [

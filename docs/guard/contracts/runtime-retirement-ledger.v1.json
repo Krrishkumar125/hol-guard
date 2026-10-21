@@ -100,7 +100,8 @@
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_paths.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mappings.py",
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
-  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py"
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
+  "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/python_pytest_entrypoints.py"
  ],
  "retired_tests": [
   {
