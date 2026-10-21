@@ -119,6 +119,7 @@ from .audit_persistence import NOT_PERSISTED as AUDIT_NOT_PERSISTED
 from .audit_persistence import WRITTEN as AUDIT_WRITTEN
 from .audit_persistence import AuditPersistence
 from .background_diagnostics import install_sink as install_background_sink
+from .background_diagnostics import record_background_event
 from .bounded_http import BoundedThreadingHTTPServer
 from .catalog_read_v2 import CATALOG_V2_PREFIX, serve_catalog_read_v2
 from .command_activity_api import (
@@ -674,6 +675,12 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
             self.store.migrate_installed_command_pack_authority()
         except Exception as error:
             self._installed_authority_pending = True
+            # A packaged daemon has no stderr sink, so this warning reached
+            # nothing on the installs that needed it most. The diagnostics log
+            # is the support artifact; record the failure there as well.
+            from ..catalog_delivery.discovery import _failure_detail
+
+            record_background_event("installed_authority_migration_failed", _failure_detail(error))
             _LOGGER.warning("Installed command-pack authority could not be migrated: %s", error, exc_info=True)
             raise _InstalledAuthorityMigrationError from error
         self._installed_authority_pending = False
