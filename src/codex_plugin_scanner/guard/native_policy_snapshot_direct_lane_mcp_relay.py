@@ -74,17 +74,27 @@ def _stable(value: object) -> object | None:
 def harness_view(config: object, harness: str) -> dict[str, object] | None:
     """The proxy's tool-call configuration and hash fields for one harness."""
 
-    from .harness_posture import config_for_harness
+    from .harness_posture import config_for_harness, harness_posture_override
     from .mcp_tool_calls import _tool_call_configuration  # pyright: ignore[reportPrivateUsage]
 
     try:
         effective = config_for_harness(config, harness)  # pyright: ignore[reportArgumentType]
-        configuration = _tool_call_configuration(effective)
         hash_config = {
-            **configuration,
+            **_tool_call_configuration(effective),
             "managed_policy_hash": effective.managed_policy_hash,
             "managed_policy_status": effective.managed_policy_status,
             "sandbox_analysis": effective.sandbox_analysis,
+        }
+        # The resolver reads this harness's own posture override for the Extra
+        # careful risk-action floor, which `config_for_harness` does not fold
+        # into an explicit risk action. Only this harness's entry crosses: the
+        # whole map would make every harness's view differ whenever any other
+        # harness carries an override. It stays out of `hash_config` so the
+        # approval token the relay binds is the one the proxy already binds.
+        override = harness_posture_override(config, harness)  # pyright: ignore[reportArgumentType]
+        configuration = {
+            **_tool_call_configuration(effective),
+            "harness_postures": {harness: override} if override is not None else {},
         }
     except (AttributeError, TypeError, ValueError):
         return None
