@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
 
 from codex_plugin_scanner.guard.catalog_delivery import lifecycle
@@ -26,11 +26,5 @@ def pinned_runtime() -> Iterator[None]:
     executable = Path(named).resolve(strict=True)
     if not executable.is_file():
         raise SystemExit("HOL_GUARD_NATIVE_BINARY must name the built hol-guard-runtime file")
-    with ExitStack() as stack:
-        pinned = lifecycle._Session(stack)
-        pinned._executable = executable
-        token = lifecycle._SESSION.set(pinned)
-        try:
-            yield
-        finally:
-            lifecycle._SESSION.reset(token)
+    with lifecycle.pinned_session(executable):
+        yield

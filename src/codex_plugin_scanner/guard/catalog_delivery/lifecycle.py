@@ -54,6 +54,23 @@ def session():
         raise ValueError(f"native_pack_lifecycle_unavailable: {exc}") from exc
 
 
+@contextmanager
+def pinned_session(executable: Path):
+    """Answer native requests with a runtime a build job compiled from this checkout.
+
+    A source checkout carries no packaged runtime to verify, so the caller
+    names the one it built. Nested sessions reuse it as they would a verified one.
+    """
+    with ExitStack() as stack:
+        pinned = _Session(stack)
+        pinned._executable = executable
+        token = _SESSION.set(pinned)
+        try:
+            yield
+        finally:
+            _SESSION.reset(token)
+
+
 def runtime_fingerprint() -> tuple[tuple[int, ...], ...]:
     """Cheap identity of the installed runtime files.
 

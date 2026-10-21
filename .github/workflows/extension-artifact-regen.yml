@@ -97,7 +97,9 @@ jobs:
           name: extension-delivery-runtime-${{ github.sha }}
           path: rust/target/release/hol-guard-runtime
           if-no-files-found: error
-          retention-days: 1
+          # Kept as long as the evidence artifact, so a rerun of a later job
+          # still finds the runtime it reconciles with.
+          retention-days: 14
 
   regen:
     needs: runtime
