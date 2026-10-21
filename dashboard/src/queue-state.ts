@@ -779,7 +779,32 @@ function categoryFromCommandExtension(extensionId: string | null | undefined): Q
   if (extensionId === "command.git") return "git_operation";
   if (extensionId === "command.container-runtime") return "docker_command";
   if (extensionId === "command.github" || extensionId === "command.cicd.github") return "github_command";
+  if (extensionId === null || extensionId === undefined) return null;
+  // Every other command extension still names the family that reviewed the
+  // command, so its queue category follows the extension rather than a
+  // command-text guess.
+  if (extensionId.startsWith("command.kubernetes-")) return "container_or_deploy";
+  if (
+    extensionId.startsWith("command.cloud.") ||
+    extensionId.startsWith("command.platform.") ||
+    extensionId.startsWith("command.dns.") ||
+    extensionId === "command.infrastructure-as-code" ||
+    extensionId === "command.cdn" ||
+    extensionId === "command.load-balancer" ||
+    extensionId === "command.api-gateway" ||
+    extensionId === "command.monitoring"
+  ) {
+    return "container_or_deploy";
+  }
+  if (extensionId.startsWith("command.remote.")) return "network";
+  if (extensionId === "command.data-protection") return "file_upload";
   return null;
+}
+
+/** The command extension that reviewed this request, when Guard recorded one. */
+export function queueCommandExtensionId(item: GuardApprovalRequest): string | null {
+  const category = item.action_envelope_json?.command_category ?? item.queue_command_category;
+  return typeof category === "string" && category.startsWith("command.") ? category : null;
 }
 
 function queueCategoryText(item: GuardApprovalRequest): string {

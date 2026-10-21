@@ -38,11 +38,16 @@ import {
 } from "./protection-workspace-states";
 import { deriveProtectionStatus } from "./model/protection-presentation";
 import { ReviewModal, type ProtectionPendingChange } from "./protection-change-review";
+import { isRetryableProtectionChangeError, protectionChangeErrorMessage } from "./protection-change-error";
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
   | { kind: "ready"; catalog: CatalogReadModel; effective: EffectiveExtensionControls };
 type RouteState = { route: ProtectionRoute; detail: ExtensionDetailUrlState };
+
+// Long enough for a transport retry or a busy cache to clear, short enough
+// that the review dialog still reads as one save in progress.
+const RETRY_PREPARATION_DELAY_MS = 1_200;
 
 const DEFAULT_AUTHORITY_RECOVERY_COMMAND = "hol-guard command controls recover-authority";
 
@@ -240,7 +245,7 @@ export function ProtectionCenterWorkspace(props: {
     if (state.kind !== "ready" || !pending) return;
     setBusy(true);
     setMutationError(null);
-    try {
+    const submit = async () => {
       const payload = buildExtensionMutation(state, pending);
       Object.assign(payload, credentials);
       payload.session_nonce = randomToken();
@@ -248,15 +253,26 @@ export function ProtectionCenterWorkspace(props: {
       if (typeof preview.proof_id !== "string") throw new Error("Guard did not issue a one-use proof for this protection change.");
       payload.proof_id = preview.proof_id;
       await applyExtensionMutation(payload);
+    };
+    try {
+      try {
+        await submit();
+      } catch (error) {
+        if (!isRetryableProtectionChangeError(error)) throw error;
+        // Preparation failed before the daemon committed anything, so a second
+        // attempt is the same save, not a second change. Each proof is one-use,
+        // so this rebuilds the payload rather than replaying the first one.
+        await new Promise((resolve) => setTimeout(resolve, RETRY_PREPARATION_DELAY_MS));
+        await submit();
+      }
       setPending(null);
       await load();
     } catch (error) {
-      const recovery = error instanceof ExtensionControlApiError ? error.recoveryAction : undefined;
-      setMutationError(`${error instanceof Error ? error.message : "Protection change failed"}${recovery ? ` · ${recovery}` : ""}`);
+      setMutationError(protectionChangeErrorMessage(error, recoveryCommand, recoveryShell));
     } finally {
       setBusy(false);
     }
-  }, [load, pending, state]);
+  }, [load, pending, recoveryCommand, recoveryShell, state]);
 
   const runAuthorityAction = useCallback(async (kind: "repair" | "acknowledge", credentials: { approval_password?: string; approval_totp_code?: string }) => {
     const startHealth = state.kind === "ready" ? state.effective.health : null;

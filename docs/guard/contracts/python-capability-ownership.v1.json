@@ -1503,6 +1503,22 @@
     "rust/crates/guard-runtime/src/claude_hook_bridge_transport.rs",
     "rust/crates/guard-runtime/src/claude_hook_bridge_http.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/daemon/hook_native_package_review.py",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "forbidden_symbols": [
+    "verified_npm_version",
+    "_changes_npm",
+    "_loader_paths_outside",
+    "_npmrc_redirects_fetch",
+    "_resolve_executable",
+    "_filters_outside_workspace"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/verified_npm.rs",
+    "rust/crates/guard-runtime/src/verified_npm_op.rs"
+   ]
   }
  ]
 }

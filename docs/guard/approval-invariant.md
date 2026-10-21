@@ -80,6 +80,7 @@ Changing any of these produces a new command, and Guard asks again.
 | Saved allows on the Python daemon path | `src/codex_plugin_scanner/guard/daemon/hook_native_saved_approval.py` (`_native_review_is_approvable`) |
 | Routing of a review-tier artifact verdict (queued for approval, never terminal unless the operator chose not to be asked) | `rust/crates/guard-runtime/src/hook_decision_artifact_review_route.rs` (`artifact_review_route`), executed by `src/codex_plugin_scanner/guard/cli/commands_hook_native_review.py` |
 | Final-action settle of an artifact verdict (a browser outcome other than allow, block or sandbox-required settles nothing; the settle never touches an approval choice) | `rust/crates/guard-runtime/src/hook_decision_artifact_finalize.rs` (`artifact_finalize`, `artifact_browser_outcome`), executed by `src/codex_plugin_scanner/guard/cli/commands_hook_native_state.py` and `src/codex_plugin_scanner/guard/cli/commands_hook_native_finish.py` |
+| Gathering of local tool-grant evidence on a native tool request, and the receipt `approval_source` label (a label of who approved; it never narrows the choices offered) | `rust/crates/guard-runtime/src/hook_artifact_compose_policy_tail.rs` (`local_eligibility_required`, `approval_source`), read by `src/codex_plugin_scanner/guard/cli/commands_hook_native_policy_tail.py` |
 | Review card choices | `dashboard/src/approval-retry-guidance.ts`, `dashboard/src/review-decision-card.tsx` |
 
 ## Regression tests
@@ -99,6 +100,8 @@ Changing any of these produces a new command, and Guard asks again.
 - `rust/crates/guard-runtime/src/hook_decision_artifact_finalize_tests.rs` (`only_an_approval_or_a_terminal_verdict_settles_the_hook`)
 - `tests/test_artifact_finalize_parity.py` (`test_the_settle_leaves_the_approval_choice_alone`)
 - `tests/test_artifact_finalize_wire.py` (`test_an_outcome_that_contradicts_the_browsers_verdict_fails_closed`)
+- `rust/crates/guard-runtime/src/hook_artifact_compose_policy_tail_tests.rs` (`review_tier_verdicts_keep_allow_once_and_always_allow`)
+- `tests/test_policy_stack_tail_parity.py` (`test_the_resident_pins_the_receipt_approval_source`)
 - `dashboard/src/approval-retry-ux.test.ts`, `dashboard/e2e/approval-scope-ui.spec.ts`
 
 If one of these fails after a change, fix the change. Do not relax the test.

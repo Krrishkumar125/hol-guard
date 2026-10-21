@@ -17,6 +17,7 @@ use serde_json::{Map, Value};
 use crate::{
     ArtifactBrowserOutcomeInputsV1, ArtifactBrowserOutcomeV1, ArtifactFinalizeInputsV1,
     ArtifactFinalizeV1, CodexToolOutputFactsV1, NativeExtensionControlLayerV1,
+    NativePermissionPersistInputsV1, NativePermissionPersistPlanV1,
 };
 
 /// Schema discriminator for the request.
@@ -70,6 +71,11 @@ pub enum HookDecisionQueryV1 {
     /// settled verdict, with which emitter, reason, message and exit code.
     ArtifactDirective {
         inputs: Box<ArtifactDirectiveInputsV1>,
+    },
+    /// What to save for a Claude-native approval: the stored hash, the policy
+    /// action, the audit events and the inventory disposition.
+    NativePermissionPersistPlan {
+        inputs: Box<NativePermissionPersistInputsV1>,
     },
     /// The artifact hook's review route: whether a review-tier or terminal
     /// verdict is recorded without a prompt, observed, answered natively or
@@ -408,6 +414,7 @@ pub enum HookDecisionPayloadV1 {
     },
     Finalize(Box<HookFinalV1>),
     ArtifactDirective(Box<HookResponseDirectiveV1>),
+    NativePermissionPersistPlan(Box<NativePermissionPersistPlanV1>),
     ArtifactReviewRoute(Box<ArtifactReviewRouteV1>),
     ArtifactFinalize(Box<ArtifactFinalizeV1>),
     ArtifactBrowserOutcome(Box<ArtifactBrowserOutcomeV1>),

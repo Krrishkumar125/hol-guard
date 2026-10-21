@@ -6,10 +6,11 @@
 //! the response directive. It also settles Copilot tool calls
 //! (`copilot_settle`), picks the artifact hook's response
 //! (`artifact_directive`), the route its review-tier verdicts take
-//! (`artifact_review_route`) and the final action it settles on
-//! (`artifact_finalize`, `artifact_browser_outcome`). Every query is pure and
-//! fails closed: a malformed request yields a `native_hook_decision_*` error,
-//! never a default verdict.
+//! (`artifact_review_route`), the final action it settles on
+//! (`artifact_finalize`, `artifact_browser_outcome`) and what a native approval
+//! saves (`native_permission_persist_plan`). Every query is pure and fails
+//! closed: a malformed request yields a `native_hook_decision_*` error, never a
+//! default verdict.
 
 use guard_contracts::{
     HookCompositionV1, HookDecisionPayloadV1, HookDecisionQueryV1, HookDecisionRequestV1,
@@ -23,6 +24,7 @@ use crate::hook_decision_artifact_review_route::artifact_review_route;
 use crate::hook_decision_compose::{compose, Composed};
 use crate::hook_decision_finalize::{finalize, post_claim, post_claim_reuse};
 use crate::hook_decision_native_facts::{verdict_handoff, VerdictHandoff};
+use crate::hook_decision_native_permission_persist::native_permission_persist_plan;
 use crate::hook_decision_settle::settle;
 
 pub(crate) fn evaluate_hook_decision_request(
@@ -110,6 +112,11 @@ pub(crate) fn decide(query: &HookDecisionQueryV1) -> Result<HookDecisionPayloadV
         HookDecisionQueryV1::ArtifactDirective { inputs } => Ok(
             HookDecisionPayloadV1::ArtifactDirective(Box::new(artifact_directive(inputs)?)),
         ),
+        HookDecisionQueryV1::NativePermissionPersistPlan { inputs } => {
+            Ok(HookDecisionPayloadV1::NativePermissionPersistPlan(
+                Box::new(native_permission_persist_plan(inputs)?),
+            ))
+        }
         HookDecisionQueryV1::ArtifactReviewRoute { inputs } => Ok(
             HookDecisionPayloadV1::ArtifactReviewRoute(Box::new(artifact_review_route(inputs)?)),
         ),
