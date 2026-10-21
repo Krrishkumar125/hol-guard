@@ -1271,7 +1271,9 @@
     "matches_subcommands_conservatively",
     "flags_present_in_all_option_parses",
     "known_option_advance",
-    "long_flag_assignment_is_enabled"
+    "long_flag_assignment_is_enabled",
+    "_option_result",
+    "_option_call"
    ],
    "native_replacements": [
     "rust/crates/guard-command/src/command_option_parsing.rs",
@@ -1357,11 +1359,11 @@
   "tests/test_codex_daemon_bridge_failure_reason.py",
   "tests/test_npm_source_spec.py",
   "tests/test_guard_github_pr_body_file.py",
+  "tests/test_native_command_options.py",
   "tests/test_guard_restricted_linux_elf.py",
   "tests/test_guard_restricted_linux_mapping_plan.py",
   "tests/test_guard_restricted_linux_mappings.py",
-  "tests/test_guard_restricted_linux_paths.py",
-  "tests/test_native_command_options.py"
+  "tests/test_guard_restricted_linux_paths.py"
  ],
  "retired_bodies": [
   {

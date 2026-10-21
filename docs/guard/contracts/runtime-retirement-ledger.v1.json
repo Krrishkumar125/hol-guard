@@ -6638,33 +6638,30 @@
   },
   {
    "old_node": "tests/test_native_command_options.py::test_public_option_helpers_replay_native_original_vectors",
-   "base_commit": "e309ad05c1bad4069f8ab4aa0a056c73bad5052f",
    "source_sha256": "c93813c59088f5fa73613d4bcbdb371c5cf20f1b7918428b7d5a69a8fb1bcb4b",
    "replacement_nodes": [
     "rust/crates/guard-runtime/src/shell_helpers_vectors_tests.rs::original_python_option_helpers_replay"
    ],
    "status": "native_behavior_ported_requires_ci",
-   "rationale": "The recorded option_vectors now replay in Rust from the same shell-helper fixture; the Python replay only re-entered the retired projection."
+   "rationale": "Replayed a sample of the option vectors in tests/fixtures/shell-helper-python.v1.json through the retired Python caller. The Rust test replays every option vector in the same fixture against the resident."
   },
   {
    "old_node": "tests/test_native_command_options.py::test_option_cache_reuses_native_results_and_rechecks_runtime",
-   "base_commit": "e309ad05c1bad4069f8ab4aa0a056c73bad5052f",
    "source_sha256": "c93813c59088f5fa73613d4bcbdb371c5cf20f1b7918428b7d5a69a8fb1bcb4b",
    "replacement_nodes": [
-    "rust/crates/guard-runtime/src/shell_helpers_vectors_tests.rs::paged_results_reuse_prepared_values_and_serialized_fragments"
+    "rust/crates/guard-runtime/src/shell_helpers_vectors_tests.rs::original_python_option_helpers_replay"
    ],
    "status": "obsolete_implementation_assertion",
-   "rationale": "The Python LRU projection no longer exists; resident result reuse and runtime rebinding are owned and tested in the native shell-helper operation."
+   "rationale": "Asserted the retired Python caller's lru_cache of native option results. The cache was deleted with the module; the resident answers each option call directly, so there is no Python cache to reuse or skip."
   },
   {
    "old_node": "tests/test_native_command_options.py::test_option_cache_does_not_store_native_errors",
-   "base_commit": "e309ad05c1bad4069f8ab4aa0a056c73bad5052f",
    "source_sha256": "c93813c59088f5fa73613d4bcbdb371c5cf20f1b7918428b7d5a69a8fb1bcb4b",
    "replacement_nodes": [
-    "rust/crates/guard-runtime/src/shell_helpers_vectors_tests.rs::input_rejections_are_bound_replies_and_large_results_are_bounded"
+    "rust/crates/guard-runtime/src/shell_helpers_vectors_tests.rs::original_python_option_helpers_replay"
    ],
    "status": "obsolete_implementation_assertion",
-   "rationale": "Error caching was a property of the deleted Python cache; native rejections are bound replies that are never memoized."
+   "rationale": "Asserted the retired Python caller's lru_cache of native option results. The cache was deleted with the module; the resident answers each option call directly, so there is no Python cache to reuse or skip."
   },
   {
    "old_node": "tests/test_guard_restricted_linux_elf.py::test_static_image_does_not_receive_an_unneeded_loader",
