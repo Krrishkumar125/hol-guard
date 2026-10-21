@@ -2,6 +2,7 @@
 exclude = ["crates/guard-command-build"]
 members = [
     "crates/guard-alloc-probe",
+    "crates/guard-adapter-detection",
     "crates/guard-archive",
     "crates/guard-contained-process",
     "crates/guard-command",
