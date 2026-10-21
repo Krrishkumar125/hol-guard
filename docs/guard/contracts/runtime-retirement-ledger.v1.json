@@ -102,7 +102,8 @@
   "src/codex_plugin_scanner/guard/runtime/restricted_linux_mapping_plan.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
   "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
-  "src/codex_plugin_scanner/guard/runtime/source_paths.py"
+  "src/codex_plugin_scanner/guard/runtime/source_paths.py",
+  "src/codex_plugin_scanner/guard/runtime/containment_outputs.py"
  ],
  "retired_tests": [
   {
@@ -7049,6 +7050,27 @@
    "replacement_nodes": [],
    "status": "obsolete_implementation_assertion",
    "rationale": "SourceDecision is a plain Rust struct returned by value. Immutability is a property of the type, not something a runtime test can observe."
+  },
+  {
+   "old_node": "tests/test_guard_contained_workspace_write_contract.py::test_capture_rejects_undeclared_change_and_link",
+   "source_sha256": "c1bc6f347f122d830283942dfac541d7bda3e7af676138a0b9fa17cf875675f5",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Drives capture_declared_outputs in runtime/containment_outputs.py, a declared-output capture walk no production caller ever imported. The module is deleted as dead code rather than replaced: the native contained-execution path captures only stdout.bin and stderr.bin from its own run directory and never walks a declared output tree, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_contained_workspace_write_contract.py::test_capture_rejects_file_count_over_budget",
+   "source_sha256": "c1bc6f347f122d830283942dfac541d7bda3e7af676138a0b9fa17cf875675f5",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Drives capture_declared_outputs in runtime/containment_outputs.py, a declared-output capture walk no production caller ever imported. The module is deleted as dead code rather than replaced: the native contained-execution path captures only stdout.bin and stderr.bin from its own run directory and never walks a declared output tree, so there is no native node that reproduces this assertion."
+  },
+  {
+   "old_node": "tests/test_guard_contained_workspace_write_contract.py::test_output_discovery_stops_at_entry_budget",
+   "source_sha256": "c1bc6f347f122d830283942dfac541d7bda3e7af676138a0b9fa17cf875675f5",
+   "replacement_nodes": [],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Drives capture_declared_outputs in runtime/containment_outputs.py, a declared-output capture walk no production caller ever imported. The module is deleted as dead code rather than replaced: the native contained-execution path captures only stdout.bin and stderr.bin from its own run directory and never walks a declared output tree, so there is no native node that reproduces this assertion."
   }
  ],
  "preserved_tests": [
