@@ -36,7 +36,7 @@ from tests.benign_fp_gate_connectors import allow_ready_cli, assert_connector_se
 from tests.benign_fp_gate_fixture import BenignFixture, build_fixture, route_codex
 from tests.benign_fp_gate_mcp import McpCase, mcp_cases, mcp_failure, replay
 from tests.benign_fp_gate_projects import host_tool_path
-from tests.gauntlet_replay import OMP_CONTAINED, cursor_hook_fields
+from tests.gauntlet_replay import OMP_CONTAINED, cursor_hook_fields, source_ref_payload
 from tests.native_gate_retry import BUDGET_MISS_REASONS, review_with_unavailable_retry
 
 pytestmark = pytest.mark.usefixtures("native_hook_force")
@@ -97,6 +97,9 @@ class GateCase:
     expect: str
     event: str = "PreToolUse"
     tool_response: object = None
+    # Attach the source-file proof Oh My Pi's extension sends with a
+    # PostToolUse read, which routes the review through the source path.
+    source_ref: bool = False
     # Variables the agent shell inherits, such as a user's RIPGREP_CONFIG_PATH.
     environment: tuple[tuple[str, str], ...] = ()
 
@@ -117,6 +120,7 @@ def _expand() -> list[GateCase]:
                     expect=entry["expect"],
                     event=entry.get("event", "PreToolUse"),
                     tool_response=entry.get("tool_response"),
+                    source_ref=bool(entry.get("source_ref", False)),
                     environment=tuple(sorted(entry.get("environment", {}).items())),
                 )
             )
@@ -215,6 +219,11 @@ def _review(case: GateCase, fixture: BenignFixture, worker: HookWorker) -> tuple
     }
     if case.tool_response is not None:
         payload["tool_response"] = case.tool_response
+    if case.source_ref:
+        tool_input = payload["tool_input"]
+        assert isinstance(tool_input, dict)
+        spelled = str(tool_input.get("path") or tool_input["file_path"])
+        payload["guard_source_ref"] = source_ref_payload(spelled, fixture.cwd(case.cwd))
     if case.harness == "cursor":
         payload.update(cursor_hook_fields(case.tool, payload))
     # Approval baselines stay from before the first attempt, so a retry never hides a row.
@@ -292,10 +301,19 @@ def _decision(result: dict[str, object]) -> str:
 
 
 def _rendered_text(result: dict[str, object]) -> bool:
-    """True when the harness response carries text the agent or user would see."""
+    """True when the harness response carries text the agent or user would see.
+
+    ``notice`` is the PostToolUse display mode, not a message: every allowed
+    output review carries one, and ``none`` is the value that says the harness
+    shows nothing at all.
+    """
     specific = result.get("hookSpecificOutput")
     specific = specific if isinstance(specific, dict) else {}
-    return any(result.get(key) for key in _RENDERED_KEYS) or any(specific.get(key) for key in _RENDERED_SPECIFIC_KEYS)
+    if any(result.get(key) for key in _RENDERED_KEYS if key != "notice"):
+        return True
+    if result.get("notice") not in (None, "", "none"):
+        return True
+    return any(specific.get(key) for key in _RENDERED_SPECIFIC_KEYS)
 
 
 def _quiet_allow(result: dict[str, object], approvals: int) -> bool:
