@@ -86,7 +86,8 @@
   "src/codex_plugin_scanner/guard/runtime/npm_source_spec.py",
   "src/codex_plugin_scanner/guard/runtime/github_pr_body_file.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_body_safety.py",
-  "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py"
+  "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py",
+  "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py"
  ],
  "retired_tests": [
   {
@@ -7190,17 +7191,6 @@
    "remaining_role": "Source-span DTOs and native scan-trace projection only; quote, heredoc, substitution and masking algorithms retired.",
    "native_replacements": [
     "rust/crates/guard-command/src/shell_structure.rs",
-    "rust/crates/guard-runtime/src/shell_helpers_op.rs"
-   ],
-   "parity_fixture": "tests/fixtures/shell-helper-python.v1.json"
-  },
-  {
-   "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
-   "base_commit": "da723a48b221c135cbce3bade1bab3ddb4959044",
-   "source_sha256": "5b9cfa2345ffbbcb059220d97e3b70df74612dfc49b3804cd2a2701477579842",
-   "remaining_role": "Public normalization DTO and resident transport only; wrapper parsing and path trust authority retired.",
-   "native_replacements": [
-    "rust/crates/guard-command/src/shell_command_wrappers.rs",
     "rust/crates/guard-runtime/src/shell_helpers_op.rs"
    ],
    "parity_fixture": "tests/fixtures/shell-helper-python.v1.json"
