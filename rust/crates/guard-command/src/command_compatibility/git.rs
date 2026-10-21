@@ -298,10 +298,17 @@ fn routed<'a>(
             }
             without_repository = true;
         }
-        // Like `cd`, an absolute Windows target must be its exact canonical spelling.
+        // Like `cd`, an absolute Windows target must be its exact canonical
+        // spelling. A route that only prints `fatal:` is admitted for a
+        // directory that is not there, which has no canonical spelling of its
+        // own, so there the proof holds the deepest name that does exist.
         #[cfg(windows)]
         if std::path::Path::new(target).is_absolute()
-            && !crate::pretool::directory_targets::exact_existing_drive_target(target)
+            && !if without_repository {
+                crate::pretool::directory_targets::exact_drive_target_with_absent_tail(target)
+            } else {
+                crate::pretool::directory_targets::exact_existing_drive_target(target)
+            }
         {
             return None;
         }
