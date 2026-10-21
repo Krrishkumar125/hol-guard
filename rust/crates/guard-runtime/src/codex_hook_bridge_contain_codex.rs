@@ -3,16 +3,11 @@
 //! `codex_contained_tests.py`.
 
 use std::path::{Path, PathBuf};
-#[cfg(unix)]
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-#[cfg(unix)]
 use crate::claude_hook_bridge_render::py_strip;
 
-#[cfg(unix)]
 const MIN_VERSION: (u128, u128, u128) = (0, 131, 0);
-#[cfg(unix)]
 const VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// `os.path.expanduser("~user")` for the current user (`user` empty) or a
@@ -86,17 +81,42 @@ pub(super) fn launching_codex_executable() -> Option<PathBuf> {
     None
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+/// The same walk on Windows, over one snapshot of every process's parent.
+/// Python started from its parent, the bridge's position, so this does too.
+/// An image that cannot be read does not end the walk: a protected or
+/// exited process proves nothing about its own parent's identity.
+#[cfg(windows)]
+pub(super) fn launching_codex_executable() -> Option<PathBuf> {
+    use guard_runtime_windows_process::{process_parent_ids, running_process_image_path};
+
+    let parents = process_parent_ids().ok()?;
+    let mut pid = *parents.get(&std::process::id())?;
+    for _ in 0..MAX_ANCESTORS {
+        // 0 is the idle process and 4 the kernel's System process.
+        if pid <= 4 {
+            return None;
+        }
+        if let Ok(path) = running_process_image_path(pid) {
+            if is_codex(&path) {
+                return Some(path);
+            }
+        }
+        pid = parents.get(&pid).copied().unwrap_or(0);
+    }
+    None
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 pub(super) fn launching_codex_executable() -> Option<PathBuf> {
     None
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 const MAX_ANCESTORS: usize = 6;
 
 /// Release archives name the binary for its target, as
 /// `codex-aarch64-apple-darwin`.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 const RELEASE_TARGETS: &[&str] = &[
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
@@ -104,26 +124,39 @@ const RELEASE_TARGETS: &[&str] = &[
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-musl",
     "x86_64-unknown-linux-musl",
+    "aarch64-pc-windows-msvc",
+    "x86_64-pc-windows-msvc",
 ];
 
 /// `is_codex_binary_name`: `codex` or an official release binary named for
 /// its target. The npm, bun and Homebrew launchers start this native binary
 /// as their child, so it is always the nearer ancestor of the hook; a `node`
 /// or `bun` process is never taken for Codex.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+/// Windows matches the name case-insensitively and without `.exe`.
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 pub(super) fn is_codex(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| match name.split_once('-') {
-            None => name == "codex",
-            Some((prefix, target)) => prefix == "codex" && RELEASE_TARGETS.contains(&target),
-        })
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    #[cfg(windows)]
+    let name = {
+        let lower = name.to_lowercase();
+        match lower.strip_suffix(".exe") {
+            Some(stem) => stem.to_owned(),
+            None => lower,
+        }
+    };
+    #[cfg(windows)]
+    let name = name.as_str();
+    match name.split_once('-') {
+        None => name == "codex",
+        Some((prefix, target)) => prefix == "codex" && RELEASE_TARGETS.contains(&target),
+    }
 }
 
 /// `codex_applies_updated_input(executable, deadline=deadline)`: `codex
 /// --version` reports a release that applies `updatedInput` within the hook
 /// deadline.
-#[cfg(unix)]
 pub(super) fn codex_applies_updated_input(executable: &Path, deadline: Instant) -> bool {
     use std::io::Read;
     use std::process::{Command, Stdio};
@@ -132,15 +165,13 @@ pub(super) fn codex_applies_updated_input(executable: &Path, deadline: Instant) 
     if remaining.is_zero() {
         return false;
     }
-    let Some(home) = user_home("") else {
+    let mut command = Command::new(executable);
+    command.arg("--version").env_clear();
+    if !probe_environment(&mut command) {
         return false;
-    };
+    }
     let probe_deadline = Instant::now() + remaining.min(VERSION_PROBE_TIMEOUT);
-    let Ok(mut child) = Command::new(executable)
-        .arg("--version")
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin")
-        .env("HOME", crate::daemon_lifecycle_text::norm_path(&home))
+    let Ok(mut child) = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -182,15 +213,41 @@ pub(super) fn codex_applies_updated_input(executable: &Path, deadline: Instant) 
         && String::from_utf8(bytes).is_ok_and(|stdout| version_supported(&stdout))
 }
 
-#[cfg(not(unix))]
-pub(super) fn codex_applies_updated_input(_executable: &Path, _deadline: Instant) -> bool {
+/// `_probe_environment()`: a fixed `PATH` and the user's home.
+#[cfg(unix)]
+fn probe_environment(command: &mut std::process::Command) -> bool {
+    let Some(home) = user_home("") else {
+        return false;
+    };
+    command
+        .env("PATH", "/usr/bin:/bin")
+        .env("HOME", crate::daemon_lifecycle_text::norm_path(&home));
+    true
+}
+
+/// On Windows `SYSTEMROOT`, its `System32` as `PATH`, and `USERPROFILE`
+/// as `Path.home()` reads it.
+#[cfg(windows)]
+fn probe_environment(command: &mut std::process::Command) -> bool {
+    let system_root = std::env::var_os("SYSTEMROOT").unwrap_or_else(|| r"C:\Windows".into());
+    let mut path = PathBuf::from(&system_root);
+    path.push("System32");
+    command.env("SYSTEMROOT", &system_root).env("PATH", path);
+    let Some(home) = crate::claude_hook_bridge::home_directory() else {
+        return false;
+    };
+    command.env("USERPROFILE", home);
+    true
+}
+
+#[cfg(not(any(unix, windows)))]
+fn probe_environment(_command: &mut std::process::Command) -> bool {
     false
 }
 
 /// `_VERSION.match(stdout.strip())` with a release at or above 0.131.0, or
 /// a pre-release whose base is above it: a pre-release sorts before its
 /// base, so `0.131.0-alpha.N` can predate the rewrite support.
-#[cfg(unix)]
 pub(super) fn version_supported(stdout: &str) -> bool {
     let Some(version) = py_strip(stdout).strip_prefix("codex-cli ") else {
         return false;
