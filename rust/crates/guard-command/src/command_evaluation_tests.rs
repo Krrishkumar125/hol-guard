@@ -187,6 +187,20 @@ fn evaluate_command_matches_python_oracle() {
             "oracle catalog semantics changed for {}; regenerate the Python oracle",
             expected.extension_id
         );
+        // GeneratedCommandCatalog.get strips and lowercases its query.
+        let padded = format!("  {}\n", expected.extension_id.to_uppercase());
+        assert_eq!(
+            catalog.get(&padded).map(|found| &found.extension_id),
+            Some(&expected.extension_id)
+        );
+        for alias in &expected.aliases {
+            assert_eq!(
+                catalog
+                    .get(&format!(" {} ", alias.to_uppercase()))
+                    .map(|found| &found.extension_id),
+                Some(&expected.extension_id)
+            );
+        }
     }
     // Bind observations to the live compiled identities. Full evaluation
     // payload equality below remains the Python/Rust parity gate.

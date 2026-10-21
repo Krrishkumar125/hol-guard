@@ -10,6 +10,7 @@
 //! the catalog to the live [`NativeCommandProgram`] and provides the same
 //! normalized lookup surface (`get`, `get_rule`, `permission`, …).
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
@@ -250,10 +251,19 @@ impl CommandCatalog {
     }
 
     /// Resolve an extension by `extension_id` or any of its `aliases`
-    /// (GeneratedCommandCatalog.get).
+    /// (GeneratedCommandCatalog.get). Like the Python lookup, the query is
+    /// stripped and lowercased first; an already-normalized id skips the
+    /// allocation.
     pub fn get(&self, extension_id: &str) -> Option<&CatalogExtension> {
+        let normalized = if extension_id.trim().len() == extension_id.len()
+            && !extension_id.chars().any(char::is_uppercase)
+        {
+            Cow::Borrowed(extension_id)
+        } else {
+            Cow::Owned(extension_id.trim().to_lowercase())
+        };
         self.by_extension_id
-            .get(extension_id)
+            .get(normalized.as_ref())
             .map(|index| &self.extensions[*index])
     }
 
