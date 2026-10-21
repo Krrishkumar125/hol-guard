@@ -135,3 +135,73 @@ fn a_state_whose_pid_was_reused_does_not_count_as_live() {
     state.process_start_marker = "stale-process-marker".to_owned();
     assert!(!state_may_be_live(&state));
 }
+
+/// A private `<home>/native-runtime` state base with this runtime's empty scope,
+/// so discovery sees no live resident.
+fn owner_release_fixture(label: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let home = std::env::temp_dir().join(format!(
+        "hol-guard-owner-release-{label}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let base = home.join("native-runtime");
+    fs::create_dir(&home).unwrap();
+    fs::create_dir(&base).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    state_scope(&base, &runtime_digest().unwrap()).unwrap();
+    (home, base)
+}
+
+#[test]
+fn spawn_waits_for_an_exiting_owner_to_release_the_lock() {
+    use std::sync::mpsc;
+    let (home, base) = owner_release_fixture("exiting");
+    let digest = runtime_digest().unwrap();
+    let (held, wait_held) = mpsc::channel();
+    let holder_base = base.clone();
+    // The holder has no generation file, like a resident that retired its
+    // state and is still on its way out.
+    let holder = thread::spawn(move || {
+        let lock = crate::managed_resident::acquire_managed_owner_lock(&holder_base).unwrap();
+        held.send(()).unwrap();
+        thread::sleep(Duration::from_millis(200));
+        drop(lock);
+    });
+    wait_held.recv().unwrap();
+    let started = Instant::now();
+    let result = await_owner_release(&base, &digest, started + Duration::from_secs(10));
+    let waited = started.elapsed();
+    holder.join().unwrap();
+    let successor = crate::managed_resident::acquire_managed_owner_lock(&base).map(drop);
+    std::fs::remove_dir_all(&home).unwrap();
+    assert_eq!(result, Ok(()));
+    assert!(
+        waited >= Duration::from_millis(100),
+        "returned while the owner was held"
+    );
+    assert!(
+        successor.is_ok(),
+        "a successor could not take the released lock"
+    );
+}
+
+#[test]
+fn spawn_names_an_owner_that_keeps_the_lock_past_the_deadline() {
+    let (home, base) = owner_release_fixture("foreign");
+    let digest = runtime_digest().unwrap();
+    let lock = crate::managed_resident::acquire_managed_owner_lock(&base).unwrap();
+    let result = await_owner_release(&base, &digest, Instant::now() + Duration::from_millis(100));
+    drop(lock);
+    std::fs::remove_dir_all(&home).unwrap();
+    assert_eq!(result, Err("native_resident_owner_busy".to_owned()));
+}

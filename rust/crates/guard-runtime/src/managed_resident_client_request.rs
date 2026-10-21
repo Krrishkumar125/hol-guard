@@ -18,6 +18,9 @@ use crate::resident_state::{
 const CLIENT_START_TIMEOUT: Duration = Duration::from_millis(9_000);
 const DAEMON_LIFECYCLE_START_TIMEOUT: Duration =
     Duration::from_millis(super::DAEMON_LIFECYCLE_TIMEOUT_CEILING_MS);
+// Each owner-lock probe also runs discovery, so poll the exiting owner more
+// slowly than the live-state retry loop.
+const OWNER_RELEASE_POLL: Duration = Duration::from_millis(25);
 
 fn startup_limit(payload: &[u8]) -> Duration {
     let value = crate::strict_json_value(payload).ok();
@@ -156,6 +159,39 @@ fn try_home_states(
     Ok(None)
 }
 
+/// Return once a spawned resident can take the home-wide owner lock.
+///
+/// A resident from another Guard install holds the owner lock. A spawn here
+/// could only fail on that lock, so name the owner instead of spending the
+/// restart budget on it. A live resident of this runtime holding the lock is
+/// unhealthy, not foreign: it keeps spending the budget so the restart circuit
+/// still opens.
+///
+/// This client holds the startup lock, so the holder may also be a resident
+/// that has retired its generation file and not yet released the lock on its
+/// way out. A successor spawned in that window fails on the lock at once, and
+/// the spawn wait then spends the whole startup limit on a resident that never
+/// publishes. Wait for that release until `deadline` before naming the owner.
+fn await_owner_release(state_base: &Path, digest: &str, deadline: Instant) -> Result<(), String> {
+    loop {
+        match super::acquire_managed_owner_lock(state_base) {
+            Err(error)
+                if error == "native_resident_owner_busy"
+                    && !live_resident_of_runtime(state_base, digest) =>
+            {
+                if Instant::now() >= deadline {
+                    return Err(error);
+                }
+            }
+            probe => {
+                drop(probe);
+                return Ok(());
+            }
+        }
+        thread::sleep(OWNER_RELEASE_POLL.min(deadline.saturating_duration_since(Instant::now())));
+    }
+}
+
 /// Whether discovery finds a live resident that runs `digest`.
 fn live_resident_of_runtime(state_base: &Path, digest: &str) -> bool {
     // An unreadable state keeps the old behaviour of spending the budget.
@@ -283,20 +319,11 @@ fn client_request_with_deadline_inner(
         return Ok(response);
     }
     let (generation, token, mut spawned) = observe(Phase::ClientSpawn, || -> Result<_, String> {
-        // A resident from another Guard install holds the home-wide owner
-        // lock. A spawn here could only fail on that lock, so name the owner
-        // instead of spending the restart budget on it. A live resident of
-        // this runtime holding the lock is unhealthy, not foreign: it keeps
-        // spending the budget so the restart circuit still opens.
-        match super::acquire_managed_owner_lock(state_base) {
-            Err(error)
-                if error == "native_resident_owner_busy"
-                    && !live_resident_of_runtime(state_base, &digest) =>
-            {
-                return Err(error)
-            }
-            probe => drop(probe),
-        }
+        await_owner_release(
+            state_base,
+            &digest,
+            overall_deadline.min(Instant::now() + startup_limit(payload)),
+        )?;
         restart_budget::consume_for_spawn(state_base, &scope, overall_deadline)?;
         let generation = next_generation(&scope, &digest)?;
         let mut token = [0u8; crate::AUTH_TOKEN_BYTES];
