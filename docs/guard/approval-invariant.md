@@ -79,6 +79,7 @@ Changing any of these produces a new command, and Guard asks again.
 | Approval scopes offered to the user | `rust/crates/guard-runtime/src/approval_scope_contract.rs` (`allow_is_non_overridable` excludes only non-review verdicts) |
 | Saved allows on the Python daemon path | `src/codex_plugin_scanner/guard/daemon/hook_native_saved_approval.py` (`_native_review_is_approvable`) |
 | Routing of a review-tier artifact verdict (queued for approval, never terminal unless the operator chose not to be asked) | `rust/crates/guard-runtime/src/hook_decision_artifact_review_route.rs` (`artifact_review_route`), executed by `src/codex_plugin_scanner/guard/cli/commands_hook_native_review.py` |
+| Reuse of a saved approval on the artifact hook (claim, revalidate, settled). A saved allow is claimed before it is used, a claim that wins is always revalidated against the request it was issued for, a claim that loses never allows, Always allow is honored at any scope and under `require-reapproval`, and a changed hash is refused and never claimed | `rust/crates/guard-runtime/src/hook_decision_artifact_reuse_step.rs` (`artifact_reuse_step`), executed by `src/codex_plugin_scanner/guard/cli/commands_hook_native_reuse.py` (`execute_reuse_plan`); an unreachable resident falls to the host outage, or to `package_reuse_floor` for a package request |
 | Review card choices | `dashboard/src/approval-retry-guidance.ts`, `dashboard/src/review-decision-card.tsx` |
 
 ## Regression tests
@@ -95,6 +96,8 @@ Changing any of these produces a new command, and Guard asks again.
 - `tests/test_guard_approval_scope_contract.py`
 - `rust/crates/guard-runtime/src/hook_decision_artifact_review_route_tests.rs` (`review_tier_verdicts_keep_allow_once_and_always_allow`)
 - `tests/test_artifact_review_route_parity.py` (`test_review_tier_verdicts_keep_allow_once_and_always_allow`)
+- `rust/crates/guard-runtime/src/hook_decision_artifact_reuse_step_tests.rs` (`allow_once_revalidates_the_request_it_was_issued_for`, `a_saved_allow_is_honored_at_any_scope`, `a_saved_package_allow_is_honored_under_require_reapproval`, `a_changed_hash_is_refused_and_never_claimed`, `a_lost_claim_never_allows`)
+- `tests/test_artifact_reuse_step_parity.py` and `tests/test_artifact_reuse_step_executor.py` (`test_allow_once_revalidates_the_request_it_was_issued_for`, `test_a_saved_package_allow_is_honored_under_require_reapproval`, `test_the_scope_that_carried_a_saved_allow_never_reaches_the_resident`, `test_an_expired_or_changed_hash_is_refused_and_never_claimed`)
 - `dashboard/src/approval-retry-ux.test.ts`, `dashboard/e2e/approval-scope-ui.spec.ts`
 
 If one of these fails after a change, fix the change. Do not relax the test.

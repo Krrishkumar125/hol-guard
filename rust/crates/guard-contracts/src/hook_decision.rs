@@ -14,7 +14,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{CodexToolOutputFactsV1, NativeExtensionControlLayerV1};
+use crate::{
+    ArtifactReusePlanV1, ArtifactReuseStepInputsV1, CodexToolOutputFactsV1,
+    NativeExtensionControlLayerV1,
+};
 
 /// Schema discriminator for the request.
 pub const HOOK_DECISION_REQUEST_SCHEMA: &str = "guard-hook-decision-request.v1";
@@ -73,6 +76,11 @@ pub enum HookDecisionQueryV1 {
     /// queued for approval.
     ArtifactReviewRoute {
         inputs: Box<ArtifactReviewRouteInputsV1>,
+    },
+    /// The artifact hook's approval-reuse state machine: the plan of effects
+    /// (claim, revalidate) and the settlement the request reaches.
+    ArtifactReuseStep {
+        inputs: Box<ArtifactReuseStepInputsV1>,
     },
 }
 
@@ -396,6 +404,9 @@ pub enum HookDecisionPayloadV1 {
     Finalize(Box<HookFinalV1>),
     ArtifactDirective(Box<HookResponseDirectiveV1>),
     ArtifactReviewRoute(Box<ArtifactReviewRouteV1>),
+    ArtifactReuseStep {
+        plan: Box<ArtifactReusePlanV1>,
+    },
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.
         needs_facts: Vec<String>,
