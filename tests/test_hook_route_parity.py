@@ -377,6 +377,11 @@ def test_the_budget_is_what_remains_of_the_timing_anchored_at_entry(monkeypatch:
     assert route_run.route_budget_seconds({"deadline": 102.5}) == 2.5
     assert route_run.route_budget_seconds({"deadline": 99.0}) == -1.0
     assert route_run.route_budget_seconds({"edge_budget_seconds": 3.0}) == 3.0
+    # The explicit budget is a duration sampled at entry: preparation has spent some of it.
+    assert route_run.route_budget_seconds({"edge_budget_seconds": 3.0}, started_at=98.5) == 1.5
+    assert route_run.route_budget_seconds({"edge_budget_seconds": 3.0}, started_at=100.0) == 3.0
+    assert route_run.route_budget_seconds({"edge_budget_seconds": 3.0}, started_at=101.0) == 3.0
+    assert route_run.route_budget_seconds({"deadline": 102.5}, started_at=90.0) == 2.5
     assert route_run.route_budget_seconds({}) is None
 
 
@@ -391,7 +396,7 @@ def test_the_pipeline_hands_the_route_the_remaining_budget(monkeypatch: pytest.M
         return route_module.NativeHookRoute(*_Current.route)
 
     monkeypatch.setattr(pipeline, "native_hook_route", route)
-    monkeypatch.setattr(pipeline, "route_budget_seconds", lambda timing: 1.25)
+    monkeypatch.setattr(pipeline, "route_budget_seconds", lambda timing, **_kwargs: 1.25)
     _run_pipeline(case, vector, rec.WORLDS[0])
     assert budgets == [1.25]
 

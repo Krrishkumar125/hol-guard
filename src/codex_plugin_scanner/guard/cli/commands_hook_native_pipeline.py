@@ -13,6 +13,7 @@ queueing, receipt persistence, and per-harness emission.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from time import monotonic as _monotonic
 from typing import TYPE_CHECKING
 
 from ..daemon.hook_request_parsing import runtime_hook_event_name
@@ -116,6 +117,7 @@ def run_native_hook_pipeline(
 
     invoked_event = runtime_hook_event_name(payload)
     # Anchor any harness-stamped hint at CLI entry, before state preparation.
+    entry_clock = _monotonic()
     edge_timing = RuntimeHookDeadline.cli_edge_kwargs(payload)
     if config is None:
         # Native-mode hooks defer config reads until after the payload loads;
@@ -161,7 +163,9 @@ def run_native_hook_pipeline(
     )
     try:
         route = native_hook_route(
-            inputs, guard_home=context.guard_home, budget_seconds=route_budget_seconds(edge_timing)
+            inputs,
+            guard_home=context.guard_home,
+            budget_seconds=route_budget_seconds(edge_timing, started_at=entry_clock),
         )
     except NativeHookDecisionError as error:
         # No route means no handler to run: the host outage response, never a guess.

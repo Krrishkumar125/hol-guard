@@ -110,12 +110,19 @@ def hook_route_inputs(
     }
 
 
-def route_budget_seconds(edge_timing: Mapping[str, float]) -> float | None:
-    """What the harness still allows this hook, from the timing anchored at CLI entry."""
+def route_budget_seconds(edge_timing: Mapping[str, float], *, started_at: float | None = None) -> float | None:
+    """What the harness still allows this hook, from the timing anchored at CLI entry.
+
+    A hinted deadline is absolute. An explicit budget is a duration sampled at
+    ``started_at``, so the time spent preparing the hook since then is spent.
+    """
     deadline = edge_timing.get("deadline")
     if deadline is not None:
         return deadline - time.monotonic()
-    return edge_timing.get("edge_budget_seconds")
+    budget = edge_timing.get("edge_budget_seconds")
+    if budget is None or started_at is None:
+        return budget
+    return budget - max(0.0, time.monotonic() - started_at)
 
 
 def run_route_plan(run: NativeHookRun, plan: Sequence[str], handlers: Mapping[str, NativeHandler]) -> int:
