@@ -335,6 +335,9 @@ def test_soak_gate_requires_request_count_resources_and_rss_bound() -> None:
     assert replace(result, rss_growth=0.49).soak_passed
     assert replace(result, rss_growth=0.50).soak_passed
     assert not replace(result, rss_growth=0.51).soak_passed
+    assert result.soak_failures == ()
+    assert replace(result, rss_growth=0.51).soak_failures == ("rss_growth",)
+    assert replace(result, rss_growth=0.51, receipts=249_999).soak_failures == ("receipts", "rss_growth")
     assert not replace(result, requests=99_999).soak_passed
     assert not replace(result, receipts=249_999).soak_passed
     isolated_probe_timeouts = replace(result, health_checks=18_932, transient_health_failures=30)

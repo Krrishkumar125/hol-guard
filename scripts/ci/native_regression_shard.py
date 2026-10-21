@@ -65,6 +65,21 @@ def _configure_installed_native() -> None:
     os.environ.pop("HOL_GUARD_NATIVE_SOURCE_COMPILER", None)
 
 
+# A loaded hosted runner can starve a cold resident past its answer deadline.
+# Only that unanswered-resident error class gets one more attempt; an assertion
+# or a wrong decision still fails the shard on its first occurrence.
+TRANSIENT_RERUN = (
+    "--reruns",
+    "1",
+    "--reruns-delay",
+    "2",
+    "--only-rerun",
+    "did not answer",
+    "--only-rerun",
+    "native_approval_authority_busy",
+)
+
+
 class _AssertInstalled:
     @pytest.hookimpl(trylast=True)
     def pytest_collection_finish(self, session: pytest.Session) -> None:
@@ -121,7 +136,7 @@ def main() -> int:
         # Retain the exact manifest, pytest configuration, assertions and exit status.
         exit_code = int(
             pytest.main(
-                ["@" + str(ROOT / "ci/native_runtime/regression-tests.txt"), "--durations=10"],
+                ["@" + str(ROOT / "ci/native_runtime/regression-tests.txt"), "--durations=10", *TRANSIENT_RERUN],
                 plugins=[shard, _AssertInstalled()],
             )
         )

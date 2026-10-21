@@ -169,7 +169,11 @@ def test_execution_preserves_original_manifest_assertions_and_exit_status(
 
     def execute(arguments, *, plugins):
         assert calls == ["configure"]
-        assert arguments == ["@" + str(shard.ROOT / "ci/native_runtime/regression-tests.txt"), "--durations=10"]
+        assert arguments == [
+            "@" + str(shard.ROOT / "ci/native_runtime/regression-tests.txt"),
+            "--durations=10",
+            *shard.TRANSIENT_RERUN,
+        ]
         assert isinstance(plugins[0], shard.NativeShard)
         assert isinstance(plugins[1], shard._AssertInstalled)
         plugins[0].all_nodes = ["tests/test_native.py::test_real_binary"]
