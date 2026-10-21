@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 
 from ..native_hook_adapter import UnsupportedHarnessError
 from ..native_hook_render import native_evaluation_has_terminal_policy_action
-from .native_hook_exit_code import native_hook_verdict_exit_code
 
 
 def _coalesce_string(*values: object | None) -> str:
@@ -274,14 +273,18 @@ def _restore_ephemeral_approval_tokens(value: object, tokens: list[str]) -> obje
 def _emit_native_post_tool_envelope(
     harness: str,
     *,
-    policy_action: str,
+    blocking: bool,
     reason: str,
     response_payload: dict[str, object],
     output_stream: TextIO | None = None,
     as_json: bool = False,
 ) -> None:
-    """Emit a PostToolUse outcome; the action already ran so it never pauses."""
-    blocking = policy_action in {"review", "require-reapproval", "sandbox-required", "block"}
+    """Emit a PostToolUse outcome; the action already ran so it never pauses.
+
+    ``blocking`` is the caller's already-settled verdict, never re-derived here.
+    A caller holding a native directive passes its ``envelope_decision`` so the
+    emitted surface carries the Rust verdict verbatim.
+    """
     # The edge decided whether this output is withheld; nothing here re-reads
     # its verdict or its output action to decide that again. An event with no
     # edge review carries no mask.
@@ -329,6 +332,7 @@ def _native_hook_json_document(
     policy_action: str,
     reason: str,
     envelope: Mapping[str, object] | None,
+    exit_code: int,
     system_message: str | None = None,
     generic_path: bool = False,
     native_protocol_payload: bool = False,
@@ -341,6 +345,9 @@ def _native_hook_json_document(
     Returns ``(document, rc)`` when this call owns the response, ``(None, 0)``
     when the harness contract is silence, and ``None`` when the caller should
     fall back to the generic envelope or adapter emit paths.
+
+    ``exit_code`` is the caller's already-settled process status, so the
+    document and the status the harness reads come out of one decision.
     """
     if not getattr(args, "json", False) or event_name == "PostToolUse":
         return None
@@ -361,7 +368,6 @@ def _native_hook_json_document(
         "verified_benign": verified_benign,
     }
     rendered = _render_cli("cli_document", args.harness, params)
-    exit_code = native_hook_verdict_exit_code(canonical, policy_action, event_name)
     if rendered is None:
         denied = _fixed_deny(args.harness, event_name, policy_action, reason)
         return (denied, exit_code) if denied is not None else None

@@ -234,6 +234,9 @@ def render_generic_hook(
             policy_action=policy_action,
             reason=json_reason,
             envelope=envelope,
+            # One settled status for the document and the process: the
+            # directive carries the native verdict's exit code already.
+            exit_code=exit_code(),
             system_message=(
                 directive_system_message(directive, policy_action=policy_action, reason=reason) if artifact else None
             ),
@@ -275,7 +278,10 @@ def render_generic_hook(
             _apply_native_edge_envelope_fields(envelope, native_edge_result)
         _emit_native_post_tool_envelope(
             harness,
-            policy_action=policy_action,
+            # The directive settled this verdict natively. Reading it back stops
+            # the envelope from disagreeing with the exit code and the receipt
+            # that came out of that same decision.
+            blocking=directive["envelope_decision"] == "block",
             reason=reason() if artifact else coalesce(incoming_reason, reason()) or reason(),
             response_payload=envelope,
             output_stream=output_stream,
