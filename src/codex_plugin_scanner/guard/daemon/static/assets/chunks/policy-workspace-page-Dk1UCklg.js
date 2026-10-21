@@ -1847,14 +1847,15 @@ function resolveRememberSentence(policy, commandLabel) {
   const app = harnessDisplayName(policy.harness);
   const folder = policy.workspace_label?.trim() || resolveWorkspaceLabel(policy.workspace);
   const verb = policy.action === "block" ? "block" : "allow";
+  const label = commandLabel.length > 140 ? `${commandLabel.slice(0, 137).trimEnd()}…` : commandLabel;
   if (policy.scope === "artifact") {
-    return `Guard will ${verb} "${commandLabel}" the next time ${app} retries this exact action.`;
+    return `Guard will ${verb} "${label}" the next time ${app} retries this exact action.`;
   }
   if (policy.scope === "workspace") {
-    return `Guard will ${verb} "${commandLabel}" every time ${app} runs it in ${folder}.`;
+    return `Guard will ${verb} "${label}" every time ${app} runs it in ${folder}.`;
   }
   if (policy.scope === "harness") {
-    return `Guard will ${verb} "${commandLabel}" every time ${app} runs a matching action.`;
+    return `Guard will ${verb} "${label}" every time ${app} runs a matching action.`;
   }
   if (policy.scope === "publisher") {
     const publisher = policy.publisher?.trim() || "this publisher";
@@ -1937,6 +1938,13 @@ function resolveProjectLabel(policy) {
     return null;
   }
   return resolveWorkspaceLabel(workspace);
+}
+function resolveExactApprovedAction(policy) {
+  const command = policy.remembered_command?.trim();
+  if (!command || isScannerGeneratedPolicyLabel(command)) {
+    return null;
+  }
+  return command;
 }
 function resolvePolicyDisplay(policy) {
   const reason = policy.reason?.trim() ?? null;
@@ -3850,6 +3858,7 @@ function PolicyRuleInspector(props) {
   const dialogRef = reactExports.useRef(null);
   const display = resolvePolicyDisplay(policy);
   const title = resolvePolicyRowTitle(policy, display);
+  const exactAction = resolveExactApprovedAction(policy);
   const cloudManaged = isCloudManagedPolicy(policy.source);
   const canClear = props.onClear !== void 0 && !cloudManaged;
   const folder = resolvePolicyRowFolder(policy);
@@ -3942,6 +3951,11 @@ function PolicyRuleInspector(props) {
           /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "mt-3 break-words text-lg font-semibold leading-snug text-brand-dark", children: title }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm leading-relaxed text-slate-600", children: display.rememberSentence }),
           display.kindLine ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-slate-500", children: display.kindLine }) : null,
+          exactAction ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] font-medium uppercase tracking-wider text-slate-500", children: policy.action === "block" ? "Exact action blocked" : "Exact action approved" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "mt-1.5 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-900 px-3 py-2.5 font-mono text-xs leading-relaxed text-slate-50", children: exactAction }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1.5 text-xs leading-relaxed text-slate-500", children: "This is the exact action this rule was approved for. Guard repeats it without asking while the rule stands." })
+          ] }) : null,
           /* @__PURE__ */ jsxRuntimeExports.jsx("dl", { className: "mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:grid-cols-2", children: [
             ["Source", resolvePolicyRowSourceLabel(policy)],
             ["Scope", scopeLabel(policy.scope, "policy")],

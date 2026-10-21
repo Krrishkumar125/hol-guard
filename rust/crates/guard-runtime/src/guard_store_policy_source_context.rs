@@ -23,11 +23,16 @@ const INVALID: StoreError = StoreError::Invalid("native_guard_store_args_invalid
 
 const RECEIPT_COLUMNS: &str =
     "receipt_id, artifact_name, capabilities_summary, provenance_summary, \
-     source_scope, scanner_evidence_json, artifact_id, harness, artifact_hash, timestamp";
+     source_scope, scanner_evidence_json, artifact_id, harness, artifact_hash, timestamp, \
+     approval_request_id";
 const INVENTORY_COLUMNS: &str = "artifact_name, launch_command, source_scope, harness, artifact_id";
 const APPROVAL_COLUMNS: &str =
     "request_id, artifact_name, launch_summary, launch_target, workspace, \
-     resolved_at, trigger_summary, resolution_scope, harness, artifact_id, artifact_hash";
+     resolved_at, trigger_summary, resolution_scope, resolution_action, harness, artifact_id, artifact_hash";
+
+/// Decisions persisted from a native exact approval carry this token as
+/// their hash instead of the approval's own hash, so no hash join exists.
+const APPROVAL_CONTEXT_PREFIX: &str = "guard-approval-context:v1:";
 
 struct Item {
     harness: String,
@@ -35,6 +40,8 @@ struct Item {
     artifact_hash: Option<String>,
     workspace: Option<String>,
     reason: Option<String>,
+    action: Option<String>,
+    updated_at: Option<String>,
 }
 
 impl Item {
@@ -46,10 +53,18 @@ impl Item {
         self.artifact_hash.as_deref()
     }
 
-    /// Artifact-id buckets apply without a hash or with a runtime-exact hash.
+    /// Artifact-id buckets apply without a hash, with a runtime-exact hash,
+    /// or with an approval-context token (which names no approval row).
     fn uses_artifact_buckets(&self) -> bool {
-        truthy(self.id()) && (!truthy(self.hash()) || is_runtime_exact_key(self.hash()))
+        truthy(self.id())
+            && (!truthy(self.hash())
+                || is_runtime_exact_key(self.hash())
+                || is_context_token(self.hash()))
     }
+}
+
+fn is_context_token(hash: Option<&str>) -> bool {
+    hash.is_some_and(|value| value.starts_with(APPROVAL_CONTEXT_PREFIX))
 }
 
 fn parse_items(args: &Args) -> StoreResult<Vec<Item>> {
@@ -71,6 +86,8 @@ fn parse_items(args: &Args) -> StoreResult<Vec<Item>> {
                 artifact_hash: field("artifact_hash")?,
                 workspace: field("workspace")?,
                 reason: field("reason")?,
+                action: field("action")?,
+                updated_at: field("updated_at")?,
             })
         })
         .collect()
@@ -338,7 +355,7 @@ fn approval_matches(item: &Item, approvals: &Table, candidates: Vec<usize>) -> V
             if !artifact_matches_candidate(item.id(), row_id.as_deref()) {
                 return false;
             }
-            if truthy(item.hash()) {
+            if truthy(item.hash()) && !is_context_token(item.hash()) {
                 let row_hash = cell(row, "artifact_hash").unwrap_or_default();
                 if !variants.contains(&row_hash)
                     && runtime_exact_key(row_id.as_deref()).as_deref() != item.hash()
@@ -453,17 +470,6 @@ fn context_from_rows(
 }
 
 fn lookup(index: &Index, item: &Item) -> Value {
-    let mut receipt_candidates = Vec::new();
-    index
-        .receipts
-        .hash_candidates(item, &mut receipt_candidates);
-    index
-        .receipts
-        .artifact_candidates(item, &mut receipt_candidates);
-    let receipt = index
-        .receipts
-        .best(&receipt_candidates, item.id(), "timestamp");
-
     let inventory = item
         .id()
         .filter(|value| !py_strip(value).is_empty() && item.harness != "*")
@@ -481,9 +487,79 @@ fn lookup(index: &Index, item: &Item) -> Value {
         .approvals
         .hash_candidates(item, &mut approval_candidates);
     let approval_candidates = approval_matches(item, &index.approvals, approval_candidates);
-    let approval = index
-        .approvals
-        .best(&approval_candidates, item.id(), "resolved_at");
+
+    // A context-token decision has no hash join, and its artifact bucket is
+    // shared by every exact action of that tool — picking the newest row
+    // would name the wrong command. The decision row is written in the same
+    // store operation that resolves its approval, so the approval resolved
+    // at exactly the decision's updated_at is the action that was approved.
+    // Require exactly one such approval; ambiguity stays unnamed.
+    let context_token = is_context_token(item.hash());
+    let approval = if context_token {
+        let timed: Vec<&Row> = approval_candidates
+            .iter()
+            .map(|&position| &index.approvals.rows[position])
+            .filter(|row| {
+                cell(row, "resolved_at").as_deref() == item.updated_at.as_deref()
+                    && cell(row, "resolution_action").as_deref() == item.action.as_deref()
+            })
+            .collect();
+        if let [only] = timed.as_slice() {
+            Some(*only)
+        } else {
+            None
+        }
+    } else {
+        index
+            .approvals
+            .best(&approval_candidates, item.id(), "resolved_at")
+    };
+
+    let receipt = if context_token {
+        approval.and_then(|approval_row| {
+            let request_id = cell(approval_row, "request_id").unwrap_or_default();
+            let resolved_at = cell(approval_row, "resolved_at").unwrap_or_default();
+            index
+                .receipts
+                .rows
+                .iter()
+                .find(|row| {
+                    cell(row, "approval_request_id").as_deref() == Some(request_id.as_str())
+                })
+                .or_else(|| {
+                    let timed: Vec<&Row> = index
+                        .receipts
+                        .rows
+                        .iter()
+                        .filter(|row| {
+                            row.get("harness").and_then(Value::as_str)
+                                == Some(item.harness.as_str())
+                                && artifact_matches_candidate(
+                                    item.id(),
+                                    row.get("artifact_id").and_then(Value::as_str),
+                                )
+                                && cell(row, "timestamp").as_deref() == Some(resolved_at.as_str())
+                        })
+                        .collect();
+                    if let [only] = timed.as_slice() {
+                        Some(*only)
+                    } else {
+                        None
+                    }
+                })
+        })
+    } else {
+        let mut receipt_candidates = Vec::new();
+        index
+            .receipts
+            .hash_candidates(item, &mut receipt_candidates);
+        index
+            .receipts
+            .artifact_candidates(item, &mut receipt_candidates);
+        index
+            .receipts
+            .best(&receipt_candidates, item.id(), "timestamp")
+    };
 
     context_from_rows(item, receipt, inventory, approval)
 }
@@ -502,4 +578,116 @@ pub(crate) fn policy_source_contexts(
     Ok(Value::Array(
         items.iter().map(|item| lookup(&index, item)).collect(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn row(fields: &[(&str, Value)]) -> Row {
+        fields
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), value.clone()))
+            .collect()
+    }
+
+    fn approval(request_id: &str, resolved_at: &str, target: &str) -> Row {
+        row(&[
+            ("request_id", json!(request_id)),
+            ("harness", json!("omp")),
+            ("artifact_id", json!("omp:native-pretool:bash")),
+            ("artifact_hash", json!("native-review-v4:binding")),
+            ("artifact_name", json!("bash")),
+            ("launch_target", json!(target)),
+            ("resolved_at", json!(resolved_at)),
+            ("resolution_action", json!("allow")),
+            ("resolution_scope", json!("artifact")),
+        ])
+    }
+
+    fn token_item(updated_at: &str) -> Item {
+        Item {
+            harness: "omp".to_owned(),
+            artifact_id: Some("omp:native-pretool:bash".to_owned()),
+            artifact_hash: Some("guard-approval-context:v1:token".to_owned()),
+            workspace: None,
+            reason: Some("approved in review".to_owned()),
+            action: Some("allow".to_owned()),
+            updated_at: Some(updated_at.to_owned()),
+        }
+    }
+
+    fn index(approvals: Vec<Row>, receipts: Vec<Row>) -> Index {
+        Index {
+            receipts: Table::index(receipts),
+            inventory: HashMap::new(),
+            approvals: Table::index(approvals),
+        }
+    }
+
+    #[test]
+    fn context_token_names_its_own_approval_not_the_newest() {
+        let index = index(
+            vec![
+                approval("req-old", "2026-10-20T10:00:00Z", "cd /repo && git status"),
+                approval("req-new", "2026-10-20T11:00:00Z", "rm -rf /tmp/build"),
+            ],
+            vec![],
+        );
+        let context = lookup(&index, &token_item("2026-10-20T10:00:00Z"));
+        assert_eq!(
+            context["remembered_command"],
+            json!("cd /repo && git status")
+        );
+    }
+
+    #[test]
+    fn context_token_ambiguous_timestamp_stays_unnamed() {
+        let index = index(
+            vec![
+                approval("req-a", "2026-10-20T10:00:00Z", "git status"),
+                approval("req-b", "2026-10-20T10:00:00Z", "git diff"),
+            ],
+            vec![],
+        );
+        assert_eq!(
+            lookup(&index, &token_item("2026-10-20T10:00:00Z")),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn context_token_receipt_follows_the_timed_approval() {
+        let receipt = row(&[
+            ("receipt_id", json!("receipt-1")),
+            ("harness", json!("omp")),
+            ("artifact_id", json!("omp:native-pretool:bash")),
+            ("artifact_hash", json!("native-review-v4:binding")),
+            ("artifact_name", json!("bash")),
+            ("capabilities_summary", json!("approval decision")),
+            ("timestamp", json!("2026-10-20T10:00:01Z")),
+            ("approval_request_id", json!("req-old")),
+        ]);
+        let index = index(
+            vec![approval("req-old", "2026-10-20T10:00:00Z", "git status")],
+            vec![receipt],
+        );
+        let context = lookup(&index, &token_item("2026-10-20T10:00:00Z"));
+        assert_eq!(context["source_receipt_id"], json!("receipt-1"));
+        assert_eq!(context["remembered_command"], json!("git status"));
+    }
+
+    #[test]
+    fn regular_hash_mismatch_still_names_nothing() {
+        let mut item = token_item("2026-10-20T10:00:00Z");
+        item.artifact_hash = Some(
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+        );
+        let index = index(
+            vec![approval("req-old", "2026-10-20T10:00:00Z", "git status")],
+            vec![],
+        );
+        assert_eq!(lookup(&index, &item), Value::Null);
+    }
 }

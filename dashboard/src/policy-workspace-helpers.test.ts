@@ -1,6 +1,7 @@
 import type { GuardPolicyDecision } from "./guard-types";
 import {
   resolvePolicyApprovalRecordLabel,
+  resolveExactApprovedAction,
   resolvePolicyDisplay,
   resolvePolicyEvidenceHref,
   resolvePolicyMatcherFamily,
@@ -147,5 +148,19 @@ assert(
   )?.startsWith("…/"),
   "POL-H17: long paths truncate with ellipsis",
 );
+
+const exactRule = basePolicy({
+  scope: "artifact",
+  artifact_id: "omp:native-pretool:bash",
+  artifact_hash: "guard-approval-context:v1:token",
+  remembered_command: "cd /repo && git status && rm -rf /tmp/build",
+});
+assert(resolveExactApprovedAction(exactRule) === "cd /repo && git status && rm -rf /tmp/build", "POL-H18: exact approved action surfaces verbatim");
+assert(resolvePolicyDisplay(exactRule).headline === "cd /repo && git status && rm -rf /tmp/build", "POL-H19: row headline is the exact action");
+assert(resolvePolicyDisplay(exactRule).rememberSentence.includes("cd /repo && git status"), "POL-H20: sentence quotes the exact action");
+assert(resolveExactApprovedAction(basePolicy({ remembered_command: "credential-looking output review" })) === null, "POL-H21: scanner labels never pose as exact actions");
+const longRule = basePolicy({ scope: "artifact", remembered_command: "x".repeat(200) });
+assert(resolvePolicyDisplay(longRule).rememberSentence.length < 230, "POL-H22: row sentence bounds very long commands");
+assert(resolvePolicyDisplay(longRule).rememberSentence.includes("…"), "POL-H23: truncated sentence is marked");
 
 console.log("policy-workspace-helpers.test.ts: all assertions passed");
