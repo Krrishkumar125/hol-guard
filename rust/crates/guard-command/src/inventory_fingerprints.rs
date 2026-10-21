@@ -314,8 +314,9 @@ pub fn inventory_snapshot_content_hash(
         .collect();
 
     let mut ordered_findings: Vec<&GuardAgentInventoryFinding> = findings.iter().collect();
-    ordered_findings
-        .sort_by(|left, right| (&left.source, &left.finding_id).cmp(&(&right.source, &right.finding_id)));
+    ordered_findings.sort_by(|left, right| {
+        (&left.source, &left.finding_id).cmp(&(&right.source, &right.finding_id))
+    });
     let findings: Vec<Value> = ordered_findings
         .iter()
         .map(|finding| {
@@ -334,8 +335,9 @@ pub fn inventory_snapshot_content_hash(
         .collect();
 
     let mut ordered_sources: Vec<&GuardInventorySource> = sources.iter().collect();
-    ordered_sources
-        .sort_by(|left, right| (&left.source_type, &left.source_id).cmp(&(&right.source_type, &right.source_id)));
+    ordered_sources.sort_by(|left, right| {
+        (&left.source_type, &left.source_id).cmp(&(&right.source_type, &right.source_id))
+    });
     let sources: Vec<Value> = ordered_sources
         .iter()
         .map(|source| {
