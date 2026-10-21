@@ -91,7 +91,7 @@ def release(tmp_path, monkeypatch):
     return authority, install
 
 
-def legacy_store(tmp_path, monkeypatch):
+def legacy_store(tmp_path, monkeypatch, *, revisions=1):
     # The frozen released v4 schema implementation creates the disk fixture.
     from pathlib import Path
 
@@ -106,7 +106,10 @@ def legacy_store(tmp_path, monkeypatch):
             commits, "ensure_extension_control_authority_schema", namespace["ensure_extension_control_authority_schema"]
         )
         store = _store(tmp_path, MemorySecretStore())
-        _commit(store)
+        # Each control commit is one authority revision, so a caller that needs
+        # the migration to walk a chain asks for more than the first one.
+        for revision in range(revisions):
+            _commit(store, revision=revision, key=f"change-{revision + 1}")
     # Pin disposable protected IO while retaining the real control key/anchor.
     seed(store)
     store._policy_integrity_secret_store.values.clear()
@@ -278,29 +281,10 @@ def test_history_past_the_request_bound_migrates_through_a_spilled_chain(tmp_pat
     """
     from pathlib import Path
 
-    from codex_plugin_scanner.guard.approval_gate import ApprovalGateInput, require_approval_decision
-    from codex_plugin_scanner.guard.models import PolicyDecision
-    from tests.guard_extension_control_authority_fixtures import _PASSWORD
-    from tests.managed_controls_activation_support import activate_managed_bundle, managed_bundle
-
-    store = legacy_store(tmp_path, monkeypatch)
-    assert activate_managed_bundle(store, managed_bundle())
-    grant = require_approval_decision(
-        store.guard_home, action="allow", scope="artifact", approval_gate_input=ApprovalGateInput(password=_PASSWORD)
-    )
-    store.upsert_policy(
-        PolicyDecision(
-            harness="codex",
-            scope="artifact",
-            action="allow",
-            artifact_id="fixture:exact-command",
-            artifact_hash="a" * 64,
-        ),
-        "2026-10-18T12:00:00Z",
-        approval_gate_grant=grant,
-    )
+    store = legacy_store(tmp_path, monkeypatch, revisions=4)
     with store._connect() as connection:
-        assert lifecycle_store.legacy_evidence(store, connection)["legacy_history"]
+        # Three predecessors under the head: a real chain for the walk to read.
+        assert len(lifecycle_store.legacy_evidence(store, connection)["legacy_history"]) == 3
     monkeypatch.setattr(lifecycle_store, "LEGACY_HISTORY_INLINE_BYTES", -1)
     requested: dict = {}
     invoke = lifecycle.invoke
