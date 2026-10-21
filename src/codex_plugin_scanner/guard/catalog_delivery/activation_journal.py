@@ -176,6 +176,12 @@ def _verified_pending(row, transition, key):
     # recovery reset. Key access, lineage checks and storage errors stay retryable.
     try:
         return _verify_pending(row, transition, key)
+    except lifecycle.NativePackLifecycleUnavailable:
+        # A runtime that could not answer has said nothing about this record. A
+        # missing executable, a timeout or a crash would otherwise discard an
+        # authenticated pending transition, so the outage propagates and the
+        # transition is resumed on the next attempt.
+        raise
     except (ExtensionControlAuthorityError, ValueError) as error:
         raise UnverifiablePackTransitionError("native_command_pack_transition_mismatch") from error
 

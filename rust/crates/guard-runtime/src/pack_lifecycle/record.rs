@@ -4,8 +4,11 @@
 //!
 //! Sealing validates the record the reader will require, so a writer can only
 //! store what verification accepts. A record that fails authentication answers
-//! `{"fault":"tampered"}`; a record that authenticates but breaks the schema is
-//! refused with the reason the caller reports.
+//! `{"fault":"tampered"}`; a record that authenticates but breaks the schema
+//! answers `{"fault":"refused"}` with the reason the caller reports. Both are
+//! answers, not transport errors: a refusal travels on stdout so the caller can
+//! tell a record this reader will not accept from a runtime that could not
+//! answer at all.
 
 use std::path::Path;
 use std::sync::OnceLock;
@@ -214,7 +217,7 @@ fn activation(value: &Map<String, Value>) -> Result<()> {
         "root_digest",
     ]
     .iter()
-    .all(|field| digest(name(*field)))
+    .all(|field| digest(name(field)))
     {
         return Err("activation digest invalid".into());
     }
@@ -422,13 +425,16 @@ fn answer(result: std::result::Result<Value, Refusal>) -> Result<Value> {
     match result {
         Ok(value) => Ok(value),
         Err(Refusal::Tampered(reason)) => Ok(json!({"fault": "tampered", "reason": reason})),
-        Err(Refusal::Invalid(reason)) => Err(reason),
+        Err(Refusal::Invalid(reason)) => Ok(json!({"fault": "refused", "reason": reason})),
     }
 }
 
 pub(super) fn evaluate(input: &Value, key: &[u8]) -> Result<Value> {
     match input["operation"].as_str() {
-        Some("seal") => seal(input, key),
+        // Every refusal these three reach is an answer about the record. Only
+        // an operation this evaluator does not implement is an error, because
+        // nothing about a record was decided.
+        Some("seal") => answer(seal(input, key).map_err(Refusal::Invalid)),
         Some("verify") => answer(verify(input, key)),
         Some("open") => answer(open_record(input, key)),
         _ => Err("pack_lifecycle_record_operation_invalid".into()),

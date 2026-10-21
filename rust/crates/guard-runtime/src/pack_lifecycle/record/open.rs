@@ -2,11 +2,12 @@
 //! inventories an authenticated activation binds, read from the local delivery
 //! cache only. Nothing is fetched; a missing object refuses the record.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use guard_policy_snapshot::canonical_json_bytes;
 use regex::Regex;
+use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -29,17 +30,64 @@ const PUBLICATION_FIELDS: [&str; 6] = [
 const PLAIN: [&str; 4] = ["sha256", "length", "expanded_length", "kind"];
 const LOCATED: [&str; 5] = ["sha256", "length", "expanded_length", "kind", "location"];
 
-/// Every stored delivery object is the canonical encoding its writer produced,
-/// as the runtime's other readers of the same cache already require.
-fn decode(bytes: &[u8]) -> Result<Value> {
-    let value: Value =
-        serde_json::from_slice(bytes).map_err(|_| "activation metadata object invalid")?;
-    let canonical =
-        canonical_json_bytes(&value).map_err(|_| "activation metadata object invalid")?;
-    if bytes != canonical && bytes.strip_suffix(b"\n") != Some(canonical.as_slice()) {
-        return Err("activation metadata object invalid".into());
+/// Walks a document only to refuse a repeated object key; values are dropped.
+/// It reads keys rather than values, so the workspace's arbitrary-precision
+/// number tokens pass through it like any other single-entry map.
+struct UniqueKeys;
+
+impl<'de> Deserialize<'de> for UniqueKeys {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        deserializer.deserialize_any(UniqueKeys)
     }
-    Ok(value)
+}
+
+impl<'de> Visitor<'de> for UniqueKeys {
+    type Value = UniqueKeys;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a JSON value")
+    }
+    fn visit_bool<E>(self, _: bool) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_i64<E>(self, _: i64) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_u64<E>(self, _: u64) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_f64<E>(self, _: f64) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_str<E>(self, _: &str) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_unit<E>(self) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> std::result::Result<Self, A::Error> {
+        while seq.next_element::<UniqueKeys>()?.is_some() {}
+        Ok(self)
+    }
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<Self, A::Error> {
+        let mut keys = BTreeSet::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if !keys.insert(key) {
+                return Err(de::Error::custom("duplicate field"));
+            }
+            map.next_value::<UniqueKeys>()?;
+        }
+        Ok(self)
+    }
+}
+
+/// `pack_store.decode`: any JSON its writer stored, refusing a duplicated
+/// field. A publication keeps the exact bytes its attestation signed, so the
+/// reader cannot require them to be canonical.
+fn decode(bytes: &[u8]) -> Result<Value> {
+    let invalid = |_| "activation metadata object invalid".to_owned();
+    serde_json::from_slice::<UniqueKeys>(bytes).map_err(invalid)?;
+    serde_json::from_slice(bytes).map_err(invalid)
 }
 
 fn identity(value: &Value) -> bool {
@@ -145,7 +193,7 @@ impl Reader<'_> {
             return Err("activation metadata count invalid".into());
         }
         let count = int(count).unwrap_or_default() as usize;
-        let mut seen = std::collections::BTreeSet::new();
+        let mut seen = BTreeSet::new();
         let mut items = Vec::with_capacity(count);
         let mut next = first.clone();
         while !next.is_null() {
@@ -254,7 +302,7 @@ pub(super) fn open(value: &Value, directory: &Path) -> Result<Value> {
             .ok_or("activation registry metadata invalid")?;
         ids.push(entry.get("extension_id").cloned().unwrap_or(Value::Null));
     }
-    let known: std::collections::BTreeSet<&str> = ids.iter().filter_map(Value::as_str).collect();
+    let known: BTreeSet<&str> = ids.iter().filter_map(Value::as_str).collect();
     if !ids.iter().all(identity)
         || !ascending(&ids)
         || !selected

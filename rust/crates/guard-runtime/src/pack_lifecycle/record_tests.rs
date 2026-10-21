@@ -72,6 +72,13 @@ fn verify(purpose: &str, sealed: &Value, extra: Value) -> Result<Value, String> 
     evaluate(&input, &KEY)
 }
 
+/// The answer a refused record travels as. A record this reader will not accept
+/// is a decision about the record, so it reaches the caller on stdout like any
+/// other answer rather than as a transport error.
+fn refused(reason: &str) -> Result<Value, String> {
+    Ok(json!({"fault": "refused", "reason": reason}))
+}
+
 /// Seal `record` as it is, bypassing the writer's validation, so the reader
 /// alone has to refuse it.
 fn forged(purpose: &str, record: Value) -> Value {
@@ -208,8 +215,8 @@ fn authenticated_records_outside_the_schema_are_refused_by_name() {
         ),
     ] {
         let sealed = forged("command-pack-activation.v1", record.clone());
-        assert_eq!(verify("activation", &sealed, json!({})), Err(reason.into()));
-        assert_eq!(seal("activation", record), Err(reason.into()));
+        assert_eq!(verify("activation", &sealed, json!({})), refused(reason));
+        assert_eq!(seal("activation", record), refused(reason));
     }
     let mut remote = activation();
     remote["authority_profile"] = json!("remote");
@@ -218,7 +225,7 @@ fn authenticated_records_outside_the_schema_are_refused_by_name() {
     remote["expires_at"] = json!(10);
     assert_eq!(
         seal("activation", remote),
-        Err("activation validity interval invalid".into())
+        refused("activation validity interval invalid")
     );
 }
 
@@ -241,7 +248,10 @@ fn located_references_name_the_asset_they_come_from() {
     ] {
         let mut record = activation();
         record["distribution"]["location"] = location;
-        assert_eq!(seal("activation", record).is_ok(), accepted);
+        assert_eq!(
+            seal("activation", record).unwrap()["fault"].is_null(),
+            accepted
+        );
     }
 }
 
@@ -250,14 +260,14 @@ fn baselines_and_links_bind_only_what_they_name() {
     let sealed = seal("baseline", baseline()).unwrap();
     assert_eq!(
         verify("baseline", &sealed, json!({"revision": 1})),
-        Err("legacy activation baseline invalid".into())
+        refused("legacy activation baseline invalid")
     );
     let mut record = baseline();
     record["trust_digest"] = json!("t");
     let sealed = forged("command-pack-legacy-baseline.v1", record);
     assert_eq!(
         verify("baseline", &sealed, json!({"revision": 0})),
-        Err("legacy activation baseline digest invalid".into())
+        refused("legacy activation baseline digest invalid")
     );
     let sealed = seal("link", link()).unwrap();
     let mut other = expected();
@@ -265,13 +275,34 @@ fn baselines_and_links_bind_only_what_they_name() {
     for expected in [other, json!({})] {
         assert_eq!(
             verify("link", &sealed, json!({"expected": expected})),
-            Err("native_command_pack_transition_mismatch".into())
+            refused("native_command_pack_transition_mismatch")
         );
     }
     let mut half = link();
     half.as_object_mut().unwrap().remove("lifecycle_after");
     assert_eq!(
         seal("link", half),
-        Err("native_command_pack_link_invalid".into())
+        refused("native_command_pack_link_invalid")
+    );
+}
+
+#[test]
+fn only_an_operation_this_evaluator_does_not_implement_is_an_error() {
+    // A refusal decides something about the record and reaches the caller as an
+    // answer; an unimplemented operation decides nothing, so it stays an error.
+    assert_eq!(
+        evaluate(
+            &json!({"operation": "rewrite", "purpose": "activation", "payload": activation()}),
+            &KEY
+        ),
+        Err("pack_lifecycle_record_operation_invalid".into())
+    );
+    let mut record = activation();
+    record["revision"] = json!(0);
+    let answer = seal("activation", record).unwrap();
+    assert_eq!(answer["fault"], json!("refused"));
+    assert_eq!(
+        answer["reason"],
+        json!("activation epoch or revision invalid")
     );
 }

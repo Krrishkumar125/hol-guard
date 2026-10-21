@@ -111,14 +111,19 @@ fn activation(cache: &Cache, selected: &[&str], ids: &[&str], distribution: Valu
     .unwrap()
 }
 
+/// A refused record answers on stdout; it reads here as the reason it names.
 fn open(cache: &Cache, sealed: &Value, key: &[u8]) -> Result<Value, String> {
-    evaluate(
+    let answer = evaluate(
         &json!({
             "operation": "open", "purpose": "activation", "directory": cache.root(),
             "record": sealed["record"], "digest": sealed["digest"], "mac": sealed["mac"],
         }),
         key,
-    )
+    )?;
+    match answer["fault"].as_str() {
+        Some("refused") => Err(answer["reason"].as_str().unwrap_or_default().to_owned()),
+        _ => Ok(answer),
+    }
 }
 
 fn header(sealed: &Value) -> Value {
@@ -152,6 +157,26 @@ fn concatenated_objects_expand_under_their_own_schema() {
     assert!(open(&cache, &sealed, &KEY).is_ok());
     let cache = Cache::new();
     let distribution = cache.concat(&bytes, "guard.delivery-concat.v2");
+    let sealed = activation(&cache, &["command.a"], &["command.a"], distribution);
+    assert_eq!(
+        open(&cache, &sealed, &KEY),
+        Err("activation metadata object invalid".into())
+    );
+}
+
+#[test]
+fn a_publication_keeps_its_signed_bytes_but_not_a_duplicated_field() {
+    let cache = Cache::new();
+    let pretty = serde_json::to_vec_pretty(&publication()).unwrap();
+    let distribution = cache.put(&pretty);
+    let sealed = activation(&cache, &["command.a"], &["command.a"], distribution);
+    assert!(open(&cache, &sealed, &KEY).is_ok());
+
+    let cache = Cache::new();
+    let canonical = canonical_json_bytes(&publication()).unwrap();
+    let mut duplicated = br#"{"schema":"guard.command-pack-bundle.v1","#.to_vec();
+    duplicated.extend_from_slice(&canonical[1..]);
+    let distribution = cache.put(&duplicated);
     let sealed = activation(&cache, &["command.a"], &["command.a"], distribution);
     assert_eq!(
         open(&cache, &sealed, &KEY),
