@@ -922,6 +922,10 @@ class LocalCliApiService:
             # would file a second record naming this wrapper instead.
             raise
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error) as error:
+            # Two sinks, two readers: the daemon's own recorder names the
+            # exception for whoever reads daemon.log, and the stage record names
+            # the code the banner shows, so the two never disagree.
+            self._record_discovery_failure("local_cli_configured_discovery_failed")
             if strict:
                 record_discovery_stage_failure("configured_host_scan_failed", error)
                 raise DiscoveryStageError("configured_host_scan_failed") from None
@@ -938,6 +942,7 @@ class LocalCliApiService:
             # `_discovered_servers` already recorded the underlying cause.
             raise
         except (OSError, RuntimeError, TypeError, ValueError, KeyError, UnicodeError, sqlite3.Error) as error:
+            self._record_discovery_failure("local_cli_configured_discovery_failed")
             if strict:
                 # Saving is a separate failure from reading: the reader's agent
                 # configuration is fine, so the banner must not send them to it.
@@ -1008,6 +1013,14 @@ class LocalCliApiService:
             self._remote_discovery_cache = None
             self._configured_names = {}
             if strict:
+                # Both records are filed here, where the raised exception is
+                # still the cause. Once this leaves as a `DiscoveryStageError`
+                # the caller only sees the wrapper, so a record filed there
+                # would name the wrapper instead of what actually failed.
+                # Background polling also reaches this helper, and recording
+                # every cache expiry would fill daemon.log while a config stays
+                # broken, so only the explicit scan a reader asked for records.
+                self._record_discovery_failure("local_cli_configured_discovery_failed")
                 record_discovery_stage_failure("configured_host_scan_failed", error)
                 raise DiscoveryStageError("configured_host_scan_failed") from None
             return ()
