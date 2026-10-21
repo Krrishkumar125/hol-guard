@@ -4514,6 +4514,7 @@ function PolicyRememberedRulesTab({
                 "aria-label": "Sort rules",
                 className: "min-h-9 text-xs font-medium",
                 children: [
+                  sort && !["updated:desc", "updated:asc", "rule:asc", "action:asc", "app:asc"].includes(`${sort.key}:${sort.direction}`) ? /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: `${sort.key}:${sort.direction}`, children: "Custom (column sort)" }) : null,
                   /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "updated:desc", children: "Newest first" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "updated:asc", children: "Oldest first" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "rule:asc", children: "Rule A–Z" }),

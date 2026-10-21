@@ -55,6 +55,9 @@ async function mountStateful(page: Page, snapshot: unknown = freeStateSnapshot) 
       // Mirror the daemon contract: artifact clears one decision, workspace
       // clears its workspace decisions, global+all clears global decisions.
       state.policies = state.policies.filter((policy) => {
+        // The clear payload carries source; the daemon only clears decisions
+        // from that source, so a local clear never touches cloud rules.
+        if (payload.source && policy.source !== payload.source) return true;
         if (payload.all === true && payload.scope === "global") return policy.scope !== "global";
         if (payload.scope === "artifact") return !(policy.harness === payload.harness && policy.artifact_id === payload.artifact_id && policy.scope === "artifact");
         if (payload.scope === "workspace") return !(policy.harness === payload.harness && policy.workspace === payload.workspace);
@@ -94,12 +97,23 @@ test.describe("Rules & exceptions end to end", () => {
     // The global rule is still a local rule — it remains, without a checkbox.
     await expect(localSection.getByText(/Guard will allow matching actions on every project/)).toBeVisible();
 
-    // Export downloads what the list shows (the cloud rule remains).
+    // The cloud rule survived both local clears.
+    await expect(page.getByText(/Guard will allow "npm install left-pad"/).first()).toBeVisible();
+
+    // Export downloads what the list shows: survivors in, removed rules out.
     const [download] = await Promise.all([
       page.waitForEvent("download"),
       page.getByRole("button", { name: "Export CSV" }).click(),
     ]);
     expect(await download.suggestedFilename()).toContain("csv");
+    const csvPath = await download.path();
+    expect(csvPath).toBeTruthy();
+    const { readFileSync } = await import("node:fs");
+    const csv = readFileSync(csvPath!, "utf8");
+    expect(csv).toContain("any shell command");
+    expect(csv).toContain("npm install left-pad");
+    expect(csv).not.toContain("git push origin main");
+    expect(csv).not.toContain("rm -rf build");
     void localSection;
   });
 
@@ -122,6 +136,14 @@ test.describe("Rules & exceptions end to end", () => {
     const localSection = page.locator("section", { hasText: "Remembered on this device" }).last();
     await expect(localSection.getByText(/Guard will allow "git push origin main"/)).toHaveCount(0);
     await expect(localSection.getByText(/Guard will block "rm -rf build"/)).toBeVisible();
+    await page.getByLabel("Filter by app").selectOption("");
+
+    // Column-header sorts the toolbar select does not offer are named honestly.
+    await page.getByRole("button", { name: /Sort by Source/ }).first().click();
+    await expect(page.getByLabel("Sort rules")).toHaveValue("source:asc");
+    await expect(page.getByLabel("Sort rules").locator("option:checked")).toHaveText("Custom (column sort)");
+    await page.getByLabel("Sort rules").selectOption("updated:desc");
+    await expect(page.getByLabel("Sort rules")).toHaveValue("updated:desc");
   });
 
   test("inspector removes a rule and closes only on success", async ({ page }) => {

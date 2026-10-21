@@ -339,6 +339,11 @@ export function PolicyRememberedRulesTab({
               aria-label="Sort rules"
               className="min-h-9 text-xs font-medium"
             >
+              {/* Column headers can set sorts this list does not offer; show
+                  that honestly instead of pretending "Newest first". */}
+              {sort && !["updated:desc", "updated:asc", "rule:asc", "action:asc", "app:asc"].includes(`${sort.key}:${sort.direction}`) ? (
+                <option value={`${sort.key}:${sort.direction}`}>Custom (column sort)</option>
+              ) : null}
               <option value="updated:desc">Newest first</option>
               <option value="updated:asc">Oldest first</option>
               <option value="rule:asc">Rule A–Z</option>
