@@ -17,6 +17,8 @@ from typing import cast
 import codex_plugin_scanner
 from codex_plugin_scanner import __version__
 from codex_plugin_scanner.guard.native_execution import contained_execute_native
+from codex_plugin_scanner.guard.native_policy_snapshot_publisher import ensure_native_launch_resident_verifier
+from codex_plugin_scanner.guard.store import GuardStore
 
 SENTINEL = "guard-private-command-sentinel"
 SCHEMA_VERSION = "containment-contract-v1"
@@ -64,6 +66,10 @@ def _probe() -> dict[str, object]:
         root = Path(temporary)
         guard_home = root / "guard-home"
         guard_home.mkdir()
+        # The resident refuses to start for a Guard home without its verifier
+        # key. A real install provisions it on first use; this bare home has to
+        # do the same before the first request.
+        ensure_native_launch_resident_verifier(GuardStore(guard_home))
         # The secret sits outside the workspace the request grants, so reading
         # or writing it proves the sandbox leaked a path it never granted.
         protected = root / "private"
