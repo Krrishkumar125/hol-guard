@@ -147,7 +147,7 @@ def test_http_effective_controls_report_an_unavailable_native_runtime_as_503(
     def unavailable(**_kwargs: object) -> dict[str, object]:
         raise ExtensionControlApiError(503, "native_runtime_unavailable")
 
-    monkeypatch.setattr(daemon.extension_control_api, "effective", unavailable)
+    monkeypatch.setattr(daemon._server.extension_control_api, "effective", unavailable)
     daemon.start()
     try:
         auth_token = load_guard_daemon_auth_token(store.guard_home)
