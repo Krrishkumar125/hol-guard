@@ -167,21 +167,56 @@ pub(crate) fn verification_context(
             managed_configured: true,
         };
     }
-    let builtin = builtin_keys(expected_workspace);
     if provenance_present {
+        // A formerly managed device whose managed source is gone stays
+        // quarantined: no anchor, including the pinned key, until it is
+        // managed again or re-paired.
         return Context {
-            trusted: merge_keys(&[&builtin, sync_keys]),
-            anchored: builtin,
+            trusted: merge_keys(&[sync_keys]),
+            anchored: Vec::new(),
             managed_configured: false,
         };
     }
+    let builtin = builtin_keys(expected_workspace);
     let stored = safe_load_keys(stored_keyring);
     let migrated = migrate_legacy(stored_keyring, sync_keys, expected_workspace);
+    let mut trusted = merge_keys(&[&builtin, &stored, &migrated, sync_keys]);
+    let mut anchored = merge_keys(&[&builtin, &stored, &migrated]);
+    if let Some(pinned) = restricted_pinned_key(&builtin, &[&stored, sync_keys]) {
+        for key in trusted.iter_mut().chain(anchored.iter_mut()) {
+            if key.key_id == pinned.key_id && key.fingerprint == pinned.fingerprint {
+                key.state = pinned.state.clone();
+                key.valid_until = pinned.valid_until.clone();
+            }
+        }
+    }
     Context {
-        trusted: merge_keys(&[&builtin, &stored, &migrated, sync_keys]),
-        anchored: merge_keys(&[&builtin, &stored, &migrated]),
+        trusted,
+        anchored,
         managed_configured: false,
     }
+}
+
+/// The pinned key with the most restrictive state and the earliest expiry any
+/// stored or sync-advertised copy of it gives. Cloud can therefore revoke or
+/// retire the pinned key over sync; a revocation is persisted with the next
+/// accepted bundle and no later sync copy can make it active again. Copies of
+/// the id with another fingerprint are not this key and are ignored here.
+fn restricted_pinned_key(builtin: &[Key], sources: &[&[Key]]) -> Option<Key> {
+    let mut pinned = builtin.first()?.clone();
+    let mut untils: Vec<String> = Vec::new();
+    for key in sources.iter().flat_map(|source| source.iter()) {
+        if key.key_id != pinned.key_id || key.fingerprint != pinned.fingerprint {
+            continue;
+        }
+        pinned.state = restrictive_state(&pinned.state, &key.state).to_owned();
+        if let Some(until) = &key.valid_until {
+            untils.push(until.clone());
+        }
+    }
+    let untils: Vec<&String> = untils.iter().collect();
+    pinned.valid_until = latest(&untils, false);
+    Some(pinned)
 }
 
 /// Keys advertised by a sync payload (`safe_load` of the optional field).
@@ -308,6 +343,62 @@ mod builtin_anchor_tests {
         let built = verification_context(&Value::Null, &[], true, &managed, false, Some("ws-1"));
         assert_eq!(built.anchored.len(), 1);
         assert_eq!(built.anchored[0].key_id, "managed-key");
+    }
+
+    fn pinned_copy(state: &str, valid_until: Option<&str>) -> Key {
+        let mut key = builtin_keys(Some("ws-1")).remove(0);
+        key.state = state.to_owned();
+        key.valid_until = valid_until.map(str::to_owned);
+        key
+    }
+
+    fn pinned_in(keys: &[Key]) -> &Key {
+        keys.iter()
+            .find(|key| key.key_id == BUILTIN_KEY_ID)
+            .unwrap()
+    }
+
+    #[test]
+    fn cloud_sync_can_revoke_the_pinned_key() {
+        let sync = [pinned_copy("revoked", None)];
+        let built = verification_context(&Value::Null, &sync, false, &[], false, Some("ws-1"));
+        assert_eq!(pinned_in(&built.anchored).state, "revoked");
+        assert_eq!(pinned_in(&built.trusted).state, "revoked");
+        let bundle = json!({
+            "workspaceId": "ws-1",
+            "verifier": { "algorithm": "rsa-pss-sha256", "keyId": "guard-bundle-key-next" },
+        });
+        let kept = persistable(&built.anchored, &bundle);
+        assert_eq!(pinned_in(&kept).state, "revoked");
+    }
+
+    #[test]
+    fn an_active_sync_copy_never_lifts_a_stored_revocation() {
+        let stored = json!({
+            "workspace_id": "ws-1",
+            "keys": [pinned_copy("revoked", None).to_value()],
+        });
+        let sync = [pinned_copy("active", None)];
+        let built = verification_context(&stored, &sync, false, &[], false, Some("ws-1"));
+        assert_eq!(pinned_in(&built.anchored).state, "revoked");
+        assert_eq!(pinned_in(&built.trusted).state, "revoked");
+    }
+
+    #[test]
+    fn cloud_sync_can_retire_the_pinned_key_by_date() {
+        let sync = [pinned_copy("active", Some("2026-01-01T00:00:00Z"))];
+        let built = verification_context(&Value::Null, &sync, false, &[], false, Some("ws-1"));
+        assert_eq!(
+            pinned_in(&built.anchored).valid_until.as_deref(),
+            Some("2026-01-01T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn absent_managed_source_stays_quarantined_without_the_pinned_key() {
+        let built = verification_context(&Value::Null, &[], false, &[], true, Some("ws-1"));
+        assert!(built.anchored.is_empty());
+        assert!(built.trusted.iter().all(|key| key.key_id != BUILTIN_KEY_ID));
     }
 
     #[test]

@@ -685,5 +685,5 @@ def test_absent_managed_source_quarantines_legacy_shared_anchor(
     )
 
     assert validated is None
-    assert reason == "untrusted_signing_key"
-    assert all(key.key_id != legacy_or_substituted_key.key_id for key in persistable_keys)
+    assert reason == "trusted_key_unavailable"
+    assert persistable_keys == ()
