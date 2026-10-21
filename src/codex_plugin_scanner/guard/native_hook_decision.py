@@ -39,6 +39,11 @@ HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE = "hook-decision-artifact-directive-v1"
 HOOK_DECISION_NATIVE_PERMISSION_PERSIST_FEATURE = "hook-decision-native-permission-persist-plan-v1"
 # The route a reviewed artifact verdict takes; demanded first for the same reason.
 HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE = "hook-decision-artifact-review-route-v1"
+# A composed, settled or finalized edge names the reason the edge result reached
+# its action. The edge denies unknown fields, so a resident that predates the
+# field rejects every request that carries one and the hook fails closed as
+# unavailable until that resident retires. Demanding the capability replaces it.
+HOOK_DECISION_NATIVE_EDGE_REASON_FEATURE = "hook-decision-native-edge-reason-v1"
 _UNAVAILABLE = "native_hook_decision_unavailable"
 _INVALID = "native_hook_decision_payload_invalid"
 _TIMEOUT_SECONDS = 5.0
@@ -313,6 +318,7 @@ def native_compose_current(
             {"kind": "compose_current", "inputs": {**inputs, "facts": dict(facts)}},
             guard_home,
             validate,
+            HOOK_DECISION_NATIVE_EDGE_REASON_FEATURE,
         )
         needs, composition, event_name = payload["needs_facts"], payload["composition"], payload["event_name"]
         if not needs:
@@ -386,7 +392,12 @@ def native_finalize(
         if review is not None:
             _shape(review, {"action": str, "reason": str})
 
-    payload = _decide({"kind": "finalize", "inputs": dict(inputs), "settled": dict(settled)}, guard_home, validate)
+    payload = _decide(
+        {"kind": "finalize", "inputs": dict(inputs), "settled": dict(settled)},
+        guard_home,
+        validate,
+        HOOK_DECISION_NATIVE_EDGE_REASON_FEATURE,
+    )
     return {key: payload[key] for key in _FINAL_FIELDS}
 
 
@@ -538,10 +549,16 @@ def native_copilot_settle(
         _ACKED_FACT: inputs.get(_ACKED_FACT),
         "native_edge": {key: edge.get(key) for key in _EDGE_KEYS} if isinstance(edge, Mapping) else None,
     }
-    payload = _decide({"kind": "copilot_settle", "inputs": dict(inputs)}, guard_home, validate)
+    settle = functools.partial(
+        _decide,
+        guard_home=guard_home,
+        validate=validate,
+        feature=HOOK_DECISION_NATIVE_EDGE_REASON_FEATURE,
+    )
+    payload = settle({"kind": "copilot_settle", "inputs": dict(inputs)})
     if payload["needs_facts"]:
         inputs = {**inputs, _ACKED_FACT: bool(acked_recording_only())}
-        payload = _decide({"kind": "copilot_settle", "inputs": dict(inputs)}, guard_home, validate)
+        payload = settle({"kind": "copilot_settle", "inputs": dict(inputs)})
     return payload["plan"]
 
 
@@ -549,6 +566,7 @@ __all__ = [
     "HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE",
     "HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE",
     "HOOK_DECISION_FEATURE",
+    "HOOK_DECISION_NATIVE_EDGE_REASON_FEATURE",
     "HOOK_DECISION_NATIVE_PERMISSION_PERSIST_FEATURE",
     "HOOK_DECISION_POST_CLAIM_COMPOSE_FEATURE",
     "NativeHookDecisionError",

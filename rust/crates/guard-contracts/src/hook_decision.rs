@@ -46,6 +46,14 @@ pub const HOOK_DECISION_ARTIFACT_DIRECTIVE_FEATURE: &str = "hook-decision-artifa
 pub const HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE: &str =
     "hook-decision-artifact-review-route-v1";
 
+/// Advertised when `native_edge` carries `reason_code`, the reason the edge
+/// result reached its action. `HookNativeEdgeV1` denies unknown fields, so a
+/// resident that predates the field rejects every composition, settlement and
+/// finalize request that names it, and the hook fails closed as unavailable
+/// until that resident retires. Callers that send an edge demand this
+/// capability so the older resident is replaced instead.
+pub const HOOK_DECISION_NATIVE_EDGE_REASON_FEATURE: &str = "hook-decision-native-edge-reason-v1";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct HookDecisionRequestV1 {
