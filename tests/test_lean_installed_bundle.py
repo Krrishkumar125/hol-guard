@@ -217,9 +217,9 @@ def test_public_legacy_records_use_metadata_without_policy_archives(built, tmp_p
     install(built, tmp_path, monkeypatch, require_runtime=False)
     original = installed_bundle.read_bytes
 
-    def metadata_only(path, *, limit):
+    def metadata_only(path, *, limit, anchor=None):
         assert not path.name.startswith("pack-"), "legacy metadata must not read executable policy"
-        return original(path, limit=limit)
+        return original(path, limit=limit, anchor=anchor)
 
     monkeypatch.setattr(installed_bundle, "read_bytes", metadata_only)
     for family in ("commands", "mcp"):

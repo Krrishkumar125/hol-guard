@@ -131,6 +131,8 @@ type Found = (usize, String, bool);
 /// absolute literal, a derived path is unknown or its producer is not
 /// allowed, or any step before a replaced use could change the directory.
 pub(super) fn project(command: &str, cwd: &str, allowed: impl Fn(&str) -> bool) -> Option<String> {
+    let spelled = host_spelling(cwd);
+    let cwd = spelled.as_str();
     let mut values = Values {
         cwd,
         allowed,
@@ -169,6 +171,8 @@ pub(super) fn project_uses(
     width: fn(&[char]) -> Option<usize>,
     changes: impl Fn(&str) -> bool,
 ) -> Option<String> {
+    let spelled = host_spelling(value);
+    let value = spelled.as_str();
     project_found(
         command,
         value,
@@ -301,6 +305,28 @@ fn sets_a_variable<'a>(operands: impl Iterator<Item = &'a [char]>) -> bool {
     false
 }
 
+/// The width of a `X:` drive prefix, or 0 when the path has none. A drive
+/// letter is the only text a path may carry before its absolute root.
+fn drive_prefix(path: &str) -> usize {
+    let mut chars = path.chars();
+    match (chars.next(), chars.next()) {
+        (Some(letter), Some(':')) if letter.is_ascii_alphabetic() => 2,
+        _ => 0,
+    }
+}
+
+/// The path as the request's shell would read it. The envelope declares a
+/// POSIX dialect, where a backslash escapes the character after it, so a
+/// drive path spelled `C:\Users\dev` would lex as `C:Usersdev`. Windows
+/// accepts the forward-slash spelling of the same directory, and that
+/// spelling survives the lexer unchanged.
+fn host_spelling(path: &str) -> String {
+    if drive_prefix(path) == 0 {
+        return path.to_owned();
+    }
+    path.replace('\\', "/")
+}
+
 /// An absolute path whose characters the shell never splits, globs, quotes
 /// or expands, and which still names a directory.
 fn literal_directory(cwd: &str) -> bool {
@@ -308,11 +334,16 @@ fn literal_directory(cwd: &str) -> bool {
 }
 
 /// An absolute path whose characters the shell never splits, globs, quotes
-/// or expands, with no `..` to climb out of what it names.
+/// or expands, with no `..` to climb out of what it names. A drive-qualified
+/// path is absolute only where the host reads it that way, so a POSIX host
+/// still refuses `a:/b`, which names a relative directory there.
 fn literal_path(path: &str) -> bool {
-    path.starts_with('/')
+    let root = drive_prefix(path);
+    let body = &path[root..];
+    body.starts_with('/')
+        && (root == 0 || Path::new(path).is_absolute())
         && path.len() <= MAX_DIRECTORY_CHARS
-        && !path.split('/').any(|part| part == "..")
+        && !body.split('/').any(|part| part == "..")
         && path.chars().all(|c| {
             c.is_ascii_alphanumeric()
                 || matches!(c, '_' | '.' | '/' | '@' | '%' | '+' | ':' | ',' | '-')
@@ -320,20 +351,27 @@ fn literal_path(path: &str) -> bool {
 }
 
 /// What `dirname` prints for an absolute path: the text before its last
-/// component, without trailing slashes, or `/`. The shell sets `$PWD` to a
-/// canonical spelling, so a path with a `.` component or a doubled slash,
-/// whose text differs from that spelling, has no known parent.
+/// component, without trailing slashes, or the root it sits under. The shell
+/// sets `$PWD` to a canonical spelling, so a path with a `.` component or a
+/// doubled slash, whose text differs from that spelling, has no known parent.
+/// A drive keeps its letter, because `C:` alone names that drive's current
+/// directory rather than its root.
 fn parent(path: &str) -> Option<String> {
     if path.split('/').any(|part| part == ".") || path.contains("//") {
         return None;
     }
-    let trimmed = path.trim_end_matches('/');
+    let (drive, body) = path.split_at(drive_prefix(path));
+    let trimmed = body.trim_end_matches('/');
     if trimmed.is_empty() {
-        return Some("/".to_owned());
+        return Some(format!("{drive}/"));
     }
     let (head, _) = trimmed.rsplit_once('/')?;
     let head = head.trim_end_matches('/');
-    Some(if head.is_empty() { "/" } else { head }.to_owned())
+    Some(if head.is_empty() {
+        format!("{drive}/")
+    } else {
+        format!("{drive}{head}")
+    })
 }
 
 /// The worktree root `git rev-parse --show-toplevel` prints for `cwd`: the
@@ -380,7 +418,7 @@ fn repository_root(cwd: &str) -> Option<String> {
         if !owned(directory) || !owned(&git_directory) || !plain_git_directory(&git_directory) {
             return None;
         }
-        let root = directory.to_str()?.to_owned();
+        let root = host_spelling(directory.to_str()?);
         return literal_path(&root).then_some(root);
     }
     None

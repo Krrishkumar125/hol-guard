@@ -222,17 +222,13 @@ def _record_unavailable_native(
     harness: str,
     event_name: str,
     reason_code: str,
-    workspace: Path | None,
-    home_dir: Path,
     guard_home: Path,
-    recording_only: bool,
     watch_continue: bool = False,
     deadline: float | None = None,
     reason: str | None = None,
 ) -> dict[str, object]:
     failure_code = native_resident_client_failure_code()
     response = availability_harness_response(
-        payload,
         harness=harness,
         event_name=event_name,
         reason_code=reason_code,
@@ -241,10 +237,6 @@ def _record_unavailable_native(
             failure_code,
             "HOL Guard could not complete the native hook decision safely.",
         ),
-        workspace=workspace,
-        home_dir=home_dir,
-        guard_home=guard_home,
-        recording_only=recording_only,
         prompt_reason=reason or native_unavailable_reason(failure_code, "") or None,
     )
     if watch_continue and event_name == "PreToolUse":
@@ -527,10 +519,7 @@ class HookWorkerNativeMixin:
                         harness=harness,
                         event_name=event_name,
                         reason_code=reason_code,
-                        workspace=workspace,
-                        home_dir=home_dir,
                         guard_home=guard_home,
-                        recording_only=recording_only,
                     ),
                     harness=harness,
                     event_name=event_name,
@@ -561,10 +550,7 @@ class HookWorkerNativeMixin:
                         harness=harness,
                         event_name=event_name,
                         reason_code="native_hook_edge_invalid_response",
-                        workspace=workspace,
-                        home_dir=home_dir,
                         guard_home=guard_home,
-                        recording_only=recording_only,
                     ),
                     harness=harness,
                     event_name=event_name,
@@ -587,10 +573,7 @@ class HookWorkerNativeMixin:
                         harness=native_harness,
                         event_name=native_event,
                         reason_code="native_hook_edge_invalid_response",
-                        workspace=workspace,
-                        home_dir=home_dir,
                         guard_home=guard_home,
-                        recording_only=recording_only,
                     ),
                     False,
                 )
@@ -756,10 +739,7 @@ class HookWorkerNativeMixin:
                 harness=harness,
                 event_name=event_name,
                 reason_code=reason_code,
-                workspace=workspace,
-                home_dir=home_dir,
                 guard_home=guard_home,
-                recording_only=recording_only,
             )
             return {
                 "event_name": event_name,

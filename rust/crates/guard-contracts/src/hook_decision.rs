@@ -18,7 +18,7 @@ use crate::{
     ArtifactBrowserOutcomeInputsV1, ArtifactBrowserOutcomeV1, ArtifactFinalizeInputsV1,
     ArtifactFinalizeV1, ArtifactReusePlanV1, ArtifactReuseStepInputsV1, CodexToolOutputFactsV1,
     HookRouteInputsV1, HookRouteV1, NativeExtensionControlLayerV1, NativePermissionPersistInputsV1,
-    NativePermissionPersistPlanV1,
+    NativePermissionPersistPlanV1, PretoolFloorInputsV1, PretoolFloorV1,
 };
 
 /// Schema discriminator for the request.
@@ -102,6 +102,9 @@ pub enum HookDecisionQueryV1 {
     /// The hook pipeline's dispatch route: which handlers answer a prepared
     /// payload, in what order.
     HookRoute { inputs: Box<HookRouteInputsV1> },
+    /// The PreToolUse floor: the action the resident pre-tool review holds
+    /// the hook verdict at, if any.
+    PretoolFloor { inputs: Box<PretoolFloorInputsV1> },
 }
 
 /// Facts the artifact hook's review route depends on. The transport gathers
@@ -431,6 +434,7 @@ pub enum HookDecisionPayloadV1 {
         plan: Box<ArtifactReusePlanV1>,
     },
     HookRoute(Box<HookRouteV1>),
+    PretoolFloor(Box<PretoolFloorV1>),
     CopilotSettle {
         /// Facts still missing; resubmit with them when non-empty.
         needs_facts: Vec<String>,

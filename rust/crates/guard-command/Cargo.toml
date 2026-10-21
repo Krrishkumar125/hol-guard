@@ -64,7 +64,7 @@ tempfile = "3.10"
 guard-contained-process = { path = "../guard-contained-process" }
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 rcgen = { version = "=0.13.2", default-features = false, features = ["crypto", "ring"] }
-rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 # Keep synthetic-certificate tests compatible with the workspace MSRV.
 time = "=0.3.47"
 
