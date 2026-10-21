@@ -163,7 +163,7 @@ fn owner_release_fixture(label: &str) -> (std::path::PathBuf, std::path::PathBuf
 }
 
 #[test]
-fn spawn_waits_for_an_exiting_owner_to_release_the_lock() {
+fn owner_release_waits_for_an_exiting_owner() {
     use std::sync::mpsc;
     let (home, base) = owner_release_fixture("exiting");
     let digest = runtime_digest().unwrap();
@@ -196,7 +196,7 @@ fn spawn_waits_for_an_exiting_owner_to_release_the_lock() {
 }
 
 #[test]
-fn spawn_names_an_owner_that_keeps_the_lock_past_the_deadline() {
+fn owner_release_names_an_owner_kept_past_the_deadline() {
     let (home, base) = owner_release_fixture("foreign");
     let digest = runtime_digest().unwrap();
     let lock = crate::managed_resident::acquire_managed_owner_lock(&base).unwrap();
