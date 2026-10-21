@@ -63,6 +63,24 @@ const INTERPRETERS: &[&str] = &[
     "parallel",
     "sudo",
     "doas",
+    "su",
+    "runuser",
+    "pkexec",
+    "ionice",
+    "taskset",
+    "chrt",
+    "unshare",
+    "nsenter",
+    "firejail",
+    "systemd-run",
+    "xvfb-run",
+    "script",
+    "strace",
+    "ltrace",
+    "uvx",
+    "pipx",
+    "bunx",
+    "pnpx",
 ];
 
 fn inert_environment(segment: &CommandSegmentV1) -> bool {
@@ -502,8 +520,32 @@ fn sed_segment_settles_uncertainty(segment: &CommandSegmentV1) -> bool {
             scripts.push(script);
             continue;
         }
-        if argument.starts_with("-e") && !argument.starts_with("--") && argument.len() > 2 {
-            scripts.push(&argument[2..]);
+        let letters = bundle_letters(argument);
+        if !letters.is_empty() {
+            // Walk a short bundle the way getopt does: `-ne SCRIPT` and
+            // `-nes|a|b|e` carry a script after the no-value letters, and
+            // that script has to prove itself like any other. A letter
+            // this walk does not know may take a value, so it fails closed.
+            for (offset, letter) in letters.char_indices() {
+                match letter {
+                    'n' | 'E' | 'r' | 's' | 'u' | 'z' | 'a' => continue,
+                    'e' => {
+                        let rest = &letters[offset + 1..];
+                        if !rest.is_empty() {
+                            scripts.push(rest);
+                        } else if let Some(script) = arguments.get(index) {
+                            scripts.push(script);
+                            index += 1;
+                        } else {
+                            return false;
+                        }
+                        break;
+                    }
+                    // The rest of the bundle is the in-place backup suffix.
+                    'i' | 'I' => break,
+                    _ => return false,
+                }
+            }
             continue;
         }
         if argument.starts_with('-') && argument.len() > 1 {
@@ -702,6 +744,8 @@ mod tests {
         assert!(settles("scp", &["report.txt", "host:/tmp/"]));
         assert!(settles("sed", &["-i", "s|old|new|", "src/app.ts"]));
         assert!(settles("sed", &["-i", "1,3s|a|b|g", "src/app.ts"]));
+        assert!(settles("sed", &["-ne", "s|a|b|", "src/app.ts"]));
+        assert!(settles("sed", &["-i.bak", "-E", "s|a|b|", "src/app.ts"]));
     }
 
     #[test]
@@ -795,6 +839,13 @@ mod tests {
         assert!(!settles("sed", &["-nf", "script.sed", "f.txt"]));
         assert!(!settles("sed", &["--fil=script.sed", "f.txt"]));
         assert!(!settles("sed", &["--exp=s|a|b|e", "f.txt"]));
+        // A script carried by `e` inside a short bundle is checked too.
+        assert!(!settles(
+            "sed",
+            &["-ne", "1e touch x", "-e", "s|a|b|", "f.txt"]
+        ));
+        assert!(!settles("sed", &["-nes|a|b|e", "s|x|y|", "target"]));
+        assert!(!settles("sed", &["-l", "5", "s|a|b|", "f.txt"]));
         // ssh keywords separate from their value with whitespace too, and
         // an xauth program or an existing control socket is state outside
         // the text.
