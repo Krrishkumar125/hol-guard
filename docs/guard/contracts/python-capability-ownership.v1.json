@@ -1448,26 +1448,16 @@
    ]
   },
   {
-   "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
-   "module": "codex_plugin_scanner.guard.runtime.shell_command_wrappers",
-   "source_sha256": "b328f048cc1b0e167dd1c57aeb1eaff84e5db25b6ed582dd3ecf91e0dd44f87e",
-   "forbidden_symbols": [
-    "ShellCommandNormalization",
-    "is_trusted_absolute_command_path",
-    "normalize_transparent_shell_command"
-   ],
-   "native_replacements": [
-    "rust/crates/guard-command/src/shell_command_wrappers.rs",
-    "rust/crates/guard-command/src/shell_command_wrappers_paths.rs"
-   ]
-  },
-  {
    "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/pytest_target_detection.py",
    "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.pytest_target_detection",
    "source_sha256": "80050fe7831fd10c93fe8319a54662f17c83844fa22b5e8cb1f044a8fab23ded",
    "forbidden_symbols": [
     "_argument_sequence_targets_pytest",
     "_inline_python_payload_runs_pytest",
+    "_pytest_args_from_argument_sequence",
+    "_pytest_args_from_argument_sequence_ignoring",
+    "_pytest_args_from_command_position",
+    "_pytest_args_from_runner_argument_sequence",
     "_python_inline_script_runs_pytest",
     "_python_process_call_targets_pytest",
     "_segment_targets_pytest",
@@ -1488,6 +1478,20 @@
    ],
    "native_replacements": [
     "rust/crates/guard-command/src/sfrs_selectors.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/shell_command_wrappers.py",
+   "module": "codex_plugin_scanner.guard.runtime.shell_command_wrappers",
+   "source_sha256": "b328f048cc1b0e167dd1c57aeb1eaff84e5db25b6ed582dd3ecf91e0dd44f87e",
+   "forbidden_symbols": [
+    "ShellCommandNormalization",
+    "is_trusted_absolute_command_path",
+    "normalize_transparent_shell_command"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/shell_command_wrappers.rs",
+    "rust/crates/guard-command/src/shell_command_wrappers_paths.rs"
    ]
   }
  ],
