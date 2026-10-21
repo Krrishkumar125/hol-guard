@@ -243,12 +243,12 @@ def test_runtime_posture_rejects_invalid_evidence(
         )
 
 
-def test_shared_catalog_fixture_is_schema_valid_and_canonically_executable() -> None:
+def test_shared_catalog_fixture_is_schema_valid_and_canonically_executable(tmp_path: Path) -> None:
     fixtures = _shared_catalog_fixture()
     schema = json.loads((CONTRACT_ROOT / "extension-catalog.schema.json").read_text(encoding="utf-8"))
     valid = fixtures["valid"]
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(valid)
-    parsed = validate_extension_catalog_wire(valid)
+    parsed = validate_extension_catalog_wire(valid, guard_home=tmp_path)
     canonical = json.dumps(
         parsed["extensions"],
         sort_keys=True,
@@ -444,3 +444,15 @@ def test_production_runtime_session_downgrades_degraded_authority_to_catalog_onl
     assert posture.get("extensionAuthorityRevision") is None
     assert posture.get("effectiveProjectionDigest") is None
     assert posture["managedControlsCapabilities"] == ["extension-catalog.v2"]
+
+
+def test_oversized_native_request_is_a_catalog_limit_before_any_resident_call(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from codex_plugin_scanner.guard.runtime import extension_catalog_pages, extension_catalog_sync
+
+    monkeypatch.setattr(
+        extension_catalog_pages, "native_call", lambda *_args, **_kwargs: pytest.fail("oversized request was sent")
+    )
+    with pytest.raises(ExtensionCatalogLimitError, match="native wire limits"):
+        extension_catalog_sync._native("build", guard_home=tmp_path, raw_extensions=["x" * (4 * 1024 * 1024)])

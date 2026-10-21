@@ -200,6 +200,16 @@ fn shared_invalid_generated_at_mutation_fails() {
 }
 
 #[test]
+fn non_ascii_digits_in_generated_at_fail() {
+    let mut payload = valid();
+    payload["generatedAt"] = json!("2026-10-21T1\u{0662}:00:00Z");
+    assert_eq!(
+        validate(&payload),
+        Err(invalid("Invalid Extension catalog generatedAt"))
+    );
+}
+
+#[test]
 fn shared_invalid_catalog_cases_fail_with_stable_reasons() {
     let cases = fixtures()["invalid"].clone();
     for (case, expected) in [

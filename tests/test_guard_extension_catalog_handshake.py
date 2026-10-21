@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard.runtime import extension_catalog_sync as runner_sync
 from codex_plugin_scanner.guard.runtime import runner
 
 
@@ -20,9 +22,10 @@ def _catalog_handshake(digest: str, *, known: bool) -> dict[str, object]:
 
 def test_runtime_catalog_handshake_skips_known_catalog_without_upload(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     catalog = runner.build_builtin_extension_catalog_wire(
-        guard_version=runner.__version__, generated_at="2026-08-25T00:00:00Z"
+        guard_version=runner.__version__, generated_at="2026-08-25T00:00:00Z", guard_home=tmp_path
     )
     monkeypatch.setattr(
         runner,
@@ -30,6 +33,7 @@ def test_runtime_catalog_handshake_skips_known_catalog_without_upload(
         lambda **_kwargs: pytest.fail("known catalog must not be uploaded"),
     )
     summary = runner._sync_extension_catalog_from_runtime_handshake(
+        guard_home=tmp_path,
         auth_context={},
         runtime_sync_url="https://hol.org/api/guard/runtime/sessions/sync",
         runtime_response=_catalog_handshake(catalog["catalogDigest"], known=True),
@@ -40,9 +44,10 @@ def test_runtime_catalog_handshake_skips_known_catalog_without_upload(
 
 def test_runtime_catalog_handshake_uploads_unknown_builtin_catalog_once(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     catalog = runner.build_builtin_extension_catalog_wire(
-        guard_version=runner.__version__, generated_at="2026-08-25T00:00:00Z"
+        guard_version=runner.__version__, generated_at="2026-08-25T00:00:00Z", guard_home=tmp_path
     )
     requests: list[dict[str, object]] = []
 
@@ -73,6 +78,7 @@ def test_runtime_catalog_handshake_uploads_unknown_builtin_catalog_once(
         },
     )
     summary = runner._sync_extension_catalog_from_runtime_handshake(
+        guard_home=tmp_path,
         auth_context={},
         runtime_sync_url="https://hol.org/api/guard/runtime/sessions/sync?tenant=guard",
         runtime_response=_catalog_handshake(catalog["catalogDigest"], known=False),
@@ -134,6 +140,28 @@ def test_runtime_catalog_handshake_downgrades_when_cloud_has_no_signal() -> None
         "managedControlsCapabilities": [],
         "extension_catalog_sync_status": "downgraded",
         "extension_catalog_sync_reason": "catalog_handshake_unavailable",
+    }
+
+
+def test_runtime_catalog_handshake_downgrades_when_native_runtime_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def unavailable(**_kwargs: object) -> dict[str, object]:
+        raise runner_sync.ExtensionCatalogUnavailableError("Native Extension catalog runtime unavailable")
+
+    monkeypatch.setattr(runner, "build_builtin_extension_catalog_wire", unavailable)
+    summary = runner._sync_extension_catalog_from_runtime_handshake(
+        guard_home=tmp_path,
+        auth_context={},
+        runtime_sync_url="https://hol.org/api/guard/runtime/sessions/sync",
+        runtime_response=_catalog_handshake("a" * 64, known=False),
+        session_payload={"extensionCatalogDigest": "a" * 64},
+    )
+    assert summary == {
+        "managedControlsCapabilities": [],
+        "extension_catalog_sync_status": "downgraded",
+        "extension_catalog_sync_reason": "catalog_runtime_unavailable",
     }
 
 

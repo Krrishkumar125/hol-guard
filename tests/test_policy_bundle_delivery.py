@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import tempfile
 from functools import cache
 from pathlib import Path
 
@@ -16,11 +17,14 @@ _VECTOR = json.loads(
 
 @cache
 def _wire_catalog_digest() -> str:
-    # The native runtime computes this digest, so do it on first use rather than at collection.
-    return build_builtin_extension_catalog_wire(
-        guard_version="test",
-        generated_at="2026-08-25T00:00:00Z",
-    )["catalogDigest"]
+    # The native runtime computes this digest, so do it on first use rather than at collection,
+    # in an isolated Guard home rather than the user's.
+    with tempfile.TemporaryDirectory() as guard_home:
+        return build_builtin_extension_catalog_wire(
+            guard_version="test",
+            generated_at="2026-08-25T00:00:00Z",
+            guard_home=Path(guard_home),
+        )["catalogDigest"]
 
 
 def _bundle() -> dict[str, object]:

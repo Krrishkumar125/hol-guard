@@ -96,9 +96,10 @@ impl Observation {
     }
 }
 fn timestamp(s: &str) -> bool {
-    // Same strict Gregorian RFC3339 timestamp contract as Cloud.
+    // Same strict Gregorian RFC3339 timestamp contract as Cloud. ASCII digits
+    // only: `\d` would admit any Unicode decimal digit.
     let re = regex::Regex::new(
-        r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$",
+        r"^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.[0-9]+)?(Z|[+-]([0-9]{2}):([0-9]{2}))$",
     )
     .unwrap();
     let Some(c) = re.captures(s) else {

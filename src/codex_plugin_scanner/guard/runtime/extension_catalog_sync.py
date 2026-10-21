@@ -9,6 +9,7 @@ unavailable runtime raises and callers fail closed.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol, TypedDict
@@ -53,11 +54,17 @@ _ENTRY_FIELDS = (
     "replacementId",
     "permissions",
 )
+# The resident request cap is 4 MiB; keep room for the envelope around the fields.
+_NATIVE_FIELDS_MAX_BYTES = 4 * 1024 * 1024 - 64 * 1024
 _PERMISSION_FIELDS = ("id", "name", "configurable", "required", "riskClasses", "typedCapabilities")
 
 
 class ExtensionCatalogLimitError(ValueError):
     """A catalog exceeds a Cloud v1 count or byte limit."""
+
+
+class ExtensionCatalogUnavailableError(RuntimeError):
+    """The resident runtime could not answer, so no catalog exists to send."""
 
 
 class ExtensionCatalogPermissionWire(TypedDict):
@@ -174,9 +181,12 @@ def _native(action: str, *, guard_home: Path | None = None, **fields: object) ->
     from ..native_context import _resolve_digest_home, ensure_resident_prerequisite
     from . import extension_catalog_pages as pages
 
+    encoded = json.dumps(fields, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    if len(encoded) > _NATIVE_FIELDS_MAX_BYTES:
+        raise ExtensionCatalogLimitError("Extension catalog exceeds native wire limits")
     home = _resolve_digest_home(guard_home)
     if not ensure_resident_prerequisite(home):
-        raise RuntimeError("Native Extension catalog runtime unavailable")
+        raise ExtensionCatalogUnavailableError("Native Extension catalog runtime unavailable")
     payload = pages.native_call(home, action=action, **fields)
     refusal = payload.get("v1_error")
     if refusal is None:
