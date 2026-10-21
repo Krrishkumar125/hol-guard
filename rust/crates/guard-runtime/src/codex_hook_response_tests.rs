@@ -101,3 +101,24 @@ fn approval_aliases_never_reach_the_hook_response() {
     }
     assert!(rendered.contains("permissionDecisionReason"), "{rendered}");
 }
+
+#[test]
+fn a_policy_deny_overrides_an_updated_input_allow() {
+    // A contained-sink rewrite answers `allow` with `updatedInput`. A policy
+    // deny must still win, and the rewritten input must not reach the hook.
+    let response = r#"{"policy_action": "deny",
+      "hookSpecificOutput": {"hookEventName": "PreToolUse",
+        "permissionDecision": "allow",
+        "updatedInput": {"command": "true"}}}"#;
+    let mut rendered = String::new();
+    dumps(
+        &codex_hook_response(&entries(response), PRE_TOOL_USE),
+        true,
+        false,
+        &mut rendered,
+    );
+    let shaped: Value = serde_json::from_str(&rendered).unwrap();
+    let output = &shaped["hookSpecificOutput"];
+    assert_eq!(output["permissionDecision"], "deny", "{rendered}");
+    assert!(output.get("updatedInput").is_none(), "{rendered}");
+}

@@ -7084,10 +7084,10 @@
    "base_commit": "7c75d1dac1febc51bfcae6f54a61d8ecb2cbd4e3",
    "source_sha256": "fb40c8a0ab431ab2ef33ad19488e2e139fbad3daec0970fd7f12a873978a3a2b",
    "replacement_nodes": [
-    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::responses_are_shaped_as_python_shapes_them"
+    "rust/crates/guard-runtime/src/codex_hook_response_tests.rs::a_policy_deny_overrides_an_updated_input_allow"
    ],
    "status": "native_behavior_ported_requires_ci",
-   "rationale": "The recorded shape vectors replay the same allowed-key filtering in Rust, which owns every hook response the bridge emits."
+   "rationale": "A Rust shaper test sends a policy deny with an allow that carries updatedInput and checks the response denies and drops the rewritten input."
   }
  ],
  "preserved_tests": [
