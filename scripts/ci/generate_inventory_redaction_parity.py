@@ -86,6 +86,17 @@ SANITIZE_CASES: list[tuple[str, str, bool]] = [
     ("mytoken: abc", "", False),
     ("token:", "", False),
     ("token:\u001dabc", "", False),
+    # CPython `re.IGNORECASE` folds U+0130/U+0131 onto `i`; Rust's simple case
+    # folding does not, so these pin the key, value and assignment routes.
+    ("harmless", "credent\u0131al", False),
+    ("harmless", "credent\u0130al", False),
+    ("harmless", "ap\u0131\u0131key", False),
+    ("guard_l\u0131ve_abc", "", False),
+    ("ap\u0131-key=abc", "", False),
+    # CPython `\b` uses `str.isalnum()`; Rust's `\w` also counts combining
+    # marks and connector punctuation, so a naive `\b` port fails open here.
+    ("e\u0301token=abc", "", False),
+    ("x\u203ftoken=abc", "", False),
     ("", "", False),
     ("", "token", False),
 ]
@@ -102,6 +113,8 @@ SAFE_JSON_VALUES: list[Any] = [
     ["plain", "/tmp/x", 7],
     {"token": "abc"},
     {"token": {"nested": "abc", "count": 3}},
+    {"credent\u0131al": "abc"},
+    {"safe": "guard_l\u0131ve_abc"},
     {"outer": {"token": "abc", "safe": "ok"}},
     {"safe": ["ghp_abcdef", {"deep": "bearer xyz"}]},
     {"authorization": ["abc", "def"]},
@@ -124,6 +137,8 @@ ASSERT_PAYLOADS: list[Any] = [
     ["safe", "list"],
     ["/home/someone"],
     {"nested": {"deep": ["password = hunter2"]}},
+    {"value": "guard_l\u0131ve_abc"},
+    {"value": "e\u0301token=abc"},
     {"caf\u00e9": "value"},
     {"token": None},
     {"b": 1, "a": 2},
