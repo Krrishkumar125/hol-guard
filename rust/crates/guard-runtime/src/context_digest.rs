@@ -928,6 +928,7 @@ fn evaluate_context_digest_request_inner(
         custom_extension_suggestion: None,
         claude_guard_question: None,
         memory_pattern: None,
+        guard_run_launch: None,
     };
     if let Err(code) = evaluate_request(request, &mut result) {
         result.status = "error".to_owned();
