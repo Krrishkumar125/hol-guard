@@ -18017,7 +18017,7 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "sort -o sorted.txt README.md"
+        "command": "sort -o ../escaped.txt README.md"
       },
       "cwd": "worktree",
       "expect": "not_allow"
@@ -18034,10 +18034,46 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "uniq README.md counted.txt"
+        "command": "uniq README.md ../escaped.txt"
       },
       "cwd": "worktree",
       "expect": "not_allow"
+    },
+    {
+      "id": "neg-sort-output-file-in-worktree",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "sort -o sorted.txt README.md"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow",
+      "contained_ok": true
+    },
+    {
+      "id": "neg-uniq-output-operand-in-worktree",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "uniq README.md counted.txt"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow",
+      "contained_ok": true
     },
     {
       "id": "neg-cut-without-selection",
@@ -18054,7 +18090,8 @@
         "command": "cut README.md"
       },
       "cwd": "worktree",
-      "expect": "not_allow"
+      "expect": "not_allow",
+      "contained_ok": true
     },
     {
       "id": "neg-tr-file-operand",
@@ -18071,7 +18108,8 @@
         "command": "tr a-z A-Z README.md"
       },
       "cwd": "worktree",
-      "expect": "not_allow"
+      "expect": "not_allow",
+      "contained_ok": true
     },
     {
       "id": "neg-sort-home-ssh-key",
