@@ -593,7 +593,6 @@ mod package_authority_config;
 mod package_authority_op;
 mod package_context_build_op;
 mod package_evaluation_compose_op;
-mod verified_npm_op;
 mod package_policy_resolve_op;
 mod package_posture_op;
 mod package_protect_finalize_op;
@@ -722,6 +721,7 @@ mod supply_chain_eval_seams;
 mod supply_chain_eval_transport;
 mod tool_action_identity_op;
 mod totp;
+mod verified_npm_op;
 mod verified_read_decision_op;
 #[cfg(windows)]
 mod windows_node_build;
