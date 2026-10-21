@@ -75,6 +75,7 @@ from .commands_hook_native_state import NativeArtifactHookState
 from .commands_parser_helpers import *
 from .commands_support_hook_state import _load_cursor_native_shell_allowance
 from .commands_support_runtime_artifact_policy import (
+    artifact_fact_content_hash,
     artifact_fact_risk_classes,
     artifact_fact_skip_native_floor,
     record_policy_auto_stops,
@@ -278,6 +279,7 @@ def evaluate_native_artifact_hook(
     event_name = _hook_event_name(payload_map) or "PreToolUse"
     package_evaluation = None
     package_execution_context: PackageExecutionContext | None = None
+    artifact_content_hash: str | None = None
     if runtime_artifact.artifact_type == "package_request":
         package_evaluation = evaluate_package_request_artifact(
             artifact=runtime_artifact,
@@ -319,12 +321,17 @@ def evaluate_native_artifact_hook(
             execution_context=package_execution_context,
             config=config,
         )
-    else:
-        artifact_content_hash = artifact_hash(approval_context_artifact)
+    # Anything other than a package request is hashed by the resident: see the
+    # facts request below.
     artifact_id = runtime_artifact.artifact_id
     artifact_name = runtime_artifact.name
     policy_harness = _canonical_harness_name(args.harness)
     cli_action = getattr(args, "policy_action", None)
+    # A saved approval is keyed by the artifact as it stood before this hook
+    # stamped its runtime posture onto the metadata, so the identity is taken
+    # before the stamp: keying it by the stamped metadata would stop a saved
+    # approval matching the moment a risk signal appeared.
+    approval_identity_metadata = None if artifact_content_hash is not None else dict(approval_context_artifact.metadata)
     _stamp_runtime_posture_metadata(runtime_artifact, data_flow_signals)
     _stamp_runtime_posture_metadata(approval_context_artifact, data_flow_signals)
     current_action_override = config.resolve_action_override(
@@ -340,7 +347,10 @@ def evaluate_native_artifact_hook(
         config,
         ((runtime_artifact, args.harness), (approval_context_artifact, policy_harness)),
         guard_home=guard_home,
+        hash_metadata=(None, approval_identity_metadata),
     )
+    if artifact_content_hash is None:
+        artifact_content_hash = artifact_fact_content_hash(approval_context_facts)
     # The resident says whether the generic command floor applies: a package
     # install is decided by the package evaluator and a verified
     # explicit-permission allow was already adjudicated, so the floor is only

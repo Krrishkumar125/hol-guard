@@ -30,6 +30,11 @@ from .native_store_policy import _payload
 # served, so the facts are asked for under that feature: a runtime without it
 # omits the fact the hook now reads. It ships with ``hook-artifact-facts-v1``.
 HOOK_ARTIFACT_FACTS_FEATURE = HOOK_ARTIFACT_COMPOSE_POLICY_TAIL_FEATURE
+# A request that asks for ``content_sha256`` is asked under the feature that
+# answers it, so a runtime that would return the facts without the digest is
+# unavailable to the caller that needs one rather than silently quiet. A
+# caller that asks for no digest keeps the feature above.
+HOOK_ARTIFACT_FACTS_CONTENT_HASH_FEATURE = "hook-artifact-facts-content-hash-v1"
 _REQUEST_SCHEMA = "guard-hook-artifact-facts-request.v1"
 _RESULT_SCHEMA = "guard-hook-artifact-facts-result.v1"
 _TIMEOUT_SECONDS = 10.0
@@ -75,31 +80,59 @@ def native_hook_artifact_facts(
     return answers
 
 
+def _wire_artifact(artifact: Mapping[str, object]) -> dict[str, object]:
+    """One artifact as the resident reads it.
+
+    A caller that wants the digest its saved approvals are keyed by passes
+    ``hash_metadata``: the metadata the artifact carried when that identity was
+    fixed, which a hook stamps its runtime posture onto before asking for these
+    facts. The identity fields the digest covers then ride along with it, sent
+    unredacted because that hash redacts the arguments and the url itself.
+    Everything the facts themselves turn on travels either way.
+    """
+
+    entry: dict[str, object] = {
+        "artifact_type": artifact["artifact_type"],
+        "metadata": dict(cast("Mapping[str, object]", artifact.get("metadata") or {})),
+        "configured_override": artifact.get("configured_override"),
+    }
+    hash_metadata = artifact.get("hash_metadata")
+    if hash_metadata is None:
+        return entry
+    entry["hash_metadata"] = dict(cast("Mapping[str, object]", hash_metadata))
+    entry["args"] = list(cast("Sequence[str]", artifact.get("args") or ()))
+    for field in ("artifact_id", "name", "harness", "source_scope", "config_path"):
+        entry[field] = str(artifact.get(field) or "")
+    for field in ("command", "url", "transport", "publisher"):
+        value = artifact.get(field)
+        entry[field] = value if isinstance(value, str) else None
+    return entry
+
+
 def _facts_for_batch(
     artifacts: Sequence[Mapping[str, object]],
     home: Path,
 ) -> list[dict[str, object]]:
     """Ask the resident about one batch the contract is willing to accept."""
 
+    entries = [_wire_artifact(artifact) for artifact in artifacts]
     wire: dict[str, object] = {
         "schema": _REQUEST_SCHEMA,
         "request_id": f"hook-artifact-facts-{uuid4().hex}",
-        "artifacts": [
-            {
-                "artifact_type": artifact["artifact_type"],
-                "metadata": dict(cast("Mapping[str, object]", artifact.get("metadata") or {})),
-                "configured_override": artifact.get("configured_override"),
-            }
-            for artifact in artifacts
-        ],
+        "artifacts": entries,
     }
+    required_feature = (
+        HOOK_ARTIFACT_FACTS_CONTENT_HASH_FEATURE
+        if any("hash_metadata" in entry for entry in entries)
+        else HOOK_ARTIFACT_FACTS_FEATURE
+    )
     try:
         response = _resident_request(
             operation="hook_artifact_facts",
             request=wire,
             guard_home=home,
             timeout_seconds=_TIMEOUT_SECONDS,
-            required_feature=HOOK_ARTIFACT_FACTS_FEATURE,
+            required_feature=required_feature,
             response_schema=_RESULT_SCHEMA,
             max_request_bytes=_MAX_REQUEST_BYTES,
             record_success=False,

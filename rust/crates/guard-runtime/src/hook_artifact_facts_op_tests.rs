@@ -7,7 +7,55 @@ fn artifact(artifact_type: &str, metadata: Value) -> HookArtifactV1 {
         artifact_type: artifact_type.to_owned(),
         metadata,
         configured_override: None,
+        artifact_id: String::new(),
+        name: String::new(),
+        harness: String::new(),
+        source_scope: String::new(),
+        config_path: String::new(),
+        command: None,
+        args: Vec::new(),
+        url: None,
+        transport: None,
+        publisher: None,
+        hash_metadata: None,
     }
+}
+
+/// The artifact the digest tests below ask about, shaped like the hook's own:
+/// identity fields, redactable arguments and a url, and metadata that carries
+/// the posture a hook stamps after it has fixed the approval identity.
+fn hashed_artifact(metadata: Value, hash_metadata: Option<Value>) -> HookArtifactV1 {
+    HookArtifactV1 {
+        artifact_id: "shell:run".to_owned(),
+        name: "run".to_owned(),
+        harness: "claude-code".to_owned(),
+        source_scope: "workspace".to_owned(),
+        config_path: "/w/.claude/settings.json".to_owned(),
+        command: Some("git status".to_owned()),
+        args: vec!["--token".to_owned(), "abc123".to_owned()],
+        url: Some("https://example.test/x?token=abc123".to_owned()),
+        transport: Some("stdio".to_owned()),
+        publisher: Some("local".to_owned()),
+        hash_metadata,
+        ..artifact("tool_action_request", metadata)
+    }
+}
+
+/// `{"action_class": ..., "env_keys": ..., "reason_code": ...}` as the hook
+/// holds it when it fixes the artifact's approval identity.
+fn identity_metadata() -> Value {
+    json!({"action_class": "git status", "env_keys": ["PATH"], "reason_code": "r"})
+}
+
+/// The same metadata once `_stamp_runtime_posture_metadata` has run.
+fn stamped_metadata() -> Value {
+    json!({
+        "action_class": "git status",
+        "env_keys": ["PATH"],
+        "reason_code": "r",
+        "risk_signals": [{"confidence": "strong", "category": "x"}],
+        "risk_confidence": "strong",
+    })
 }
 
 fn request(artifact_type: &str, metadata: Value) -> HookArtifactFactsRequestV1 {
@@ -472,4 +520,65 @@ fn a_separator_padded_risk_label_is_still_recognized() {
         json!({"risk_classes": ["\u{1c}credential_exfiltration\u{1f}", "  \u{1e}  "]}),
     );
     assert_eq!(value["risk_classes"], json!(["credential_exfiltration"]));
+}
+
+#[test]
+fn an_artifact_asked_about_without_hash_metadata_carries_no_digest() {
+    // The policy facts are all a caller normally wants; the digest costs a
+    // second copy of the metadata on the wire, so it is asked for by name.
+    let value = facts("tool_action_request", stamped_metadata());
+    assert_eq!(value.get("content_sha256"), None);
+}
+
+#[test]
+fn the_digest_equals_the_python_artifact_hash() {
+    // `consumer.service.artifact_hash` of this exact artifact under CPython
+    // 3.12. A different value here silently invalidates every approval the
+    // user has already granted for the artifact.
+    let value = evaluate(&hashed_artifact(
+        identity_metadata(),
+        Some(identity_metadata()),
+    ));
+    assert_eq!(
+        value["content_sha256"],
+        json!("9eb6bb136e9179bc4e943813d356f27456ce7e505600234dd897653263a074cd")
+    );
+}
+
+#[test]
+fn the_digest_covers_the_metadata_before_the_posture_stamp() {
+    // The hook hashes the artifact, then stamps the run's risk signals onto
+    // the same metadata before asking for its facts. The digest has to stay
+    // the pre-stamp one, while the facts are still read from the stamped
+    // metadata.
+    let value = evaluate(&hashed_artifact(
+        stamped_metadata(),
+        Some(identity_metadata()),
+    ));
+    assert_eq!(
+        value["content_sha256"],
+        json!("9eb6bb136e9179bc4e943813d356f27456ce7e505600234dd897653263a074cd")
+    );
+    assert_eq!(value["confidence_text"], json!("strong"));
+}
+
+#[test]
+fn hashing_the_stamped_metadata_would_move_the_digest() {
+    // `d49d9c73...` is `artifact_hash` of the stamped artifact under CPython
+    // 3.12: proof that the pre-stamp metadata above is load-bearing rather
+    // than a defensive copy.
+    let value = evaluate(&hashed_artifact(
+        stamped_metadata(),
+        Some(stamped_metadata()),
+    ));
+    assert_eq!(
+        value["content_sha256"],
+        json!("d49d9c732e7c991792dbd7290171c1417fc9949dbb4b13d107706aceefe68815")
+    );
+}
+
+#[test]
+fn the_content_hash_feature_is_advertised() {
+    assert!(crate::resident_op_features::RESIDENT_OP_FEATURES
+        .contains(&guard_contracts::HOOK_ARTIFACT_FACTS_CONTENT_HASH_FEATURE));
 }

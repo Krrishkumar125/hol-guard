@@ -14,6 +14,11 @@ pub const HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA: &str = "guard-hook-artifact-facts-
 pub const HOOK_ARTIFACT_FACTS_RESULT_SCHEMA: &str = "guard-hook-artifact-facts-result.v1";
 /// Capability advertised by the runtime when this operation is available.
 pub const HOOK_ARTIFACT_FACTS_FEATURE: &str = "hook-artifact-facts-v1";
+/// Capability advertised when the op also answers `content_sha256`, the digest
+/// a saved approval is keyed by. A caller that needs the digest asks under
+/// this feature, so a runtime that would silently omit it is unavailable
+/// instead; callers that only need the policy facts are unaffected.
+pub const HOOK_ARTIFACT_FACTS_CONTENT_HASH_FEATURE: &str = "hook-artifact-facts-content-hash-v1";
 /// Largest canonical request serialization the op will accept.
 pub const HOOK_ARTIFACT_FACTS_MAX_BYTES: usize = 4 * 1024 * 1024;
 /// Most artifacts one request may carry. A hook asks about two; a request
@@ -33,6 +38,48 @@ pub struct HookArtifactV1 {
     /// is a settings lookup rather than a reading of the artifact.
     #[serde(default)]
     pub configured_override: Option<String>,
+    /// `GuardArtifact.artifact_id`.
+    #[serde(default)]
+    pub artifact_id: String,
+    /// `GuardArtifact.name`.
+    #[serde(default)]
+    pub name: String,
+    /// `GuardArtifact.harness`, the artifact's own harness rather than the
+    /// canonical policy harness the caller resolved.
+    #[serde(default)]
+    pub harness: String,
+    /// `GuardArtifact.source_scope`.
+    #[serde(default)]
+    pub source_scope: String,
+    /// `GuardArtifact.config_path`.
+    #[serde(default)]
+    pub config_path: String,
+    /// `GuardArtifact.command`.
+    #[serde(default)]
+    pub command: Option<String>,
+    /// `GuardArtifact.args`, unredacted; the hash redacts them itself.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// `GuardArtifact.url`, unredacted; the hash redacts it itself.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// `GuardArtifact.transport`.
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// `GuardArtifact.publisher`.
+    #[serde(default)]
+    pub publisher: Option<String>,
+    /// Present when the caller asks for `content_sha256`: the metadata the
+    /// content hash is taken over.
+    ///
+    /// A hook fixes an artifact's approval identity before it stamps its
+    /// runtime posture onto the same metadata, so the digest a saved approval
+    /// is keyed by covers the artifact as it stood *before* that stamp, while
+    /// the facts above are read from the stamped metadata. Carrying both
+    /// keeps one round trip answering both questions without the resident
+    /// guessing which keys a caller added after the identity was fixed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash_metadata: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

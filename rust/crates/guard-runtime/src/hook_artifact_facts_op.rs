@@ -89,8 +89,55 @@ pub(crate) fn evaluate(artifact: &HookArtifactV1) -> Value {
             .map(str::to_owned),
         skill_is_known_bad: skill_is_known_bad(metadata),
         skip_native_floor: skip_native_floor(&artifact.artifact_type, permission_allow),
+        content_sha256: artifact
+            .hash_metadata
+            .as_ref()
+            .map(|hash_metadata| content_sha256(artifact, hash_metadata)),
     };
     serde_json::to_value(facts).unwrap_or(Value::Null)
+}
+
+/// `consumer.service.artifact_hash` over the artifact its caller asked about.
+///
+/// The digest covers `hash_metadata` rather than the metadata the facts above
+/// are read from: a hook fixes the approval identity before it stamps its
+/// runtime posture onto the artifact, and a saved approval keyed by the
+/// stamped metadata would stop matching the moment a signal appeared.
+fn content_sha256(artifact: &HookArtifactV1, hash_metadata: &Value) -> String {
+    let mut payload = Map::new();
+    for (field, value) in [
+        ("artifact_id", &artifact.artifact_id),
+        ("name", &artifact.name),
+        ("harness", &artifact.harness),
+        ("artifact_type", &artifact.artifact_type),
+        ("source_scope", &artifact.source_scope),
+        ("config_path", &artifact.config_path),
+    ] {
+        payload.insert(field.to_owned(), Value::String(value.clone()));
+    }
+    for (field, value) in [
+        ("command", &artifact.command),
+        ("url", &artifact.url),
+        ("transport", &artifact.transport),
+        ("publisher", &artifact.publisher),
+    ] {
+        payload.insert(
+            field.to_owned(),
+            value.clone().map_or(Value::Null, Value::String),
+        );
+    }
+    payload.insert(
+        "args".to_owned(),
+        Value::Array(
+            artifact
+                .args
+                .iter()
+                .map(|arg| Value::String(arg.clone()))
+                .collect(),
+        ),
+    );
+    payload.insert("metadata".to_owned(), hash_metadata.clone());
+    guard_command::artifact_hash::artifact_hash(&payload)
 }
 
 /// Whether the native command floor stays out of this artifact's verdict.

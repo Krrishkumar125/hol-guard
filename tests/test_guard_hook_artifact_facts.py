@@ -128,3 +128,65 @@ def test_an_unavailable_resident_yields_no_facts(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(policy, "native_hook_artifact_facts", unavailable)
     with pytest.raises(HookArtifactFactsUnavailableError):
         policy.runtime_policy_artifact_facts(_Config(), _artifact(), "claude-code")
+
+
+# --- The digest a saved approval is keyed by is the resident's answer too ----
+
+
+def test_the_digest_is_only_asked_for_when_a_caller_needs_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
+    artifact = _artifact()
+    identity = {"action_class": "destructive shell command"}
+    policy.runtime_policy_artifact_facts_batch(
+        _Config(),
+        ((artifact, "claude-code"), (artifact, "codex")),
+        hash_metadata=(None, identity),
+    )
+    plain, hashed = captured[0]["artifacts"]
+    assert set(plain) == {"artifact_type", "metadata", "configured_override"}
+    assert hashed["hash_metadata"] is identity
+    assert hashed["artifact_id"] == "shell:rm"
+    assert hashed["name"] == "rm"
+    assert hashed["harness"] == "claude-code"
+    assert hashed["source_scope"] == "workspace"
+    assert hashed["config_path"] == "/workspace/.claude/settings.json"
+    assert hashed["publisher"] == "local"
+    assert hashed["args"] == []
+    assert hashed["command"] is None
+    assert hashed["url"] is None
+    assert hashed["transport"] is None
+
+
+def test_the_identity_metadata_is_not_the_artifacts_current_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The caller fixes the identity before its posture stamp lands on the artifact."""
+
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
+    artifact = _artifact()
+    identity = dict(artifact.metadata)
+    artifact.metadata["risk_signals"] = [{"category": "exfiltration"}]
+    policy.runtime_policy_artifact_facts_batch(_Config(), ((artifact, "claude-code"),), hash_metadata=(identity,))
+    asked = captured[0]["artifacts"][0]
+    assert "risk_signals" in asked["metadata"]
+    assert "risk_signals" not in asked["hash_metadata"]
+
+
+def test_one_identity_per_artifact_or_nothing_is_asked(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
+    with pytest.raises(ValueError):
+        policy.runtime_policy_artifact_facts_batch(
+            _Config(), ((_artifact(), "claude-code"),), hash_metadata=(None, None)
+        )
+    assert captured == []
+
+
+def test_the_content_hash_is_the_residents_digest() -> None:
+    assert policy.artifact_fact_content_hash({"content_sha256": "a" * 64}) == "a" * 64
+
+
+@pytest.mark.parametrize("facts", [{}, {"content_sha256": None}, {"content_sha256": ""}, {"content_sha256": 7}])
+def test_a_missing_or_malformed_digest_fails_closed(facts: dict[str, object]) -> None:
+    with pytest.raises(HookArtifactFactsUnavailableError):
+        policy.artifact_fact_content_hash(facts)
