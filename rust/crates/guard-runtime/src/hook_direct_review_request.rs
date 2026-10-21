@@ -423,7 +423,7 @@ fn result_command_category(result: &Object) -> Option<String> {
         .next()
 }
 
-fn only_container_runtime_uncertainties(evidence: &Object, count: u64) -> bool {
+fn only_rule_uncertainties(evidence: &Object, count: u64) -> bool {
     let permission_uncertain = evidence
         .get("permission_observations")
         .and_then(Value::as_array)
@@ -443,11 +443,6 @@ fn only_container_runtime_uncertainties(evidence: &Object, count: u64) -> bool {
                 let mut matched = 0u64;
                 for obj in items.iter().filter_map(Value::as_object) {
                     if obj.get("uncertainty_reasons").is_some_and(truthy) {
-                        if obj.get("rule_id").and_then(Value::as_str)
-                            != Some("command.container-runtime.docker-sensitive")
-                        {
-                            return false;
-                        }
                         matched += 1;
                     }
                 }
@@ -503,7 +498,10 @@ fn launch_target(
 /// definite extension review of a command-only shell call. The resident does
 /// not run that re-review, so these defer.
 pub(super) fn allow_hint_candidate(payload: &Map<String, Value>, result: &Object) -> Option<bool> {
-    if result.get("minimum_action").and_then(Value::as_str) != Some("review") {
+    if !matches!(
+        result.get("minimum_action").and_then(Value::as_str),
+        Some("review" | "require-reapproval")
+    ) {
         return Some(false);
     }
     let Some(evidence) = result.get("command_extensions").and_then(Value::as_object) else {
@@ -521,12 +519,12 @@ pub(super) fn allow_hint_candidate(payload: &Map<String, Value>, result: &Object
         Some(Value::Number(count)) => count.as_f64() == Some(0.0),
         _ => false,
     };
-    let settleable_container_uncertainty = !certain
+    let settleable_rule_uncertainty = !certain
         && binding
             .get("uncertainty_count")
             .and_then(Value::as_u64)
-            .is_some_and(|count| only_container_runtime_uncertainties(evidence, count));
-    if !(certain || settleable_container_uncertainty)
+            .is_some_and(|count| only_rule_uncertainties(evidence, count));
+    if !(certain || settleable_rule_uncertainty)
         || !binding
             .get("observations_digest")
             .is_some_and(Value::is_string)

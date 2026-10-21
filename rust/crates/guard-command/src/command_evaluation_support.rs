@@ -43,19 +43,57 @@ fn settles_docker_uncertainty(command: &CanonicalCommand) -> bool {
             .all(crate::command_compatibility::docker_segment_settles_uncertainty)
 }
 
+/// Whether every segment an uncertain observation names stays inside what
+/// its text proves, so an explicit Allow for its rule may settle it,
+/// whichever extension owns the rule. An observation that names no segment
+/// (a matcher that failed before it could attribute one) never settles.
+fn observation_segments_settle(command: &CanonicalCommand, segment_indexes: &[u32]) -> bool {
+    command.confidence == "exact"
+        && !segment_indexes.is_empty()
+        && segment_indexes.iter().all(|index| {
+            command
+                .segments
+                .get(*index as usize)
+                .is_some_and(|segment| {
+                    crate::command_compatibility::segment_settles_uncertainty(
+                        segment,
+                        crate::pretool::PathContext::default(),
+                    )
+                })
+        })
+}
+
+/// Whether every segment of the command stays inside what its text proves.
+/// Uncertainty evidence is unattributed (`segment:unknown`), so it settles
+/// only when the whole command settles, never one named segment.
+fn command_settles_uncertainty(command: &CanonicalCommand) -> bool {
+    command.confidence == "exact"
+        && !command.segments.is_empty()
+        && command.segments.iter().all(|segment| {
+            crate::command_compatibility::segment_settles_uncertainty(
+                segment,
+                crate::pretool::PathContext::default(),
+            )
+        })
+}
+
 pub(crate) fn effective_observation_uncertainties(
     command: &CanonicalCommand,
     observations: &[NativeCommandExtensionObservation],
     explicitly_enabled_rule_ids: &BTreeSet<String>,
 ) -> Vec<UncertaintyKind> {
-    if !settles_docker_uncertainty(command) {
-        return extension_uncertainties(observations);
-    }
     let filtered: Vec<_> = observations
         .iter()
         .filter(|observation| {
-            !(observation.rule_id == "command.container-runtime.docker-sensitive"
-                && explicitly_enabled_rule_ids.contains(&observation.rule_id))
+            !(explicitly_enabled_rule_ids.contains(&observation.rule_id)
+                && observation_segments_settle(
+                    command,
+                    &observation
+                        .effective_evidence()
+                        .iter()
+                        .map(|evidence| evidence.segment_index)
+                        .collect::<Vec<_>>(),
+                ))
         })
         .cloned()
         .collect();
@@ -68,20 +106,18 @@ pub(crate) fn filter_effective_evidence_batch(
     native_benign_rule_ids: &BTreeSet<String>,
     explicitly_enabled_rule_ids: &BTreeSet<String>,
 ) -> ExtensionEvidenceBatch {
-    let settles_docker = settles_docker_uncertainty(command);
     ExtensionEvidenceBatch {
         evidence: evidence_batch
             .evidence
             .iter()
             .filter(|evidence| {
                 let rule_id = &evidence.identity.rule_id;
-                let enabled_container_uncertainty = settles_docker
-                    && rule_id == "command.container-runtime.docker-sensitive"
-                    && explicitly_enabled_rule_ids.contains(rule_id);
+                let enabled_uncertainty_settles = explicitly_enabled_rule_ids.contains(rule_id)
+                    && command_settles_uncertainty(command);
                 !native_benign_rule_ids.contains(rule_id)
                     && (!explicitly_enabled_rule_ids.contains(rule_id)
                         || (!evidence.uncertainty_reasons.is_empty()
-                            && !enabled_container_uncertainty))
+                            && !enabled_uncertainty_settles))
             })
             .cloned()
             .collect(),

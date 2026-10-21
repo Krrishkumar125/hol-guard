@@ -50,7 +50,10 @@ def compute_extension_allow_hint(
     it passes, the already verified full permission set is returned as-is.
     """
 
-    if snapshot.authority_failure is not None or evaluation.decision_plane.action != "review":
+    if snapshot.authority_failure is not None or evaluation.decision_plane.action not in (
+        "review",
+        "require-reapproval",
+    ):
         return None
     if isinstance(native_evidence, dict) and native_evidence.get("minimum_action") == "block":
         return None

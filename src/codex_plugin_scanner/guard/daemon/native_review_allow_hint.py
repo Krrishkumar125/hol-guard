@@ -77,6 +77,13 @@ def _evidence_binding(result: Mapping[str, object]) -> Mapping[str, object] | No
 
 
 def _settleable_uncertainties_only(evidence: Mapping[str, object], count: object) -> bool:
+    """True when every uncertain observation is a rule observation the counterfactual can settle.
+
+    Any extension's rule may be proposed: the hint is only stored when
+    re-evaluating with its permission enabled actually allows the command, so
+    this gate only checks that the uncertainty Rust paused on is fully
+    accounted for by rule observations (never ruleless permission evidence).
+    """
     if count == 0:
         return True
     if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
@@ -90,15 +97,13 @@ def _settleable_uncertainties_only(evidence: Mapping[str, object], count: object
     if not isinstance(observations, list):
         return False
     uncertain = [item for item in observations if isinstance(item, Mapping) and item.get("uncertainty_reasons")]
-    return len(uncertain) == count and all(
-        item.get("rule_id") == "command.container-runtime.docker-sensitive" for item in uncertain
-    )
+    return len(uncertain) == count
 
 
 def _definite_review_binding(native_result: Mapping[str, object]) -> Mapping[str, object] | None:
-    """Return the evidence binding when Rust paused on definite or container-runtime extension evidence."""
+    """Return the evidence binding when Rust paused on definite or settleable extension evidence."""
 
-    if native_result.get("minimum_action") != "review":
+    if native_result.get("minimum_action") not in ("review", "require-reapproval"):
         return None
     evidence = native_result.get("command_extensions")
     if not isinstance(evidence, Mapping) or evidence.get("evaluation_error"):
