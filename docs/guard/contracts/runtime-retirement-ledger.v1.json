@@ -87,6 +87,13 @@
   "src/codex_plugin_scanner/guard/runtime/github_pr_body_file.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_body_safety.py",
   "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py",
+  "src/codex_plugin_scanner/guard/runtime/executable_flag_contract.py",
+  "src/codex_plugin_scanner/guard/runtime/workspace_path_guard.py",
+  "src/codex_plugin_scanner/guard/evaluation_codex_event_trace.py",
+  "src/codex_plugin_scanner/guard/policy_recipe.py",
+  "src/codex_plugin_scanner/guard/runtime/network_public_suffix.py",
+  "src/codex_plugin_scanner/guard/runtime/remote_approval_execution.py",
+  "src/codex_plugin_scanner/guard/runtime/resource_budget.py",
   "src/codex_plugin_scanner/guard/runtime/source_paths.py"
  ],
  "retired_tests": [
@@ -6659,6 +6666,21 @@
    ],
    "status": "obsolete_implementation_assertion",
    "rationale": "Asserted the retired Python caller's lru_cache of native option results. The cache was deleted with the module; the resident answers each option call directly, so there is no Python cache to reuse or skip."
+  },
+  {
+   "old_node": "tests/test_guard_manifest_path_traversal.py::test_resolve_path_within_workspace_rejects_parent_traversal",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/workspace_path_guard_tests.rs::parent_traversal_resolves_to_nothing",
+    "rust/crates/guard-command/src/workspace_path_guard_tests.rs::absolute_and_empty_operands_resolve_to_nothing"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_manifest_path_traversal.py::test_resolve_path_within_workspace_rejects_symlink_escape",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/workspace_path_guard_tests.rs::a_symlink_out_of_the_workspace_resolves_to_nothing"
+   ],
+   "status": "native_behavior_ported_requires_ci"
   },
   {
    "old_node": "tests/test_hook_source_paths.py::TestSourcePathIsAllowed::test_ts_file_under_src_allowed",
