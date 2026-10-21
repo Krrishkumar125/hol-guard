@@ -175,6 +175,7 @@ _DIRECTIVE = {
     "queue_approval_request": False,
     "emitter": "default",
     "exit_code": 2,
+    "json_exit_code": 2,
     "stderr_only_on_nonzero_exit": False,
     "codex_native_reason": "never",
     "include_remediation": True,
@@ -238,6 +239,7 @@ def test_a_bound_directive_is_decoded_behind_its_capability(monkeypatch: pytest.
         {"queue_approval_request": True},
         {"exit_block_stderr": None},
         {"exit_code": "2"},
+        {"json_exit_code": "1"},
         {"extra": True},
     ],
 )

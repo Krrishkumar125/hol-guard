@@ -88,6 +88,7 @@ _DIRECTIVE_FIELDS: dict[str, Any] = {
     "queue_approval_request": bool,
     "emitter": str,
     "exit_code": (int, type(None)),
+    "json_exit_code": (int, type(None)),
     "stderr_only_on_nonzero_exit": bool,
     "codex_native_reason": str,
     "include_remediation": bool,
