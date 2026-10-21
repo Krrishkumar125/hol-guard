@@ -142,7 +142,12 @@ pub(crate) fn semantic_preview(
         changed_target_count: changed_targets.len() as u64,
         affected_permission_count: all_affected_permission_ids.len() as u64,
         affected_rule_count: all_affected_rule_ids.len() as u64,
-        approval_required: !changed_targets.is_empty() || lockdown_changed,
+        // Approval is also needed when permissions change effective state
+        // without a changed target the catalog knows: an unknown target a
+        // layer holds or drops blocks every permission while it is present.
+        approval_required: !changed_targets.is_empty()
+            || lockdown_changed
+            || newly_blocked + newly_allowed > 0,
         changed_targets,
         summary: ExtensionControlPreviewSummaryV1 {
             newly_blocked_permissions: newly_blocked,

@@ -74,12 +74,18 @@ pub(super) fn explicit_state(
 /// The proposed layers with one target's local control put back to what the
 /// current local layer holds for it (or removed when it holds none). Local
 /// controls are re-sorted by kind then id; other layers are untouched.
+///
+/// A proposal may hold no local layer at all (it clears them). The target's
+/// control is then restored in a local layer that carries the current layer's
+/// metadata and only that control; the current layer's lockdown stays with the
+/// layer the proposal dropped, so reverting one target does not restore it.
 pub(super) fn layers_with_target_reverted(
     current_layers: &[NativeExtensionControlLayerV1],
     proposed_layers: &[NativeExtensionControlLayerV1],
     (kind, target_id): (&str, &str),
 ) -> Vec<NativeExtensionControlLayerV1> {
-    let current_control = local_layer(current_layers).and_then(|(_, layer)| {
+    let current_layer = local_layer(current_layers).map(|(_, layer)| layer);
+    let current_control = current_layer.and_then(|layer| {
         layer
             .controls
             .iter()
@@ -87,6 +93,18 @@ pub(super) fn layers_with_target_reverted(
     });
     let mut reverted = proposed_layers.to_vec();
     let Some((index, _)) = local_layer(proposed_layers) else {
+        if let (Some(layer), Some(control)) = (current_layer, current_control) {
+            reverted.insert(
+                0,
+                NativeExtensionControlLayerV1 {
+                    schema_version: layer.schema_version.clone(),
+                    kind: layer.kind.clone(),
+                    catalog_digest: layer.catalog_digest.clone(),
+                    global_lockdown: false,
+                    controls: vec![control.clone()],
+                },
+            );
+        }
         return reverted;
     };
     let local = &mut reverted[index];

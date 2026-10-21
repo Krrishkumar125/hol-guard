@@ -269,6 +269,27 @@ fn unchanged_and_unknown_targets_yield_no_entries() {
 }
 
 #[test]
+fn an_unknown_target_that_changes_what_is_blocked_still_needs_approval() {
+    // A layer holding a target the catalog does not know blocks every
+    // permission while it is present, with no changed target to show for it.
+    let added = preview(
+        Vec::new(),
+        vec![local(vec![permission_control(UNKNOWN, "disabled")])],
+    );
+    assert!(added.changed_targets.is_empty());
+    assert_eq!(added.summary.newly_blocked_permissions, 4);
+    assert!(added.approval_required);
+
+    let dropped = preview(
+        vec![local(vec![permission_control(UNKNOWN, "disabled")])],
+        Vec::new(),
+    );
+    assert!(dropped.changed_targets.is_empty());
+    assert_eq!(dropped.summary.newly_allowed_permissions, 4);
+    assert!(dropped.approval_required);
+}
+
+#[test]
 fn a_lockdown_change_needs_approval_and_leads_provenance() {
     let preview = preview(
         Vec::new(),
@@ -320,7 +341,68 @@ fn reverting_a_target_restores_the_current_control_in_sorted_order() {
 
     let removed = layers_with_target_reverted(&current, &proposed, ("permission", GAMMA_DEPLOY));
     assert_eq!(removed[0].controls.len(), 2);
-    assert!(layers_with_target_reverted(&current, &[], ("permission", BETA_RUN)).is_empty());
+    // A target the current local layer holds no control for has nothing to put back.
+    assert!(layers_with_target_reverted(&current, &[], ("permission", ALPHA_READ)).is_empty());
+}
+
+#[test]
+fn reverting_against_a_proposal_without_a_local_layer_restores_only_that_control() {
+    let current = vec![layer(
+        "local-admin",
+        true,
+        vec![
+            permission_control(BETA_RUN, "disabled"),
+            permission_control(ALPHA_READ, "disabled"),
+        ],
+    )];
+    let managed = cloud(Vec::new());
+    let proposed = vec![managed.clone()];
+
+    let restored = layers_with_target_reverted(&current, &proposed, ("permission", BETA_RUN));
+    assert_eq!(restored.len(), 2);
+    assert_eq!(restored[0].kind, "local-admin");
+    assert_eq!(restored[0].catalog_digest, digest());
+    // The lockdown belongs to the layer the proposal dropped.
+    assert!(!restored[0].global_lockdown);
+    assert_eq!(
+        restored[0].controls,
+        vec![permission_control(BETA_RUN, "disabled")]
+    );
+    assert_eq!(restored[1], managed);
+    assert_eq!(
+        layers_with_target_reverted(&current, &proposed, ("permission", ALPHA_WRITE)),
+        proposed
+    );
+}
+
+#[test]
+fn a_proposal_that_clears_the_local_layer_reports_each_target_its_marginal_effect() {
+    let preview = preview(
+        vec![local(vec![permission_control(ALPHA_WRITE, "disabled")])],
+        Vec::new(),
+    );
+
+    assert_eq!(preview.changed_target_count, 1);
+    let target = &preview.changed_targets[0];
+    assert_eq!(
+        (
+            target.before_explicit.as_str(),
+            target.after_explicit.as_str()
+        ),
+        ("disabled", "inherited")
+    );
+    assert_eq!(
+        (
+            target.before_effective.as_str(),
+            target.after_effective.as_str()
+        ),
+        ("blocked", "allowed")
+    );
+    assert_eq!(
+        target.affected_permission_ids,
+        strings(&[ALPHA_WRITE, GAMMA_DEPLOY])
+    );
+    assert_eq!(preview.summary.newly_allowed_permissions, 2);
 }
 
 #[test]

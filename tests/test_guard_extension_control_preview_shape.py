@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import copy
+import http.server
 import re
 import threading
+import time
 from pathlib import Path
 
 import pytest
 
-from codex_plugin_scanner.guard import native_extension_control
+from codex_plugin_scanner.guard import (
+    native_extension_control,
+    native_extension_control_authority,
+    store_extension_control_authority_commit,
+    store_extension_control_authority_reads,
+)
 from codex_plugin_scanner.guard.daemon import client as daemon_client
+from codex_plugin_scanner.guard.daemon import extension_control_timeouts as timeouts
 from codex_plugin_scanner.guard.daemon.extension_control_api import ExtensionControlApiError, ExtensionControlApiService
 from codex_plugin_scanner.guard.daemon.extension_control_semantic_preview import (
     SEMANTIC_PREVIEW_SCHEMA,
@@ -181,6 +189,7 @@ def test_render_bounds_the_lists_it_forwards() -> None:
 
 def test_preview_limit_refusals_report_a_limit_not_a_dead_runtime() -> None:
     assert {
+        "native_extension_control_too_large",
         "native_extension_control_too_many_items",
         "native_extension_control_reply_too_large",
     } == PREVIEW_LIMIT_CODES
@@ -216,4 +225,122 @@ def test_preview_deadlines_nest_from_the_resident_out_to_the_dashboard() -> None
     # The resident client clamps to its ceiling, so the ceiling must grant what Python asks for.
     assert int(ceiling.group(1).replace("_", "")) >= granted * 1000
     # The daemon answers only after the resident does; its client waits longer.
-    assert granted < daemon_client._EXTENSION_MUTATION_REQUEST_TIMEOUT_S
+    assert granted < timeouts.PREVIEW_REQUEST_TIMEOUT_S
+
+
+def test_the_client_budgets_add_up_the_resident_budgets_they_wait_for() -> None:
+    # Each literal in the timeouts module is the budget its owner grants.
+    assert native_extension_control_authority._TIMEOUT_SECONDS == timeouts.AUTHORITY_ROUND_TIMEOUT_S
+    assert store_extension_control_authority_reads._MAX_READ_ROUNDS == timeouts.AUTHORITY_READ_ROUNDS
+    assert native_extension_control._TIMEOUT_SECONDS == timeouts.COMPOSE_TIMEOUT_S
+    assert native_extension_control._PREVIEW_TIMEOUT_SECONDS == timeouts.SEMANTIC_PREVIEW_TIMEOUT_S
+    assert store_extension_control_authority_commit._MAX_COMMIT_ROUNDS == timeouts.COMMIT_PLAN_ROUNDS
+
+    read = timeouts.AUTHORITY_ROUND_TIMEOUT_S * timeouts.AUTHORITY_READ_ROUNDS
+    assert read == timeouts.AUTHORITY_READ_TIMEOUT_S
+    # A preview: two authority reads, the composition and the semantic preview.
+    assert 2 * read + 5.0 + 15.0 <= timeouts.PREVIEW_REQUEST_TIMEOUT_S
+    # An apply: its authority reads, the semantic preview and the commit rounds.
+    assert 4 * read + 15.0 + 4 * 10.0 <= timeouts.APPLY_REQUEST_TIMEOUT_S
+    assert timeouts.APPLY_REQUEST_TIMEOUT_S >= timeouts.PREVIEW_REQUEST_TIMEOUT_S
+    # Both go to the client, which waits exactly that long for the whole answer.
+    sent: list[tuple[str, float, int | None]] = []
+
+    def record(_self: object, path: str, _payload: dict[str, object], *, timeout: float, max_bytes: int | None = None):
+        sent.append((path, timeout, max_bytes))
+        return {}
+
+    client = daemon_client.GuardSurfaceDaemonClient("http://127.0.0.1:1", "token")
+    original = daemon_client.GuardSurfaceDaemonClient._post
+    daemon_client.GuardSurfaceDaemonClient._post = record  # type: ignore[method-assign,assignment]
+    try:
+        client.preview_extension_controls({})
+        client.apply_extension_controls({})
+    finally:
+        daemon_client.GuardSurfaceDaemonClient._post = original  # type: ignore[method-assign]
+    assert [(path.rsplit("/", 1)[1], timeout) for path, timeout, _ in sent] == [
+        ("preview", timeouts.PREVIEW_REQUEST_TIMEOUT_S),
+        ("apply", timeouts.APPLY_REQUEST_TIMEOUT_S),
+    ]
+    assert all(limit is not None for _, _, limit in sent)
+
+
+class _Drip(http.server.BaseHTTPRequestHandler):
+    """Answers with a body sent a byte at a time, so no single wait is long."""
+
+    status = 200
+    delay = 0.05
+
+    def do_POST(self) -> None:
+        body = b'{"a":"' + b"x" * 400 + b'"}'
+        self.send_response(self.status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            for index in range(len(body)):
+                self.wfile.write(body[index : index + 1])
+                self.wfile.flush()
+                time.sleep(self.delay)
+        except OSError:
+            return
+
+    def log_message(self, *_args: object) -> None:
+        return
+
+
+class _DripError(_Drip):
+    status = 503
+
+
+class _Quick(_Drip):
+    delay = 0.002
+
+
+class _QuickError(_Quick):
+    status = 503
+
+
+def _drip_client(
+    handler: type[_Drip],
+) -> tuple[http.server.ThreadingHTTPServer, daemon_client.GuardSurfaceDaemonClient]:
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, daemon_client.GuardSurfaceDaemonClient(f"http://127.0.0.1:{server.server_address[1]}", "token")
+
+
+@pytest.mark.parametrize("handler", [_Drip, _DripError])
+def test_a_bounded_post_gives_up_on_a_slow_body_at_its_total_deadline(handler: type[_Drip]) -> None:
+    server, client = _drip_client(handler)
+    try:
+        started = time.monotonic()
+        # Each byte arrives well inside the socket timeout, so only a total deadline stops the read.
+        with pytest.raises(daemon_client.GuardDaemonTimeoutError):
+            client._post("/v1/extension-controls/preview", {}, timeout=0.5, max_bytes=1_000_000)
+        assert time.monotonic() - started < 5.0
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("max_bytes", [None, 1_000_000])
+def test_a_post_reads_a_body_that_finishes_in_time(max_bytes: int | None) -> None:
+    server, client = _drip_client(_Quick)
+    try:
+        kwargs = {} if max_bytes is None else {"timeout": 20.0, "max_bytes": max_bytes}
+        assert client._post("/v1/extension-controls/preview", {}, **kwargs) == {"a": "x" * 400}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_bounded_post_still_reports_an_http_error_that_arrives_in_time() -> None:
+    server, client = _drip_client(_QuickError)
+    try:
+        with pytest.raises(daemon_client.GuardDaemonRequestError) as raised:
+            client._post("/v1/extension-controls/preview", {}, timeout=20.0, max_bytes=1_000_000)
+        assert raised.value.status == 503
+    finally:
+        server.shutdown()
+        server.server_close()
