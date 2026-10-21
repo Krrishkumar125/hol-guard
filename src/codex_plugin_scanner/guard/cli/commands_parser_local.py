@@ -106,6 +106,13 @@ def _configure_guard_local_parsers(
     )
     _add_guard_common_args(network_sync_parser, suppress_defaults=True)
     network_sync_parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    network_check_parser = network_subparsers.add_parser(
+        "check",
+        help="Show what the saved network rules and known-bad URL indicators decide for a URL",
+    )
+    network_check_parser.add_argument("url", help="URL to check, for example https://example.com/path")
+    _add_guard_common_args(network_check_parser, suppress_defaults=True)
+    network_check_parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
 
     dashboard_parser = guard_subparsers.add_parser(
         "dashboard",

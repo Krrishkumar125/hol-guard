@@ -625,6 +625,8 @@ def _run_guard_network_command(
             return 1
         _emit("network-sync", {"synced": True, **summary}, getattr(args, "json", False))
         return 0
+    if command == "check":
+        return _run_guard_network_check(args, guard_home=guard_home)
     if command != "status":
         raise ValueError(f"unsupported network command: {command}")
     payload = dict(load_network_status_payload(guard_home=guard_home, config=config))
@@ -634,6 +636,23 @@ def _run_guard_network_command(
         )
     _emit("network", payload, getattr(args, "json", False))
     return 0
+
+def _run_guard_network_check(args: argparse.Namespace, *, guard_home: Path | None) -> int:
+    from ..native_runner_authority import NativeRunnerAuthorityError, native_runner_authority
+
+    url = str(getattr(args, "url", "") or "").strip()
+    home = guard_home if guard_home is not None else resolve_guard_home(None)
+    try:
+        verdict = native_runner_authority("network_check", {"guard_home": str(home), "url": url})
+    except NativeRunnerAuthorityError as error:
+        _emit("network-check", {"url": url, "error": str(error)}, getattr(args, "json", False))
+        return 1
+    payload = {"url": url, **verdict}
+    _emit("network-check", payload, getattr(args, "json", False))
+    if not verdict.get("valid_url", False):
+        return 2
+    return 0
+
 
 def _run_guard_init_command(
     args: argparse.Namespace,

@@ -196,3 +196,46 @@ fn apply_reads_the_saved_bundle_and_blocks_a_bad_curl() {
         "allow"
     );
 }
+
+#[test]
+fn check_op_reports_the_hook_decision_for_one_url() {
+    let home = tempfile::tempdir().unwrap();
+    let connection = rusqlite::Connection::open(home.path().join(STORE_FILE_NAME)).unwrap();
+    connection
+        .execute_batch(
+            "create table sync_state (state_key text primary key, payload_json text not null, updated_at text not null)",
+        )
+        .unwrap();
+    connection
+        .execute(
+            "insert into sync_state values (?1, ?2, '2026-10-21T00:00:00Z')",
+            rusqlite::params![SYNC_STATE_KEY, saved_bundle(u64::MAX / 2).to_string()],
+        )
+        .unwrap();
+    drop(connection);
+    let guard_home = home.path().to_str().unwrap();
+    let check = |url: &str| check_op(&json!({"guard_home": guard_home, "url": url})).unwrap();
+
+    let bad = check("http://1.2.3.4:8080/i");
+    assert_eq!(bad["configured"], true);
+    assert_eq!(bad["decision"], "block");
+    assert_eq!(bad["reason_code"], "network_known_bad_url");
+    assert_eq!(check("https://api.blocked.example/x")["decision"], "block");
+    assert_eq!(
+        check("https://login-verify.pages.dev/")["decision"],
+        "review"
+    );
+    let ok = check("https://ok.example/");
+    assert_eq!(ok["decision"], "allow");
+    assert_eq!(ok["reason_code"], serde_json::Value::Null);
+    assert_eq!(check("not a url")["valid_url"], false);
+
+    let empty = tempfile::tempdir().unwrap();
+    let unconfigured = check_op(
+        &json!({"guard_home": empty.path().to_str().unwrap(), "url": "http://1.2.3.4:8080/i"}),
+    )
+    .unwrap();
+    assert_eq!(unconfigured["configured"], false);
+    assert_eq!(unconfigured["decision"], "allow");
+    assert!(check_op(&json!({"url": "https://ok.example/"})).is_err());
+}

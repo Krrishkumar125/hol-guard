@@ -277,6 +277,37 @@ fn raise(mut result: PreToolResultV1, finding: NetworkFinding) -> PreToolResultV
     result
 }
 
+/// `network_check` runner-authority kind: what the saved bundle decides for
+/// one URL, using the same precedence the hook edge applies.
+pub(crate) fn check_op(args: &Value) -> crate::runner_authority_op::KindResult {
+    use crate::runner_authority_op::ERR_INVALID;
+    let text = |key: &str| args.get(key).and_then(Value::as_str).ok_or(ERR_INVALID);
+    let guard_home = Path::new(text("guard_home")?);
+    let url = text("url")?;
+    let parsed = normalize_network_url(url);
+    let compiled = load(guard_home);
+    let finding = match (&compiled, &parsed) {
+        (Some(compiled), Some(_)) => evaluate(compiled, &[url.to_string()], now_epoch()),
+        _ => None,
+    };
+    let indicators_applied = compiled.as_ref().is_some_and(|compiled| {
+        now_epoch()
+            <= compiled
+                .expires_at_epoch
+                .saturating_add(INDICATOR_STALE_AFTER_SECS)
+    });
+    Ok(serde_json::json!({
+        "configured": compiled.is_some(),
+        "indicators_applied": indicators_applied,
+        "valid_url": parsed.is_some(),
+        "host": parsed.as_ref().map(|parsed| parsed.host.clone()),
+        "normalized_url": parsed.as_ref().map(|parsed| parsed.normalized.clone()),
+        "decision": finding.as_ref().map_or("allow", |finding| finding.floor),
+        "reason_code": finding.as_ref().map(|finding| finding.reason_code),
+        "reason": finding.map(|finding| finding.reason),
+    }))
+}
+
 /// Raises a PreToolUse result for destinations the saved bundle blocks or
 /// flags. A missing, unreadable or unknown bundle leaves the result as is.
 pub(crate) fn apply(

@@ -241,3 +241,44 @@ def test_failed_sync_keeps_the_saved_bundle(
         guard_runner.sync_network_protection_bundle(store)
     assert guard_runner.sync_network_protection_bundle_best_effort(store) is None
     assert store.get_sync_payload(NETWORK_PROTECTION_SYNC_STATE_KEY) == {"bundle": {"kept": True}}
+
+
+@pytest.mark.usefixtures("native_approval_reuse_runtime")
+def test_network_check_reports_the_saved_bundle_decision(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, signing_key: RSAPrivateKey
+) -> None:
+    import argparse
+
+    from codex_plugin_scanner.guard.cli import commands_dispatch_local
+    from codex_plugin_scanner.guard.cli.commands_parser import add_guard_parser
+
+    guard_home = tmp_path / "guard-home"
+    store = GuardStore(guard_home)
+    store.set_sync_payload(
+        NETWORK_PROTECTION_SYNC_STATE_KEY, _verify(_response(signing_key), signing_key), "2026-10-21T00:00:00Z"
+    )
+    emitted: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        commands_dispatch_local,
+        "_emit",
+        lambda _title, payload, _as_json: emitted.append(payload),
+        raising=False,
+    )
+    parser = argparse.ArgumentParser()
+    add_guard_parser(parser.add_subparsers(dest="command"))
+
+    def check(url: str) -> tuple[int, dict[str, object]]:
+        args = parser.parse_args(["guard", "network", "check", url, "--json"])
+        code = commands_dispatch_local._run_guard_network_command(args, guard_home=guard_home, store=store)
+        return code, emitted[-1]
+
+    code, blocked = check("https://api.blocked.example/install.sh")
+    assert code == 0
+    assert blocked["configured"] is True
+    assert blocked["decision"] == "block"
+    assert blocked["reason_code"] == "network_workspace_block"
+    assert check("https://login-verify.pages.dev/")[1]["decision"] == "review"
+    assert check("https://docs.example/guide/intro")[1]["decision"] == "allow"
+    code, invalid = check("not a url")
+    assert code == 2
+    assert invalid["valid_url"] is False
