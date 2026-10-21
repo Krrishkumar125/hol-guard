@@ -18,6 +18,7 @@ members = [
     "crates/guard-pack-compiler",
     "crates/guard-rule-contract",
     "crates/guard-runtime",
+    "crates/guard-runtime-pyjson",
     "crates/guard-runtime-windows-process",
 ]
 resolver = "2"

@@ -872,6 +872,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "guard-runtime-pyjson"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "guard-runtime-windows-process"
 version = "0.1.0"
 dependencies = [
@@ -976,6 +983,7 @@ dependencies = [
  "guard-hook-core",
  "guard-policy-snapshot",
  "guard-rule-contract",
+ "guard-runtime-pyjson",
  "guard-runtime-windows-process",
  "guard-scanner",
  "guard-seatbelt",
