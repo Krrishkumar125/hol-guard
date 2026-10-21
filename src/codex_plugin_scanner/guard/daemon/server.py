@@ -278,10 +278,6 @@ class _HookDirectories:
         return verdict.path
 
 
-# A fail-safe hook answer stands in for a runtime that has just failed, so it
-# waits only this long for the directories it reports.
-_FAIL_SAFE_DIRECTORY_TRUST_SECONDS = 0.5
-
 _MAX_CONCURRENT_DAEMON_REQUESTS = 32
 _MAX_CONCURRENT_DAEMON_CONTROL_REQUESTS = 8
 _MAX_CONCURRENT_DAEMON_CRITICAL_REQUESTS = 8
@@ -2098,7 +2094,6 @@ class _GuardDaemonHandler(
                     default_harness=default_harness,
                     reason="HOL Guard could not authenticate the local hook payload.",
                     reason_code="invalid_hook_payload_reference",
-                    hook_deadline=hook_deadline.expires_at,
                 )
             )
             return
@@ -2115,7 +2110,6 @@ class _GuardDaemonHandler(
                     params,
                     default_harness=default_harness,
                     reason_code=reservation_reason,
-                    hook_deadline=hook_deadline.expires_at,
                 )
             )
             return
@@ -2225,7 +2219,6 @@ class _GuardDaemonHandler(
         *,
         default_harness: str,
         reason_code: RuntimeHookAdmissionReason | None = None,
-        hook_deadline: float | None = None,
     ) -> dict[str, object]:
         resolved_reason_code = reason_code or "daemon_hook_queue_capacity"
         if resolved_reason_code == "daemon_hook_deadline_exhausted":
@@ -2238,7 +2231,6 @@ class _GuardDaemonHandler(
             default_harness=default_harness,
             reason=reason,
             reason_code=resolved_reason_code,
-            hook_deadline=hook_deadline,
         )
 
     def _runtime_hook_fail_safe_response(
@@ -2249,70 +2241,18 @@ class _GuardDaemonHandler(
         default_harness: str,
         reason: str,
         reason_code: str,
-        hook_deadline: float | None = None,
     ) -> dict[str, object]:
         runtime_harness = self._optional_string(params.get("runtime-harness", [None])[-1])
         harness = (runtime_harness or default_harness).strip().lower().replace("_", "-")
         event = self._optional_string(payload.get("hook_event_name", payload.get("event"))) or "PreToolUse"
-        daemon_server = getattr(self, "server", None)
-        workspace_path, home_path = self._validated_fail_safe_hook_paths(params, hook_deadline=hook_deadline)
-        guard_home = None if daemon_server is None else cast(_GuardDaemonHttpServer, daemon_server).store.guard_home
-        from ..native_policy_snapshot_acked import recording_only_from_acked_snapshot
         from .hook_availability_policy import availability_harness_response
 
-        payload_dict = dict(payload) if isinstance(payload, Mapping) else {}
         return availability_harness_response(
-            payload_dict,
             harness=harness,
             event_name=event,
             reason_code=reason_code,
             reason=reason,
-            workspace=workspace_path,
-            home_dir=home_path,
-            guard_home=guard_home,
-            recording_only=recording_only_from_acked_snapshot(getattr(daemon_server, "store", None), harness),
         )
-
-    def _validated_fail_safe_hook_paths(
-        self,
-        params: Mapping[str, list[str]],
-        *,
-        hook_deadline: float | None = None,
-    ) -> tuple[Path | None, Path | None]:
-        """Return workspace and home directories that passed hook path validation.
-
-        This answer is built when the runtime has just failed or is overloaded,
-        so both directories are settled in one call against a short deadline:
-        a fail-safe response must not wait on the runtime it is standing in for.
-        """
-
-        deadline = time.monotonic() + _FAIL_SAFE_DIRECTORY_TRUST_SECONDS
-        if hook_deadline is not None:
-            deadline = min(deadline, hook_deadline)
-        if time.monotonic() >= deadline:
-            # A fail-safe answer must not start another RPC after the hook
-            # budget expires; omitting unverified paths remains fail closed.
-            return (None, None)
-        try:
-            directories = self._settled_hook_directories(
-                ("workspace", self._optional_string(params.get("workspace", [None])[-1])),
-                ("home", self._optional_string(params.get("home", [None])[-1])),
-                deadline_monotonic=deadline,
-            )
-        except _HookPathValidationError:
-            return (None, None)
-        return (
-            self._fail_safe_directory(directories, "workspace"),
-            self._fail_safe_directory(directories, "home"),
-        )
-
-    @staticmethod
-    def _fail_safe_directory(directories: _HookDirectories, parameter: str) -> Path | None:
-        try:
-            settled = directories.require(parameter)
-        except _HookPathValidationError:
-            return None
-        return Path(settled) if settled else None
 
     def _execute_runtime_hook(
         self,
@@ -2347,7 +2287,6 @@ class _GuardDaemonHandler(
                     default_harness=default_harness,
                     reason="HOL Guard could not complete the native hook decision safely.",
                     reason_code="native_hook_worker_unavailable",
-                    hook_deadline=deadline,
                 )
             # A review that finished late still finished: the answer carries the
             # same decision the native edge would have sent on time, so send it

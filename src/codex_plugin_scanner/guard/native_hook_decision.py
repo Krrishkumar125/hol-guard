@@ -322,13 +322,6 @@ def native_compose_current(
     raise NativeHookDecisionError(_INVALID)
 
 
-def native_post_claim_reuse(inputs: Mapping[str, object], *, guard_home: Path | None = None) -> tuple[str, str | None]:
-    """The action and validation reason for re-evaluating a claimed saved approval."""
-
-    action, reason, _ = native_post_claim_decision(inputs, guard_home=guard_home)
-    return action, reason
-
-
 def native_post_claim_decision(
     inputs: Mapping[str, object],
     *,
@@ -566,5 +559,4 @@ __all__ = [
     "native_finalize",
     "native_permission_persist_plan",
     "native_post_claim_decision",
-    "native_post_claim_reuse",
 ]

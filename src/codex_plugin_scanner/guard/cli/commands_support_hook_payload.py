@@ -274,14 +274,18 @@ def _restore_ephemeral_approval_tokens(value: object, tokens: list[str]) -> obje
 def _emit_native_post_tool_envelope(
     harness: str,
     *,
-    policy_action: str,
+    blocking: bool,
     reason: str,
     response_payload: dict[str, object],
     output_stream: TextIO | None = None,
     as_json: bool = False,
 ) -> None:
-    """Emit a PostToolUse outcome; the action already ran so it never pauses."""
-    blocking = policy_action in {"review", "require-reapproval", "sandbox-required", "block"}
+    """Emit a PostToolUse outcome; the action already ran so it never pauses.
+
+    ``blocking`` is the caller's already-settled verdict, never re-derived here.
+    A caller holding a native directive passes its ``envelope_decision`` so the
+    emitted surface carries the Rust verdict verbatim.
+    """
     # The edge decided whether this output is withheld; nothing here re-reads
     # its verdict or its output action to decide that again. An event with no
     # edge review carries no mask.
