@@ -158,6 +158,8 @@ mod generic_hook_payload;
 pub use generic_hook_payload::*;
 mod hook_decision;
 pub use hook_decision::*;
+mod hook_route;
+pub use hook_route::*;
 mod hook_decision_permission_persist;
 pub use hook_decision_permission_persist::*;
 mod daemon_handler;

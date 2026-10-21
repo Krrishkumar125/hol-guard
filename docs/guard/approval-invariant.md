@@ -79,6 +79,7 @@ Changing any of these produces a new command, and Guard asks again.
 | Approval scopes offered to the user | `rust/crates/guard-runtime/src/approval_scope_contract.rs` (`allow_is_non_overridable` excludes only non-review verdicts) |
 | Saved allows on the Python daemon path | `src/codex_plugin_scanner/guard/daemon/hook_native_saved_approval.py` (`_native_review_is_approvable`) |
 | Routing of a review-tier artifact verdict (queued for approval, never terminal unless the operator chose not to be asked) | `rust/crates/guard-runtime/src/hook_decision_artifact_review_route.rs` (`artifact_review_route`), executed by `src/codex_plugin_scanner/guard/cli/commands_hook_native_review.py` |
+| Choice of the handlers that answer a native hook (every review-capable event keeps a handler that offers both choices; only a devin or zcode permission request is handed to the harness prompt, and a route the resident cannot supply, or cannot supply within the harness's remaining budget, is the host outage response for every event, Claude permission dialogs and Stop included, never a verdict) | `rust/crates/guard-runtime/src/hook_decision_hook_route.rs` (`hook_route`), executed by `src/codex_plugin_scanner/guard/cli/commands_hook_native_route.py` and `commands_hook_native_route_handlers.py` |
 | Gathering of local tool-grant evidence on a native tool request, and the receipt `approval_source` label (a label of who approved; it never narrows the choices offered) | `rust/crates/guard-runtime/src/hook_artifact_compose_policy_tail.rs` (`local_eligibility_required`, `approval_source`), read by `src/codex_plugin_scanner/guard/cli/commands_hook_native_policy_tail.py` |
 | Review card choices | `dashboard/src/approval-retry-guidance.ts`, `dashboard/src/review-decision-card.tsx` |
 
@@ -96,6 +97,8 @@ Changing any of these produces a new command, and Guard asks again.
 - `tests/test_guard_approval_scope_contract.py`
 - `rust/crates/guard-runtime/src/hook_decision_artifact_review_route_tests.rs` (`review_tier_verdicts_keep_allow_once_and_always_allow`)
 - `tests/test_artifact_review_route_parity.py` (`test_review_tier_verdicts_keep_allow_once_and_always_allow`)
+- `rust/crates/guard-runtime/src/hook_decision_hook_route_tests.rs` (`every_route_keeps_the_review_path_and_fails_closed`)
+- `tests/test_hook_route_parity.py` (`test_the_pipeline_runs_the_recorded_effects`, `test_a_malformed_route_fails_closed`)
 - `rust/crates/guard-runtime/src/hook_artifact_compose_policy_tail_tests.rs` (`review_tier_verdicts_keep_allow_once_and_always_allow`)
 - `tests/test_policy_stack_tail_parity.py` (`test_the_resident_pins_the_receipt_approval_source`)
 - `dashboard/src/approval-retry-ux.test.ts`, `dashboard/e2e/approval-scope-ui.spec.ts`
