@@ -257,3 +257,6 @@ def test_a_failed_discovery_job_leaves_a_record(recorded) -> None:
     detail = next(detail for event, detail in recorded if event == DISCOVERY_JOB_FAILED_EVENT)
     assert "code=discovery_failed" in detail
     assert "error=RuntimeError" in detail
+    # The message of an uncaught provider exception is unbounded text no
+    # redactor can clean, and daemon.log is handed to support.
+    assert "worker exploded" not in detail

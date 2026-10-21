@@ -11,11 +11,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import uuid4
 
-from .background_diagnostics import failure_detail, record_background_event
+from .background_diagnostics import record_background_event
 
 _LOG = logging.getLogger(__name__)
 # Named here so a support bundle can be searched for a discovery job that died
-# outside any stage; `failure_detail` keeps paths and secrets out of the line.
+# outside any stage. The line carries a code and a type, never provider text.
 DISCOVERY_JOB_FAILED_EVENT = "discovery_job_failed"
 _JOB_ID = re.compile(r"[a-f0-9]{32}\Z")
 # Two slow providers can occupy half the pool while two other connections
@@ -171,7 +171,10 @@ class McpDiscoveryJobs:
             # Stages record themselves, but a job can also fail outside one -
             # and the page tells the reader their failure is in Guard's log.
             # One event per failed job keeps that promise true for every path.
-            record_background_event(DISCOVERY_JOB_FAILED_EVENT, f"code={code} {failure_detail(error)}")
+            # This branch catches every exception a provider can raise, so the
+            # message is provider-shaped text no redactor can bound. The code
+            # and the exception class name are enough to find the warning above.
+            record_background_event(DISCOVERY_JOB_FAILED_EVENT, f"code={code} error={type(error).__name__}")
         finally:
             with self._lock:
                 job.finished = time.monotonic()
