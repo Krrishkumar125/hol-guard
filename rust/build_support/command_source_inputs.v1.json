@@ -8,6 +8,7 @@
   "crates": [
     "guard-command",
     "guard-command-build",
+    "guard-command-catalog-data",
     "guard-contracts",
     "guard-rules",
     "guard-runtime-windows-process",

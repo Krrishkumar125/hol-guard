@@ -105,6 +105,16 @@ def test_native_identity_watches_production_inputs_not_the_whole_test_tree() -> 
     assert 'println!("cargo:rerun-if-changed={}", directory.display())' in identity
 
 
+def test_catalog_generation_is_owned_by_the_data_leaf_crate() -> None:
+    """guard-command-local edits must not rerun catalog generation."""
+    producer = (ROOT / "rust/crates/guard-command-catalog-data/build.rs").read_text()
+    for marker in ("compile_catalog_with_mcp", "trust_map(root, &entries)", "command-catalog.v1.json"):
+        assert marker in producer, marker
+    thin = (ROOT / "rust/crates/guard-command/build.rs").read_text()
+    assert "compile_catalog_with_mcp" not in thin
+    assert "trust-class-map" not in thin
+
+
 @pytest.mark.parametrize("name", ["guard-command-source", "guard-command-source.exe"])
 def test_acceptance_packaging_uses_its_own_compiler_without_exporting_to_parent(monkeypatch, tmp_path, name):
     """A changed acceptance checkout must never reuse the parent checkout's compiler."""

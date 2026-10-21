@@ -100,6 +100,25 @@ def test_runtime_only_crates_stay_outside_the_fingerprint() -> None:
     assert declared.isdisjoint(excluded)
 
 
+def _path_dependencies(crate: str) -> set[str]:
+    manifest = _crate_manifest(crate)
+    names = set()
+    for section in ("dependencies", "build-dependencies", "dev-dependencies"):
+        for dep_name, spec in manifest.get(section, {}).items():
+            if isinstance(spec, dict) and "path" in spec:
+                names.add(dep_name)
+    return names
+
+
+def test_catalog_data_crate_has_no_path_back_to_the_facade() -> None:
+    """The data leaf must not reintroduce a crate-level cycle."""
+    assert "guard-command-catalog-data" in _path_dependencies("guard-command")
+    assert "guard-command" not in _path_dependencies("guard-command-catalog-data")
+    host_paths = _path_dependencies("guard-command-build")
+    assert "guard-command" not in host_paths
+    assert "guard-command-catalog-data" not in host_paths
+
+
 def test_python_mirror_follows_the_manifest(tmp_path) -> None:
     """The maintainer-side digest mirror consumes the same checked-in manifest."""
     from scripts.core_command_build_inputs import implementation_digest

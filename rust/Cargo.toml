@@ -5,6 +5,7 @@ members = [
     "crates/guard-archive",
     "crates/guard-contained-process",
     "crates/guard-command",
+    "crates/guard-command-catalog-data",
     "crates/guard-contracts",
     "crates/guard-google-identity",
     "crates/guard-rules",
