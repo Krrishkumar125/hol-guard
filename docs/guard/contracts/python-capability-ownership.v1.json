@@ -1396,6 +1396,26 @@
     "rust/crates/guard-command/src/data_flow.rs",
     "rust/crates/guard-runtime/src/shell_helpers_op.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/local_read_operands.py",
+   "module": "codex_plugin_scanner.guard.runtime.secret_file_request_services.local_read_operands",
+   "source_sha256": "b5c830f9abdd9f692575d989741c81e3377a0e4f3df9d16e35760be0f7061742",
+   "forbidden_symbols": [
+    "_bounded_local_read_glob_is_safe",
+    "_cat_file_operand_tokens",
+    "_local_read_operands_resolve_safely",
+    "_plain_file_operand_tokens",
+    "_ripgrep_args_expand_hidden_files",
+    "_search_concrete_file_operand_tokens",
+    "_search_file_operand_tokens",
+    "_sed_file_operand_tokens",
+    "_shell_segment_file_operand_tokens",
+    "search_operands_are_safe"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/shell_secret_read_support.rs"
+   ]
   }
  ],
  "retired_test_paths": [
