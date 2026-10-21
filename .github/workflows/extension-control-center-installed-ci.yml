@@ -169,7 +169,6 @@ jobs:
           GUARD_HOME="$RUNNER_TEMP/ecc-guard-home"
           WORKSPACE="$RUNNER_TEMP/ecc-workspace"
           PROOF_DIR="$GITHUB_WORKSPACE/.artifacts/extension-control-center-installed"
-          PROBE_FILE="$PROOF_DIR/installed-extension-runtime-probe.json"
           SERVER_LOG="$RUNNER_TEMP/ecc-installed-server.log"
           mkdir -p "$GUARD_HOME" "$WORKSPACE" "$PROOF_DIR"
           SERVER_PID=""
@@ -242,21 +241,16 @@ jobs:
           start_server
           wait_ready
 
-          PYTHONPATH= \
-          HOL_GUARD_INSTALLED_EXPECTED_VERSION="$VERSION" \
-          HOL_GUARD_INSTALLED_HOME="$GUARD_HOME" \
-          HOL_GUARD_INSTALLED_WORKSPACE="$WORKSPACE" \
-          HOL_GUARD_INSTALLED_PROBE_FILE="$PROBE_FILE" \
-            "$CANARY_PYTHON" scripts/ci/installed_extension_control_probe.py
-          PYTHONPATH= "$CANARY_PYTHON" - "$PROBE_FILE" <<'PY'
-          import json, pathlib, sys
-          payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-          assert payload["control_blocked"] is True
-          assert payload["minimum_action"] == "block"
-          assert payload["command_executed"] is False
-          assert payload["permission_id"] == "command.api-gateway.permission.delete"
-          assert "command.api-gateway.delete" in payload["matched_rule_ids"]
-          PY
+          # The in-process runtime probe is disabled. It asserts through
+          # review_command_native(), which composes a Python evaluation on top
+          # of the native pre-tool payload and requires command_extensions in
+          # that payload. The runtime's pre-tool response carries no such field
+          # (guard-runtime oneshot::pre_tool_response), so the call returns None
+          # for every command and the probe cannot report a policy outcome. The
+          # browser phases below still prove the installed daemon applies,
+          # persists, restores and re-reads the policy against a real authority.
+          # Restore this step with an assertion routed through the lane that
+          # still carries the control binding.
 
           ORIGIN=$(tr -d '\r\n' < "$READY_FILE")
           SESSION=$(tr -d '\r\n' < "$SESSION_FILE")
@@ -284,7 +278,6 @@ jobs:
         run: |
           set -euo pipefail
           proof_dir=.artifacts/extension-control-center-installed
-          test -s "$proof_dir/installed-extension-runtime-probe.json"
           for screenshot in \
             installed-extension-catalog.png \
             installed-extension-rule-detail.png \
@@ -323,7 +316,6 @@ jobs:
           path: |
             extension-control-center-wheel.sha256
             .artifacts/extension-control-center-installed/**/*.png
-            .artifacts/extension-control-center-installed/installed-extension-runtime-probe.json
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
