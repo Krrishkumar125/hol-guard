@@ -1,4 +1,4 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-DqU3nbr5.js","assets/chunks/harness-version-label-B5upMG3f.js","assets/chunks/connect-guard-cloud-button-nIjTkiyS.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-C03WpejL.js","assets/chunks/confirm-dialog-DKs42E8c.js","assets/chunks/extensions-workspace-DP3OEknX.js","assets/chunks/app-detail-workspace-By-Wp0bd.js","assets/chunks/policy-workspace-page-CCLE2tss.js","assets/chunks/about-workspace-DRsCiD3h.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/chunks/home-dashboard-Wxa6VirA.js","assets/chunks/home-protection-module-Du65PsUR.js","assets/chunks/about-content-BwtrHEyh.js","assets/chunks/app-catalog-BU3dzTBu.js","assets/chunks/fleet-workspace-DqU3nbr5.js","assets/chunks/harness-version-label-B5upMG3f.js","assets/chunks/connect-guard-cloud-button-nIjTkiyS.js","assets/chunks/settings-save-proof-modal-DSJONzDi.js","assets/chunks/settings-workspace-C03WpejL.js","assets/chunks/confirm-dialog-DKs42E8c.js","assets/chunks/extensions-workspace-DP3OEknX.js","assets/chunks/app-detail-workspace-By-Wp0bd.js","assets/chunks/policy-workspace-page-toUA_hyd.js","assets/chunks/about-workspace-DRsCiD3h.js"])))=>i.map(i=>d[i]);
 (function polyfill() {
   const relList = document.createElement("link").relList;
   if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -36187,7 +36187,7 @@ const SupplyChainHubWorkspace = lazyWorkspace(
 );
 const PolicyWorkspacePage = lazyWorkspace(
   "policy-workspace-page",
-  () => __vitePreload(() => import("./chunks/policy-workspace-page-CCLE2tss.js"), true ? __vite__mapDeps([12,6]) : void 0).then((m) => ({ default: m.PolicyWorkspacePage }))
+  () => __vitePreload(() => import("./chunks/policy-workspace-page-toUA_hyd.js"), true ? __vite__mapDeps([12,6]) : void 0).then((m) => ({ default: m.PolicyWorkspacePage }))
 );
 const AboutWorkspace = lazyWorkspace(
   "about-workspace",

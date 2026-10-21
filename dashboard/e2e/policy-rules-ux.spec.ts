@@ -141,7 +141,7 @@ test.describe("Rules & exceptions UX", () => {
 
     await page.getByRole("tab", { name: /Remembered rules/ }).click();
     await page.getByLabel("Search remembered rules").fill("no-such-rule-zzz");
-    await expect(page.getByText(/No rules match/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No rules match" })).toBeVisible();
     await page.getByRole("button", { name: "Clear search and filters" }).click();
     await expect(page.getByText(/Guard will allow "git push origin main"/).first()).toBeVisible();
   });

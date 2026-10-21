@@ -26,6 +26,16 @@ export function policyRiskScore(policy: GuardPolicyDecision): number {
   return score;
 }
 
+/**
+ * The widest broad allow, for the one line the attention strip shows: a
+ * global rule outranks a harness-scoped one whatever their risk scores are,
+ * and the score only separates rules of the same reach.
+ */
+export function widestBroadAllow(policies: GuardPolicyDecision[]): GuardPolicyDecision | undefined {
+  const breadth = (policy: GuardPolicyDecision) => (policy.scope === "global" ? 2 : policy.scope === "harness" ? 1 : 0);
+  return [...policies].sort((a, b) => breadth(b) - breadth(a) || policyRiskScore(b) - policyRiskScore(a))[0];
+}
+
 export function isBroadAllow(policy: GuardPolicyDecision): boolean {
   return policy.action === "allow" && (policy.scope === "global" || policy.scope === "harness");
 }

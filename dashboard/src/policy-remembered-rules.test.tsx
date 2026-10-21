@@ -37,7 +37,7 @@ assert(tabSource.includes("No remembered rules yet"), "empty state title lives i
 assert(tabSource.includes("Approve or block in Inbox"), "empty state body preserved");
 
 assert(aboutSource.includes("How Guard decides"), "about shows decision composition");
-assert(aboutSource.includes('href="/extensions"'), "about links to canonical Extensions");
+assert(aboutSource.includes('guardAwareHref("/extensions")'), "about links to canonical Extensions, token kept");
 assert(aboutSource.includes("Once"), "scope ladder includes Once");
 assert(aboutSource.includes("Team policy"), "scope ladder includes Team policy");
 assert(aboutSource.includes("This cwd"), "scope ladder includes This cwd");

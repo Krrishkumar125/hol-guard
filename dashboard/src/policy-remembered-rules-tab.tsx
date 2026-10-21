@@ -312,8 +312,13 @@ export function PolicyRememberedRulesTab({
       </div>
 
       <div id="remembered-rules-list" className="scroll-mt-4">
+        {/* Mounted whatever the result count is: a live region that appears
+            with its text already in it is not announced. */}
+        <p role="status" className="sr-only">
+          {rememberedRules.length === 0 && allRemembered.length > 0 ? "No rules match the current search and filters." : ""}
+        </p>
         {rememberedRules.length === 0 && allRemembered.length > 0 ? (
-          <div role="status">
+          <div>
             <EmptyState
               title="No rules match"
               body="Nothing here matches the current search and filters. Clear them to see every remembered rule."
@@ -356,6 +361,7 @@ export function PolicyRememberedRulesTab({
         snapshot={snapshot}
         decisionOrder={rulesView.decisionOrder}
         onOpenCloudExceptions={onOpenCloudExceptions}
+        onNavigate={onNavigate}
       />
 
       {inspectedPolicy ? (

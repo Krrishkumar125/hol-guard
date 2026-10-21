@@ -6,6 +6,7 @@ import {
   isBroadAllow,
   isStaleRule,
   policyRiskScore,
+  widestBroadAllow,
 } from "./policy-rules-hero-model";
 import { countPolicyRules } from "./policy-rules-overview-model";
 
@@ -42,12 +43,16 @@ const attention = buildRuleAttention([broad, narrow, policy({ updated_at: "2026-
 assert.equal(attention.broadAllows.length, 1);
 assert.equal(attention.staleLocals.length, 1);
 
-// The attention strip ranks broad allows by this score: a global allow
-// outranks a harness-scoped one regardless of list order.
+// The attention strip names the widest rule: a global allow leads a
+// harness-scoped one whatever their risk scores are, in either list order.
 const cloudBroad = policy({ scope: "global", source: "cloud-sync", artifact_id: "family:prompt", reason: "cloud-broad", updated_at: "2026-10-10T00:00:00Z" });
 const harnessBroad = policy({ scope: "harness", artifact_id: "family:tool-action", reason: "harness-broad" });
-assert.ok(policyRiskScore(cloudBroad) < policyRiskScore(broad));
-assert.ok(policyRiskScore(broad) > policyRiskScore(harnessBroad));
+assert.ok(policyRiskScore(cloudBroad) < policyRiskScore(harnessBroad));
+assert.equal(widestBroadAllow([harnessBroad, cloudBroad])?.reason, "cloud-broad");
+assert.equal(widestBroadAllow([cloudBroad, harnessBroad])?.reason, "cloud-broad");
+// Same reach: the risk score decides.
+assert.equal(widestBroadAllow([cloudBroad, broad])?.reason, "broad");
+assert.equal(widestBroadAllow([]), undefined);
 
 const empty = buildRulesHeroModel({
   counts: countPolicyRules([]),

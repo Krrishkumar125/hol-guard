@@ -1,4 +1,6 @@
+import { type MouseEvent } from "react";
 import { HiMiniCloudArrowUp } from "react-icons/hi2";
+import { guardAwareHref } from "./guard-api";
 import { ActionButton } from "./approval-center-primitives";
 import type { GuardRuntimeSnapshot } from "./guard-types";
 import { PolicyActiveModeCard } from "./policy-active-mode-card";
@@ -21,8 +23,16 @@ export function PolicyRulesAbout(props: {
   snapshot: GuardRuntimeSnapshot;
   decisionOrder: readonly string[];
   onOpenCloudExceptions: () => void;
+  onNavigate?: (pathname: string) => void;
 }) {
   const cloudControlsUrl = resolveCloudPolicyControlsUrl(props.snapshot);
+  // Keep the page's own navigation, and the guard token with it, instead of
+  // a bare anchor that reloads without one.
+  const openExtensions = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!props.onNavigate) return;
+    event.preventDefault();
+    props.onNavigate("/extensions");
+  };
   return (
     <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-brand-dark marker:hidden [&::-webkit-details-marker]:hidden">
@@ -40,7 +50,7 @@ export function PolicyRulesAbout(props: {
                 <li key={step}><strong className="text-brand-dark">{index + 1}.</strong> {step}</li>
               ))}
             </ol>
-            <a href="/extensions" className="mt-2 inline-flex text-sm font-semibold text-brand-blue hover:underline">Open Extensions</a>
+            <a href={guardAwareHref("/extensions")} onClick={openExtensions} className="mt-2 inline-flex text-sm font-semibold text-brand-blue hover:underline">Open Extensions</a>
           </div>
           <div>
             <h3 className="text-sm font-semibold text-brand-dark">What the scopes mean</h3>

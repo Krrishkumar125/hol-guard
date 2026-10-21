@@ -3228,6 +3228,10 @@ function policyRiskScore(policy) {
   if (!isCloudManagedPolicy(policy.source)) score += 1;
   return score;
 }
+function widestBroadAllow(policies) {
+  const breadth = (policy) => policy.scope === "global" ? 2 : policy.scope === "harness" ? 1 : 0;
+  return [...policies].sort((a, b) => breadth(b) - breadth(a) || policyRiskScore(b) - policyRiskScore(a))[0];
+}
 function isBroadAllow(policy) {
   return policy.action === "allow" && (policy.scope === "global" || policy.scope === "harness");
 }
@@ -3643,10 +3647,7 @@ function PolicyRulesListSwitch(props) {
   )) }) });
 }
 function PolicyRulesAttentionStrip(props) {
-  const first = reactExports.useMemo(
-    () => [...props.broadAllows].sort((a, b) => policyRiskScore(b) - policyRiskScore(a))[0],
-    [props.broadAllows]
-  );
+  const first = reactExports.useMemo(() => widestBroadAllow(props.broadAllows), [props.broadAllows]);
   if (!first) return null;
   const display = resolvePolicyDisplay(first);
   const title = resolvePolicyRowTitle(first, display);
@@ -3793,6 +3794,11 @@ const SCOPE_LADDER = [
 ];
 function PolicyRulesAbout(props) {
   const cloudControlsUrl = resolveCloudPolicyControlsUrl(props.snapshot);
+  const openExtensions = (event) => {
+    if (!props.onNavigate) return;
+    event.preventDefault();
+    props.onNavigate("/extensions");
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("details", { className: "rounded-2xl border border-slate-200 bg-white shadow-sm", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("summary", { className: "cursor-pointer list-none px-4 py-3 text-sm font-medium text-brand-dark marker:hidden [&::-webkit-details-marker]:hidden", children: [
       "About these rules",
@@ -3810,7 +3816,7 @@ function PolicyRulesAbout(props) {
             " ",
             step
           ] }, step)) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "/extensions", className: "mt-2 inline-flex text-sm font-semibold text-brand-blue hover:underline", children: "Open Extensions" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: guardAwareHref("/extensions"), onClick: openExtensions, className: "mt-2 inline-flex text-sm font-semibold text-brand-blue hover:underline", children: "Open Extensions" })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold text-brand-dark", children: "What the scopes mean" }),
@@ -4276,44 +4282,48 @@ function PolicyRememberedRulesTab({
         ] })
       ] }) : null
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "remembered-rules-list", className: "scroll-mt-4", children: rememberedRules.length === 0 && allRemembered.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { role: "status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      EmptyState,
-      {
-        title: "No rules match",
-        body: "Nothing here matches the current search and filters. Clear them to see every remembered rule.",
-        tone: "teach",
-        action: /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { variant: "secondary", onClick: handleClearFilters, children: "Clear search and filters" })
-      }
-    ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
-      PolicyRuleTable,
-      {
-        policies: rememberedRules,
-        cloudControlsUrl,
-        onClearPolicy,
-        onNavigate,
-        emptyTitle: "No remembered rules yet",
-        emptyBody: "Approve or block in Inbox and Guard remembers the decision here in plain language.",
-        emptyAction: hasActiveFilters ? void 0 : onOpenInbox ? /* @__PURE__ */ jsxRuntimeExports.jsxs(ActionButton, { variant: "primary", onClick: onOpenInbox, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniInbox, { className: "mr-1.5 h-4 w-4", "aria-hidden": "true" }),
-          "Review pending requests"
-        ] }) : void 0,
-        sort,
-        onSortChange: setSort,
-        selectedKeys,
-        onToggleSelect: onClearPolicy ? handleToggleSelect : void 0,
-        onClearSelection: handleClearSelection,
-        onRemoveSelected: onClearPolicy ? handleRemoveSelected : void 0,
-        removingSelected,
-        removeError,
-        onInspect: handleInspect
-      }
-    ) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "remembered-rules-list", className: "scroll-mt-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: "sr-only", children: rememberedRules.length === 0 && allRemembered.length > 0 ? "No rules match the current search and filters." : "" }),
+      rememberedRules.length === 0 && allRemembered.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        EmptyState,
+        {
+          title: "No rules match",
+          body: "Nothing here matches the current search and filters. Clear them to see every remembered rule.",
+          tone: "teach",
+          action: /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { variant: "secondary", onClick: handleClearFilters, children: "Clear search and filters" })
+        }
+      ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+        PolicyRuleTable,
+        {
+          policies: rememberedRules,
+          cloudControlsUrl,
+          onClearPolicy,
+          onNavigate,
+          emptyTitle: "No remembered rules yet",
+          emptyBody: "Approve or block in Inbox and Guard remembers the decision here in plain language.",
+          emptyAction: hasActiveFilters ? void 0 : onOpenInbox ? /* @__PURE__ */ jsxRuntimeExports.jsxs(ActionButton, { variant: "primary", onClick: onOpenInbox, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniInbox, { className: "mr-1.5 h-4 w-4", "aria-hidden": "true" }),
+            "Review pending requests"
+          ] }) : void 0,
+          sort,
+          onSortChange: setSort,
+          selectedKeys,
+          onToggleSelect: onClearPolicy ? handleToggleSelect : void 0,
+          onClearSelection: handleClearSelection,
+          onRemoveSelected: onClearPolicy ? handleRemoveSelected : void 0,
+          removingSelected,
+          removeError,
+          onInspect: handleInspect
+        }
+      )
+    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       PolicyRulesAbout,
       {
         snapshot,
         decisionOrder: rulesView.decisionOrder,
-        onOpenCloudExceptions
+        onOpenCloudExceptions,
+        onNavigate
       }
     ),
     inspectedPolicy ? /* @__PURE__ */ jsxRuntimeExports.jsx(
