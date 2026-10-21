@@ -51,6 +51,8 @@ _COMMAND_ONLY_INPUT_KEYS = frozenset(
         "runInBackground",
         "workdir",
         "cwd",
+        "working_directory",
+        "workingDirectory",
     }
 )
 

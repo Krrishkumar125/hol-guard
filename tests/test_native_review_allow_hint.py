@@ -211,6 +211,26 @@ def test_queue_hint_is_advisory_and_keeps_the_hook_route(monkeypatch, tmp_path: 
     assert 0 < float(calls[0]["timeout_seconds"]) <= 0.5  # type: ignore[arg-type]
 
 
+def test_queue_hint_covers_the_working_directory_cursor_sends(monkeypatch, tmp_path: Path) -> None:
+    """Cursor names the launch directory, which is not extra content to review.
+
+    The Cursor adapter copies the hook's cwd into the tool input, so every
+    shell call it forwards carries a directory beside the command. Treating
+    that as unreviewed content left Cursor the one harness whose paused
+    reviews never said which Extension would settle them.
+    """
+
+    hint, calls, _route = _queue_hint(
+        monkeypatch,
+        tmp_path,
+        tool_input={"command": "git fetch origin main", "working_directory": str(tmp_path)},
+    )
+
+    assert hint is not None
+    assert hint["permission_ids"] == ["command.git.permission.unverified-fetch"]
+    assert calls
+
+
 def test_queue_hint_skips_tool_calls_with_extra_content(monkeypatch, tmp_path: Path) -> None:
     hint, calls, _route = _queue_hint(
         monkeypatch, tmp_path, tool_input={"command": "git fetch origin main", "path": ".env"}
