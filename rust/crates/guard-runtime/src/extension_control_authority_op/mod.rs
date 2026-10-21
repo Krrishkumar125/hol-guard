@@ -26,7 +26,7 @@ use std::cell::RefCell;
 
 use base64ct::{Base64UrlUnpadded, Encoding};
 use guard_command::extension_control::ExtensionControlLayer;
-use guard_contracts::extension_control_authority::{
+use guard_contracts::{
     ExtensionControlAuthorityRequestV1, ExtensionControlAuthorityResultV1,
     EXTENSION_CONTROL_AUTHORITY_MAX_BYTES, EXTENSION_CONTROL_AUTHORITY_REQUEST_SCHEMA,
     EXTENSION_CONTROL_AUTHORITY_RESULT_SCHEMA,

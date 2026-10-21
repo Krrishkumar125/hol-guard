@@ -1,7 +1,7 @@
 //! Managed-controls state verification and composition.
 
 use guard_command::extension_control::{ControlLayerKind, ControlState};
-use guard_contracts::extension_control_authority::ExtensionControlAuthorityRequestV1;
+use guard_contracts::ExtensionControlAuthorityRequestV1;
 use serde_json::{json, Value};
 
 use super::layers::layers_to_json;

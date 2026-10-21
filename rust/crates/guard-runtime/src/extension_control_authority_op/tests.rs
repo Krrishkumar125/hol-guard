@@ -7,7 +7,7 @@ use guard_command::extension_control::{
     ControlLayerKind, ControlState, ControlTarget, ControlTargetKind, ExtensionControl,
     ExtensionControlLayer, CONTROL_SCHEMA_VERSION,
 };
-use guard_contracts::extension_control_authority::{
+use guard_contracts::{
     ExtensionControlAuthorityRequestV1, EXTENSION_CONTROL_AUTHORITY_REQUEST_SCHEMA,
 };
 use rusqlite::{params, Connection};

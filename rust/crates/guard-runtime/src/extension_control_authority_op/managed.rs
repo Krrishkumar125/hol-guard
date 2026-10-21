@@ -4,7 +4,7 @@
 use guard_command::extension_control::{
     ControlLayerKind, ControlState, ExtensionControl, ExtensionControlLayer,
 };
-use guard_contracts::extension_control_authority::ExtensionControlAuthorityRequestV1;
+use guard_contracts::ExtensionControlAuthorityRequestV1;
 use rusqlite::params;
 use serde_json::{json, Map, Value};
 
