@@ -331,8 +331,7 @@ def _reject_oversized_request(
     """
     if len(payload) > limit:
         raise NativeRequestTooLargeError(
-            f"{subcommand or 'compiler'} request is {len(payload)} bytes,"
-            f" past the {limit} byte native input bound"
+            f"{subcommand or 'compiler'} request is {len(payload)} bytes, past the {limit} byte native input bound"
         )
 
 
