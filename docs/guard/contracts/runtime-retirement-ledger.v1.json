@@ -6432,6 +6432,125 @@
     "rust/crates/guard-command/src/npm_source_spec.rs::deeply_nested_npm_aliases_fail_without_recursion"
    ],
    "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_standard_npm_install_reports_its_version",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::a_standard_npm_on_an_absolute_path_proves_its_version"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Proved the npm layout read that the resident now performs; the Rust test owns the same standard-prefix proof."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_an_added_ca_keeps_the_npm_proof",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::an_unrelated_setting_still_proves_the_version"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserted which exported names leave the fetch alone, a decision that moved into the native evaluator."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_cache_and_reporting_settings_keep_the_npm_proof",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::an_inert_npm_setting_still_proves_the_version"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserted the inert npm_config settings list, which is now a native constant."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_a_loader_path_outside_the_workspace_keeps_the_npm_proof",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::a_loader_path_outside_the_workspace_still_proves_the_version"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Exercised the retired Python loader-path walk; the resident resolves those paths now."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_a_loader_path_reaching_the_workspace_fails_closed",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::a_loader_path_inside_the_workspace_proves_nothing"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Exercised the retired Python loader-path walk, including its symlink resolution, which is native."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_a_loader_path_without_its_stamped_value_fails_closed",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::a_loader_variable_exported_without_its_value_proves_nothing"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserted the stamped-value requirement the native evaluator now enforces."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_settings_that_change_npm_fail_closed",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::an_environment_setting_that_moves_the_fetch_proves_nothing",
+    "rust/crates/guard-command/src/verified_npm_tests.rs::npm_config_names_are_read_the_way_npm_reads_them"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Pinned the npm_config name normalization that moved into the native evaluator."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_user_config_that_moves_the_fetch_fails_closed",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::an_npmrc_that_moves_the_registry_proves_nothing"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Read .npmrc in Python; the resident reads and classifies those keys now."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_unlocatable_user_config_fails_closed",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::an_unlocatable_home_proves_nothing"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Asserted the absolute-home requirement that the native evaluator enforces."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_relative_path_entry_before_npm_fails_closed",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::a_relative_path_entry_proves_nothing"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Exercised the retired Python PATH resolution, which the resident performs."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_npm_or_node_from_the_workspace_fails_closed",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::an_npm_inside_the_workspace_proves_nothing"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Exercised the retired Python PATH resolution and its workspace containment check."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_npm_shim_without_a_readable_version_fails_closed",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::a_shim_that_is_not_npm_cli_proves_nothing"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Read the npm manifest in Python; the resident reads it and applies the size bound now."
+  },
+  {
+   "old_node": "tests/test_native_package_review.py::test_a_filter_from_the_workspace_keeps_review",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/verified_npm_tests.rs::an_output_filter_inside_the_workspace_is_refused",
+    "rust/crates/guard-command/src/verified_npm_tests.rs::no_output_filter_needs_no_program"
+   ],
+   "status": "obsolete_implementation_assertion",
+   "rationale": "Resolved the output filter programs in Python; the resident resolves them in the same op as the npm proof."
   }
  ],
  "preserved_tests": [
@@ -7312,6 +7431,30 @@
    "base_commit": "68558a59d9e8b6d4a8a86ef9de9263de41248068",
    "remaining_role": "Public DTO facades and unchanged live Python AST helpers; all GitHub shell and PR expansion semantics run in the existing bound resident. Pure PR flags are reused by command/depth/runtime binary identity, never filesystem verdicts.",
    "parity_fixture": "rust/crates/guard-command/tests/fixtures/shell_request_authority.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/daemon/hook_native_package_review.py",
+   "source_sha256": "936e48c96db7536f8915512d4df015b783a63b2889b23b831fbb29a2f49631c1",
+   "forbidden_symbols": [
+    "verified_npm_version",
+    "_changes_npm",
+    "_loader_paths_outside",
+    "_npmrc_redirects_fetch",
+    "_resolve_executable",
+    "_filters_outside_workspace",
+    "_FETCH_REDIRECTING_KEYS",
+    "_INERT_NPM_SETTINGS",
+    "_ENVIRONMENT_OVERRIDES",
+    "_ENVIRONMENT_NAMES",
+    "_MAX_PACKAGE_JSON_BYTES",
+    "_MAX_NPMRC_BYTES"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/verified_npm.rs",
+    "rust/crates/guard-runtime/src/verified_npm_op.rs"
+   ],
+   "base_commit": "e309ad05c1bad4069f8ab4aa0a056c73bad5052f",
+   "remaining_role": "Parses the install command shape and settles the review; the npm proof and the output-filter resolution run in the resident and are applied without being re-derived."
   }
  ],
  "retired_bodies": [
