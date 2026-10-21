@@ -1479,6 +1479,34 @@
    "native_replacements": [
     "rust/crates/guard-command/src/codex_output_source_paths.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/sandbox.py",
+   "module": "codex_plugin_scanner.guard.runtime.sandbox",
+   "source_sha256": "db7bde370c9682b5c24e3fca3f266317660e3c966cedfdca548a6f1a524cca6d",
+   "forbidden_symbols": [
+    "SandboxLanguage",
+    "EnvPolicy",
+    "SandboxAnalysisMode",
+    "_DEFAULT_MAX_PROCESSES",
+    "_SECRET_PATH_PATTERNS",
+    "_NETWORK_SYSCALL_PATTERNS",
+    "SandboxRequest",
+    "SandboxResult",
+    "_is_secret_path",
+    "_detect_network_attempts",
+    "_build_env",
+    "_redact_env",
+    "_write_sandbox_files",
+    "_language_argv",
+    "_scan_writes",
+    "_audit_combined_output",
+    "run_sandbox",
+    "_static_only_analysis"
+   ],
+   "native_replacements": [],
+   "retirement": "dead_code",
+   "removal_reason": "Static-first sandbox runner for isolated script analysis that no production caller ever imported. guard-command's sandbox.rs carries the same shape but is itself unreferenced and leaves apply_resource_limits a no-op, so it is not named as a behavioural replacement."
   }
  ],
  "retired_test_paths": [
@@ -1512,7 +1540,8 @@
   "tests/test_guard_github_pr_body_file.py",
   "tests/test_native_command_options.py",
   "tests/test_guard_node_semver.py",
-  "tests/test_hook_source_paths.py"
+  "tests/test_hook_source_paths.py",
+  "tests/test_guard_sandbox.py"
  ],
  "retired_bodies": [
   {
