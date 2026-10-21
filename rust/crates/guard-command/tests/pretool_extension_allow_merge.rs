@@ -154,6 +154,7 @@ const MERGES: &[&str] = &[
     "gh pr merge 5410 --repo example-org/hol-guard --squash --delete-branch=false",
     "gh pr merge 5410 -R example-org/hol-guard --squash",
     "gh pr merge 5410 --repo=example-org/hol-guard --squash",
+    "gh pr merge 5410 --squash --delete-branch --repo example-org/hol-guard",
     "git merge --ff-only feature",
     "git merge feature",
 ];
@@ -184,6 +185,10 @@ fn an_allowed_merge_that_names_guard_outside_the_repository_still_waits_for_revi
         "gh pr merge 12 --squash --body-file .hol-guard/notes.md",
         "gh pr merge 12 -Rexample-org/hol-guard --squash",
         "gh repo clone example-org/hol-guard .hol-guard",
+        // `--desc` takes `--repo` as its value, so the Guard path is the file
+        // the gist uploads; after `--` both are files.
+        "gh gist create --desc --repo .hol-guard/receipts.json",
+        "gh gist create -- --repo .hol-guard/receipts.json",
     ] {
         let result = decide(&root, "omp", command, &controls);
         assert_ne!(result.decision, "allow", "{command}");
