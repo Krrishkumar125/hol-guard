@@ -286,6 +286,7 @@ mod sfrs_node_templates;
 #[cfg(all(test, unix))]
 mod sfrs_node_vectors;
 mod sfrs_node_workflows;
+mod sfrs_path_word_lookups;
 mod sfrs_patterns;
 mod sfrs_perl_read_only;
 #[cfg(all(test, unix))]
@@ -873,6 +874,7 @@ pub mod inventory_contract;
 #[cfg(test)]
 mod inventory_contract_tests;
 pub mod inventory_fingerprints;
+pub mod inventory_item_metadata;
 pub mod js_semver;
 pub mod linux_artifact_supply_chain;
 #[cfg(any(unix, windows))]
