@@ -1280,6 +1280,17 @@
     "rust/crates/guard-command/src/command_argument_semantics.rs",
     "rust/crates/guard-command/src/shell_helpers.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/node_semver.py",
+   "module": "codex_plugin_scanner.guard.runtime.node_semver",
+   "source_sha256": "534232af6dc97a8486104ebeccddf473518352a05497e962a4ca0e278e94ab61",
+   "forbidden_symbols": [
+    "node_semver_spec_matches"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/direct_tool_semver.rs"
+   ]
   }
  ],
  "retired_test_paths": [
@@ -1311,7 +1322,8 @@
   "tests/test_codex_daemon_bridge_failure_reason.py",
   "tests/test_npm_source_spec.py",
   "tests/test_guard_github_pr_body_file.py",
-  "tests/test_native_command_options.py"
+  "tests/test_native_command_options.py",
+  "tests/test_guard_node_semver.py"
  ],
  "retired_bodies": [
   {

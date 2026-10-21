@@ -86,7 +86,8 @@
   "src/codex_plugin_scanner/guard/runtime/npm_source_spec.py",
   "src/codex_plugin_scanner/guard/runtime/github_pr_body_file.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_body_safety.py",
-  "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py"
+  "src/codex_plugin_scanner/guard/runtime/command_option_parsing.py",
+  "src/codex_plugin_scanner/guard/runtime/node_semver.py"
  ],
  "retired_tests": [
   {
@@ -6658,6 +6659,15 @@
    ],
    "status": "obsolete_implementation_assertion",
    "rationale": "Asserted the retired Python caller's lru_cache of native option results. The cache was deleted with the module; the resident answers each option call directly, so there is no Python cache to reuse or skip."
+  },
+  {
+   "old_node": "tests/test_guard_node_semver.py::test_node_semver_spec_matches_conservative_subset",
+   "source_sha256": "4f4c9dd349343eee71164b607ec2072d19dd01935f991163e2a0a4841bedfcbe",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_semver_tests.rs::semver_matches_only_the_provable_subset"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "The whole parametrized table moved to the Rust owner, case for case, including the four pairs the recorded parity fixture never carried: an exact-specifier mismatch, a zero-major caret with its minor pinned, a zero-major zero-minor caret at equality, and a prerelease mismatch."
   }
  ],
  "preserved_tests": [
