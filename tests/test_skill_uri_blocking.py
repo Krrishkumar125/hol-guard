@@ -1,5 +1,7 @@
 """Tests for skill:// URI handling in target_is_known_skill_doc_path."""
 
+import os
+
 from codex_plugin_scanner.guard.runtime.false_positive_rules import (
     target_is_known_skill_doc_path,
 )
@@ -154,10 +156,23 @@ def test_known_skill_paths_reject_sensitive_glob_and_traversal_targets(tmp_path)
     (skill / "notes.md").write_text("notes\n")
     (skill / "credentials").mkdir()
     (skill / "credentials" / "config.ts").write_text("export const value = 1\n")
+    # Give the glob and traversal targets real files, so only their syntax can
+    # make the read unsafe.
+    (skill.parent / "secret.py").write_text("value = 1\n")
+    (skill / "{notes}.md").write_text("notes\n")
+    if os.name != "nt":
+        (skill / "*.md").write_text("notes\n")
 
+    assert is_explicitly_benign_native_file_read_request(
+        "Read",
+        {"file_path": str(skill / "SKILL.md")},
+        cwd=workspace,
+        home_dir=home,
+    )
     for target in (
         "~/.claude/skills/safe/.env",
         "~/.claude/skills/safe/*.md",
+        "~/.claude/skills/safe/{notes}.md",
         "~/.claude/skills/safe/../secret.py",
         "~/.claude/skills/safe/credentials/config.ts",
     ):
