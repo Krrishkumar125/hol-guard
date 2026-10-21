@@ -643,6 +643,14 @@
    "body": "57b710ace99f"
   },
   {
+   "verdict": "windows-permissive",
+   "note": "Off Unix there are no mode bits, so every regular file on the search path reads as executable. That matches the retired Python check, whose `os.access(path, X_OK)` is also true for any existing file on Windows, so the port adds no new permissiveness. A wider resolve cannot turn into an allow: whatever it resolves is still canonicalised and refused when it lands inside the workspace, and the npm shim must still read as `npm-cli.js`, both of which are path checks the Unix tests cover. Windows has no containment backend for this review yet, so the arm is unproven off Unix.",
+   "file": "rust/crates/guard-command/src/verified_npm.rs",
+   "item": "fn is_executable_file(_path: &Path, metadata: &fs::Metadata) -> bool",
+   "cfg": "not(unix)",
+   "body": "ebd8edea7ef4"
+  },
+  {
    "verdict": "other-platform",
    "note": "Windows opens a handle-bound directory in its own arm; elsewhere `Unsupported` fails closed, so no containment claims a bound filesystem it does not have.",
    "file": "rust/crates/guard-contained-process/src/bound_fs/directory.rs",
