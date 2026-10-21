@@ -119,6 +119,7 @@ mod pytest_contained;
 mod tool_bin_listing;
 mod trailing_group;
 mod trusted_location;
+mod venv_program_path;
 pub(crate) use git_routes::{
     git_dir_route_within_scope, git_route_within_workspace, git_route_without_repository,
     reads_without_repository,
