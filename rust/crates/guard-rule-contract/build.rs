@@ -17,7 +17,10 @@ const COMPONENTS: &[(&str, &str)] = &[
     ("guard-secure-fs", "../guard-secure-fs/src/lib.rs"),
     ("guard-hook-core", "../guard-hook-core/src/lib.rs"),
     ("guard-contracts", "../guard-contracts/src/lib.rs"),
-    ("guard-command-pretool", "../guard-command/src/pretool/mod.rs"),
+    (
+        "guard-command-pretool",
+        "../guard-command/src/pretool/mod.rs",
+    ),
     (
         "guard-command-pretool-generic",
         "../guard-command/src/pretool/generic.rs",
