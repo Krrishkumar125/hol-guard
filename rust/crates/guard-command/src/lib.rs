@@ -874,6 +874,7 @@ pub mod inventory_contract;
 #[cfg(test)]
 mod inventory_contract_tests;
 pub mod inventory_fingerprints;
+pub mod inventory_path_redaction;
 pub mod inventory_redaction;
 pub mod js_semver;
 pub mod linux_artifact_supply_chain;
@@ -887,6 +888,8 @@ mod mcp_package_sources;
 pub mod mcp_stdio_session;
 pub mod pep440;
 pub mod persistence_rules;
+mod python_netloc;
+mod python_url;
 pub mod registry_metadata_transport;
 pub mod restricted_archive;
 mod restricted_archive_address;

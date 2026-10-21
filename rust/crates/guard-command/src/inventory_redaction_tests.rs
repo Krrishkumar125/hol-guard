@@ -7,12 +7,13 @@
 use serde_json::{Map, Value};
 
 use super::{
-    assert_serialized_inventory_payload_safe, safe_json, safe_source_detail,
-    sanitize_serializer_string,
+    assert_serialized_inventory_payload_safe, classify_endpoint_host, redact_headers, redact_url,
+    safe_json, safe_source_detail, sanitize_serializer_string,
 };
 use crate::inventory_fingerprints::{python_json, DEFAULT_SEPARATORS};
 
 const PARITY: &str = include_str!("../testdata/inventory_redaction_parity.json");
+const URL_PARITY: &str = include_str!("../testdata/inventory_url_parity.json");
 
 fn section(name: &str) -> Vec<Value> {
     let document: Value = serde_json::from_str(PARITY).expect("parity fixture parses");
@@ -97,5 +98,61 @@ fn sorted_json_matches_python_dumps() {
             text(&case, "expected"),
             "value {value}",
         );
+    }
+}
+
+fn url_section(name: &str) -> Vec<Value> {
+    let document: Value = serde_json::from_str(URL_PARITY).expect("url parity fixture parses");
+    document
+        .get(name)
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("fixture section {name}"))
+        .clone()
+}
+
+#[test]
+fn redact_url_matches_python() {
+    for case in url_section("redact_url") {
+        let url = text(&case, "url");
+        assert_eq!(redact_url(&url), text(&case, "expected"), "url {url:?}");
+    }
+}
+
+#[test]
+fn classify_endpoint_host_matches_python() {
+    for case in url_section("classify_endpoint_host") {
+        let value = case.get("value").and_then(Value::as_str);
+        assert_eq!(
+            classify_endpoint_host(value),
+            text(&case, "expected"),
+            "value {value:?}",
+        );
+    }
+}
+
+#[test]
+fn redact_headers_matches_python() {
+    for case in url_section("redact_headers") {
+        let names: Vec<String> = case
+            .get("names")
+            .and_then(Value::as_array)
+            .expect("case field names")
+            .iter()
+            .map(|name| name.as_str().unwrap_or_default().to_string())
+            .collect();
+        let expected: Vec<(String, String)> = case
+            .get("expected")
+            .and_then(Value::as_array)
+            .expect("case field expected")
+            .iter()
+            .map(|pair| {
+                let entries = pair.as_array().expect("header pair");
+                (
+                    entries[0].as_str().unwrap_or_default().to_string(),
+                    entries[1].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(redact_headers(&names), expected, "headers {names:?}");
     }
 }
