@@ -83,6 +83,7 @@
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_hook_bridge_flow.py",
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_bridge_failure_reason.py",
   "src/codex_plugin_scanner/guard/adapters/codex_daemon_start_wait.py",
+  "src/codex_plugin_scanner/guard/runtime/npm_source_spec.py",
   "src/codex_plugin_scanner/guard/runtime/github_pr_body_file.py",
   "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_pr_body_safety.py"
  ],
@@ -6379,79 +6380,58 @@
    "rationale": "Exercises the retired Python executing layer of the Claude daemon hook bridge, which now only launches the native command. Python no longer decodes the hook body: the native child reads the bytes and forwards them."
   },
   {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_accepts_bounded_owner_controlled_markdown",
+   "old_node": "tests/test_npm_source_spec.py::test_equivalent_github_source_forms_share_canonical_identity",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::bounded_owner_controlled_markdown_is_accepted_for_both_line_endings"
+    "rust/crates/guard-command/src/npm_source_spec.rs::equivalent_github_source_forms_share_canonical_identity"
    ],
    "status": "native_behavior_ported_requires_ci"
   },
   {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_accepts_canonical_markdown_name",
+   "old_node": "tests/test_npm_source_spec.py::test_git_revision_state_is_classified_conservatively",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::canonical_pr_body_names_are_accepted_and_other_markdown_is_not"
+    "rust/crates/guard-command/src/npm_source_spec.rs::git_revision_state_is_classified_conservatively"
    ],
    "status": "native_behavior_ported_requires_ci"
   },
   {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_arbitrary_markdown_name",
+   "old_node": "tests/test_npm_source_spec.py::test_hosted_git_archive_urls_remain_repository_sources",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::canonical_pr_body_names_are_accepted_and_other_markdown_is_not"
+    "rust/crates/guard-command/src/npm_source_spec.rs::hosted_git_archive_urls_remain_repository_sources"
    ],
    "status": "native_behavior_ported_requires_ci"
   },
   {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_pr_body_marker_only_as_suffix",
+   "old_node": "tests/test_npm_source_spec.py::test_idna_and_nondefault_ports_are_canonicalized_without_collapsing_distinct_hosts",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::canonical_pr_body_names_are_accepted_and_other_markdown_is_not"
+    "rust/crates/guard-command/src/npm_source_spec.rs::idna_and_nondefault_ports_do_not_collapse_distinct_hosts"
    ],
    "status": "native_behavior_ported_requires_ci"
   },
   {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_accepts_named_body_in_user_cascade_projects",
+   "old_node": "tests/test_npm_source_spec.py::test_custom_git_hosts_support_root_level_repositories",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_named_body_under_cascade_projects_is_authored_outside_the_working_tree"
+    "rust/crates/guard-command/src/npm_source_spec.rs::custom_git_hosts_support_root_level_repositories"
    ],
    "status": "native_behavior_ported_requires_ci"
   },
   {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_oversized_markdown",
+   "old_node": "tests/test_npm_source_spec.py::test_ambiguous_or_malformed_sources_fail_with_stable_reasons",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::oversized_empty_and_sensitive_bodies_are_refused"
+    "rust/crates/guard-command/src/npm_source_spec.rs::ambiguous_or_malformed_sources_fail_with_stable_reasons"
    ],
    "status": "native_behavior_ported_requires_ci"
   },
   {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_sensitive_path",
+   "old_node": "tests/test_npm_source_spec.py::test_query_credentials_are_redacted_without_changing_git_identity",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::oversized_empty_and_sensitive_bodies_are_refused"
+    "rust/crates/guard-command/src/npm_source_spec.rs::query_credentials_are_redacted_without_changing_git_identity"
    ],
    "status": "native_behavior_ported_requires_ci"
   },
   {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_padded_operand",
+   "old_node": "tests/test_npm_source_spec.py::test_deeply_nested_npm_aliases_fail_without_recursion",
    "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_padded_or_symlinked_operand_never_resolves"
-   ],
-   "status": "native_behavior_ported_requires_ci"
-  },
-  {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_group_or_world_writable_file",
-   "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_shared_body_or_a_shared_parent_directory_is_refused"
-   ],
-   "status": "native_behavior_ported_requires_ci"
-  },
-  {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_writable_intermediate_directory",
-   "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_shared_body_or_a_shared_parent_directory_is_refused"
-   ],
-   "status": "native_behavior_ported_requires_ci"
-  },
-  {
-   "old_node": "tests/test_guard_github_pr_body_file.py::test_windows_body_file_reader_binds_locked_path_and_descriptor_identity",
-   "replacement_nodes": [
-    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::existing_locked_service_preserves_static_body_files_and_rejects_aliases"
+    "rust/crates/guard-command/src/npm_source_spec.rs::deeply_nested_npm_aliases_fail_without_recursion"
    ],
    "status": "native_behavior_ported_requires_ci"
   },
@@ -6573,6 +6553,83 @@
    ],
    "status": "obsolete_implementation_assertion",
    "rationale": "Resolved the output filter programs in Python; the resident resolves them in the same op as the npm proof."
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_accepts_bounded_owner_controlled_markdown",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::bounded_owner_controlled_markdown_is_accepted_for_both_line_endings"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_accepts_canonical_markdown_name",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::canonical_pr_body_names_are_accepted_and_other_markdown_is_not"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_arbitrary_markdown_name",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::canonical_pr_body_names_are_accepted_and_other_markdown_is_not"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_pr_body_marker_only_as_suffix",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::canonical_pr_body_names_are_accepted_and_other_markdown_is_not"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_accepts_named_body_in_user_cascade_projects",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_named_body_under_cascade_projects_is_authored_outside_the_working_tree"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_oversized_markdown",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::oversized_empty_and_sensitive_bodies_are_refused"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_sensitive_path",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::oversized_empty_and_sensitive_bodies_are_refused"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_padded_operand",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_padded_or_symlinked_operand_never_resolves"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_group_or_world_writable_file",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_shared_body_or_a_shared_parent_directory_is_refused"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_github_pr_body_file_rejects_writable_intermediate_directory",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::a_shared_body_or_a_shared_parent_directory_is_refused"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_github_pr_body_file.py::test_windows_body_file_reader_binds_locked_path_and_descriptor_identity",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/sfrs_gh_body_file_check.rs::existing_locked_service_preserves_static_body_files_and_rejects_aliases"
+   ],
+   "status": "native_behavior_ported_requires_ci"
   }
  ],
  "preserved_tests": [
@@ -6880,6 +6937,11 @@
    "old_node": "tests/test_codex_daemon_start_wait.py::test_unparseable_or_empty_markers_do_not_count",
    "new_node": "tests/test_codex_daemon_dead_fastpath.py::test_unparseable_or_empty_markers_do_not_count",
    "reason": "A pure unit of codex_daemon_dead_fastpath.daemon_start_in_progress, moved unchanged into that module's own test file when the start-wait file was retired."
+  },
+  {
+   "old_node": "tests/test_npm_source_spec.py::test_git_approval_fingerprint_uses_canonical_repository_and_exact_commit",
+   "new_node": "tests/test_guard_package_intent.py::test_git_approval_fingerprint_uses_canonical_repository_and_exact_commit",
+   "reason": "Approval-fingerprint equivalence exercises the native package-intent artifact path, not the retired Python source parser, so it moves to the package-intent suite unchanged."
   }
  ],
  "unchanged_regression_suites": [

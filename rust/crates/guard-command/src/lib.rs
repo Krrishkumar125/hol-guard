@@ -121,6 +121,7 @@ pub mod github_workflow_lineage;
 mod github_workflow_lineage_tests;
 pub mod github_workflow_operations;
 mod harness_config_names;
+pub mod harness_identity;
 mod home_path_text;
 pub mod homebrew_intent;
 mod inline_shell_quoting;
@@ -769,6 +770,8 @@ pub mod cloud_audit_sync;
 pub mod guard_run_launch;
 pub mod install_time_event;
 pub mod local_supply_chain;
+#[cfg(test)]
+mod local_supply_chain_risk_action_tests;
 #[cfg(test)]
 mod local_supply_chain_saved_claim_tests;
 #[cfg(test)]
