@@ -85,7 +85,7 @@ pub fn canonical_inventory_content_hash(value: &str) -> String {
     value.to_owned()
 }
 
-fn non_empty_string<'a>(value: Option<&'a Value>) -> Option<&'a str> {
+fn non_empty_string(value: Option<&Value>) -> Option<&str> {
     match value {
         Some(Value::String(text)) if !text.is_empty() => Some(text),
         _ => None,
