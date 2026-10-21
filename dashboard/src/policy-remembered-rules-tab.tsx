@@ -313,14 +313,16 @@ export function PolicyRememberedRulesTab({
 
       <div id="remembered-rules-list" className="scroll-mt-4">
         {rememberedRules.length === 0 && allRemembered.length > 0 ? (
-          <EmptyState
-            title="No rules match"
-            body="Nothing here matches the current search and filters. Clear them to see every remembered rule."
-            tone="teach"
-            action={
-              <ActionButton variant="secondary" onClick={handleClearFilters}>Clear search and filters</ActionButton>
-            }
-          />
+          <div role="status">
+            <EmptyState
+              title="No rules match"
+              body="Nothing here matches the current search and filters. Clear them to see every remembered rule."
+              tone="teach"
+              action={
+                <ActionButton variant="secondary" onClick={handleClearFilters}>Clear search and filters</ActionButton>
+              }
+            />
+          </div>
         ) : (
           <PolicyRuleTable
             policies={rememberedRules}

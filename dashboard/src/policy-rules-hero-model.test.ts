@@ -3,7 +3,6 @@ import type { GuardPolicyDecision } from "./guard-types";
 import {
   buildRuleAttention,
   buildRulesHeroModel,
-  buildRulesSpotlight,
   isBroadAllow,
   isStaleRule,
   policyRiskScore,
@@ -43,15 +42,12 @@ const attention = buildRuleAttention([broad, narrow, policy({ updated_at: "2026-
 assert.equal(attention.broadAllows.length, 1);
 assert.equal(attention.staleLocals.length, 1);
 
-const spotlight = buildRulesSpotlight([narrow, broad]);
-assert.equal(spotlight[0].reason, "broad");
-assert.ok(spotlight.length <= 3);
-
-// A broad allow must lead the shelf even when narrower rules outscore it.
+// The attention strip ranks broad allows by this score: a global allow
+// outranks a harness-scoped one regardless of list order.
 const cloudBroad = policy({ scope: "global", source: "cloud-sync", artifact_id: "family:prompt", reason: "cloud-broad", updated_at: "2026-10-10T00:00:00Z" });
-const loudLocal = (n: number) => policy({ scope: "publisher", artifact_id: "family:tool-action", reason: `loud-${n}`, updated_at: `2026-10-1${n}T00:00:00Z` });
-const crowded = buildRulesSpotlight([loudLocal(1), loudLocal(2), loudLocal(3), cloudBroad]);
-assert.equal(crowded[0].reason, "cloud-broad");
+const harnessBroad = policy({ scope: "harness", artifact_id: "family:tool-action", reason: "harness-broad" });
+assert.ok(policyRiskScore(cloudBroad) < policyRiskScore(broad));
+assert.ok(policyRiskScore(broad) > policyRiskScore(harnessBroad));
 
 const empty = buildRulesHeroModel({
   counts: countPolicyRules([]),

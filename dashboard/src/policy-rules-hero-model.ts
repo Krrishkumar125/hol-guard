@@ -55,24 +55,6 @@ export function buildRuleAttention(
   };
 }
 
-/**
- * Spotlight picks: broad allows always lead (the hero calls them out by
- * name, so they must appear here), then highest risk score, then newest.
- */
-export function buildRulesSpotlight(
-  policies: readonly GuardPolicyDecision[],
-): GuardPolicyDecision[] {
-  const remembered = policies.filter((p) => p.action === "allow" || p.action === "block");
-  const sorted = [...remembered].sort((a, b) => {
-    const broadDelta = Number(isBroadAllow(b)) - Number(isBroadAllow(a));
-    if (broadDelta !== 0) return broadDelta;
-    const byRisk = policyRiskScore(b) - policyRiskScore(a);
-    if (byRisk !== 0) return byRisk;
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-  });
-  return sorted.slice(0, 3);
-}
-
 export function buildRulesHeroModel(input: {
   counts: PolicyRuleCounts;
   attention: RuleAttention;
@@ -110,7 +92,7 @@ export function buildRulesHeroModel(input: {
   }
   const provenance =
     counts.local === 0 && counts.cloud > 0
-      ? "read-only here — change them in Guard Cloud."
+      ? "read-only here — change them in Guard Cloud or their governing Extension."
       : "";
   return {
     tone: "clear",

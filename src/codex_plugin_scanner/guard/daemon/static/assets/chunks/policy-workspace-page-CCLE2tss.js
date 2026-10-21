@@ -3216,6 +3216,18 @@ function GoverningExtensionLink(props) {
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: guardAwareHref(href), onClick: handleClick, className: "mt-2 inline-flex text-xs font-semibold text-brand-blue hover:underline", children: "Open governing Extension" });
 }
+const RISKY_FAMILIES = /* @__PURE__ */ new Set(["tool-action", "package-request", "mcp", "prompt-env-read"]);
+function policyRiskScore(policy) {
+  let score = 0;
+  if (policy.action === "allow") score += 2;
+  if (policy.scope === "global") score += 4;
+  else if (policy.scope === "harness") score += 3;
+  else if (policy.scope === "publisher") score += 2;
+  const family = resolvePolicyMatcherFamily(policy);
+  if (family && RISKY_FAMILIES.has(family)) score += 2;
+  if (!isCloudManagedPolicy(policy.source)) score += 1;
+  return score;
+}
 function isBroadAllow(policy) {
   return policy.action === "allow" && (policy.scope === "global" || policy.scope === "harness");
 }
@@ -3261,7 +3273,7 @@ function buildRulesHeroModel(input) {
       facts
     };
   }
-  const provenance = counts.local === 0 && counts.cloud > 0 ? "read-only here — change them in Guard Cloud." : "";
+  const provenance = counts.local === 0 && counts.cloud > 0 ? "read-only here — change them in Guard Cloud or their governing Extension." : "";
   return {
     tone: "clear",
     badge: "Memory is tidy",
@@ -3631,7 +3643,10 @@ function PolicyRulesListSwitch(props) {
   )) }) });
 }
 function PolicyRulesAttentionStrip(props) {
-  const first = props.broadAllows[0];
+  const first = reactExports.useMemo(
+    () => [...props.broadAllows].sort((a, b) => policyRiskScore(b) - policyRiskScore(a))[0],
+    [props.broadAllows]
+  );
   if (!first) return null;
   const display = resolvePolicyDisplay(first);
   const title = resolvePolicyRowTitle(first, display);
@@ -4261,7 +4276,7 @@ function PolicyRememberedRulesTab({
         ] })
       ] }) : null
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "remembered-rules-list", className: "scroll-mt-4", children: rememberedRules.length === 0 && allRemembered.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "remembered-rules-list", className: "scroll-mt-4", children: rememberedRules.length === 0 && allRemembered.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { role: "status", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       EmptyState,
       {
         title: "No rules match",
@@ -4269,7 +4284,7 @@ function PolicyRememberedRulesTab({
         tone: "teach",
         action: /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { variant: "secondary", onClick: handleClearFilters, children: "Clear search and filters" })
       }
-    ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+    ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
       PolicyRuleTable,
       {
         policies: rememberedRules,

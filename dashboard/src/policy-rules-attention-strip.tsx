@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { HiMiniExclamationTriangle } from "react-icons/hi2";
 import type { GuardPolicyDecision } from "./guard-types";
 import { resolvePolicyDisplay, resolvePolicyRowTitle } from "./policy-workspace-helpers";
+import { policyRiskScore } from "./policy-rules-hero-model";
 
 /**
  * One quiet line for the widest rule in force — the only proactive nudge
@@ -11,7 +13,11 @@ export function PolicyRulesAttentionStrip(props: {
   broadAllows: GuardPolicyDecision[];
   onInspect: (policy: GuardPolicyDecision) => void;
 }) {
-  const first = props.broadAllows[0];
+  // Name the widest rule, not whichever broad allow happens to list first.
+  const first = useMemo(
+    () => [...props.broadAllows].sort((a, b) => policyRiskScore(b) - policyRiskScore(a))[0],
+    [props.broadAllows],
+  );
   if (!first) return null;
   const display = resolvePolicyDisplay(first);
   const title = resolvePolicyRowTitle(first, display);
