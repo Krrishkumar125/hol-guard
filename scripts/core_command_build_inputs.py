@@ -128,11 +128,11 @@ def _implementation_files(directory: Path) -> set[Path]:
 def implementation_digest(root) -> str:
     """Mirror the Rust build fingerprint, not its compilation or admission logic."""
     workspace = root / "rust"
-    manifest_path = workspace / "build_support/command_source_inputs.v1.json"
+    manifest_path = workspace / "build_support/command_source_inputs.v2.json"
     if manifest_path.is_symlink():
         raise ValueError("invalid native implementation input")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("schema") != "guard.command-source-inputs.v1":
+    if manifest.get("schema") != "guard.command-source-inputs.v2":
         raise ValueError("invalid command source inputs manifest")
     domain = manifest.get("identity_domain")
     if not isinstance(domain, str) or not domain:
@@ -164,6 +164,24 @@ def implementation_digest(root) -> str:
             paths.add(crate / "build.rs")
         if (crate / "src").is_dir():
             paths.update(_implementation_files(crate / "src"))
+    for name, entries in manifest.get("crate_files", {}).items():
+        if not isinstance(name, str) or not name.replace("-", "").replace("_", "").isalnum():
+            raise ValueError("invalid command source inputs crate")
+        if not isinstance(entries, list):
+            raise ValueError("invalid command source inputs crate_files")
+        crate = workspace / "crates" / name
+        for relative in entries:
+            if (
+                not isinstance(relative, str)
+                or not relative
+                or relative.startswith(("/", "\\"))
+                or any(part in ("", ".", "..") for part in relative.split("/"))
+            ):
+                raise ValueError("invalid command source inputs crate_files path")
+            path = crate / relative
+            if path.is_symlink() or not path.is_file():
+                raise ValueError("invalid native implementation input")
+            paths.add(path)
     digest = hashlib.sha256(domain.encode() + b"\0")
     for path in sorted(paths, key=lambda item: item.relative_to(workspace).as_posix()):
         if path.is_symlink() or not path.is_file():
