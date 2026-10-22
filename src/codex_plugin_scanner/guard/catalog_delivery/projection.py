@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ..native_policy_snapshot_constants import NativePolicySnapshotError
 from . import lifecycle
 from .activation_store import header_for_store
+
+if TYPE_CHECKING:
+    from ..runtime.generated_command_catalog import GeneratedCommandCatalog
 
 
 @lifecycle.one_runtime
@@ -40,10 +45,10 @@ def capture(store):
 # The registry indexed from the last committed record read, by store and the
 # record's authenticated digest. The record binds every pack it lists by
 # digest and each read still opens it, so the same digest names the same packs.
-_kept: tuple[str, str, object] | None = None
+_kept: tuple[str, str, GeneratedCommandCatalog] | None = None
 
 
-def _registry(store, committed, catalog):
+def _registry(store, committed, catalog: type[GeneratedCommandCatalog]) -> GeneratedCommandCatalog:
     global _kept
     kept = _kept
     if kept is not None and kept[:2] == (str(store.path), committed.record_digest):
