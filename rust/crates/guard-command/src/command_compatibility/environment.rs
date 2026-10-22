@@ -129,37 +129,9 @@ pub(crate) fn credential_routing_environment_name(name: &str) -> bool {
 /// `RUSTFLAGS`, `RUSTC_WRAPPER`, `PYTHONSTARTUP`, `CLASSPATH`). A data path
 /// such as `OUTPUT_PATH` cannot be told apart by name, so it fails closed too.
 const CODE_LOADING_MARKERS: &[&str] = &[
-    "ARGS",
-    "BIN",
-    "BROWSER",
-    "CMD",
-    "COMMAND",
-    "EDITOR",
-    "EXEC",
-    "FLAGS",
-    "HOOK",
-    "IMPORT",
-    "INIT",
-    "LIB",
-    "LOAD",
-    "MODULE",
-    "OPT",
-    "PAGER",
-    "PLUGIN",
-    "REQUIRE",
-    "LINKER",
-    "RUNNER",
-    "RUSTC",
-    "RUSTDOC",
-    "SCRIPT",
-    "SHELL",
-    "STARTUP",
-    "VISUAL",
-    "WRAPPER",
-    "USERBASE",
-    "GEMFILE",
-    "LESSOPEN",
-    "LESSCLOSE",
+    "ARGS", "BIN", "BROWSER", "CMD", "COMMAND", "EDITOR", "EXEC", "FLAGS", "HOOK", "IMPORT",
+    "INIT", "LIB", "LOAD", "MODULE", "OPT", "PAGER", "PLUGIN", "REQUIRE", "LINKER", "RUNNER",
+    "RUSTC", "RUSTDOC", "SCRIPT", "SHELL", "STARTUP", "VISUAL", "WRAPPER", "USERBASE", "GEMFILE",
     "PATH",
 ];
 
@@ -175,7 +147,9 @@ const CODE_LOADING_NAMES: &[&str] = &[
 ];
 
 /// Exact names a program, its shell or Git runs as code or reads a toolchain
-/// or interpreter home from, which no marker above covers.
+/// or interpreter home from, which no marker above covers. `MORE` and `LV`
+/// carry a pager's start-up options, and those options include the shell
+/// escape that runs a command of their own.
 const CODE_LOADING_EXACT: &[&str] = &[
     "BASH_ENV",
     "CARGO_HOME",
@@ -187,6 +161,8 @@ const CODE_LOADING_EXACT: &[&str] = &[
     "GOROOT",
     "GOTOOLCHAIN",
     "JAVA_HOME",
+    "LV",
+    "MORE",
     "PYTHONHOME",
     "RUSTUP_HOME",
     "SSH_ASKPASS",
@@ -196,12 +172,16 @@ const CODE_LOADING_EXACT: &[&str] = &[
 /// other code (`NODE_OPTIONS`, `RUSTC_WRAPPER`, `npm_config_script_shell`,
 /// `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`, `CXX`). It is matched by fragment,
 /// not by a closed list, so new wrapper and loader names fail closed too.
+/// The whole `LESS*` family is spelled as a prefix: `LESS` itself holds the
+/// options `less` starts with, and `LESS=+!cmd` makes the pager run `cmd`
+/// before it shows a line, so the bare name redirects execution as surely as
+/// `LESSOPEN` does.
 pub(crate) fn code_loading_environment_name(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     let upper = upper.as_str();
     CODE_LOADING_NAMES.contains(&upper)
         || CODE_LOADING_EXACT.contains(&upper)
-        || ["LD_", "DYLD_", "BASH_FUNC_", "NPM_CONFIG_"]
+        || ["LD_", "DYLD_", "BASH_FUNC_", "NPM_CONFIG_", "LESS"]
             .iter()
             .any(|prefix| upper.starts_with(prefix))
         || CODE_LOADING_MARKERS

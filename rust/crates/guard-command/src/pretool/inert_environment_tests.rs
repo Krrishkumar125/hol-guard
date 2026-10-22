@@ -93,6 +93,24 @@ fn a_pager_that_names_another_program_still_needs_review() {
     assert!(!allowed("PAGER=less ls"));
 }
 
+/// A pager reads its start-up options from the environment, and those
+/// options carry a shell escape: `LESS=+!id` makes `less` run `id` before it
+/// prints a line, so the setting names a program as plainly as `LESSOPEN`
+/// does. The whole family stays unproven, value and all.
+#[test]
+fn a_pager_option_variable_still_needs_review() {
+    for command in [
+        "LESS=+!id git log",
+        "export LESS=+!id; git log",
+        "LESSKEY=/tmp/keys git log",
+        "LESSHISTFILE=/tmp/history git log",
+        "MORE=+!id more README.md",
+        "LV=-!id lv README.md",
+    ] {
+        assert!(!allowed(command), "{command}");
+    }
+}
+
 #[test]
 fn a_variable_that_redirects_execution_still_needs_review() {
     assert!(!allowed("export PATH=/tmp/bin:$PATH; ls"));
