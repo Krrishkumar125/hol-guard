@@ -31641,6 +31641,7 @@ async function applyExtensionMutation(payload) {
   }
 }
 const DEFAULT_ENROLL_COMMAND = "hol-guard command controls enroll";
+const DEFAULT_RECOVER_COMMAND = "hol-guard command controls recover-authority";
 const AUTHORITY_WATCH_INTERVAL_MS = 5e3;
 function useExtensionAuthorityWatch(input) {
   const { active, requestId, onAvailable } = input;
@@ -31649,7 +31650,7 @@ function useExtensionAuthorityWatch(input) {
   const [loadFailed, setLoadFailed] = reactExports.useState(false);
   const [checking, setChecking] = reactExports.useState(false);
   const [checkResult, setCheckResult] = reactExports.useState(null);
-  const [noOption, setNoOption] = reactExports.useState(false);
+  const [noOption, setNoOption] = reactExports.useState(null);
   const inFlight = reactExports.useRef(null);
   const mounted = reactExports.useRef(true);
   reactExports.useEffect(() => {
@@ -31664,27 +31665,31 @@ function useExtensionAuthorityWatch(input) {
         fetchEffectiveExtensionControls(),
         fetchSettings().catch(() => null)
       ]);
-      if (!mounted.current) return false;
+      if (!mounted.current) return "unchanged";
       setEffective(nextEffective);
       setLoadFailed(false);
       const gate = settings?.settings.approval_gate;
       if (gate !== void 0 && gate !== null) setLiveGate(gate);
       if (nextEffective.health !== "protected") {
-        setNoOption(false);
-        return false;
+        setNoOption(null);
+        return "unchanged";
       }
-      const item = await fetchRequest(requestId).catch(() => null);
-      if (!mounted.current) return false;
-      const recommendation = item?.extension_recommendation;
+      const item = await fetchRequest(requestId);
+      if (!mounted.current) return "unchanged";
+      if (item.status !== "pending") {
+        setNoOption("resolved");
+        return "unchanged";
+      }
+      const recommendation = item.extension_recommendation;
       if (recommendation?.status !== "available") {
-        setNoOption(true);
-        return false;
+        setNoOption("unavailable");
+        return "unchanged";
       }
       onAvailable(recommendation);
-      return true;
+      return "available";
     } catch {
       if (mounted.current) setLoadFailed(true);
-      return false;
+      return "failed";
     }
   }, [onAvailable, requestId]);
   const refresh = reactExports.useCallback(() => {
@@ -31707,10 +31712,10 @@ function useExtensionAuthorityWatch(input) {
     if (checking) return;
     setChecking(true);
     setCheckResult(null);
-    void refresh().then((available) => {
+    void refresh().then((outcome) => {
       if (!mounted.current) return;
       setChecking(false);
-      if (!available) setCheckResult("unchanged");
+      setCheckResult(outcome === "available" ? null : outcome);
     });
   }, [checking, refresh]);
   return { effective, approvalGate: liveGate ?? input.approvalGate, loadFailed, checking, checkResult, noOption, checkAgain };
@@ -31768,8 +31773,11 @@ function CheckAgain(props) {
   const { watch } = props;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-wrap items-center gap-x-3 gap-y-2", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { variant: "outline", onClick: watch.checkAgain, disabled: watch.checking, "aria-busy": watch.checking, children: watch.checking ? "Checking…" : "Check again" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "min-w-0 flex-1 text-xs leading-5 text-slate-600", role: "status", "aria-live": "polite", children: watch.checking ? "Checking this device…" : watch.checkResult === "unchanged" && !watch.noOption ? "Not finished yet. Guard keeps checking while this page is open." : props.note })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "min-w-0 flex-1 text-xs leading-5 text-slate-600", role: "status", "aria-live": "polite", children: watch.checking ? "Checking this device…" : watch.checkResult === "failed" ? "Guard could not reach this device's protection settings. Try again in a moment." : watch.checkResult === "unchanged" && watch.noOption === null ? "Not finished yet. Guard keeps checking while this page is open." : props.note })
   ] });
+}
+function approvalProofName(gate) {
+  return gate?.totp_enabled ? "authenticator code" : "approval password";
 }
 function ExtensionAuthoritySetup(props) {
   const { watch, commandText } = props;
@@ -31780,19 +31788,17 @@ function ExtensionAuthoritySetup(props) {
       watch.loadFailed && /* @__PURE__ */ jsxRuntimeExports.jsx(CheckAgain, { watch, note: "" })
     ] });
   }
+  const gate = watch.approvalGate;
+  const proofName = approvalProofName(gate);
+  const terminal = watch.effective.terminal_commands;
+  const terminalName = terminal?.shell === "powershell" ? "PowerShell" : "a terminal";
   if (health === "unenrolled") {
-    const gate = watch.approvalGate;
     const gateReady = isBulkApproveGateReady(gate);
-    const terminal = watch.effective.terminal_commands;
-    const terminalName = terminal?.shell === "powershell" ? "PowerShell" : "a terminal";
+    const lost = watch.effective.revision > 0 || watch.effective.layers.length > 0;
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 border-t border-brand-blue/15 pt-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm leading-relaxed text-brand-dark/80", children: [
-        "This device hasn't saved its extension settings yet. Two one-time steps let you allow ",
-        commandText,
-        " from here."
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("ol", { className: "mt-3 space-y-4", "aria-label": "One-time setup", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(SetupStep, { index: 1, done: gateReady, current: !gateReady, title: "Set up local approval", children: gateReady ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 text-sm text-brand-dark/70", children: "Your approval password is ready." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-relaxed text-brand-dark/80", children: lost ? `This device's saved extension settings were lost. Two steps set them up again and let you allow ${commandText} from here.` : `This device hasn't saved its extension settings yet. Two one-time steps let you allow ${commandText} from here.` }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("ol", { className: "mt-3 space-y-4", "aria-label": lost ? "Setup" : "One-time setup", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SetupStep, { index: 1, done: gateReady, current: !gateReady, title: "Set up local approval", children: gateReady ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 text-sm text-brand-dark/70", children: "Local approval is on." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 text-sm leading-relaxed text-brand-dark/70", children: gate?.configured ? "Turn local approval back on. It keeps agents from changing protection on their own." : "Choose an approval password. It stays on this device and keeps agents from changing protection on their own." }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { href: "/settings?section=approval", variant: "primary", className: "mt-2", children: "Open approval settings" })
         ] }) }),
@@ -31800,7 +31806,9 @@ function ExtensionAuthoritySetup(props) {
           /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-0.5 text-sm leading-relaxed text-brand-dark/70", children: [
             "Run this once in ",
             terminalName,
-            ". It asks for your approval password."
+            ". It asks for your ",
+            proofName,
+            "."
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(CopyCommand, { command: terminal?.enroll ?? DEFAULT_ENROLL_COMMAND, label: "Copy enroll command" })
         ] })
@@ -31814,11 +31822,8 @@ function ExtensionAuthoritySetup(props) {
       )
     ] });
   }
-  if (health === "protected" && watch.noOption) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-relaxed text-brand-dark/80", role: "status", children: "Protection settings are ready, but this request no longer offers Always allow. You can still change the permission in the extension." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(CheckAgain, { watch, note: "" })
-    ] });
+  if (health === "protected" && watch.noOption !== null) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-relaxed text-brand-dark/80", role: "status", children: watch.noOption === "resolved" ? "Protection settings are ready. This request was already answered, so there is nothing left to allow here. You can still change the permission in the extension." : "Protection settings are ready, but this request no longer offers Always allow. You can still change the permission in the extension." }) });
   }
   if (health === "protected") {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3", children: [
@@ -31828,6 +31833,22 @@ function ExtensionAuthoritySetup(props) {
         "…"
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(CheckAgain, { watch, note: "" })
+    ] });
+  }
+  if (health === "degraded-unacknowledged" || health === "degraded-acknowledged") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm leading-relaxed text-brand-dark/80", children: [
+        "Guard cannot fully verify this device's protection settings and is staying fail-safe. Rebuild them from",
+        " ",
+        terminalName,
+        ", then you can allow ",
+        commandText,
+        " from here. It asks for your ",
+        proofName,
+        "."
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(CopyCommand, { command: terminal?.recover_authority ?? DEFAULT_RECOVER_COMMAND, label: "Copy repair command" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(CheckAgain, { watch, note: `When the repair finishes, Approve & always allow ${commandText} appears here.` })
     ] });
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3", children: [

@@ -8,17 +8,23 @@ import { fetchRequest, fetchSettings } from "./guard-api";
 import type { GuardApprovalGatePublicConfig } from "./guard-types";
 
 const DEFAULT_ENROLL_COMMAND = "hol-guard command controls enroll";
+const DEFAULT_RECOVER_COMMAND = "hol-guard command controls recover-authority";
 /** How often an open card looks for an enrollment finished in the terminal. */
 export const AUTHORITY_WATCH_INTERVAL_MS = 5000;
+
+type CheckOutcome = "available" | "unchanged" | "failed";
+
+/** Why a protected device has nothing left to offer for this request. */
+export type NoOptionReason = "resolved" | "unavailable";
 
 export type ExtensionAuthorityWatch = {
   effective: EffectiveExtensionControls | null;
   approvalGate: GuardApprovalGatePublicConfig | null;
   loadFailed: boolean;
   checking: boolean;
-  checkResult: "unchanged" | null;
+  checkResult: Exclude<CheckOutcome, "available"> | null;
   /** Protection is ready but this request no longer offers Always allow, so polling stops. */
-  noOption: boolean;
+  noOption: NoOptionReason | null;
   checkAgain: () => void;
 };
 
@@ -38,10 +44,10 @@ export function useExtensionAuthorityWatch(input: {
   const [liveGate, setLiveGate] = useState<GuardApprovalGatePublicConfig | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState<"unchanged" | null>(null);
-  const [noOption, setNoOption] = useState(false);
+  const [checkResult, setCheckResult] = useState<ExtensionAuthorityWatch["checkResult"]>(null);
+  const [noOption, setNoOption] = useState<NoOptionReason | null>(null);
   // A manual check during a poll joins that poll instead of reporting a stale answer.
-  const inFlight = useRef<Promise<boolean> | null>(null);
+  const inFlight = useRef<Promise<CheckOutcome> | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -50,38 +56,42 @@ export function useExtensionAuthorityWatch(input: {
     };
   }, []);
 
-  const load = useCallback(async (): Promise<boolean> => {
+  const load = useCallback(async (): Promise<CheckOutcome> => {
     try {
       const [nextEffective, settings] = await Promise.all([
         fetchEffectiveExtensionControls(),
         fetchSettings().catch(() => null),
       ]);
-      if (!mounted.current) return false;
+      if (!mounted.current) return "unchanged";
       setEffective(nextEffective);
       setLoadFailed(false);
       const gate = settings?.settings.approval_gate;
       if (gate !== undefined && gate !== null) setLiveGate(gate);
       if (nextEffective.health !== "protected") {
-        setNoOption(false);
-        return false;
+        setNoOption(null);
+        return "unchanged";
       }
-      // A request resolved elsewhere, or one enrollment leaves without a hint, has nothing left to offer.
-      const item = await fetchRequest(requestId).catch(() => null);
-      if (!mounted.current) return false;
-      const recommendation = item?.extension_recommendation;
+      const item = await fetchRequest(requestId);
+      if (!mounted.current) return "unchanged";
+      // A request answered elsewhere, or one enrollment leaves without a hint, has nothing left to offer.
+      if (item.status !== "pending") {
+        setNoOption("resolved");
+        return "unchanged";
+      }
+      const recommendation = item.extension_recommendation;
       if (recommendation?.status !== "available") {
-        setNoOption(true);
-        return false;
+        setNoOption("unavailable");
+        return "unchanged";
       }
       onAvailable(recommendation);
-      return true;
+      return "available";
     } catch {
       if (mounted.current) setLoadFailed(true);
-      return false;
+      return "failed";
     }
   }, [onAvailable, requestId]);
 
-  const refresh = useCallback((): Promise<boolean> => {
+  const refresh = useCallback((): Promise<CheckOutcome> => {
     if (inFlight.current === null) {
       inFlight.current = load().finally(() => {
         inFlight.current = null;
@@ -103,10 +113,10 @@ export function useExtensionAuthorityWatch(input: {
     if (checking) return;
     setChecking(true);
     setCheckResult(null);
-    void refresh().then((available) => {
+    void refresh().then((outcome) => {
       if (!mounted.current) return;
       setChecking(false);
-      if (!available) setCheckResult("unchanged");
+      setCheckResult(outcome === "available" ? null : outcome);
     });
   }, [checking, refresh]);
 
@@ -188,18 +198,25 @@ function CheckAgain(props: { watch: ExtensionAuthorityWatch; note: string }) {
       <p className="min-w-0 flex-1 text-xs leading-5 text-slate-600" role="status" aria-live="polite">
         {watch.checking
           ? "Checking this device…"
-          : watch.checkResult === "unchanged" && !watch.noOption
-            ? "Not finished yet. Guard keeps checking while this page is open."
-            : props.note}
+          : watch.checkResult === "failed"
+            ? "Guard could not reach this device's protection settings. Try again in a moment."
+            : watch.checkResult === "unchanged" && watch.noOption === null
+              ? "Not finished yet. Guard keeps checking while this page is open."
+              : props.note}
       </p>
     </div>
   );
 }
 
+/** The proof the approval gate asks for, as the terminal prompt names it. */
+function approvalProofName(gate: GuardApprovalGatePublicConfig | null): string {
+  return gate?.totp_enabled ? "authenticator code" : "approval password";
+}
+
 /**
- * The guided path for a recommendation Guard cannot save yet. A device that
- * never enrolled gets the two one-time steps in order; a damaged authority is
- * pointed at repair, since only a healthy one can take an Always allow.
+ * The guided path for a recommendation Guard cannot save yet. An unenrolled
+ * device gets the two one-time steps in order; a damaged authority is pointed
+ * at the repair that fits it, since only a healthy one can take an Always allow.
  */
 export function ExtensionAuthoritySetup(props: { watch: ExtensionAuthorityWatch; commandText: string }) {
   const { watch, commandText } = props;
@@ -218,21 +235,26 @@ export function ExtensionAuthoritySetup(props: { watch: ExtensionAuthorityWatch;
     );
   }
 
+  const gate = watch.approvalGate;
+  const proofName = approvalProofName(gate);
+  const terminal = watch.effective.terminal_commands;
+  const terminalName = terminal?.shell === "powershell" ? "PowerShell" : "a terminal";
+
   if (health === "unenrolled") {
-    const gate = watch.approvalGate;
     const gateReady = approvalGateProofReady(gate);
-    const terminal = watch.effective.terminal_commands;
-    const terminalName = terminal?.shell === "powershell" ? "PowerShell" : "a terminal";
+    // Enrollment also restores an authority whose saved settings were lost; only the wording differs.
+    const lost = watch.effective.revision > 0 || watch.effective.layers.length > 0;
     return (
       <div className="mt-3 border-t border-brand-blue/15 pt-3">
         <p className="text-sm leading-relaxed text-brand-dark/80">
-          This device hasn't saved its extension settings yet. Two one-time steps let you allow {commandText} from
-          here.
+          {lost
+            ? `This device's saved extension settings were lost. Two steps set them up again and let you allow ${commandText} from here.`
+            : `This device hasn't saved its extension settings yet. Two one-time steps let you allow ${commandText} from here.`}
         </p>
-        <ol className="mt-3 space-y-4" aria-label="One-time setup">
+        <ol className="mt-3 space-y-4" aria-label={lost ? "Setup" : "One-time setup"}>
           <SetupStep index={1} done={gateReady} current={!gateReady} title="Set up local approval">
             {gateReady ? (
-              <p className="mt-0.5 text-sm text-brand-dark/70">Your approval password is ready.</p>
+              <p className="mt-0.5 text-sm text-brand-dark/70">Local approval is on.</p>
             ) : (
               <>
                 <p className="mt-0.5 text-sm leading-relaxed text-brand-dark/70">
@@ -248,7 +270,7 @@ export function ExtensionAuthoritySetup(props: { watch: ExtensionAuthorityWatch;
           </SetupStep>
           <SetupStep index={2} done={false} current={gateReady} title="Enroll this device">
             <p className="mt-0.5 text-sm leading-relaxed text-brand-dark/70">
-              Run this once in {terminalName}. It asks for your approval password.
+              Run this once in {terminalName}. It asks for your {proofName}.
             </p>
             <CopyCommand command={terminal?.enroll ?? DEFAULT_ENROLL_COMMAND} label="Copy enroll command" />
           </SetupStep>
@@ -261,14 +283,14 @@ export function ExtensionAuthoritySetup(props: { watch: ExtensionAuthorityWatch;
     );
   }
 
-  if (health === "protected" && watch.noOption) {
+  if (health === "protected" && watch.noOption !== null) {
     return (
       <div className="mt-3">
         <p className="text-sm leading-relaxed text-brand-dark/80" role="status">
-          Protection settings are ready, but this request no longer offers Always allow. You can still change the
-          permission in the extension.
+          {watch.noOption === "resolved"
+            ? "Protection settings are ready. This request was already answered, so there is nothing left to allow here. You can still change the permission in the extension."
+            : "Protection settings are ready, but this request no longer offers Always allow. You can still change the permission in the extension."}
         </p>
-        <CheckAgain watch={watch} note="" />
       </div>
     );
   }
@@ -280,6 +302,20 @@ export function ExtensionAuthoritySetup(props: { watch: ExtensionAuthorityWatch;
           Protection settings are ready. Loading the option to always allow {commandText}…
         </p>
         <CheckAgain watch={watch} note="" />
+      </div>
+    );
+  }
+
+  if (health === "degraded-unacknowledged" || health === "degraded-acknowledged") {
+    // The dashboard repair route only rebuilds a tampered authority; a limited one is rebuilt from the terminal.
+    return (
+      <div className="mt-3">
+        <p className="text-sm leading-relaxed text-brand-dark/80">
+          Guard cannot fully verify this device's protection settings and is staying fail-safe. Rebuild them from{" "}
+          {terminalName}, then you can allow {commandText} from here. It asks for your {proofName}.
+        </p>
+        <CopyCommand command={terminal?.recover_authority ?? DEFAULT_RECOVER_COMMAND} label="Copy repair command" />
+        <CheckAgain watch={watch} note={`When the repair finishes, Approve & always allow ${commandText} appears here.`} />
       </div>
     );
   }

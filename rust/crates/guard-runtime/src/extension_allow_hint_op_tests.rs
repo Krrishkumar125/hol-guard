@@ -147,6 +147,28 @@ fn an_unenrolled_device_is_hinted_as_it_will_be_once_enrolled() {
 }
 
 #[test]
+fn a_lost_authority_with_saved_history_has_no_hint() {
+    // Unenrolled with a saved revision or layers is a lost authority, not a
+    // fresh install, so judging it once enrolled must not make it protected.
+    let home = std::env::temp_dir().join(format!(
+        "guard-extension-allow-hint-lost-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&home).unwrap();
+    let home = home.canonicalize().unwrap();
+    let lost = crate::contributed_mcp_catalog_test_support::controls_for_binding(
+        &home,
+        false,
+        &[],
+        &[],
+        |binding| "unenrolled".clone_into(&mut binding.health),
+    );
+    for command in [DOCKER_CONTEXT, DOCKER, HARD_RESET] {
+        assert!(hint_for(&lost, command).is_none(), "{command}");
+    }
+}
+
+#[test]
 fn judging_once_enrolled_never_changes_the_reported_decision() {
     let unenrolled = controls_with_health("reported", "unenrolled");
     let query = query(&unenrolled, DOCKER_CONTEXT);

@@ -232,6 +232,14 @@ pub(crate) fn evaluate_composite(
     evaluate_composite_under(request, controls, AuthorityView::Reported)
 }
 
+/// The binding a fresh install has: unenrolled, nothing saved and no layers.
+fn never_enrolled(binding: &guard_contracts::NativeCommandControlBindingV1) -> bool {
+    binding.health == "unenrolled"
+        && binding.revision == 0
+        && binding.managed_revision == 0
+        && binding.layers.is_empty()
+}
+
 /// [`evaluate_composite`] under an explicit [`AuthorityView`]. Only the
 /// advisory allow-hint op asks for [`AuthorityView::OnceEnrolled`]; nothing
 /// that decides a command does.
@@ -279,9 +287,11 @@ pub(crate) fn evaluate_composite_under(
         }
     }
     // Judged once enrolled, an authority that was never enrolled counts as
-    // protected. It is set after the binding check, so the evidence stays bound
-    // to the snapshot the command was actually reviewed under.
-    if view == AuthorityView::OnceEnrolled && binding.health == "unenrolled" {
+    // protected. Only the first-install binding qualifies: an unenrolled
+    // authority with saved history or layers was lost, and stays a failure.
+    // It is set after the binding check, so the evidence stays bound to the
+    // snapshot the command was actually reviewed under.
+    if view == AuthorityView::OnceEnrolled && never_enrolled(&binding) {
         "protected".clone_into(&mut binding.health);
     }
     apply_counterfactual_permissions(&mut binding, &request.counterfactual_enabled_permission_ids)?;

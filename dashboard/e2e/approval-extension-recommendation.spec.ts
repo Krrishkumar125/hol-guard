@@ -103,12 +103,22 @@ const semanticPreview = {
   summary: { newly_blocked_permissions: 0, newly_allowed_permissions: 1, effective_change_count: 1 },
 };
 
+/** What the daemon reports right now; tests change it to model work done in a terminal. */
+type LiveDevice = {
+  health: () => string;
+  item: () => GuardApprovalRequest;
+  /** Saved revision; a fresh unenrolled device has none. */
+  revision?: () => number;
+  /** When true the protection settings read fails. */
+  unreachable?: () => boolean;
+};
+
 async function mount(
   page: Page,
   item: GuardApprovalRequest,
   calls: Array<{ path: string; body: Record<string, unknown> }>,
   gate: Record<string, unknown> | null = {},
-  live: { health: () => string; item: () => GuardApprovalRequest } = { health: () => "protected", item: () => item },
+  live: LiveDevice = { health: () => "protected", item: () => item },
 ): Promise<void> {
   await page.route("**/v1/**", async (route) => {
     const routeRequest = route.request();
@@ -119,10 +129,15 @@ async function mount(
     else if (path.endsWith("/runtime")) body = { ...freeStateSnapshot, pending_count: 1 };
     else if (path.endsWith("/extension-controls/effective")) {
       calls.push({ path, body: {} });
+      if (live.unreachable?.()) {
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "unavailable" }) });
+        return;
+      }
+      const health = live.health();
       body = {
         schema_version: "guard.daemon.extension-controls.v1",
-        health: live.health(),
-        revision: 7,
+        health,
+        revision: live.revision?.() ?? (health === "unenrolled" ? 0 : 7),
         catalog_digest: DIGEST,
         global_lockdown: false,
         controls: [],
@@ -291,7 +306,7 @@ test("a device that never enrolled walks through setup, then offers always allow
   const card = page.getByTestId("approval-extension-recommendation");
   await expect(card.getByRole("heading", { name: "Git protection covers git add" })).toBeVisible();
   const steps = card.getByRole("list", { name: "One-time setup" });
-  await expect(steps.getByText("Your approval password is ready.")).toBeVisible();
+  await expect(steps.getByText("Local approval is on.")).toBeVisible();
   await expect(steps.getByText("hol-guard command controls enroll", { exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: /Approve & always allow/ })).toHaveCount(0);
   await card.screenshot({ path: test.info().outputPath("setup.png") });
@@ -366,6 +381,73 @@ test("damaged protection authority points at repair instead of setup", async ({ 
   await expect(card.getByRole("list", { name: "One-time setup" })).toHaveCount(0);
   await expect(card.getByRole("button", { name: /Approve & always allow/ })).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Configure in Git protection" })).toBeVisible();
+});
+
+test("a device whose saved settings were lost is walked through enrolling again", async ({ page }) => {
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  await mount(page, unavailable, [], {}, { health: () => "unenrolled", revision: () => 3, item: () => unavailable });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const card = page.getByTestId("approval-extension-recommendation");
+  await expect(card.getByText(/saved extension settings were lost/)).toBeVisible();
+  const steps = card.getByRole("list", { name: "Setup" });
+  await expect(steps.getByText("hol-guard command controls enroll", { exact: true })).toBeVisible();
+  await expect(card.getByRole("link", { name: "Repair protection" })).toHaveCount(0);
+});
+
+test("limited protection is rebuilt from the terminal, not the repair page", async ({ page }) => {
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  await mount(page, unavailable, [], {}, { health: () => "degraded-unacknowledged", item: () => unavailable });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const card = page.getByTestId("approval-extension-recommendation");
+  await expect(card.getByText(/cannot fully verify this device's protection settings/)).toBeVisible();
+  await expect(card.getByText("hol-guard command controls recover-authority", { exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Copy repair command" })).toBeVisible();
+  await expect(card.getByRole("link", { name: "Repair protection" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /Approve & always allow/ })).toHaveCount(0);
+});
+
+test("setup names the authenticator code when local approval uses one", async ({ page }) => {
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  await mount(page, unavailable, [], { totp_enabled: true }, { health: () => "unenrolled", item: () => unavailable });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const steps = page.getByTestId("approval-extension-recommendation").getByRole("list", { name: "One-time setup" });
+  await expect(steps.getByText(/It asks for your authenticator code\./)).toBeVisible();
+  await expect(steps.getByText(/approval password/)).toHaveCount(0);
+});
+
+test("a check that cannot reach the daemon says so instead of not finished", async ({ page }) => {
+  let unreachable = false;
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  await mount(page, unavailable, [], {}, { health: () => "unenrolled", unreachable: () => unreachable, item: () => unavailable });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const card = page.getByTestId("approval-extension-recommendation");
+  await expect(card.getByRole("list", { name: "One-time setup" })).toBeVisible();
+  unreachable = true;
+  await card.getByRole("button", { name: "Check again" }).click();
+  await expect(card.getByText("Guard could not reach this device's protection settings. Try again in a moment.")).toBeVisible();
+  await expect(card.getByText(/Not finished yet/)).toHaveCount(0);
+});
+
+test("a request answered elsewhere after enrollment says so and stops checking", async ({ page }) => {
+  const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  const answered = { ...request(undefined), status: "resolved", resolution_action: "allow" } as GuardApprovalRequest;
+  let fetches = 0;
+  await mount(page, unavailable, calls, {}, {
+    health: () => "protected",
+    item: () => (fetches++ === 0 ? unavailable : answered),
+  });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const card = page.getByTestId("approval-extension-recommendation");
+  await expect(card.getByText(/This request was already answered/)).toBeVisible();
+  const settled = calls.length;
+  await page.waitForTimeout(6_000);
+  expect(calls.length).toBe(settled);
 });
 
 test("malformed recommendation is not rendered", async ({ page }) => {
