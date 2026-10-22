@@ -415,40 +415,11 @@ impl<'a> super::PathContext<'a> {
                     && !super::npm_environment::inert_npm_config_name(&name)
             }),
         };
-        // pip reads `PIP_<OPTION>` for every option the running subcommand
-        // takes, so an inherited variable can add the index query or the log
-        // file the command itself leaves out. `XDG_CONFIG_HOME` moves the
-        // user configuration file that does the same, out of the directory
-        // the file check below can see.
-        let pip_config_inert = match execution_environment {
-            Some(environment) => {
-                environment.has_valid_shape()
-                    && !environment
-                        .environment_names
-                        .iter()
-                        .any(|name| pip_selector(name))
-                    && super::pip_reads::redirected_configuration_inert(
-                        environment.xdg_config_home.as_deref(),
-                        environment
-                            .environment_names
-                            .iter()
-                            .any(|name| name.eq_ignore_ascii_case(XDG_CONFIG_HOME_NAME)),
-                    )
-            }
-            None => {
-                !std::env::vars_os()
-                    .any(|(name, value)| !value.is_empty() && pip_selector(&name.to_string_lossy()))
-                    && {
-                        let redirect = std::env::var(XDG_CONFIG_HOME_NAME)
-                            .ok()
-                            .filter(|value| !value.is_empty());
-                        super::pip_reads::redirected_configuration_inert(
-                            redirect.as_deref(),
-                            redirect.is_some(),
-                        )
-                    }
-            }
-        };
+        // pip reads a configuration file and a variable for every option
+        // the running subcommand takes, each of which can add the index query
+        // or the log file the command itself leaves out. What counts as inert
+        // is pip's own surface, so [`super::pip_reads`] reads it.
+        let pip_config_inert = super::pip_reads::configuration_inert(execution_environment);
         // ripgrep reads RIPGREP_CONFIG_PATH unless the command passes
         // `--no-config`, and ignores it only when it is empty. A stamped
         // environment carries names without values, so any name counts.
@@ -496,8 +467,6 @@ impl<'a> super::PathContext<'a> {
 
 const RIPGREP_CONFIG_NAME: &str = "RIPGREP_CONFIG_PATH";
 
-const XDG_CONFIG_HOME_NAME: &str = "XDG_CONFIG_HOME";
-
 fn rustup_selector(name: &str) -> bool {
     name.eq_ignore_ascii_case("RUSTUP_TOOLCHAIN") || name.eq_ignore_ascii_case("RUSTUP_HOME")
 }
@@ -509,39 +478,6 @@ fn rustup_selector(name: &str) -> bool {
 /// usually for a company's TLS-inspecting proxy that already sees all of the
 /// user's traffic; it leaves the registry where it was, and the agent's own
 /// command cannot set the hook's environment.
-/// Variables pip reads before any option on the command line, beyond the ones
-/// that only change how it prints.
-///
-/// pip asks platformdirs where its user and global configuration files live,
-/// so the names platformdirs resolves those directories from move a
-/// `pip.conf` out of the directories the file check reads: the config names
-/// on Linux, and the data names on macOS, where a configuration directory is
-/// a data directory. `XDG_CONFIG_HOME` is not among them, because the stamp
-/// carries the directory it names and
-/// [`super::pip_reads::redirected_configuration_inert`] reads the `pip.conf`
-/// there, which is the file pip itself would read. The remaining `XDG_`
-/// names, `XDG_RUNTIME_DIR` among them, name no directory pip reads
-/// configuration from.
-fn pip_selector(name: &str) -> bool {
-    let upper = name.to_ascii_uppercase();
-    if matches!(
-        upper.as_str(),
-        "XDG_CONFIG_DIRS" | "XDG_DATA_HOME" | "XDG_DATA_DIRS"
-    ) {
-        return true;
-    }
-    upper.starts_with("PIP_")
-        && !matches!(
-            upper.as_str(),
-            "PIP_DISABLE_PIP_VERSION_CHECK"
-                | "PIP_REQUIRE_VIRTUALENV"
-                | "PIP_NO_COLOR"
-                | "PIP_NO_INPUT"
-                | "PIP_QUIET"
-                | "PIP_VERBOSE"
-        )
-}
-
 fn npm_selector(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     upper.starts_with("NPM_CONFIG_")

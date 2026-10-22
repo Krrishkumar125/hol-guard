@@ -286,6 +286,87 @@ fn plain_name(word: &str) -> bool {
         && !word.contains("..")
 }
 
+const XDG_CONFIG_HOME_NAME: &str = "XDG_CONFIG_HOME";
+
+/// Whether nothing outside the command line can add an option to the listing.
+///
+/// A stamped environment carries the names the session exported and the
+/// directory `XDG_CONFIG_HOME` names; without one the runtime's own
+/// environment is the session's. Either way a variable pip reads keeps the
+/// command out, and a redirected configuration directory is read where pip
+/// would read it.
+pub(super) fn configuration_inert(
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
+    match execution_environment {
+        Some(environment) => {
+            environment.has_valid_shape()
+                && !environment
+                    .environment_names
+                    .iter()
+                    .any(|name| pip_selector(name))
+                && redirected_configuration_inert(
+                    environment.xdg_config_home.as_deref(),
+                    environment
+                        .environment_names
+                        .iter()
+                        .any(|name| name.eq_ignore_ascii_case(XDG_CONFIG_HOME_NAME)),
+                )
+        }
+        None => {
+            !std::env::vars_os()
+                .any(|(name, value)| !value.is_empty() && pip_selector(&name.to_string_lossy()))
+                && exported_configuration_inert(std::env::var_os(XDG_CONFIG_HOME_NAME).as_deref())
+        }
+    }
+}
+
+/// Whether the session's own `XDG_CONFIG_HOME` leaves pip's file where it is.
+///
+/// A value this runtime cannot read as text still moves the file pip reads,
+/// so the export is taken as an `OsStr` and only its text is read on: a
+/// redirect whose directory cannot be read is never inert.
+fn exported_configuration_inert(exported: Option<&std::ffi::OsStr>) -> bool {
+    let exported = exported.filter(|value| !value.is_empty());
+    redirected_configuration_inert(
+        exported.and_then(|value| value.to_str()),
+        exported.is_some(),
+    )
+}
+
+/// Variables pip reads before any option on the command line, beyond the ones
+/// that only change how it prints.
+///
+/// pip asks platformdirs where its user and global configuration files live,
+/// so the names platformdirs resolves those directories from move a
+/// `pip.conf` out of the directories the file check reads: the config names
+/// on Linux, and the data names on macOS, where a configuration directory is
+/// a data directory. `XDG_CONFIG_HOME` is not among them, because the stamp
+/// carries the directory it names and
+/// [`redirected_configuration_inert`] reads the `pip.conf`
+/// there, which is the file pip itself would read. The remaining `XDG_`
+/// names, `XDG_RUNTIME_DIR` among them, name no directory pip reads
+/// configuration from.
+fn pip_selector(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    if matches!(
+        upper.as_str(),
+        "XDG_CONFIG_DIRS" | "XDG_DATA_HOME" | "XDG_DATA_DIRS"
+    ) {
+        return true;
+    }
+    upper.starts_with("PIP_")
+        && !matches!(
+            upper.as_str(),
+            "PIP_DISABLE_PIP_VERSION_CHECK"
+                | "PIP_REQUIRE_VIRTUALENV"
+                | "PIP_NO_COLOR"
+                | "PIP_NO_INPUT"
+                | "PIP_QUIET"
+                | "PIP_VERBOSE"
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::safe_pip_arguments;
@@ -372,6 +453,34 @@ mod tests {
             "--version install requests",
         ] {
             assert!(!safe(command), "pip {command}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod configuration_tests {
+    use super::exported_configuration_inert;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn no_redirect_leaves_pips_file_where_the_check_reads_it() {
+        assert!(exported_configuration_inert(None));
+        assert!(exported_configuration_inert(Some(OsStr::new(""))));
+    }
+
+    #[test]
+    fn a_redirect_the_check_cannot_follow_keeps_the_review() {
+        assert!(!exported_configuration_inert(Some(OsStr::new(
+            "relative/config"
+        ))));
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            // A directory name this runtime cannot read as text still names a
+            // `pip.conf` the command would read, so it is not proved inert.
+            assert!(!exported_configuration_inert(Some(OsStr::from_bytes(
+                b"/tmp/\xff"
+            ))));
         }
     }
 }
