@@ -18,6 +18,7 @@ mod walk_memo;
 pub(super) use agent_root::{
     agent_root_listing, skill_link_resolves_over_home, skill_listing_root,
 };
+pub(super) use git_metadata::safe_git_entry;
 use options::unsafe_search_value;
 pub(super) use rg::{rg_hidden_whitelist_reason, safe_rg_stdin_arguments};
 pub(super) use sibling::named_path as sibling_repository_named_file;

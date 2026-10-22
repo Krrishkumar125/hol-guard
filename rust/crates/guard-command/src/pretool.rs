@@ -150,6 +150,7 @@ mod search_scope_filter;
 mod search_scope_glob;
 mod search_scope_ignore;
 mod search_scope_tracked;
+mod search_scope_walk;
 mod secret_aliases;
 pub(crate) mod sed_edits;
 mod segment_proof;
