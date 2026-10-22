@@ -160,7 +160,7 @@ const PATTERNS: &[PatternDef] = &[
         // `scheme://user:password@host`, as `git remote -v`, `.git/config`, a
         // database URL or a sync script prints it. `git@host:repo` has no
         // scheme and `ssh://git@host:22/` has no password, so neither matches.
-        pattern: r#"\b[a-z][a-z0-9+.-]{1,31}://[^\s:/?#@'"<>]{0,128}:[^\s/?#@'"<>]{1,256}@[a-z0-9\[]"#,
+        pattern: r#"\b[a-z][a-z0-9+.-]{1,31}://[^\s:/?#@'"<>]{0,128}:[^\s/?#@"<>]{1,256}@[^\s/?#@'"<>]"#,
         case_insensitive: true,
         multi_line: false,
     },
@@ -287,8 +287,13 @@ fn is_sample(
     if !suppressible(classifier) {
         return false;
     }
-    if classifier == "url-credential" && url_credential::is_placeholder(matched) {
-        return true;
+    if classifier == "url-credential" {
+        // Only the password slot can hold the secret, so sample wording in the
+        // account or host (`test:…@`, `@example.com`) proves nothing.
+        return url_credential::password(matched).is_some_and(|password| {
+            url_credential::is_placeholder(password)
+                || (suppress_samples && sample_regex().is_match(password))
+        });
     }
     if classifier == "credential-assignment"
         && (field_copy::is_field_copy(matched, rest_of_line)
@@ -595,6 +600,8 @@ mod tests {
             "PASSWD",
             "PASSPHRASE",
             "DB_PASS",
+            "_PASS",
+            "_PWD",
             "SMTP-PASS",
             "WEBDAV_PWD",
             "S3_ACCESS_KEY",

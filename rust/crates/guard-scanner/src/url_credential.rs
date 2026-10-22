@@ -7,17 +7,31 @@
 //! those reveal anything.
 
 use crate::masked_value;
+use regex::Regex;
+use std::sync::OnceLock;
 
 const SLOT_NAMES: &[&str] = &[
     "password", "passwd", "pass", "pwd", "pw", "secret", "token", "apikey", "api_key", "api-key",
 ];
 
-/// Whether the password in a `url-credential` match is a stand-in.
-pub(crate) fn is_placeholder(matched: &str) -> bool {
-    let Some(password) = password(matched) else {
-        return false;
-    };
-    password.starts_with(['$', '{', '%', '('])
+static SUBSTITUTION: OnceLock<Regex> = OnceLock::new();
+
+/// A whole password that is a template slot, such as `${TOKEN}`,
+/// `${TOKEN:-}`, `$TOKEN`, `$(cmd)`, `{password}`, `%s` or `%(password)s`. A
+/// bare `$name` counts only in one case, as variables are written, so a real
+/// password such as `$Kq7…` or a percent-encoded `%40…` is not a stand-in.
+fn substitution_regex() -> &'static Regex {
+    SUBSTITUTION.get_or_init(|| {
+        Regex::new(
+            r"^(?:\$\{[A-Za-z_][A-Za-z0-9_]*(?::?[-=+?][^}]*)?\}|\$(?:[A-Z_][A-Z0-9_]*|[a-z_][a-z0-9_]*)|\$\([^)]*\)|\{[A-Za-z_][A-Za-z0-9_.]*\}|%(?:\([A-Za-z_][A-Za-z0-9_]*\))?s)$",
+        )
+        .expect("URL substitution rule must compile")
+    })
+}
+
+/// Whether a URL password is a stand-in rather than a credential.
+pub(crate) fn is_placeholder(password: &str) -> bool {
+    substitution_regex().is_match(password)
         || password
             .chars()
             .all(|character| matches!(character, '*' | '•' | '●' | 'x' | 'X'))
@@ -27,7 +41,8 @@ pub(crate) fn is_placeholder(matched: &str) -> bool {
             .any(|name| password.eq_ignore_ascii_case(name))
 }
 
-fn password(matched: &str) -> Option<&str> {
+/// The password slot of a `url-credential` match.
+pub(crate) fn password(matched: &str) -> Option<&str> {
     let (_, rest) = matched.split_once("://")?;
     let userinfo = &rest[..rest.rfind('@')?];
     let (_, password) = userinfo.split_once(':')?;
@@ -59,8 +74,31 @@ mod tests {
             format!("DATABASE_URL=postgres://app:{password}@db.lan:5432/app"),
             format!("sync.sh:12:git push https://alice:{password}@git.lan/alice/notes.git"),
             format!("redis://:{password}@cache.lan:6379/0"),
+            format!("https://alice:{password}@例え.テスト/notes.git"),
         ] {
             assert!(url_credential(&text), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_password_that_only_looks_like_a_stand_in_is_a_credential() {
+        let password = password();
+        for text in [
+            format!("https://alice:%40{password}@git.lan/alice/notes.git"),
+            format!("https://alice:${password}@git.lan/alice/notes.git"),
+            format!("https://alice:{{{password}@git.lan/alice/notes.git"),
+            format!("https://alice:it's{password}@git.lan/alice/notes.git"),
+            format!("https://test:{password}@git.lan/alice/notes.git"),
+            format!("https://alice:{password}@example.com/notes.git"),
+        ] {
+            assert!(url_credential(&text), "{text:?}");
+            assert!(
+                scan_text(&text, false, false, MAX_SCAN_BYTES, None)
+                    .matches
+                    .iter()
+                    .any(|matched| matched.classifier == "url-credential"),
+                "{text:?}"
+            );
         }
     }
 
@@ -83,6 +121,8 @@ mod tests {
         for text in [
             "https://alice:${GITEA_TOKEN}@git.lan/alice/notes.git",
             "https://alice:$GITEA_TOKEN@git.lan/alice/notes.git",
+            "https://alice:${GITEA_TOKEN:-}@git.lan/alice/notes.git",
+            "https://alice:%(token)s@git.lan/alice/notes.git",
             "f\"postgres://{user}:{password}@{host}/app\"",
             "\"https://%s:%s@%s\" % (user, token, host)",
             "https://alice:***@git.lan/alice/notes.git",
