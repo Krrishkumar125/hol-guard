@@ -24,10 +24,9 @@
 use std::path::Path;
 
 /// Whether a Python manager segment runs a query against an environment that
-/// already exists. `uvx` fetches the tool it names, `pipenv` installs what it
-/// runs, and `pipx` reports a home the sandbox replaces, so none of them
-/// reaches this. Poetry reaches it for the verbs that read only the project
-/// in front of them.
+/// already exists. `uvx` fetches the tool it names, `poetry` and `pipenv`
+/// install what they run, and `pipx` reports a home the sandbox replaces, so
+/// none of them reaches this.
 ///
 /// The pip has to be a virtual environment's own. Outside one, pip reports the
 /// user site under the home directory as well, which the sandbox replaces, so

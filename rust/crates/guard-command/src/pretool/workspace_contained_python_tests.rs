@@ -223,9 +223,8 @@ fn an_empty_venv_directory_is_not_an_environment() {
     }
 }
 
-/// A poetry project whose environment lives beside it, which is what
-/// `virtualenvs.in-project` writes and the only layout a contained run can
-/// still find once the sandbox has replaced the home directory.
+/// A project with a Poetry manifest, lockfile and local virtual environment.
+/// Even with `.venv`, arbitrary `poetry run` commands retain the review floor.
 fn poetry_project(name: &str) -> std::path::PathBuf {
     let ws = project(name);
     std::fs::write(ws.join("poetry.lock"), "# generated\n").unwrap();
