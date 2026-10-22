@@ -7,10 +7,7 @@ import time
 from ..native_command_control_authority_io import require_exclusive_command_control_mutation_lease
 from ..native_command_control_authority_store import _key
 from ..native_policy_snapshot_constants import NativePolicySnapshotError
-from ..runtime.extension_control_authority import (
-    ExtensionControlAuthorityError,
-    verify_authenticated_record,
-)
+from ..runtime.extension_control_authority import ExtensionControlAuthorityError
 from . import activation_baseline, lifecycle, lifecycle_store
 from .activation_record import SCHEMA_V2, admission_is_current, verify_header
 from .activation_store import _row, directory_for_store, write_in_transaction
