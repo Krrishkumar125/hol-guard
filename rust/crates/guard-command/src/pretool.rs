@@ -66,6 +66,7 @@ mod chain_temporary;
 mod clone_siblings;
 mod compound_reason;
 mod fanout_reads;
+mod filter_pattern_text;
 mod find_reads;
 mod for_loop_unroll;
 pub(crate) mod git_apply_check;
