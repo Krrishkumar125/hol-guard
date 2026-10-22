@@ -139,8 +139,12 @@ fn an_ordinary_project_setting_runs_without_review() {
     assert!(allowed("NODE_ENV=test ls"));
     assert!(allowed("CI=1 ls"));
     assert!(allowed("LOG_LEVEL=debug ls"));
-    assert!(allowed("env NODE_ENV=test ls"));
     assert!(allowed("export APP_ENV=staging; ls"));
+    // `env NODE_ENV=test ls` carries the same setting, but the single
+    // command's proof reads the prefix tokens themselves and the `env` word
+    // is not one of them. The wrapper is removed a layer up, in
+    // `env_prefix_projection`, which has its own case for this command and a
+    // gate case behind it.
 }
 
 /// A setting that moves what a later command loads, whose certificate it
