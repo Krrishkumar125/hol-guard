@@ -35,6 +35,34 @@ ROOT = Path(__file__).resolve().parents[1]
 BINARY = Path(os.environ.get("HOL_GUARD_NATIVE_BINARY", ROOT / "rust/target/debug/hol-guard-runtime"))
 
 
+def test_export_adapter_leaves_exclusive_destination_creation_to_native(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    destination = tmp_path / "export"
+    source = tmp_path / "cache"
+    authority = object()
+    calls = []
+    monkeypatch.setattr(offline, "Lease", lambda _: Mock(close=lambda: None))
+    monkeypatch.setattr(offline, "prefetch", lambda *_: None)
+
+    def request(given_authority, directory, operation, **fields):
+        assert given_authority is authority
+        calls.append(operation)
+        if operation == "export-fresh-copy":
+            assert directory == source
+            assert fields["destination"] == destination
+            assert not destination.exists()
+            destination.mkdir(mode=0o700)
+        else:
+            assert operation == "import" and directory == destination
+            assert destination.is_dir()
+        return {"complete": True}
+
+    monkeypatch.setattr(offline, "_request", request)
+    assert offline.export_release(authority, source, destination) == {"complete": True}
+    assert calls == ["export-fresh-copy", "import"]
+
+
 @pytest.fixture(scope="module")
 def packaged(tmp_path_factory):
     base = tmp_path_factory.mktemp("native-offline-public").resolve()

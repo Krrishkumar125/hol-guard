@@ -67,6 +67,7 @@ from tests.benign_fp_gate_projects import (
     _node_toolchain,
     _python_toolchain,
     _sibling_test_runner,
+    _vendored_toolchain,
     _write,
 )
 
@@ -278,6 +279,7 @@ def build_fixture(root: Path) -> BenignFixture:
     _bun_lockfile(worktree, _INSTALLED_PACKAGES)
     _python_toolchain(worktree)
     _build_toolchain(worktree)
+    _vendored_toolchain(worktree)
     _write(worktree / "test_calc.py", "assert 1 + 1 == 2\nprint('ok')\n")
     _write(worktree / "scripts" / "rebuild.sh", "#!/bin/sh\necho rebuilt\n")
     # Reply drafted for a PR review conversation, posted with `gh pr comment --body-file`.

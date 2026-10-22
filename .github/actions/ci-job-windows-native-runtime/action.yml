@@ -58,7 +58,7 @@ runs:
       run: |
         $ErrorActionPreference = 'Stop'
         $PSNativeCommandUseErrorActionPreference = $true
-        cargo build --manifest-path rust/Cargo.toml --locked --release -p hol-guard-runtime --bin hol-guard-runtime
+        cargo build --manifest-path rust/Cargo.toml --locked --release -p hol-guard-runtime --bin hol-guard-runtime --timings
     - name: Save the Windows native runtime cache
       if: steps.runtime-cache.outputs.cache-hit != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -71,5 +71,14 @@ runs:
         name: windows-native-runtime
         path: rust/target/release/hol-guard-runtime.exe
         if-no-files-found: error
+        retention-days: 1
+        overwrite: true
+    - name: Retain native compilation timings
+      if: always() && steps.runtime-cache.outputs.cache-hit != 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: native-compilation-timings-windows
+        path: rust/target/cargo-timings/cargo-timing.html
+        if-no-files-found: ignore
         retention-days: 1
         overwrite: true

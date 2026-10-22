@@ -2,7 +2,11 @@
 
 use crate::{assignment_name, executable_basename, CommandSegmentV1, RawSegment};
 
-/// Strips `sudo` wrappers and `timeout`/`command`/`time`/`env` prefixes.
+#[path = "parser_launchers.rs"]
+mod launchers;
+
+/// Strips `sudo` wrappers and `timeout`/`command`/`time`/`env` prefixes, and
+/// the scheduling prefixes `launchers` reads.
 ///
 /// `sudo` changes who runs the program, so it stays in the wrapper chain.
 /// A bare `timeout 30 pytest -q` runs the program this text already names,
@@ -30,6 +34,14 @@ pub(super) fn unwrap_wrappers(
             }
             prefixes += 1;
             environment_names.extend(names);
+            index = next;
+            continue;
+        }
+        if let Some(next) = launchers::launcher_program(tokens, index) {
+            if wrappers.len() + prefixes == 4 {
+                return Err("command_wrapper_limit_exceeded");
+            }
+            prefixes += 1;
             index = next;
             continue;
         }

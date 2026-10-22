@@ -45,6 +45,46 @@ pub(super) fn local_python_work(
             virtual_environment_executable(executable, directory)
                 && super::super::pip_reads::environment_read_words(&words)
         }
+        "poetry" => local_poetry_work(arguments, directory),
+        _ => false,
+    }
+}
+
+/// Read-only Poetry subcommands whose semantics are provable without launching
+/// a nested program. `run` is deliberately excluded: it can launch `pip
+/// install`, a shell, or any other executable. A workspace `.venv` alone
+/// does not prove that the nested program is safe.
+///
+/// Poetry accepts global project-moving options both before and after the
+/// subcommand; reject them everywhere. Likewise `--` can hide operands:
+/// `poetry version -- patch` writes the manifest, not just reads it.
+const POETRY_INERT_FLAGS: &[&str] = &["--no-ansi", "--no-interaction", "-n", "--quiet", "-q"];
+
+fn local_poetry_work(arguments: &[String], _directory: &Path) -> bool {
+    let words: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    if words.iter().any(|word| {
+        *word == "--"
+            || word.starts_with("-C")
+            || word.starts_with("-P")
+            || *word == "--directory"
+            || word.starts_with("--directory=")
+            || *word == "--project"
+            || word.starts_with("--project=")
+    }) {
+        return false;
+    }
+
+    let mut words = words
+        .iter()
+        .copied()
+        .skip_while(|word| POETRY_INERT_FLAGS.contains(word));
+    let Some(verb) = words.next() else {
+        return false;
+    };
+
+    match verb {
+        "check" => words.all(|word| word == "--lock" || POETRY_INERT_FLAGS.contains(&word)),
+        "version" => words.all(|word| word == "--short" || POETRY_INERT_FLAGS.contains(&word)),
         _ => false,
     }
 }

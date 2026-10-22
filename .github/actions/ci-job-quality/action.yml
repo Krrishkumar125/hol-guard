@@ -54,7 +54,10 @@ runs:
         src/ \
         tests/test_guard_durable_io.py \
         tests/test_guard_managed_install_context.py \
-        tests/test_guard_private_file_io.py
+        tests/test_guard_private_file_io.py \
+        tests/test_native_offline_cache.py \
+        tests/test_native_policy_test_support.py \
+        tests/test_ci_native_evaluator_cache.py
     shell: bash
   - name: Check formatting for production sources
     run: |
@@ -62,7 +65,10 @@ runs:
         src/ \
         tests/test_guard_durable_io.py \
         tests/test_guard_managed_install_context.py \
-        tests/test_guard_private_file_io.py
+        tests/test_guard_private_file_io.py \
+        tests/test_native_offline_cache.py \
+        tests/test_native_policy_test_support.py \
+        tests/test_ci_native_evaluator_cache.py
     shell: bash
   - run: uv run --no-sync basedpyright --level error
     shell: bash

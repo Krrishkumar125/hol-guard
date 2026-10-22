@@ -15,8 +15,9 @@
 //! `--project` and a `cd` ahead of it, so the environment is looked for where
 //! the command will actually stand.
 //!
-//! A Python manager's queries are read by [`super::python`], and `go` and
-//! `cargo` by [`super::compiled`], each of which this module dispatches to.
+//! A Python manager's queries are read by [`super::python`], `go` and `cargo`
+//! by [`super::compiled`], and Composer's and Bundler's project verbs by
+//! [`super::vendored`], each of which this module dispatches to.
 
 use crate::CanonicalCommandV1;
 use std::path::{Path, PathBuf};
@@ -31,6 +32,8 @@ pub(super) const NODE_PACKAGE_EXTENSION: &str = "command.package.node";
 const PYTHON_PACKAGE_EXTENSION: &str = "command.package.python";
 const GO_PACKAGE_EXTENSION: &str = "command.package.go";
 const RUST_PACKAGE_EXTENSION: &str = "command.package.rust";
+const PHP_PACKAGE_EXTENSION: &str = "command.package.php";
+const RUBY_PACKAGE_EXTENSION: &str = "command.package.ruby";
 // The package-firewall permissions that mark a manager's use. They record
 // which ecosystem ran, not a risk the run carries, so a local verb below one
 // of them is still ordinary workspace work.
@@ -39,6 +42,8 @@ pub(crate) const PACKAGE_EXTENSIONS: &[&str] = &[
     PYTHON_PACKAGE_EXTENSION,
     GO_PACKAGE_EXTENSION,
     RUST_PACKAGE_EXTENSION,
+    PHP_PACKAGE_EXTENSION,
+    RUBY_PACKAGE_EXTENSION,
 ];
 // The Python managers the package firewall watches. Each installs what it
 // runs, so only the queries [`super::python`] admits are local work; `uv` is
@@ -335,6 +340,7 @@ pub(super) fn names_a_manager(model: &CanonicalCommandV1) -> bool {
             let name = super::super::executable_basename(executable).to_ascii_lowercase();
             NODE_MANAGERS.contains(&name.as_str())
                 || PYTHON_MANAGERS.contains(&name.as_str())
+                || super::vendored::VENDORED_MANAGERS.contains(&name.as_str())
                 || matches!(name.as_str(), "uv" | "go" | "cargo")
         })
     })
@@ -415,6 +421,18 @@ pub(super) fn local_package_work(
                 .take_while(|argument| *argument != "--")
                 .collect();
             return local_uv_work(&arguments, directory, workspace);
+        }
+        if super::vendored::VENDORED_MANAGERS.contains(&name.as_str()) {
+            let Some(directory) = directory.as_deref() else {
+                return false;
+            };
+            return super::vendored::local_vendored_work(
+                &name,
+                &segment.arguments,
+                &segment.environment_names,
+                directory,
+                workspace,
+            );
         }
         if !NODE_MANAGERS.contains(&name.as_str()) {
             // A runner still here was not proved to start an installed tool,

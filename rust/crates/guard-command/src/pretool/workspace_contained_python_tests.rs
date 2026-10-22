@@ -222,3 +222,124 @@ fn an_empty_venv_directory_is_not_an_environment() {
         assert_ne!(reason, CONTAINED, "{harness}");
     }
 }
+
+/// A project with a Poetry manifest, lockfile and local virtual environment.
+/// Even with `.venv`, arbitrary `poetry run` commands retain the review floor.
+fn poetry_project(name: &str) -> std::path::PathBuf {
+    let ws = project(name);
+    std::fs::write(ws.join("poetry.lock"), "# generated\n").unwrap();
+    ws
+}
+
+#[test]
+fn a_poetry_read_that_stays_in_the_project_runs_inside_the_sandbox() {
+    let ws = poetry_project("poetry-reads");
+    for command in [
+        "poetry check",
+        "poetry check --lock",
+        "poetry version",
+        "poetry version --short",
+        "poetry --no-interaction check",
+        "poetry -q version",
+    ] {
+        for harness in ["codex", "claude-code", "omp"] {
+            let (reason, _) = outcome(harness, command, &ws);
+            assert_eq!(reason == CONTAINED, host(), "{reason} {harness}: {command}");
+        }
+    }
+}
+
+#[test]
+fn every_poetry_verb_that_reaches_a_registry_keeps_its_review() {
+    let ws = poetry_project("poetry-installs");
+    for command in [
+        "poetry add requests",
+        "poetry install",
+        "poetry install --no-root",
+        "poetry update",
+        "poetry lock",
+        "poetry remove requests",
+        "poetry export -f requirements.txt",
+        "poetry publish --build",
+        "poetry self update",
+        "poetry source add internal https://example.invalid/simple",
+        "poetry run pip install ./local-package",
+        "poetry run python -m pip install ./local-package",
+        "poetry run pytest -q",
+        "poetry run -- pytest -q",
+    ] {
+        for harness in ["codex", "claude-code", "omp"] {
+            let (reason, minimum) = outcome(harness, command, &ws);
+            assert_ne!(reason, CONTAINED, "{harness}: {command}");
+            assert_eq!(minimum, "review", "{harness}: {command} ({reason})");
+        }
+    }
+}
+
+#[test]
+fn a_poetry_verb_that_writes_or_moves_the_project_keeps_its_review() {
+    // `poetry version 2.0.0` writes the version back into the manifest, the
+    // directory options name a project these checks never looked at, and
+    // `env info` and `show` answer for the environment poetry resolves
+    // through its own home, which the sandbox replaces.
+    let ws = poetry_project("poetry-elsewhere");
+    for command in [
+        "poetry version 2.0.0",
+        "poetry version patch",
+        "poetry version -- patch",
+        "poetry version -- 2.0.0",
+        "poetry version --project=../dashboard",
+        "poetry version -C../dashboard",
+        "poetry version -P../dashboard",
+        "poetry check --directory=../dashboard",
+        "poetry check --project ../dashboard",
+        "poetry check --unknown-option",
+        "poetry run -C ../dashboard pytest",
+        "poetry run --project=../dashboard pytest",
+        "poetry -C ../dashboard run pytest",
+        "poetry --directory ../dashboard check",
+        "poetry --project ../dashboard version",
+        "poetry env info",
+        "poetry show",
+    ] {
+        for harness in ["codex", "claude-code", "omp"] {
+            let (reason, minimum) = outcome(harness, command, &ws);
+            assert_ne!(reason, CONTAINED, "{harness}: {command}");
+            assert_eq!(minimum, "review", "{harness}: {command} ({reason})");
+        }
+    }
+}
+
+#[test]
+fn a_poetry_run_without_a_materialized_environment_keeps_its_review() {
+    // Poetry puts the environment under its own home unless the project holds
+    // `.venv`, and a contained run is handed the workspace as that home, so
+    // the run would have to create the environment the sandbox has no network
+    // to fill.
+    let bare = workspace("poetry-bare", true);
+    std::fs::write(bare.join("pyproject.toml"), PROJECT).unwrap();
+    std::fs::write(bare.join("poetry.lock"), "# generated\n").unwrap();
+    for harness in ["codex", "claude-code", "omp"] {
+        let (reason, _) = outcome(harness, "poetry run pytest -q", &bare);
+        assert_ne!(reason, CONTAINED, "{harness}");
+    }
+    // The verbs that read the manifest need no environment at all.
+    for harness in ["codex", "claude-code", "omp"] {
+        let (reason, _) = outcome(harness, "poetry check", &bare);
+        assert_eq!(reason == CONTAINED, host(), "{reason} {harness}");
+    }
+}
+
+#[test]
+fn a_poetry_read_beside_an_install_keeps_the_whole_command_out() {
+    let ws = poetry_project("poetry-mixed");
+    for command in [
+        "poetry check && poetry install",
+        "poetry version; poetry add requests",
+    ] {
+        for harness in ["codex", "claude-code", "omp"] {
+            let (reason, _) = outcome(harness, command, &ws);
+            assert_ne!(reason, CONTAINED, "{harness}: {command}");
+        }
+    }
+}
