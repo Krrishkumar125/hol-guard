@@ -193,11 +193,18 @@ def guard_cli_launcher() -> str:
     A source install keeps the running interpreter. A frozen Core uses the
     prune-safe launcher, so a Desktop update never strands an installed hook on
     a removed ``versions/<release>/`` executable.
+
+    Harnesses and the native fallback spawn this argv0 directly, without a
+    command interpreter, so Windows keeps the Core executable rather than a
+    batch-file shim.
     """
 
     if not bool(getattr(sys, "frozen", False)):
         return sys.executable
-    return resolve_frozen_guard_cli()
+    launcher = resolve_frozen_guard_cli()
+    if sys.platform == "win32" and Path(launcher).suffix.lower() in {".cmd", ".bat"}:
+        return sys.executable
+    return launcher
 
 
 def resolve_guard_cli_argv0(baked_argv0: str) -> str:

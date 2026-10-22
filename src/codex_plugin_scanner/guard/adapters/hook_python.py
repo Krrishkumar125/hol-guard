@@ -28,7 +28,7 @@ from typing import Final, cast
 import codex_plugin_scanner
 
 from ...version import __version__
-from ..stable_guard_cli import resolve_frozen_guard_cli
+from ..stable_guard_cli import guard_cli_launcher
 from .base import HarnessContext
 from .hook_python_probe_code import PROBE_CODE as _PROBE_CODE
 from .hook_python_subprocess import run_probe as _run_probe
@@ -467,7 +467,7 @@ def resolve_guard_hook_python(context: HarnessContext) -> Path:
     """Return the invocation path for the attested running Guard Python."""
 
     if bool(getattr(sys, "frozen", False)):
-        return _executable_identity(Path(resolve_frozen_guard_cli()).absolute()).invocation_path
+        return _executable_identity(Path(guard_cli_launcher()).absolute()).invocation_path
     try:
         return attest_guard_hook_python(context).executable
     except RuntimeError as error:

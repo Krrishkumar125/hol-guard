@@ -32,12 +32,12 @@ def _write_launcher(path: Path) -> Path:
 def versioned_core(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
     core = tmp_path / "core"
     executable = _write_launcher(core / "versions" / "2.0.900" / "hol-guard")
-    _ = _write_launcher(core / "current-hol-guard")
-    _ = _write_launcher(core / "current-hol-guard.cmd")
+    shim = _write_launcher(core / "current-hol-guard")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(executable))
-    launcher = stable_guard_cli.resolve_frozen_guard_cli()
-    assert Path(launcher).name.startswith("current-hol-guard")
+    monkeypatch.setattr(sys, "platform", "linux")
+    launcher = stable_guard_cli.guard_cli_launcher()
+    assert launcher == str(shim)
     return executable, launcher
 
 
@@ -135,3 +135,15 @@ def test_windows_never_uses_the_extensionless_shim(tmp_path: Path, monkeypatch: 
 
     assert stable_guard_cli.guard_cli_launcher() == str(executable)
     assert stable_guard_cli.prune_safe_cli_executable(str(executable)) == str(executable)
+
+
+def test_windows_keeps_the_core_executable_over_a_batch_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    core = tmp_path / "core"
+    executable = _write_launcher(core / "versions" / "2.0.900" / "hol-guard")
+    shim = _write_launcher(core / "current-hol-guard.cmd")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(executable))
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    assert stable_guard_cli.resolve_frozen_guard_cli() == str(shim)
+    assert stable_guard_cli.guard_cli_launcher() == str(executable)
