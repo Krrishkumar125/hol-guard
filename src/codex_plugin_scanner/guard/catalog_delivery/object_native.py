@@ -11,9 +11,11 @@ import base64
 import functools
 import hashlib
 import json
+import os
 import threading
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from pathlib import Path
 from typing import Any, TypeVar
 
 from . import lifecycle
@@ -28,9 +30,9 @@ CONTAINER_STRUCTURE = "delivery container archive invalid"
 # return. Enabling one extension re-reads the same catalogs and installed
 # members hundreds of times across preview, preparation and publication, and
 # each read starts the runtime. Publication then misses its deadline on slower
-# hosts. Answers stay in memory up to a byte budget; a replaced or modified
-# runtime starts over with fresh native answers.
-_ANSWERS: OrderedDict[bytes, str] = OrderedDict()
+# hosts. Answers stay in memory up to a byte budget. An answer is reused only
+# while the runtime and every file it read are unchanged.
+_ANSWERS: OrderedDict[bytes, tuple[str, tuple[tuple[str, tuple[int, ...]], ...]]] = OrderedDict()
 _ANSWERS_LOCK = threading.Lock()
 _ANSWERS_LIMIT = 8 * 1024 * 1024
 _ANSWER_LIMIT = 1024 * 1024
@@ -63,12 +65,25 @@ def call(operation: str, *, invalid: str = REQUEST_INVALID, **fields: Any) -> di
     return reply
 
 
-def addressed(operation: str, *, invalid: str = REQUEST_INVALID, **fields: Any) -> dict[str, Any]:
+def _identity(path: str) -> tuple[int, ...]:
+    st = os.stat(path, follow_symlinks=False)
+    return (st.st_mode, st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+
+def addressed(
+    operation: str,
+    *,
+    sources: Callable[[dict[str, Any]], Iterable[Path]],
+    invalid: str = REQUEST_INVALID,
+    **fields: Any,
+) -> dict[str, Any]:
     """Run a read whose request fixes its answer, reusing an earlier verified answer.
 
-    Only an answer carrying data is kept. A rejection, a partial expansion that
-    names missing objects, and a resolved whole asset all go back to the runtime
-    every time.
+    ``sources`` names the files an answer read. Only an answer carrying data is
+    kept, and only while each of those files keeps its identity, so a removed,
+    replaced or modified file goes back to the runtime. A rejection, a partial
+    expansion that names missing objects, and a resolved whole asset also go
+    back every time.
     """
     try:
         runtime = lifecycle.runtime_fingerprint()
@@ -78,22 +93,40 @@ def addressed(operation: str, *, invalid: str = REQUEST_INVALID, **fields: Any) 
         return call(operation, invalid=invalid, **fields)
     digest = hashlib.sha256(material.encode()).digest()
     with _ANSWERS_LOCK:
-        answer = _ANSWERS.get(digest)
-        if answer is not None:
-            _ANSWERS.move_to_end(digest)
-    if answer is not None:
-        return json.loads(answer)
+        held = _ANSWERS.get(digest)
+    if held is not None:
+        try:
+            current = all(_identity(path) == identity for path, identity in held[1])
+        except OSError:
+            current = False
+        with _ANSWERS_LOCK:
+            if current and _ANSWERS.get(digest) is held:
+                _ANSWERS.move_to_end(digest)
+                return json.loads(held[0])
+            if _ANSWERS.get(digest) is held:
+                del _ANSWERS[digest]
     reply = call(operation, invalid=invalid, **fields)
     if "data" not in reply or "need" in reply:
         return reply
     answer = json.dumps(reply)
-    if len(answer) <= _ANSWER_LIMIT:
-        with _ANSWERS_LOCK:
-            _ANSWERS[digest] = answer
-            held = sum(map(len, _ANSWERS.values()))
-            while held > _ANSWERS_LIMIT:
-                held -= len(_ANSWERS.popitem(last=False)[1])
+    if len(answer) > _ANSWER_LIMIT:
+        return reply
+    try:
+        read = tuple((str(path), _identity(str(path))) for path in sources(reply))
+    except (OSError, KeyError, TypeError, ValueError):
+        return reply
+    with _ANSWERS_LOCK:
+        _ANSWERS[digest] = (answer, read)
+        _ANSWERS.move_to_end(digest)
+        size = sum(len(entry[0]) for entry in _ANSWERS.values())
+        while size > _ANSWERS_LIMIT:
+            size -= len(_ANSWERS.popitem(last=False)[1][0])
     return reply
+
+
+def objects_read(directory: Path) -> Callable[[dict[str, Any]], list[Path]]:
+    """The cache objects an expansion answer names in its ``reads``."""
+    return lambda reply: [directory / f"{sha256}.json" for sha256 in reply["reads"]]
 
 
 def member_at(path, asset: str, name: str, length: int) -> bytes:

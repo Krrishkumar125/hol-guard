@@ -204,12 +204,14 @@ class VerifiedInstalledBundle:
 
     def _fetch(self, target_location: dict[str, Any], max_bytes: int) -> bytes:
         base = _package() / ASSETS
+        root = checked_path(base, anchor=_installation_root())
         try:
             # The runtime validates the location, bounds the request and reads a
             # container member by its digest; a whole asset is only resolved.
             reply = addressed(
                 "installed",
-                root=str(checked_path(base, anchor=_installation_root())),
+                sources=lambda _reply: [root / target_location["tag"] / target_location["asset"]],
+                root=str(root),
                 target=target_location,
                 source=self.source_sha,
                 length=max_bytes,

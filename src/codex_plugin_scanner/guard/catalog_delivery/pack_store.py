@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .object_native import addressed
+from .object_native import addressed, objects_read
 
 MAX_OBJECT_BYTES = 64 * 1024
 MAX_BLOB_BYTES = 8 * 1024 * 1024
@@ -123,6 +123,7 @@ class PackReader:
         # the length, digest and expansion its reference declares.
         reply = addressed(
             "expand",
+            sources=objects_read(self.directory),
             mode="pack",
             directory=str(self.directory),
             reference=reference,
