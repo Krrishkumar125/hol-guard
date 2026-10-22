@@ -209,11 +209,14 @@ fn verdict(
     };
     // A proven Git read, `origin` fetch or worktree add writes no
     // configuration, so it cannot change what a later read in the same
-    // command would run.
+    // command would run. A proven dependency link writes none either: its
+    // name was free, it sits inside a checkout rather than above one, and a
+    // directory the probe already read cannot acquire an absent ancestor.
     let settled = |prior: usize| {
         let segment = segments[prior];
         benign.contains(&prior)
             || write_free(segment)
+            || super::symlink_writes::safe_symlink_arguments(segment, read_context)
             || super::git_remote_ops::verified_fetch(segment, read_context)
             || super::git_remote_ops::verified_fetch(segment, context)
             || super::worktree_add::proven_alone(
