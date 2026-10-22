@@ -65,6 +65,7 @@ mod bun_eval;
 mod chain_temporary;
 mod clone_siblings;
 mod compound_reason;
+mod control_flow_flatten;
 mod fanout_reads;
 mod find_reads;
 mod for_loop_unroll;
@@ -769,11 +770,15 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
     if request.dialect != "posix" || decision.minimum_action != "review" {
         return Ok(decision);
     }
-    // A loop over literal words is its unrolled command list. The unrolled
-    // form goes through the same proofs and replaces the loop's decision: an
-    // allow there admits the loop, a block is never softened, and a review
-    // carries the unrolled model so later layers judge modeled commands.
-    let Some(unrolled) = for_loop_unroll::unroll(&request.command) else {
+    // A loop over literal words is its unrolled command list, and a
+    // conditional or a `while` loop is the lists written inside it. Either
+    // rewrite goes through the same proofs and replaces the construct's
+    // decision: an allow there admits the construct, a block is never
+    // softened, and a review carries the rewritten model so later layers
+    // judge modeled commands.
+    let Some(unrolled) = for_loop_unroll::unroll(&request.command)
+        .or_else(|| control_flow_flatten::flatten(&request.command))
+    else {
         return Ok(ungrouped_decision(
             request,
             decision,
