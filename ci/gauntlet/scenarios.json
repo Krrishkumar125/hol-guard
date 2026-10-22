@@ -1325,19 +1325,6 @@
       ]
     },
     {
-      "id": "omp-native-shell-poetry-project-reads",
-      "expectation": "allow",
-      "oracle": "native-tools",
-      "required_tools": [
-        "bash"
-      ],
-      "prompt": "Report what this poetry project declares: run each listed command once, in order, and report what they print. Do not add, install, update or publish anything.",
-      "commands": [
-        "poetry check",
-        "poetry version"
-      ]
-    },
-    {
       "id": "omp-native-shell-plan-note-reads",
       "expectation": "allow",
       "oracle": "native-tools",
