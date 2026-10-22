@@ -141,7 +141,7 @@ def test_busy_refresh_retains_the_installed_authority_even_during_migration(
     )
     attempts = []
 
-    def busy(registry, *, read_only=False):
+    def busy(registry, *, read_only=False, **_kwargs):
         attempts.append((registry.catalog_digest, read_only))
         if mutation_required and read_only:
             raise NativeCommandControlMutationRequiredError()

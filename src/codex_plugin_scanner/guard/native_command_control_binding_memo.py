@@ -119,7 +119,6 @@ def input_key(store: GuardStore) -> str | None:
                 _file(path)
                 for path in (
                     _program_path(),
-                    state,
                     state / AUTHORITY_FILE_NAME,
                     state / active_security.FILE,
                     directory_for_store(store),

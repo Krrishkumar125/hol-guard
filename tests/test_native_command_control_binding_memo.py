@@ -22,9 +22,12 @@ from codex_plugin_scanner.guard.store_extension_control_authority_schema import 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the memo keeps nothing on Windows")
 
 
+_INPUT_KEY = memo.input_key
+
+
 @pytest.fixture(autouse=True)
 def _reuse(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(memo, "FULL_READ_INTERVAL_SECONDS", 60.0)
+    monkeypatch.setattr(memo, "input_key", _INPUT_KEY)
 
 
 def _store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> GuardStore:
