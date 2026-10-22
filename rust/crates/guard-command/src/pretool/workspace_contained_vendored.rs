@@ -258,20 +258,46 @@ fn composer_tree(directory: &Path, workspace: &Path) -> Option<PathBuf> {
     tree.is_dir().then_some(tree)
 }
 
-/// The value `.bundle/config` holds for `key`: `Some(None)` when the file does
-/// not set it, and `None` when it sets it more than once. Bundler keeps the
-/// last of a repeated key, so a reader that took the first would answer for a
-/// tree the run does not read, and a repeat is ambiguous enough to refuse.
-fn bundle_setting(config: &str, key: &str) -> Option<Option<String>> {
-    let mut values = config.lines().filter_map(|line| {
-        let (name, value) = line.split_once(':')?;
-        (name.trim() == key).then(|| value.trim().trim_matches(['"', '\'']).to_owned())
-    });
-    let first = values.next();
-    if values.next().is_some() {
+/// How one line of `.bundle/config` spells `key`. Bundler reads a line as a
+/// setting only when the key starts the line and its colon is followed by
+/// white space or ends the line, so `BUNDLE_PATH:vendor/bundle`, an indented
+/// key and a key with a space before its colon are not the setting it names.
+/// `Some(None)` is a line about another key, `Some(Some(value))` is the
+/// setting, and `None` is a spelling of this key that Bundler may read
+/// differently from this reader.
+fn bundle_line(line: &str, key: &str) -> Option<Option<String>> {
+    let Some(rest) = line.trim_start().strip_prefix(key) else {
+        return Some(None);
+    };
+    if rest.starts_with(|letter: char| letter == '_' || letter.is_ascii_alphanumeric()) {
+        return Some(None);
+    }
+    let value = match rest.strip_prefix(':') {
+        Some("") if line.starts_with(key) => "",
+        Some(tail) if line.starts_with(key) && tail.starts_with([' ', '\t']) => tail.trim(),
+        _ => return None,
+    };
+    if value.ends_with(':') || value.contains(": ") || value.contains(":\t") {
         return None;
     }
-    Some(first)
+    Some(Some(value.trim_matches(['"', '\'']).to_owned()))
+}
+
+/// The value `.bundle/config` holds for `key`: `Some(None)` when the file does
+/// not set it, and `None` when it sets it more than once or spells it in a way
+/// `bundle_line` refuses. Bundler keeps the last of a repeated key, so a reader
+/// that took the first would answer for a tree the run does not read, and a
+/// repeat is ambiguous enough to refuse.
+fn bundle_setting(config: &str, key: &str) -> Option<Option<String>> {
+    let mut found = None;
+    for line in config.lines() {
+        if let Some(value) = bundle_line(line, key)? {
+            if found.replace(value).is_some() {
+                return None;
+            }
+        }
+    }
+    Some(found)
 }
 
 /// The directory Bundler reads this project's gems from. Bundler puts them
@@ -283,10 +309,10 @@ fn bundle_tree(directory: &Path, workspace: &Path) -> Option<PathBuf> {
     // `BUNDLE_PATH__SYSTEM` and its siblings choose the system gem home
     // whatever `BUNDLE_PATH` says, so a configuration that sets one does not
     // name this directory's bundle.
-    if config.lines().any(|line| {
-        line.split_once(':')
-            .is_some_and(|(name, _)| name.trim().starts_with("BUNDLE_PATH__"))
-    }) {
+    if config
+        .lines()
+        .any(|line| line.trim_start().starts_with("BUNDLE_PATH__"))
+    {
         return None;
     }
     // A Gemfile or app-config elsewhere makes this directory's files not the

@@ -443,6 +443,11 @@ fn bundler_reads_the_bundle_its_configuration_names() {
         "BUNDLE_PATH: \"vendor/bundle\"\nBUNDLE_PATH: \"vendor/bundle\"\n",
         "BUNDLE_DEPLOYMENT: \"true\"\nBUNDLE_DEPLOYMENT: \"false\"\n",
         "BUNDLE_PATH: \"vendor/bundle\"\nBUNDLE_PATH__SYSTEM: \"true\"\n",
+        // Bundler does not read these spellings as the setting they resemble.
+        "BUNDLE_DEPLOYMENT: \"false\"\nBUNDLE_PATH:vendor/bundle\n",
+        " BUNDLE_PATH: \"vendor/bundle\"\n",
+        "BUNDLE_PATH : \"vendor/bundle\"\n",
+        "BUNDLE_PATH: \"vendor/bundle\"\nBUNDLE_GEMFILE:../Gemfile\n",
     ] {
         configure_bundle(&ws, &format!("---\n{config}"));
         assert!(!run("bundle", &ws, &exec), "{config}");
