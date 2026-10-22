@@ -665,6 +665,7 @@ mod policy_runtime_saved;
 mod policy_runtime_saved_reuse;
 mod policy_snapshot_build;
 mod policy_store;
+mod pre_tool_extension_evidence_op;
 mod project_identity;
 mod prompt_analyze_op;
 mod protect_request_op;

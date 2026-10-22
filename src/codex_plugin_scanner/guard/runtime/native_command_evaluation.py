@@ -71,6 +71,9 @@ def native_command_review(
     ``admit_unenrolled`` also reviews on a device that never enrolled. Only the
     advisory allow hint asks for it, to tell such a device what setup unlocks;
     every other caller keeps treating any authority failure as no review.
+
+    The review carries the extension evidence the resident decided it on, so
+    it can be resolved against ``extension_control_snapshot``.
     """
     snapshot = extension_control_snapshot or current_extension_control_snapshot()
     if snapshot is None or (
@@ -85,6 +88,7 @@ def native_command_review(
         execution_environment=execution_environment,
         timeout_seconds=timeout_seconds,
         record_health=record_health,
+        extension_evidence=True,
     )
     if native is None:
         return None

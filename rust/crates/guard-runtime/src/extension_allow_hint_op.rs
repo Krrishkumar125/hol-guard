@@ -47,7 +47,7 @@ pub(crate) fn evaluate_with_store(
     })
 }
 
-fn evaluate_extension_allow_hint(
+pub(crate) fn evaluate_extension_allow_hint(
     request: &ExtensionAllowHintRequestV1,
     controls: Option<&CompiledNativeCommandControls>,
 ) -> Result<Vec<u8>, String> {
