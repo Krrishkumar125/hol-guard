@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from ..runtime.extension_control_authority import (
     AuthorityHealth,
@@ -14,6 +15,7 @@ from ..runtime.extension_control_contract import ControlLayerKind
 from ..runtime.extension_control_proof import ExtensionControlMutation
 from ..runtime.generated_command_catalog import GeneratedCommandCatalog
 from . import activation_store, active_security, lifecycle
+from .cache_io import Lease
 
 
 @lifecycle.one_runtime
@@ -33,6 +35,8 @@ def migrate_active(store, installed):
                 store._resume_transition(connection, anchor.revision, key=key)
         store._read_extension_control_authority_locked(previous.metadata.catalog_digest)
     previous = activation_store.read(store)
+    if previous is None:
+        raise ValueError("installed command pack activation missing after recovery")
     if previous.engine == installed.engine:
         active_security.reconcile(store)
         return
@@ -80,6 +84,8 @@ def migrate_active(store, installed):
                 raise ExtensionControlAuthorityError("managed policy changed before installed upgrade")
             with store._connect() as connection:
                 row = activation_store._row(connection)
+                if row is None:
+                    raise ValueError("installed command pack activation missing before commit")
                 evidence["previous"] = {
                     "record": row["record_json"],
                     "digest": row["record_digest"],
@@ -102,4 +108,4 @@ def migrate_active(store, installed):
             )
         active_security.reconcile(store)
     finally:
-        draft._cache_lease.close()
+        cast(Lease, draft._cache_lease).close()
