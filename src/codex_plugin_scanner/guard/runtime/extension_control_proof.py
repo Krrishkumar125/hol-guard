@@ -16,7 +16,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from pathlib import Path
 
 from ..approval_gate import (
@@ -65,18 +65,43 @@ def _resident_digest(compute: Callable[[], str], identity_refusal: str) -> str:
         raise ExtensionControlProofError(refusal) from None
 
 
+def _transportable(values: tuple[object, ...]) -> bool:
+    """Whether every value is a string the resident request can carry.
+
+    A lone surrogate is a Python string but not UTF-8, so the resident could
+    not decode the request; refusing it here keeps it a field refusal rather
+    than a resident failure.
+    """
+
+    for value in values:
+        if not isinstance(value, str):
+            return False
+        try:
+            _ = value.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+    return True
+
+
 @dataclass(frozen=True, slots=True)
 class ExtensionControlEnrollment:
     catalog_digest: str
     actor_id: str
     nonce: str
     _digest: str = field(init=False, repr=False, compare=False)
+    # The home whose resident digests the enrollment; not part of the proof.
+    guard_home: InitVar[Path | None] = None
 
-    def __post_init__(self) -> None:
-        if not all(isinstance(value, str) for value in (self.catalog_digest, self.actor_id, self.nonce)):
+    def __post_init__(self, guard_home: Path | None) -> None:
+        if not _transportable((self.catalog_digest, self.actor_id, self.nonce)):
             raise ExtensionControlProofError("invalid enrollment identity")
         digest = _resident_digest(
-            lambda: enrollment_digest(catalog_digest=self.catalog_digest, actor_id=self.actor_id, nonce=self.nonce),
+            lambda: enrollment_digest(
+                catalog_digest=self.catalog_digest,
+                actor_id=self.actor_id,
+                nonce=self.nonce,
+                guard_home=guard_home,
+            ),
             "invalid enrollment identity",
         )
         object.__setattr__(self, "_digest", digest)
@@ -419,11 +444,10 @@ class ExtensionControlMutation:
     _digest: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        if type(self.previous_revision) is not int:
+        # The resident reads the revision as a signed 64-bit integer.
+        if type(self.previous_revision) is not int or not -(2**63) <= self.previous_revision < 2**63:
             raise ExtensionControlProofError("invalid previous revision")
-        if not all(
-            isinstance(value, str) for value in (self.catalog_digest, self.actor_id, self.idempotency_key, self.nonce)
-        ):
+        if not _transportable((self.catalog_digest, self.actor_id, self.idempotency_key, self.nonce)):
             raise ExtensionControlProofError("invalid mutation identity")
         digest = _resident_digest(
             lambda: mutation_digest(

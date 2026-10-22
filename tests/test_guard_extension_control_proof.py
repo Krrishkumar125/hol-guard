@@ -802,6 +802,8 @@ def test_resident_enrollment_digest_matches_the_python_digest() -> None:
     [
         ({"previous_revision": -1}, "invalid previous revision"),
         ({"previous_revision": True}, "invalid previous revision"),
+        ({"previous_revision": 2**63}, "invalid previous revision"),
+        ({"actor_id": "\ud800"}, "invalid mutation identity"),
         ({"catalog_digest": "AB" * 32}, "invalid catalog digest"),
         ({"actor_id": " \t"}, "invalid mutation identity"),
         ({"nonce": "n" * 257}, "invalid mutation identity"),
@@ -825,3 +827,24 @@ def test_resident_refuses_an_invalid_enrollment() -> None:
         ExtensionControlEnrollment(catalog_digest="", actor_id="local-admin", nonce="nonce")
     with pytest.raises(ExtensionControlProofError, match="invalid enrollment identity"):
         ExtensionControlEnrollment(catalog_digest=_GOLDEN_CATALOG, actor_id="  ", nonce="nonce")
+    with pytest.raises(ExtensionControlProofError, match="invalid enrollment identity"):
+        ExtensionControlEnrollment(catalog_digest=_GOLDEN_CATALOG, actor_id="\ud800", nonce="nonce")
+
+
+def test_enrollment_asks_the_resident_of_the_selected_guard_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from codex_plugin_scanner.guard.runtime import extension_control_proof
+
+    homes: list[object] = []
+
+    def digest(*, guard_home: object = None, **_fields: object) -> str:
+        homes.append(guard_home)
+        return "0" * 64
+
+    monkeypatch.setattr(extension_control_proof, "enrollment_digest", digest)
+    ExtensionControlEnrollment(
+        catalog_digest=_GOLDEN_CATALOG, actor_id="local-admin", nonce="nonce", guard_home=tmp_path
+    )
+
+    assert homes == [tmp_path]
