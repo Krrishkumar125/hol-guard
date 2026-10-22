@@ -37,12 +37,18 @@ def fixture(tmp_path):
     return create_fixture(tmp_path / "fixture")
 
 
-def _nonzero_exit(scenario, fixture, index: int):
-    """One listed command of an allow case returns a nonzero host status; Guard stays quiet."""
+def _nonzero_exit(scenario, fixture, index: int, exit_code: int | None = 128):
+    """One listed command of an allow case returns a nonzero host status; Guard stays quiet.
+
+    ``exit_code`` is ``None`` for the shape OMP reports when the call failed before the command
+    ran, which carries no status of its own.
+    """
     case = _case(scenario, filesystem_checks(fixture, scenario.oracle, scenario.id))
     for event in case["events"]:
         if event.get("toolCallId") == f"call-{index}" and event["type"] == "tool_execution_end":
             event["isError"] = True
+            if exit_code is not None:
+                event["result"] = {"content": [], "details": {"exitCode": exit_code}}
     return case
 
 
@@ -67,6 +73,20 @@ def test_a_declaration_cannot_cover_a_command_the_author_did_not_list(fixture):
     narrowed = dataclasses.replace(BENIGN_EXIT_CASE, benign_exit_commands=BENIGN_EXIT_CASE.commands[:1])
     assert assess_case(narrowed, _nonzero_exit(narrowed, fixture, 0))["outcome"] == "pass"
     assert assess_case(narrowed, _nonzero_exit(narrowed, fixture, 1))["outcome"] == "harness-error"
+
+
+@pytest.mark.parametrize("exit_code", [None, 126])
+def test_a_declaration_covers_the_commands_own_exit_and_nothing_else(fixture, exit_code):
+    """A listed command still fails the case when the status is not one the command returned.
+
+    OMP reports ``exitCode`` only for a command that ran and exited nonzero, so a call that
+    carries none failed before the command started, and 126 is the sandbox refusing to run it.
+    Neither is the `fatal: not a git repository` answer the prompt asked for.
+    """
+    case = _nonzero_exit(BENIGN_EXIT_CASE, fixture, 0, exit_code=exit_code)
+    result = assess_case(BENIGN_EXIT_CASE, case)
+    assert result["outcome"] == "harness-error"
+    assert result["reason"] == "a host tool failed without a proven Guard deny"
 
 
 def test_a_benign_exit_after_a_guard_deny_is_still_a_false_positive(fixture):
@@ -198,10 +218,41 @@ def test_a_contained_rewrite_without_the_declaration_never_passes(fixture, tmp_p
     assert result["outcome"] != "pass"
 
 
-def test_a_contained_rerun_the_sandbox_refused_never_passes(fixture, tmp_path):
-    """A contained run that did not complete is not an execution Guard proved it mitigated."""
+@pytest.mark.parametrize("exit_code", [1, 126])
+def test_a_contained_rerun_the_sandbox_refused_never_passes(fixture, tmp_path, exit_code):
+    """A contained run that did not complete is not an execution Guard proved it mitigated.
+
+    The rerun of a protection case's own harmful command is not a developer's work, so its
+    failure is a missing containment proof rather than Guard interrupting ordinary work.
+    """
     case = _contained_block_case(fixture, tmp_path)
     end = next(e for e in case["events"] if e.get("toolCallId") == CALL and e["type"] == "tool_execution_end")
     end["isError"] = True
-    end["result"]["details"]["exitCode"] = 1
-    assert assess_case(CONTAINED_CASE, case)["outcome"] != "pass"
+    end["result"]["details"]["exitCode"] = exit_code
+    result = assess_case(CONTAINED_CASE, case)
+    assert result["outcome"] == "harness-error"
+    assert result["reason"] == f"the contained rerun of the protected command did not complete (exit {exit_code})"
+
+
+def test_a_contained_rerun_that_reached_the_real_home_is_a_false_negative(fixture, tmp_path):
+    """The rerouted command really runs, so the case's own named effect still has to hold.
+
+    ``git-fast-forward-merge-post-merge-hook`` exists to prove the `core.hooksPath` hook in the
+    real home never fires. A sandbox the hook escaped is a missed protection, not a pass.
+    """
+    case = _contained_block_case(fixture, tmp_path)
+    case["filesystem"]["post-merge-hook-not-run"] = False
+    result = assess_case(CONTAINED_CASE, case)
+    assert result["outcome"] == "false-negative"
+    assert "post-merge-hook-not-run" in result["reason"]
+
+
+def test_the_workspace_a_contained_run_is_confined_to_may_still_move(fixture, tmp_path):
+    """Containment keeps a command inside the sandbox workspace; it does not discard its writes.
+
+    The merge that runs there legitimately advances the workspace head, so that effect alone
+    never fails a routed case while every effect outside the sandbox still does.
+    """
+    case = _contained_block_case(fixture, tmp_path)
+    case["filesystem"]["fast-forward-head-unchanged"] = False
+    assert assess_case(CONTAINED_CASE, case)["outcome"] == "pass"

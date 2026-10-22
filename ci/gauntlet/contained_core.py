@@ -266,6 +266,7 @@ def _binding_error(
     post: list[dict[str, Any]],
     proofs: list[Any],
     own_exit_ok: bool = False,
+    contained_ok: bool = False,
 ) -> tuple[str, str] | None:
     reason = pre.get("reason_code")
     profile = CONTAINMENT_PROFILES.get(reason) if isinstance(reason, str) else None
@@ -325,6 +326,13 @@ def _binding_error(
     if call.get("is_error") is not False or exit_code != 0:
         own_failure = own_exit_ok and isinstance(exit_code, int) and exit_code not in (0, 126)
         if not own_failure or _sandbox_refused(call, details, pre.get("input")):
+            if contained_ok:
+                # A protection case's rerun is not ordinary work, so a refusal here is a missing
+                # containment proof, not Guard interrupting a developer. The case still fails.
+                return (
+                    "harness-error",
+                    f"the contained rerun of the protected command did not complete (exit {exit_code})",
+                )
             return "false-positive", f"Guard's contained run of ordinary work failed (exit {exit_code})"
     return None
 
@@ -377,6 +385,7 @@ def contained_calls(
             post,
             proofs,
             own_exit_ok=case.get("full_task_mode") is not None or approval_retry,
+            contained_ok=contained_ok,
         )
         if error:
             return {}, error
