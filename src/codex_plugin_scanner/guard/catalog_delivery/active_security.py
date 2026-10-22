@@ -21,6 +21,7 @@ from ..native_command_control_authority_io import (
 from ..native_command_control_authority_store import _key
 from . import activation_store, lifecycle, lifecycle_store
 from .located_store import LocatedStore
+from .object_native import sessioned
 
 PREFIX = "guard-command-pack-active-security"
 FILE = "active-pack-security.v1.json"
@@ -119,6 +120,7 @@ def _no_fetch(target, maximum):
     raise ValueError("active_security_required_proofs_unavailable")
 
 
+@sessioned
 def _prepare(store, captured, activation, publication, fetch, *, profile=None, installed_identity=None):
     arguments = dict(
         record=captured,

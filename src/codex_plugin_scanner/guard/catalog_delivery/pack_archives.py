@@ -14,6 +14,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from .object_native import sessioned
 from .pack_store import PackReader, read_object
 
 MAX_FILES = 2048
@@ -22,6 +23,7 @@ MAX_PARTS = 64
 MEMBER = re.compile(r"[0-9a-f]{64}\.json")
 
 
+@sessioned
 def pack_objects(reader: PackReader, manifest_ref: dict[str, Any]) -> tuple[dict[str, Any], set[str]]:
     """Collect only the objects referenced by one policy pack."""
     manifest = reader.json(manifest_ref)

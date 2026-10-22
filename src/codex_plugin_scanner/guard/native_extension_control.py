@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import islice
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -40,6 +40,11 @@ if TYPE_CHECKING:
 
 EXTENSION_CONTROL_FEATURE: Final = "extension-control-v1"
 _TIMEOUT_SECONDS: Final = 5.0
+# The resident client clamps a deadline to a per-operation ceiling
+# (``EXTENSION_CONTROL_TIMEOUT_CEILING_MS`` in ``managed_resident_client_timeout.rs``),
+# and the daemon client waits out every resident call a request makes
+# (``daemon/extension_control_timeouts.py``); raising this raises both.
+_PREVIEW_TIMEOUT_SECONDS: Final = 15.0
 # The resident bounds one request to 4 MiB of canonical JSON, 4096 items and 64
 # scenarios; larger questions are split across requests below those bounds. The
 # byte budget leaves room for the request envelope.
@@ -51,6 +56,19 @@ _MAX_CONCURRENT_ASKS: Final = 4
 _SLOTS: Final = threading.BoundedSemaphore(_MAX_CONCURRENT_ASKS)
 _OPT_STR: Final = (str, type(None))
 _OPT_BOOL: Final = (bool, type(None))
+
+
+# Refusals of a preview too big or too costly for one answer: the request size
+# (refused here, before the resident is asked, or by the resident), the work
+# bound and the reply bound. They name the request, not a broken runtime, so
+# callers report a limit.
+PREVIEW_LIMIT_CODES: Final = frozenset(
+    {
+        "native_extension_control_too_large",
+        "native_extension_control_too_many_items",
+        "native_extension_control_reply_too_large",
+    }
+)
 
 
 class NativeExtensionControlError(RuntimeError):
@@ -71,6 +89,12 @@ _OPERATION: Final = ResidentOperation(
     timeout_seconds=_TIMEOUT_SECONDS,
     error=NativeExtensionControlError,
 )
+
+
+# One preview resolves every catalog permission against the current, proposed
+# and per-target reverted layers in a single ask, so it gets a longer budget
+# than one resolution batch.
+_PREVIEW_OPERATION: Final = replace(_OPERATION, timeout_seconds=_PREVIEW_TIMEOUT_SECONDS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,6 +259,36 @@ def _registry_wire(registry: CommandSafetyExtensionRegistry, *, trust_classes: b
     }
 
 
+def _preview_registry_wire(registry: CommandSafetyExtensionRegistry) -> dict[str, object]:
+    return {
+        "catalog_digest": registry.catalog_digest,
+        "extensions": [
+            {
+                "extension_id": extension.extension_id,
+                "name": extension.name,
+                "aliases": list(extension.aliases),
+                "dependencies": list(extension.dependencies),
+                "rule_ids": [rule.rule_id for rule in extension.rules],
+            }
+            for extension in registry.extensions
+        ],
+        "permissions": [
+            {
+                "permission_id": permission.permission_id,
+                "extension_id": permission.extension_id,
+                "label": permission.label,
+                "risk_tier": permission.risk_tier,
+                "baseline_floor": permission.baseline_floor,
+                "rule_ids": list(permission.rule_ids),
+                "dependencies": list(permission.dependencies),
+                "conflicts": list(permission.conflicts),
+                "implied_permissions": list(permission.implied_permissions),
+            }
+            for permission in registry.permissions
+        ],
+    }
+
+
 def _item_wire(item: ControlItem) -> dict[str, object]:
     return {
         "extension_ids": list(item.extension_ids),
@@ -309,6 +363,8 @@ def _ask(
     guard_home: Path | None,
     fields: Mapping[str, Any],
     parse: Callable[[dict[str, Any]], Any],
+    *,
+    operation: ResidentOperation = _OPERATION,
 ) -> Any:
     """Ask the resident; ``parse`` runs inside payload validation so a bad payload counts against its health."""
 
@@ -322,7 +378,7 @@ def _ask(
         guard_home,
         fields,
         validate,
-        operation=_OPERATION,
+        operation=operation,
         max_request_bytes=_MAX_REQUEST_BYTES,
         slots=_SLOTS,
     )
@@ -382,6 +438,37 @@ def resolve_scenarios(
             items[piece.index].extend(answer.items)
     return tuple(
         ScenarioAnswer(bool(lockdown), tuple(answers)) for lockdown, answers in zip(lockdowns, items, strict=True)
+    )
+
+
+def preview_control_mutation(
+    registry: CommandSafetyExtensionRegistry,
+    current_layers: Sequence[ExtensionControlLayer],
+    proposed_layers: Sequence[ExtensionControlLayer],
+    render: Callable[[object, Callable[[], RuntimeError]], dict[str, object]],
+    *,
+    guard_home: Path | None = None,
+) -> dict[str, object]:
+    """The resident's semantic preview of replacing ``current_layers`` with ``proposed_layers``.
+
+    ``render`` validates and shapes the ``preview`` payload, raising the given
+    error for a malformed one, so a bad payload counts against resident health.
+    """
+
+    query: dict[str, object] = {
+        "kind": "preview",
+        "registry": _preview_registry_wire(registry),
+        "current_layers": [_layer_wire(layer) for layer in current_layers],
+        "proposed_layers": [_layer_wire(layer) for layer in proposed_layers],
+    }
+    if _wire_bytes(query) > _MAX_BATCH_BYTES:
+        raise _too_large()
+    return _ask(
+        query,
+        guard_home,
+        {"preview": dict},
+        lambda payload: render(payload["preview"], _invalid),
+        operation=_PREVIEW_OPERATION,
     )
 
 

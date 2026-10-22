@@ -4218,7 +4218,9 @@ def _sync_extension_catalog_from_runtime_handshake(
         catalog_factory=lambda generated_at: (
             build_v1_catalog_from_view(observed_view(session_payload, guard_home))
             if "extensionCatalogViewDigest" in session_payload
-            else build_builtin_extension_catalog_wire(guard_version=__version__, generated_at=generated_at)
+            else build_builtin_extension_catalog_wire(
+                guard_version=__version__, generated_at=generated_at, guard_home=guard_home
+            )
         ),
         fallback_generated_at=_now(),
     )

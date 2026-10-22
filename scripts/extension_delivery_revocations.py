@@ -9,6 +9,7 @@ from command_pack_store import digest
 from extension_delivery_objects import lookup_entry
 
 from codex_plugin_scanner.guard.catalog_delivery.authority import decode
+from codex_plugin_scanner.guard.catalog_delivery.object_native import sessioned
 from codex_plugin_scanner.guard.catalog_delivery.preparation_authority import publication
 from codex_plugin_scanner.guard.catalog_delivery.revocations import RevokedPackError
 from codex_plugin_scanner.guard.extension_builder.io import read_bytes
@@ -27,6 +28,7 @@ def revocation_key(identity, kind, manifest=None):
     ).hexdigest()
 
 
+@sessioned
 def check(verified, store, identity, manifest):
     if not digest(manifest):
         raise ValueError("revocation lookup requires an authenticated pack identity")

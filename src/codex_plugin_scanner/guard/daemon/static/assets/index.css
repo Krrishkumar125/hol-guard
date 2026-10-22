@@ -1177,6 +1177,10 @@
     max-height: calc(var(--spacing) * 40);
   }
 
+  .max-h-44 {
+    max-height: calc(var(--spacing) * 44);
+  }
+
   .max-h-48 {
     max-height: calc(var(--spacing) * 48);
   }
@@ -3811,6 +3815,10 @@
     background-color: var(--color-slate-400);
   }
 
+  .bg-slate-900 {
+    background-color: var(--color-slate-900);
+  }
+
   .bg-slate-900\/45 {
     background-color: #0f172b73;
   }
@@ -5094,6 +5102,10 @@
 
   .text-sky-600 {
     color: var(--color-sky-600);
+  }
+
+  .text-slate-50 {
+    color: var(--color-slate-50);
   }
 
   .text-slate-200 {
