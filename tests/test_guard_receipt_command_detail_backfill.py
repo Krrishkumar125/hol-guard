@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime, timezone
+from typing import cast
 
 from codex_plugin_scanner.guard.models import GuardReceipt
 from codex_plugin_scanner.guard.runtime import runner as guard_runner
@@ -277,6 +278,44 @@ def test_first_sync_page_reads_its_window_in_rowid_order(tmp_path) -> None:
     rowids = [row["receipt_rowid"] for row in rows]
     assert rowids == sorted(rowids)
     assert [row["receipt_id"] for row in rows] == [f"guard-receipt-order-{index}" for index in range(5)]
+
+
+class _SparseRowidStore:
+    """A store whose receipt rowids carry the gaps cleanup leaves behind."""
+
+    def __init__(self, rowids: list[int]) -> None:
+        self._rows: list[dict[str, object]] = [
+            {"receipt_id": f"guard-receipt-{rowid}", "receipt_rowid": rowid} for rowid in rowids
+        ]
+
+    def latest_receipt_rowid(self, *, harness: str | None = None) -> int | None:
+        return int(self._rows[-1]["receipt_rowid"]) if self._rows else None
+
+    def list_receipts(self, limit: int = 50, harness: str | None = None) -> list[dict[str, object]]:
+        return list(reversed(self._rows))[:limit]
+
+    def list_receipts_since_rowid(
+        self,
+        *,
+        after_rowid: int | None,
+        limit: int = 200,
+        harness: str | None = None,
+    ) -> list[dict[str, object]]:
+        floor = after_rowid or 0
+        return [row for row in self._rows if int(row["receipt_rowid"]) > floor][:limit]
+
+
+def test_first_sync_page_fills_from_receipts_that_exist_not_a_rowid_interval(monkeypatch) -> None:
+    # Cleanup leaves gaps in the rowids. A window measured as a fixed distance
+    # below the latest rowid can hold a couple of receipts where a page holds
+    # many, and the cursor saved after it still moves past every older receipt
+    # the window skipped, which no later page reads again.
+    monkeypatch.setattr(guard_runner, "_RECEIPT_SYNC_CURSOR_PAGE_SIZE", 5)
+    store = _SparseRowidStore([1, 2, 3, 4, 5, 6, 40, 80, 120, 160])
+
+    rows = _receipt_sync_rows_for_upload(cast("GuardStore", store), cursor_rowid=None)
+
+    assert [row["receipt_rowid"] for row in rows] == [6, 40, 80, 120, 160]
 
 
 def test_first_sync_page_is_empty_without_any_receipt(tmp_path) -> None:
