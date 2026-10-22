@@ -36,13 +36,13 @@ BINARY = Path(os.environ.get("HOL_GUARD_NATIVE_BINARY", ROOT / "rust/target/debu
 
 
 def test_export_adapter_leaves_exclusive_destination_creation_to_native(tmp_path, monkeypatch):
-    from types import SimpleNamespace
+    from unittest.mock import Mock
 
     destination = tmp_path / "export"
     source = tmp_path / "cache"
     authority = object()
     calls = []
-    monkeypatch.setattr(offline, "Lease", lambda _: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(offline, "Lease", lambda _: Mock(close=lambda: None))
     monkeypatch.setattr(offline, "prefetch", lambda *_: None)
 
     def request(given_authority, directory, operation, **fields):
