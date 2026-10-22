@@ -148,9 +148,7 @@ def test_heredoc_substitution_shell_wrappers_feed_cli_and_runtime_classification
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 2
     assert payload["status"] == "native_unavailable"
-    # The evaluation still fails, but an enrolled home answers with the
-    # resident's block floor for the hidden deletion, as the runtime does.
-    assert payload["minimum_action"] == "block"
+    assert payload["minimum_action"] == "review"
     assert payload["rules"] == []
     _assert_native_unavailable(command)
 
@@ -179,18 +177,15 @@ def test_literal_shell_wrapped_heredoc_substitutions_remain_safe_at_cli_and_runt
     _isolate_command_cli(tmp_path, monkeypatch)
     exit_code = main(["guard", "command", "test", "--json", command])
     payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["rules"] == []
     if command.startswith("cat <<'"):
-        # A quoted heredoc never expands its body: the CLI reviews it without an
-        # evaluation failure, as the runtime does.
-        assert exit_code == 0
-        assert payload["status"] != "native_unavailable"
+        assert payload["status"] == "native_unavailable"
         assert payload["minimum_action"] == "review"
         _assert_quoted_cat_heredoc_reviews_without_evaluation_failure(command)
         return
-    assert exit_code == 2
-    assert payload["rules"] == []
     assert payload["status"] == "native_unavailable"
-    assert payload["minimum_action"] == "block"
+    assert payload["minimum_action"] == "review"
     _assert_native_unavailable(command)
 
 

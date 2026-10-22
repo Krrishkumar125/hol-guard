@@ -336,12 +336,7 @@ def test_fresh_opencode_reapproval_runs_exactly_once(
         )
         assert not marker.exists()
         return
-    try:
-        second = proxy.run_session(messages)
-    except Exception as error:  # TEMP diagnostic, remove before merge
-        raise AssertionError(
-            {"error": str(error), "resident_failures": resident_failures, "last": native_resident_client_failure_code()}
-        ) from error
+    second = proxy.run_session(messages)
     if not LAUNCH_REUSABLE or mutation not in {"none", "older-allow"} or grant_kind == "retained":
         assert not marker.exists(), second["events"][2]
         assert "error" in second["responses"][2]
