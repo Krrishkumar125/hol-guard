@@ -300,6 +300,7 @@
       "src/pretool/env_prefix_projection.rs",
       "src/pretool/env_prefix_reviewed.rs",
       "src/pretool/env_prefix_search_path.rs",
+      "src/pretool/env_prefix_values.rs",
       "src/pretool/fanout_reads.rs",
       "src/pretool/find_reads.rs",
       "src/pretool/for_loop_unroll.rs",
