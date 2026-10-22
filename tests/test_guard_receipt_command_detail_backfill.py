@@ -8,6 +8,7 @@ from codex_plugin_scanner.guard.runtime import runner as guard_runner
 from codex_plugin_scanner.guard.runtime.actions import GuardActionEnvelope
 from codex_plugin_scanner.guard.runtime.runner import (
     _cloud_sync_receipt_payload,
+    _receipt_sync_rows_for_upload,
     _receipt_sync_rows_with_command_detail_backfill,
     sync_receipts,
 )
@@ -91,7 +92,20 @@ def test_command_detail_backfill_ignores_legacy_v1_completion_marker(tmp_path) -
 
     assert [row["receipt_id"] for row in rows] == ["guard-receipt-backfill-v2"]
     assert marker is not None
-    assert marker["complete"] is True
+    # The walk is finished by the page that comes back empty, not by a short
+    # one, so this first page is still open.
+    assert marker["complete"] is False
+    store.set_sync_payload("cloud_receipt_command_detail_backfill_v2", marker, "2026-04-15T00:02:00Z")
+
+    _, final_marker = _receipt_sync_rows_with_command_detail_backfill(
+        store,
+        receipts=[],
+        redaction_level="none",
+        synced_at="2026-04-15T00:03:00Z",
+    )
+
+    assert final_marker is not None
+    assert final_marker["complete"] is True
 
 
 def test_command_detail_backfill_replays_sandbox_required_receipts(tmp_path) -> None:
@@ -167,7 +181,22 @@ def test_command_detail_backfill_pages_historical_receipts(monkeypatch, tmp_path
     assert second_marker is not None
     assert second_marker["queried"] == 1
     assert second_marker["receipts"] == 1
-    assert second_marker["complete"] is True
+    # A short page can be one the store shortened to a size the runtime can
+    # reply with, so the walk keeps going until a page comes back empty.
+    assert second_marker["complete"] is False
+    store.set_sync_payload("cloud_receipt_command_detail_backfill_v2", second_marker, "2026-07-02T00:01:00+00:00")
+
+    third_rows, third_marker = _receipt_sync_rows_with_command_detail_backfill(
+        store,
+        receipts=[],
+        redaction_level="none",
+        synced_at="2026-07-02T00:02:00+00:00",
+    )
+
+    assert third_rows == []
+    assert third_marker is not None
+    assert third_marker["queried"] == 0
+    assert third_marker["complete"] is True
 
 
 def test_sync_receipts_persists_command_detail_backfill_progress_after_partial_success(
@@ -232,3 +261,23 @@ def test_sync_receipts_persists_command_detail_backfill_progress_after_partial_s
     remaining_rowids = [row["receipt_rowid"] for row in remaining_rows if isinstance(row.get("receipt_rowid"), int)]
     assert remaining_rowids
     assert all(rowid < min(first_batch_rowids) for rowid in remaining_rowids)
+
+
+def test_first_sync_page_reads_its_window_in_rowid_order(tmp_path) -> None:
+    # The cursor saved after a page is the highest rowid it uploaded, so the
+    # page has to end at its newest row. A page the store shortens then loses
+    # rows above the cursor, which the next page reads, rather than rows below
+    # it, which nothing would read again.
+    store = GuardStore(tmp_path)
+    for index in range(5):
+        _store_command_receipt(store, receipt_id=f"guard-receipt-order-{index}")
+
+    rows = _receipt_sync_rows_for_upload(store, cursor_rowid=None)
+
+    rowids = [row["receipt_rowid"] for row in rows]
+    assert rowids == sorted(rowids)
+    assert [row["receipt_id"] for row in rows] == [f"guard-receipt-order-{index}" for index in range(5)]
+
+
+def test_first_sync_page_is_empty_without_any_receipt(tmp_path) -> None:
+    assert _receipt_sync_rows_for_upload(GuardStore(tmp_path), cursor_rowid=None) == []

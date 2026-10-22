@@ -209,8 +209,11 @@ fn projected(rows: &[Row], fields: &[&str]) -> Vec<Value> {
             })
             .collect();
         let bytes = serde_json::to_vec(&item).map_or(0, |encoded| encoded.len());
+        // A row too large to carry is left out rather than ending the read: the
+        // scan reads each row on its own, so one outsized command text costs
+        // its own connector and not every older one behind it.
         let Some(remaining) = budget.checked_sub(bytes) else {
-            break;
+            continue;
         };
         budget = remaining;
         projected.push(Value::Object(item));

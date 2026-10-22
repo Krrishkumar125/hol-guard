@@ -3610,9 +3610,16 @@ def _receipt_sync_cursor_rowid(store: GuardStore) -> int | None:
 
 
 def _receipt_sync_rows_for_upload(store: GuardStore, *, cursor_rowid: int | None) -> list[dict[str, object]]:
-    if cursor_rowid is None:
-        return store.list_receipts(limit=_RECEIPT_SYNC_CURSOR_PAGE_SIZE)
     latest_rowid = store.latest_receipt_rowid()
+    if cursor_rowid is None:
+        # The first page reads its window in rowid order rather than newest
+        # first, because the cursor saved after it is the highest rowid it
+        # uploaded. A newest-first page that the store shortened would drop its
+        # oldest rows below that cursor, where no later page looks for them.
+        if latest_rowid is None:
+            return []
+        first_after = max(latest_rowid - _RECEIPT_SYNC_CURSOR_PAGE_SIZE, 0)
+        return store.list_receipts_since_rowid(after_rowid=first_after, limit=_RECEIPT_SYNC_CURSOR_PAGE_SIZE)
     if latest_rowid is None:
         return []
     if cursor_rowid > latest_rowid:
@@ -3655,7 +3662,12 @@ def _receipt_sync_rows_with_command_detail_backfill(
         if isinstance(receipt_rowid, int):
             backfill_rowids.append(receipt_rowid)
     next_before_rowid = min(backfill_rowids) if backfill_rowids else before_rowid
-    complete = len(backfill_rows) < _RECEIPT_COMMAND_DETAIL_BACKFILL_LIMIT
+    # Only an empty page ends the backfill. A page can come back short because
+    # the store shortened it to a size the runtime can reply with, and reading
+    # that as the end would leave every older receipt without its command
+    # detail for good. Each page moves `before_rowid` down, so the walk still
+    # finishes.
+    complete = not backfill_rows
     return merged, {
         "level": redaction_level,
         "updated_at": synced_at,

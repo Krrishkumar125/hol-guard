@@ -163,3 +163,27 @@ fn neither_history_can_outgrow_its_budget_or_starve_the_other() {
         );
     }
 }
+
+#[test]
+fn a_row_too_large_to_carry_does_not_hide_the_rows_behind_it() {
+    let connection = store();
+    let oversized = format!("tool:mcp__server__{}", "x".repeat(600 * 1024));
+    receipt(
+        &connection,
+        None,
+        Some("tool:mcp__server__read"),
+        "2026-01-01",
+    );
+    receipt(&connection, None, Some(&oversized), "2026-01-02");
+    approval(
+        &connection,
+        None,
+        Some("tool:mcp__client__call"),
+        "2026-01-01",
+    );
+    approval(&connection, None, Some(&oversized), "2026-01-02");
+
+    let history = history(&connection, 100);
+    assert_eq!(labels(&history, "receipts"), ["mcp__server__read"]);
+    assert_eq!(labels(&history, "approvals"), ["mcp__client__call"]);
+}
