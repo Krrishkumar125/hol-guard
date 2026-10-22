@@ -60,8 +60,8 @@ fn a_literal_binding_decides_as_the_command_without_it() {
 
 /// The binding proves only itself. Every later item still carries its own
 /// proof with the value projected into it, a value that is not literal is not
-/// a binding this reads, and a name that steers the shell keeps its
-/// review.
+/// a binding this reads, and a name that steers the shell or the trust anchor
+/// of a later fetch keeps its review.
 #[test]
 fn a_binding_never_proves_what_runs_after_it() {
     let (root, project) = fixture();
@@ -72,6 +72,10 @@ fn a_binding_never_proves_what_runs_after_it() {
         "PATH=/tmp; ls .",
         "IFS=,; ls .",
         "R=$(echo .); ls $R",
+        "SSL_CERT_FILE=/tmp/anchor.pem; ls .",
+        "CURL_CA_BUNDLE=/tmp/anchor.pem; ls .",
+        "REQUESTS_CA_BUNDLE=/tmp/anchor.pem; ls .",
+        "PGSSLMODE=disable; ls .",
     ] {
         assert_ne!(
             evaluate(&root, &project, command),

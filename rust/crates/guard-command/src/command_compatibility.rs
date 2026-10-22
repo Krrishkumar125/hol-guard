@@ -205,7 +205,8 @@ fn assignment_prefix_is_unsupported(segment: &CommandSegmentV1) -> bool {
 /// since an expansion such as `${GIT_DIR:=x}` sets another variable, and every
 /// name is inert or ordinary. A variable the session already exported passes
 /// its new value to later commands, so a name that steers the shell, lookup,
-/// loading, configuration or credentials keeps the evaluation failure.
+/// loading, configuration, credentials or the trust anchor of a later fetch
+/// keeps the evaluation failure.
 pub(crate) fn sets_ordinary_variables(segment: &CommandSegmentV1) -> bool {
     !segment.environment_names.is_empty()
         && segment.tokens.len() == segment.environment_names.len()
@@ -213,9 +214,10 @@ pub(crate) fn sets_ordinary_variables(segment: &CommandSegmentV1) -> bool {
         && segment.wrapper_chain.is_empty()
         && !segment.text.contains(['$', '`'])
         && segment.environment_names.iter().all(|name| {
-            environment::inert_environment_name(name)
-                || (crate::pretool::generic::chain_literals::ordinary_name(name)
-                    && !environment::code_or_redirect_environment_name(name))
+            !environment::trust_anchor_environment_name(name)
+                && (environment::inert_environment_name(name)
+                    || (crate::pretool::generic::chain_literals::ordinary_name(name)
+                        && !environment::code_or_redirect_environment_name(name)))
         })
 }
 

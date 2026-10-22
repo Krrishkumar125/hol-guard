@@ -209,6 +209,32 @@ pub(crate) fn code_loading_environment_name(name: &str) -> bool {
             .any(|marker| upper.contains(marker))
 }
 
+/// Fragments of settings that choose which certificates a later program
+/// trusts, or whether it verifies them at all (`SSL_CERT_FILE`,
+/// `CURL_CA_BUNDLE`, `REQUESTS_CA_BUNDLE`, `PGSSLMODE`). None of them names
+/// code, a config file or a home, so the markers above let them through,
+/// while the value they carry decides whose certificate a later fetch
+/// accepts.
+const TRUST_ANCHOR_MARKERS: &[&str] = &[
+    "CAINFO",
+    "CAPATH",
+    "CA_BUNDLE",
+    "CA_CERT",
+    "CERT",
+    "SSL",
+    "TLS",
+];
+
+/// A setting that moves the trust anchor of a program that runs later. A
+/// binding outlives the list item that made it, so one of these names
+/// decides whom the rest of the command believes.
+pub(crate) fn trust_anchor_environment_name(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    TRUST_ANCHOR_MARKERS
+        .iter()
+        .any(|marker| upper.contains(marker))
+}
+
 /// A code-loading setting, or one that redirects config or home. The
 /// env-prefix projection never strips either kind.
 pub(crate) fn code_or_redirect_environment_name(name: &str) -> bool {
