@@ -183,3 +183,42 @@ fn a_pip_outside_a_virtual_environment_keeps_its_review() {
         }
     }
 }
+
+#[test]
+fn a_virtual_environment_that_exposes_the_user_site_keeps_its_review() {
+    // `python -m venv --system-site-packages` writes
+    // `include-system-site-packages = true`, which leaves the user site
+    // enabled inside the environment. pip there still reports what the
+    // developer installed under their own home, so a contained run would
+    // describe the sandbox's home instead.
+    let ws = project("python-system-site");
+    std::fs::write(
+        ws.join(".venv/pyvenv.cfg"),
+        "home = /usr/bin\ninclude-system-site-packages = true\nversion = 3.12.3\n",
+    )
+    .unwrap();
+    for command in [
+        ".venv/bin/pip list",
+        ".venv/bin/pip show requests",
+        "uv pip list",
+    ] {
+        for harness in ["codex", "claude-code", "omp"] {
+            let (reason, minimum) = outcome(harness, command, &ws);
+            assert_ne!(reason, CONTAINED, "{harness}: {command}");
+            assert_eq!(minimum, "review", "{harness}: {command} ({reason})");
+        }
+    }
+}
+
+#[test]
+fn an_empty_venv_directory_is_not_an_environment() {
+    // `.venv` can exist without holding an environment, and uv then searches
+    // for one elsewhere; the listing would report whatever it found.
+    let bare = workspace("python-empty-venv", true);
+    std::fs::write(bare.join("pyproject.toml"), PROJECT).unwrap();
+    std::fs::create_dir_all(bare.join(".venv/bin")).unwrap();
+    for harness in ["codex", "claude-code", "omp"] {
+        let (reason, _) = outcome(harness, "uv pip list", &bare);
+        assert_ne!(reason, CONTAINED, "{harness}");
+    }
+}

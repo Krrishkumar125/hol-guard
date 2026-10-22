@@ -69,16 +69,47 @@ fn virtual_environment_executable(executable: &str, directory: &Path) -> bool {
     resolved
         .parent()
         .and_then(Path::parent)
-        .is_some_and(|prefix| prefix.join("pyvenv.cfg").is_file())
+        .is_some_and(isolated_virtual_environment)
+}
+
+/// Whether the prefix holds a virtual environment pip reads without the user
+/// site.
+///
+/// `pyvenv.cfg` is what makes a prefix one, and the file's
+/// `include-system-site-packages` key is what decides whether the user site
+/// stays enabled inside it: `python -m venv --system-site-packages` writes it
+/// true, and CPython then leaves `ENABLE_USER_SITE` on, so `pip list` in that
+/// environment still reports what the developer installed under their own
+/// home. The sandbox replaces that home, so such an environment answers for
+/// the sandbox and keeps the review it has today — the same wrong environment
+/// the bare `pip` and the `--user` spellings are kept out for.
+///
+/// A missing, unreadable or directory-shaped `pyvenv.cfg` reads as no
+/// environment, which is the answer a prefix that is not one should give.
+fn isolated_virtual_environment(prefix: &Path) -> bool {
+    let Ok(config) = std::fs::read_to_string(prefix.join("pyvenv.cfg")) else {
+        return false;
+    };
+    !config.lines().any(|line| {
+        line.split_once('=').is_some_and(|(key, value)| {
+            key.trim()
+                .eq_ignore_ascii_case("include-system-site-packages")
+                && value.trim().eq_ignore_ascii_case("true")
+        })
+    })
 }
 
 /// Whether `uv pip <rest>` is one of pip's own queries against the project's
 /// environment. uv puts pip's surface in front of that environment, so the
 /// words after `pip` are read by the same allowlist, and an install or a sync
-/// falls out of it there too. Without a `.venv` beside the project uv resolves
-/// an environment of its own, which the listing would then describe.
+/// falls out of it there too. Without a materialized `.venv` beside the
+/// project uv searches for an environment of its own, which the listing would
+/// then describe, so the environment has to be one the same way the spelled
+/// pip's is: a directory holding `pyvenv.cfg` is not enough on its own, and an
+/// empty `.venv` is not an environment at all.
 pub(super) fn local_uv_pip_work(words: &[&str], project: &Path) -> bool {
-    super::super::pip_reads::environment_read_words(words) && project.join(".venv").is_dir()
+    super::super::pip_reads::environment_read_words(words)
+        && isolated_virtual_environment(&project.join(".venv"))
 }
 
 #[cfg(test)]
