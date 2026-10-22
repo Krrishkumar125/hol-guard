@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,10 @@ MAPPED_COMMANDS = (
     ("kubectl rollout pause deployment/api", "kubernetes-operations.rollout-pause-resume"),
     ("kubectl.exe rollout resume deployment/api", "kubernetes-operations.rollout-pause-resume"),
     ("kubectl --context development rollout pause deployment/api", "kubernetes-operations.rollout-pause-resume"),
+    ("kubectl --profile cpu rollout pause deployment/api", "kubernetes-operations.rollout-pause-resume"),
+    ("kubectl --profile=cpu config use-context development", "kubernetes-operations.config-write"),
+    ("kubectl --profile cpu auth reconcile -f roles.yaml", "kubernetes-operations.auth-reconcile"),
+    ("kubectl --profile cpu proxy --port=8001", "kubernetes-operations.api-proxy"),
     ("kubectl config set clusters.local.server https://cluster.example.test", "kubernetes-operations.config-write"),
     ("kubectl config set-cluster local --server=https://cluster.example.test", "kubernetes-operations.config-write"),
     ("kubectl config set-context development --cluster=local", "kubernetes-operations.config-write"),
@@ -84,6 +89,10 @@ def test_missing_commands_have_explicit_permissions(command: str, owner: str, tm
         "kubectl config set-credentials --help",
         "kubectl auth reconcile --help",
         "kubectl proxy --help",
+        "kubectl --profile cpu rollout pause --help",
+        "kubectl --profile cpu config use-context --help",
+        "kubectl --profile cpu auth reconcile --help",
+        "kubectl --profile cpu proxy --help",
     ),
 )
 def test_help_does_not_trigger_the_new_operation_rules(command: str, tmp_path: Path) -> None:
@@ -98,6 +107,8 @@ def test_help_does_not_trigger_the_new_operation_rules(command: str, tmp_path: P
         ("docker create --label --help alpine", "container-runtime.container-create"),
         ("docker container run alpine echo --help", "container-runtime.container-create"),
         ("docker restart --help=false api", "container-runtime.container-restart"),
+        ("docker restart -- --help api", "container-runtime.container-restart"),
+        ("kubectl rollout pause -- --help deployment/api", "kubernetes-operations.rollout-pause-resume"),
         ("kubectl config set-credentials fixture --exec-command=--help", "kubernetes-operations.config-write"),
         ("kubectl config use-context development --help=false", "kubernetes-operations.config-write"),
         ("kubectl auth reconcile -f roles.yaml --dry-run=none", "kubernetes-operations.auth-reconcile"),
@@ -130,3 +141,14 @@ def test_help_values_and_payload_arguments_keep_review(command: str, owner: str,
 )
 def test_github_command_ownership(args: tuple[str, ...], capability: str) -> None:
     assert github_cli_assessment(args).capability == capability
+
+
+@pytest.mark.parametrize("extension", ("command.container-runtime", "command.kubernetes-operations"))
+def test_help_exemptions_require_exact_option_parses(extension: str) -> None:
+    source = Path(__file__).resolve().parents[1] / "contributions" / "command-sources" / f"{extension}.json"
+    rules = json.loads(source.read_text())["extension"]["rules"]
+    for rule in rules:
+        for variant in rule["safe_variants"]:
+            matcher = variant.get("matcher") or {}
+            if matcher.get("op") == "executable-path-set.v1":
+                assert matcher["config"]["fail_secure_unknown_options"] is False, rule["rule_id"]

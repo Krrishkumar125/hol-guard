@@ -5593,7 +5593,7 @@
                   "docker",
                   "docker.exe"
                 ],
-                "fail_secure_unknown_options": true,
+                "fail_secure_unknown_options": false,
                 "forbidden_flags": [],
                 "interspersed_flags": [
                   "--debug",
