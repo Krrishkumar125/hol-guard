@@ -2010,6 +2010,21 @@
     "rust/crates/guard-command/src/extension_trust.rs",
     "rust/crates/guard-runtime/src/extension_control_op.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/extension_allow_hint.py",
+   "source_sha256": "f49e29976dca12ba9f66d46e883f136b033618af21c4c0fdc193fd5c14cd2c88",
+   "forbidden_symbols": [
+    "MAX_HINT_PERMISSIONS",
+    "evaluate_command",
+    "already_enabled",
+    "relied_permission_ids",
+    "allows"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-contracts/src/extension_allow_hint.rs",
+    "rust/crates/guard-runtime/src/extension_allow_hint_op.rs"
+   ]
   }
  ]
 }
