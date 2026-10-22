@@ -416,6 +416,59 @@ fn an_oversized_request_is_refused_before_any_work() {
 }
 
 #[test]
+fn a_snapshot_the_store_will_not_admit_is_a_bound_error_not_a_transport_failure() {
+    let catalog = catalog();
+    let request = recommend_request(
+        &catalog,
+        hint(&catalog, &[GIT_ADD]),
+        snapshot(&catalog, "protected", &[], &[]),
+    );
+    for refusal in [
+        "native_policy_snapshot_expired",
+        "native_policy_snapshot_invalid",
+        "native_policy_snapshot_context_mismatch",
+    ] {
+        let bytes = evaluate_with_snapshot(&request, || Some(Err(refusal.to_owned()))).unwrap();
+        let result: ApprovalExtensionRecommendationResultV1 =
+            serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(result.status, "error", "{refusal}");
+        assert_eq!(result.code, CATALOG_UNAVAILABLE, "{refusal}");
+        assert!(result.payload.is_none());
+        assert_eq!(result.request_id, "recommendation-test");
+        assert!(result.request_sha256.starts_with("sha256:"));
+    }
+}
+
+#[test]
+fn no_snapshot_falls_back_to_the_packaged_catalog_and_a_caution_query_reads_none() {
+    let catalog = catalog();
+    let request = recommend_request(
+        &catalog,
+        hint(&catalog, &[GIT_ADD]),
+        snapshot(&catalog, "protected", &[], &[]),
+    );
+    for read in [None, Some(Err("native_policy_snapshot_missing".to_owned()))] {
+        let bytes = evaluate_with_snapshot(&request, || read).unwrap();
+        let result: ApprovalExtensionRecommendationResultV1 =
+            serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(result.status, "ok", "{}", result.code);
+    }
+    let caution = request_for_caution(&["destructive"]);
+    let bytes = evaluate_with_snapshot(&caution, || {
+        unreachable!("a caution query reads no snapshot")
+    })
+    .unwrap();
+    let result: ApprovalExtensionRecommendationResultV1 = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(result.status, "ok");
+}
+
+fn request_for_caution(risk_classes: &[&str]) -> ApprovalExtensionRecommendationRequestV1 {
+    request(ApprovalExtensionRecommendationQueryV1::CautionRiskClasses {
+        risk_classes: risk_classes.iter().map(|class| (*class).into()).collect(),
+    })
+}
+
+#[test]
 fn the_feature_is_advertised() {
     assert!(crate::resident_op_features::RESIDENT_OP_FEATURES
         .contains(&APPROVAL_EXTENSION_RECOMMENDATION_FEATURE));

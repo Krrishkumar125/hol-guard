@@ -12,6 +12,7 @@ resident means no recommendation.
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -24,6 +25,7 @@ from ..runtime.command_extensions import CommandSafetyExtensionRegistry
 from ..runtime.extension_allow_hint import validated_extension_allow_hint
 from ..runtime.extension_control_runtime import ExtensionControlRuntimeSnapshot
 
+_LOGGER = logging.getLogger(__name__)
 RECOMMENDATION_SCHEMA = "guard.approval-extension-recommendation.v1"
 APPROVAL_EXTENSION_RECOMMENDATION_FEATURE: Final = "approval-extension-recommendation-v1"
 _TIMEOUT_SECONDS: Final = 3.0
@@ -190,7 +192,11 @@ def with_approval_extension_recommendation(
         recommendation = build_approval_extension_recommendation(
             approval, registry=registry, snapshot=snapshot, guard_home=guard_home
         )
-    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
+    except NativeApprovalExtensionRecommendationError as error:
+        _LOGGER.warning("Extension recommendation unavailable (%s)", error.code)
+        recommendation = None
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as error:
+        _LOGGER.warning("Extension recommendation unavailable (%s)", type(error).__name__)
         recommendation = None
     if recommendation is not None:
         payload["extension_recommendation"] = recommendation

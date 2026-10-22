@@ -302,6 +302,29 @@ def test_the_resident_names_why_it_refused(monkeypatch: pytest.MonkeyPatch) -> N
     assert refused.value.code == code
 
 
+def test_a_refused_read_leaves_a_log_trail_with_the_code_and_no_detail(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    code = "native_approval_extension_recommendation_catalog_mismatch"
+    _resident(
+        monkeypatch,
+        lambda request: bound_reply(
+            request, {"kind": "recommend", "recommendation": None}, schema=RESULT_SCHEMA, status="error", code=code
+        ),
+    )
+
+    with caplog.at_level("WARNING", logger=client.__name__):
+        enriched = client.with_approval_extension_recommendation(
+            _approval(), registry=REGISTRY, snapshot=_snapshot(), include=True
+        )
+
+    assert "extension_recommendation" not in enriched
+    assert [(record.levelname, record.getMessage()) for record in caplog.records] == [
+        ("WARNING", f"Extension recommendation unavailable ({code})")
+    ]
+    assert all(record.exc_info is None for record in caplog.records)
+
+
 def test_an_unavailable_resident_is_an_error_and_never_recomputed(monkeypatch: pytest.MonkeyPatch) -> None:
     resident = _resident(monkeypatch, _recommends(dict(RECOMMENDATION)))
     monkeypatch.setattr(shared, "ensure_resident_prerequisite", lambda _home: False)

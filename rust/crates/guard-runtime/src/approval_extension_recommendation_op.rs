@@ -38,6 +38,7 @@ use guard_contracts::{
 use crate::context_digest_local_cli::python_whitespace;
 use crate::extension_control_op::typed_layers;
 use crate::package_authority_op::request_digest_with_limit;
+use crate::policy_enforcement::AdmittedPolicySnapshot;
 
 const TOO_LARGE: &str = "native_approval_extension_recommendation_too_large";
 const SCHEMA_MISMATCH: &str = "native_approval_extension_recommendation_schema_mismatch";
@@ -77,28 +78,48 @@ const AUTHORITY_HEALTHS: [&str; 6] = [
 
 type States<'a> = HashMap<(ControlTargetKind, &'a str), ControlState>;
 
+/// What the policy store said when asked for its admitted snapshot; `None`
+/// when the resident holds no store.
+type SnapshotRead = Option<Result<Arc<AdmittedPolicySnapshot>, String>>;
+
 pub(crate) fn evaluate_with_store(
     request: &ApprovalExtensionRecommendationRequestV1,
     store: Option<&crate::policy_store::PolicySnapshotStore>,
 ) -> Result<Vec<u8>, String> {
+    evaluate_with_snapshot(request, || {
+        store.map(|store| store.current_admitted_snapshot())
+    })
+}
+
+fn evaluate_with_snapshot(
+    request: &ApprovalExtensionRecommendationRequestV1,
+    read_snapshot: impl FnOnce() -> SnapshotRead,
+) -> Result<Vec<u8>, String> {
+    // Bound and digest the request before any catalog work; an oversized
+    // request has no digest to bind.
+    let request_sha256 = bounded_digest(request)?;
     // Only a recommend query reads a catalog; the caution list is constant.
     let catalog = match request.query {
-        ApprovalExtensionRecommendationQueryV1::Recommend { .. } => admitted_catalog(store)?,
+        ApprovalExtensionRecommendationQueryV1::Recommend { .. } => {
+            admitted_catalog(read_snapshot())
+        }
         ApprovalExtensionRecommendationQueryV1::CautionRiskClasses { .. } => None,
     };
-    evaluate_with_catalog(request, catalog.as_deref())
+    respond(request, request_sha256, catalog.as_deref())
 }
 
 /// The catalog of the admitted policy snapshot, else the packaged one. This is a
 /// metadata read: it needs no authority lease, which a decision would hold.
-fn admitted_catalog(
-    store: Option<&crate::policy_store::PolicySnapshotStore>,
-) -> Result<Option<Arc<CommandCatalog>>, String> {
-    let snapshot = match store.map(|store| store.current_admitted_snapshot()) {
+/// A snapshot the store refuses to admit (expired, invalid, bound to a changed
+/// authority) is an unavailable catalog, never the packaged one, and it is
+/// answered as a bound `error` reply: a bare transport error carries no schema,
+/// which the client would count against the resident-wide breaker.
+fn admitted_catalog(read: SnapshotRead) -> Option<Arc<CommandCatalog>> {
+    let snapshot = match read {
         None => None,
         Some(Ok(snapshot)) => Some(snapshot),
         Some(Err(error)) if error == "native_policy_snapshot_missing" => None,
-        Some(Err(error)) => return Err(error),
+        Some(Err(_)) => return None,
     };
     let catalog = match snapshot
         .as_ref()
@@ -107,18 +128,28 @@ fn admitted_catalog(
         Some(controls) => controls.command_catalog(),
         None => packaged_command_catalog(),
     };
-    Ok(catalog.ok())
+    catalog.ok()
 }
 
+fn bounded_digest(request: &ApprovalExtensionRecommendationRequestV1) -> Result<String, String> {
+    request_digest_with_limit(request, APPROVAL_EXTENSION_RECOMMENDATION_MAX_BYTES)
+        .map_err(|_| TOO_LARGE.to_owned())
+}
+
+#[cfg(test)]
 fn evaluate_with_catalog(
     request: &ApprovalExtensionRecommendationRequestV1,
     catalog: Option<&CommandCatalog>,
 ) -> Result<Vec<u8>, String> {
-    // Bound the complete canonical request before any decision work; an
-    // oversized request has no digest to bind.
-    let request_sha256 =
-        request_digest_with_limit(request, APPROVAL_EXTENSION_RECOMMENDATION_MAX_BYTES)
-            .map_err(|_| TOO_LARGE.to_owned())?;
+    let request_sha256 = bounded_digest(request)?;
+    respond(request, request_sha256, catalog)
+}
+
+fn respond(
+    request: &ApprovalExtensionRecommendationRequestV1,
+    request_sha256: String,
+    catalog: Option<&CommandCatalog>,
+) -> Result<Vec<u8>, String> {
     let (status, code, payload) = match decide(request, catalog) {
         Ok(payload) => ("ok", "ok".to_owned(), Some(payload)),
         Err(code) => ("error", code, None),
