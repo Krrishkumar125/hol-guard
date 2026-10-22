@@ -116,6 +116,29 @@ def test_platform_cache_tracks_compiler_inputs_not_unrelated_workflow_edits(plat
     assert ".github/workflows/ci.yml" not in key
     assert "restore-keys" not in restore["with"]
 
+    build = next(step for step in steps if step.get("name", "").startswith("Build the "))
+    upload = next(step for step in steps if step.get("name", "").startswith("Upload the "))
+    timings = next(step for step in steps if step.get("name") == "Retain native compilation timings")
+    miss = "steps.runtime-cache.outputs.cache-hit != 'true'"
+    command = (
+        "cargo build --manifest-path rust/Cargo.toml --locked --release "
+        "-p hol-guard-runtime --bin hol-guard-runtime --timings"
+    )
+    assert build["run"].splitlines()[-1] == command
+    assert build["if"] == miss
+    assert "if" not in upload  # Runtime delivery remains mandatory even on exact cache hits.
+    assert upload["with"]["if-no-files-found"] == "error"
+    assert not any(step.get("continue-on-error", False) for step in (build, upload, timings))
+    assert timings["if"] == f"always() && {miss}"
+    assert timings["uses"] == upload["uses"]
+    assert timings["with"] == {
+        "name": f"native-compilation-timings-{platform}",
+        "path": "rust/target/cargo-timings/cargo-timing.html",
+        "if-no-files-found": "ignore",
+        "retention-days": 1,
+    }
+    assert steps.index(restore) < steps.index(build) < steps.index(upload) < steps.index(timings)
+
 
 def test_native_offline_previous_caches_pinned_artifacts_and_verifies_executables() -> None:
     steps = load_ci_workflow()["jobs"]["native-offline-previous"]["steps"]
