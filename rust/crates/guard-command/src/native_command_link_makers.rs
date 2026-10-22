@@ -91,5 +91,5 @@ fn group_writes_tree(word: &str, operation: Option<&str>) -> bool {
         "stash" => ["list", "show", "drop", "clear"].as_slice(),
         _ => return false,
     };
-    !operation.is_some_and(|operation| reports.contains(&operation))
+    operation.is_none_or(|operation| !reports.contains(&operation))
 }
