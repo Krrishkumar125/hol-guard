@@ -3,13 +3,52 @@
 //! The bundle ships its delivery data under one fixed directory, one
 //! subdirectory per release tag. A location names the asset to read; this
 //! resolves it against the bundle's source and reads a member out of its
-//! container in one step, so a bulk traversal asks once per object.
+//! container in one step. A bulk traversal can share a process while retaining
+//! those same checks for each object.
 use super::{container, location, request, Outcome};
 use serde_json::{json, Value};
 use std::{fs, path::Path};
 
 const OBJECT_BYTES: u64 = 65536;
 const PACK_BYTES: u64 = 32 * 1024 * 1024;
+const BATCH_ITEMS: usize = 64;
+const BATCH_BYTES: u64 = BATCH_ITEMS as u64 * OBJECT_BYTES;
+
+/// Read a bounded batch of small installed objects with the same checks as a
+/// single fetch. Validate the whole request before opening any container.
+pub(super) fn batch(input: &Value) -> Outcome {
+    let items = input["items"]
+        .as_array()
+        .filter(|items| !items.is_empty() && items.len() <= BATCH_ITEMS)
+        .ok_or("installed bundle batch bounds invalid")?;
+    let mut total = 0u64;
+    for item in items {
+        let plan = location::asset(&json!({
+            "profile": "installed", "target": item["target"], "source": input["source"],
+        }))?;
+        let length = item["length"]
+            .as_u64()
+            .filter(|length| (1..=OBJECT_BYTES).contains(length))
+            .ok_or("installed bundle batch bounds invalid")?;
+        if plan["kind"] != "object" {
+            return Err("installed bundle batch requires objects".into());
+        }
+        total = total
+            .checked_add(length)
+            .filter(|total| *total <= BATCH_BYTES)
+            .ok_or("installed bundle batch bounds invalid")?;
+    }
+    let replies = items
+        .iter()
+        .map(|item| {
+            fetch(&json!({
+                "root": input["root"], "source": input["source"],
+                "target": item["target"], "length": item["length"],
+            }))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(json!({"items": replies}))
+}
 
 /// Validate a location of the installed bundle and, for a container member,
 /// return its verified bytes. A whole asset is only resolved: the caller holds

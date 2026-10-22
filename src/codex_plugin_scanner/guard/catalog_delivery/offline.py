@@ -55,13 +55,19 @@ def _prefetch(authority, directory: Path, *, fetch=None):
             plan = _request(authority, directory, "plan")
             if plan.get("complete"):
                 return plan
+            installed = type(authority) is preparation_authority.installed_bundle_type()
+            if installed:
+                needs = [need for need in plan["needs"] if need["kind"] != "archive"]
+                references = [(need["reference"]["location"], need["reference"]["length"]) for need in needs]
+                for need, data in zip(needs, authority.fetch_objects(references), strict=True):
+                    publish_object(objects, need["reference"]["sha256"], data)
             for need in plan["needs"]:
                 ref = need["reference"]
                 if need["kind"] == "archive":
                     write_once(
                         directory / "archives" / (ref["sha256"] + ".zip"), transfer(ref["location"], ref["length"])
                     )
-                else:
+                elif not installed:
                     publish_object(objects, ref["sha256"], transfer(ref["location"], ref["length"]))
             for archive in plan.get("ingests", ()):
                 data = read_bytes(directory / "archives" / (archive["sha256"] + ".zip"), limit=32 * 1024 * 1024)
