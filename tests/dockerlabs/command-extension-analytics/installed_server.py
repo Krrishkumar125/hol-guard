@@ -20,6 +20,7 @@ from codex_plugin_scanner.guard.approval_scope_support import request_scope_cont
 from codex_plugin_scanner.guard.cli.native_hook_exit_code import native_hook_verdict_exit_code
 from codex_plugin_scanner.guard.daemon.server import GuardDaemonServer
 from codex_plugin_scanner.guard.local_dashboard_session import build_local_dashboard_session_token
+from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 from codex_plugin_scanner.guard.store import GuardStore
 
 GUARD_HOME = Path("/guard-home")
@@ -294,10 +295,16 @@ def _complete_workflow_authorization(store: GuardStore, request_id: str) -> dict
     _ = _GH_EXECUTABLE.write_bytes(original)
     _GH_EXECUTABLE.chmod(0o700)
     retry = {**drift, "tool_call_id": "codex_lab_workflow_retry_0003"}
-    _run_installed_hook("codex", retry)
+    retry_response = _run_installed_hook("codex", retry)
     claimed = store.list_events(event_name="workflow_capability.claimed")
     if len(claimed) != 1:
-        raise RuntimeError("restored workflow retry did not claim exactly once")
+        authority = store.read_extension_control_authority(
+            catalog_digest=BUILT_IN_COMMAND_EXTENSION_REGISTRY.catalog_digest
+        )
+        raise RuntimeError(
+            "restored workflow retry did not claim exactly once; "
+            + f"claimed={len(claimed)} authority={authority.health.value} response={retry_response}"
+        )
     _assert_capability_event_privacy(store)
     return {
         "activity_proof": "drift-rejected-restored-one-shot-reuse",
