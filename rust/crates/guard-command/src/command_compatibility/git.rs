@@ -89,7 +89,7 @@ fn bounded_inspection(arguments: &[String]) -> bool {
         // A bisect session's log and a note's listing print; every other
         // spelling of either moves a ref, writes the notes ref or runs a
         // program the text names, and keeps its attribution.
-        || (matches!(command, "bisect" | "notes")
+        || (matches!(command.as_str(), "bisect" | "notes")
             && crate::pretool::git_side_record_reads::read_form(command, rest))
 }
 

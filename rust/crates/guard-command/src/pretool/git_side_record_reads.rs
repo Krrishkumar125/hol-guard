@@ -28,51 +28,64 @@ fn bisect_read_form(arguments: &[String]) -> bool {
     arguments.iter().map(String::as_str).eq(["log"])
 }
 
-/// Bare `git notes` is `git notes list`. Both printing forms take `--ref`,
-/// which chooses which notes ref is read, and both take at most one object:
-/// `list` prints every note without one, and `show` defaults to `HEAD`. An
-/// option neither form documents is not read here, so the command keeps its
-/// review.
-fn notes_read_form(arguments: &[String]) -> bool {
-    let words: Vec<&str> = arguments.iter().map(String::as_str).collect();
-    match words.split_first() {
-        None => true,
-        Some((&"list" | &"show", rest)) => matches!(objects(rest), Some(0 | 1)),
-        _ => false,
-    }
+/// Which printing form of `git notes` the tokens after `notes` spell.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NoteRead {
+    List,
+    Show,
 }
 
-/// How many objects the tokens name, or `None` when one of them is an option
-/// these two forms do not take. `--ref` selects the notes ref and is the only
-/// option either documents; it carries a value, attached or next.
-fn objects(rest: &[&str]) -> Option<usize> {
-    let mut objects = 0;
+/// Whether the tokens after `notes` print a note. `git notes show` hands the
+/// note to `git show`, which pages under its own `pager.show` setting, so the
+/// configuration proof needs this form apart from the listing.
+pub(crate) fn shows_a_note(arguments: &[String]) -> bool {
+    note_read(arguments) == Some(NoteRead::Show)
+}
+
+fn notes_read_form(arguments: &[String]) -> bool {
+    note_read(arguments).is_some()
+}
+
+/// Git reads `--ref`, which chooses the notes ref, as an option of `git notes`
+/// itself, ahead of the subcommand: `git notes --ref build list`. The
+/// subcommands take no options of their own, so `list --ref build` is a usage
+/// error in Git and is not read here. Bare `git notes` is `git notes list`,
+/// and both printing forms take at most one object: `list` prints every note
+/// without one, and `show` defaults to `HEAD`.
+fn note_read(arguments: &[String]) -> Option<NoteRead> {
+    let words: Vec<&str> = arguments.iter().map(String::as_str).collect();
     let mut index = 0;
-    while let Some(word) = rest.get(index) {
+    while let Some(word) = words.get(index) {
         index += 1;
-        let Some(long) = word.strip_prefix("--") else {
-            if word.starts_with('-') || !object_name(word) {
-                return None;
-            }
-            objects += 1;
-            continue;
-        };
-        match long.split_once('=') {
-            Some(("ref", value)) => {
-                if !object_name(value) {
-                    return None;
-                }
-            }
-            None if long == "ref" => {
-                if !rest.get(index).is_some_and(|value| object_name(value)) {
+        match word.strip_prefix("--ref") {
+            Some("") => {
+                if !words.get(index).is_some_and(|value| object_name(value)) {
                     return None;
                 }
                 index += 1;
             }
-            _ => return None,
+            Some(attached) => {
+                if !attached.strip_prefix('=').is_some_and(object_name) {
+                    return None;
+                }
+            }
+            None => {
+                index -= 1;
+                break;
+            }
         }
     }
-    Some(objects)
+    let (read, objects) = match words[index..].split_first() {
+        None => return Some(NoteRead::List),
+        Some((&"list", objects)) => (NoteRead::List, objects),
+        Some((&"show", objects)) => (NoteRead::Show, objects),
+        _ => return None,
+    };
+    match objects {
+        [] => Some(read),
+        [object] if object_name(object) => Some(read),
+        _ => None,
+    }
 }
 
 /// A word Git reads as an object or a ref: the characters a ref name and the
@@ -90,7 +103,7 @@ fn object_name(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::read_form;
+    use super::{read_form, shows_a_note};
 
     fn words(command: &str) -> Vec<String> {
         command.split_whitespace().map(str::to_string).collect()
@@ -127,12 +140,17 @@ mod tests {
             "",
             "list",
             "list HEAD",
-            "list --ref build",
-            "list --ref=build HEAD",
             "show",
             "show HEAD",
             "show HEAD~2",
-            "show --ref build HEAD",
+            "--ref build",
+            "--ref build list",
+            "--ref=build list",
+            "--ref build list HEAD",
+            "--ref=build show",
+            "--ref build show HEAD",
+            "--ref refs/notes/build show HEAD~2",
+            "--ref a --ref b list",
         ] {
             assert!(read_form("notes", &words(arguments)), "{arguments}");
         }
@@ -148,14 +166,45 @@ mod tests {
             "remove HEAD",
             "prune",
             "merge other",
+            "--ref build add -m fix HEAD",
+            "--ref build edit HEAD",
             "list -n",
             "list --pretty=raw",
             "show --ref",
             "show HEAD extra",
             "show ../outside",
-            "show --ref ../outside HEAD",
+            // Git takes `--ref` ahead of the subcommand and refuses it after.
+            "list --ref build",
+            "list --ref=build HEAD",
+            "show --ref build HEAD",
+            "--ref",
+            "--ref list",
+            "--ref=",
+            "--ref ../outside list",
+            "--ref=../outside show HEAD",
+            "--ref -x list",
+            "--refs build list",
+            "--ref build HEAD",
+            "HEAD",
         ] {
             assert!(!read_form("notes", &words(arguments)), "{arguments}");
+        }
+    }
+
+    #[test]
+    fn only_the_show_form_hands_the_note_to_git_show() {
+        for arguments in ["show", "show HEAD", "--ref build show HEAD", "--ref=b show"] {
+            assert!(shows_a_note(&words(arguments)), "{arguments}");
+        }
+        for arguments in [
+            "",
+            "list",
+            "list HEAD",
+            "--ref build",
+            "--ref build list",
+            "add HEAD",
+        ] {
+            assert!(!shows_a_note(&words(arguments)), "{arguments}");
         }
     }
 

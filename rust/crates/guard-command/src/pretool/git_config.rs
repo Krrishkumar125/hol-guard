@@ -58,6 +58,26 @@ pub(super) fn execution_free_paging(
             stdout_piped,
         );
     }
+    // `git notes show` hands the note to `git show`, which pages under
+    // `pager.show` where `pager.notes` left the choice open, so the proof runs
+    // under both keys. A listing runs nothing else.
+    if operation == "notes"
+        && pager_operation.is_none()
+        && super::git_side_record_reads::shows_a_note(&remaining[1..])
+    {
+        let prove = |pager: &str| {
+            execution_free_paging(
+                executable,
+                arguments,
+                Some(pager),
+                context,
+                deadline,
+                execution_environment,
+                stdout_piped,
+            )
+        };
+        return Some(prove("notes")? && prove("show")?);
+    }
     if !matches!(
         operation,
         "status"

@@ -19131,6 +19131,38 @@
       "expect": "allow"
     },
     {
+      "id": "git-notes-selected-ref-listing",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git notes --ref build list"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "git-notes-selected-ref-show",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git notes --ref build show HEAD"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "neg-git-bisect-run-starts-a-program",
       "fix_area": "shell",
       "harnesses": [
@@ -19187,6 +19219,22 @@
       "tool": "shell",
       "tool_input": {
         "command": "git notes prune"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-git-notes-ref-after-the-subcommand",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git notes list --ref build"
       },
       "cwd": "worktree",
       "expect": "not_allow"
