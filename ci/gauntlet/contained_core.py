@@ -330,15 +330,27 @@ def _binding_error(
 
 
 def contained_calls(
-    expectation: str, case: dict[str, Any], calls: list[dict[str, Any]], *, approval_retry: bool = False
+    expectation: str,
+    case: dict[str, Any],
+    calls: list[dict[str, Any]],
+    *,
+    approval_retry: bool = False,
+    contained_ok: bool = False,
 ) -> tuple[dict[str, dict[str, Any]], tuple[str, str] | None]:
     """Reviewed inputs of fully bound contained calls, or the outcome for a rewrite that is not bound.
 
     Only a call Guard denied for containment whose host input differs from the reviewed input is a
     contained rewrite; any other deny keeps the ordinary judgement and still counts as interruption.
+
+    ``contained_ok`` is the author's declaration that a protection case accepts Guard's own
+    contained route as its stop. It widens only which containment reasons open this path; every
+    binding ``_binding_error`` requires — the Rust denial receipt, the canonical wrapper argv, the
+    guard-home and workspace bindings, the captured request bytes and a successful result — still
+    has to hold, so an unproven rewrite is never bound and never passes.
     """
-    if expectation != "allow" and not approval_retry:
+    if expectation != "allow" and not approval_retry and not contained_ok:
         return {}, None
+    reasons = frozenset(CONTAINMENT_PROFILES) if contained_ok else frozenset({"native_bash_owner_required"})
     observations = [row for row in case.get("guard_observations", []) if isinstance(row, dict)]
     proofs = case.get("contained_request_proofs", [])
     if not isinstance(proofs, list):
@@ -348,7 +360,7 @@ def contained_calls(
         rows = [row for row in observations if row.get("tool_call_id") == call.get("id")]
         pre = [row for row in rows if row.get("event") == "PreToolUse"]
         reviewed = pre[0].get("input") if len(pre) == 1 else None
-        if expectation != "allow" and (not pre or pre[0].get("reason_code") != "native_bash_owner_required"):
+        if expectation != "allow" and (not pre or pre[0].get("reason_code") not in reasons):
             continue
         if (
             not isinstance(reviewed, dict)
