@@ -14,7 +14,7 @@ use crate::cloud_scrub_shell::shell_tokens;
 
 /// True when a leading setting of any simple command in `command` is not
 /// inert. Text that does not tokenize counts as carrying a value.
-pub(super) fn removes_values(command: &str) -> bool {
+pub(in crate::pretool::generic) fn removes_values(command: &str) -> bool {
     let chars: Vec<char> = command.chars().collect();
     let Some(tokens) = shell_tokens(&chars) else {
         return true;
