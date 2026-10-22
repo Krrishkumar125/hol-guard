@@ -44,6 +44,7 @@ mod inert_environment;
 pub(crate) mod kubectl_reads;
 mod loopback_ports;
 pub(crate) mod port_probes;
+pub(crate) mod rsync_local;
 mod workspace_contained;
 /// The package firewall's extensions, whose permission marks which
 /// ecosystem's manager ran rather than a risk the run carries.

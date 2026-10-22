@@ -229,7 +229,12 @@ pub(crate) fn command_shape(
         let script = script::outside_script(segment, workspace);
         // The sandbox has no network, so a network client would only fail,
         // and it reaches no directory outside the workspace.
-        if NETWORK_CLIENTS.contains(&name)
+        // `rsync -a src/ build/` is a local copy written the way build
+        // scripts write it, not a transfer. Only that shape leaves the
+        // exclusion; `reaches_outside` still holds its operands to the
+        // workspace.
+        if (NETWORK_CLIENTS.contains(&name)
+            && !(name == "rsync" && super::rsync_local::local_copy(&segment.arguments)))
             || reach::reaches_outside(
                 segment,
                 name,
