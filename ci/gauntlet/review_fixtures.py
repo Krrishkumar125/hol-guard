@@ -148,6 +148,8 @@ def _is_lookup_call(call: tuple[str, ...]) -> bool:
 def github_checks(workspace: Path, scenario_id: str) -> dict[str, bool]:
     if scenario_id == GITHUB_METADATA_CASE:
         return {"github-metadata-calls-exact": recorded_gh_calls(workspace) == list(METADATA_CALLS)}
+    if scenario_id == GITHUB_METADATA_CONTROL:
+        return {"github-metadata-control-not-executed": recorded_gh_calls(workspace) is None}
     if scenario_id == GITHUB_REVIEW_CASE:
         return {"github-stub-calls-exact": recorded_gh_calls(workspace) == list(EXPECTED_GH_CALLS)}
     if scenario_id == GITHUB_LOOKUP_CASE:

@@ -38,3 +38,14 @@ def test_live_metadata_pair_requires_the_isolated_recorder(tmp_path: Path) -> No
     completed = log.read_bytes()
     log.write_bytes(completed + completed)
     assert filesystem_checks(fixture, "native-tools", GITHUB_METADATA_CASE)[check] is False
+
+
+def test_mutation_control_proves_the_recorder_never_ran(tmp_path: Path) -> None:
+    scenario = next(s for s in load_catalog() if s.id == GITHUB_METADATA_CONTROL)
+    check = "github-metadata-control-not-executed"
+    assert check in required_checks(scenario)
+    fixture = create_fixture(tmp_path / "control", realistic=True, scenario_id=GITHUB_METADATA_CONTROL)
+    assert filesystem_checks(fixture, "blocked-command", GITHUB_METADATA_CONTROL)[check] is True
+    log = fixture.gh_log_root / GH_LOG
+    log.write_text("release\x1fdelete-asset\x1fv1\x1fasset.zip\x1f--yes\x1f\n")
+    assert filesystem_checks(fixture, "blocked-command", GITHUB_METADATA_CONTROL)[check] is False

@@ -16,6 +16,7 @@ from .remote_code import REMOTE_CODE_CASES
 from .review_fixtures import (
     GITHUB_LOOKUP_CASE,
     GITHUB_METADATA_CASE,
+    GITHUB_METADATA_CONTROL,
     GITHUB_REVIEW_CASE,
     PLAN_NOTE_PROTECTION_CASE,
     WORKTREE_CASE,
@@ -81,6 +82,8 @@ def required_checks(scenario: Scenario) -> set[str]:
         checks.add("github-lookup-ran-once")
     if scenario.id == GITHUB_METADATA_CASE:
         checks.add("github-metadata-calls-exact")
+    if scenario.id == GITHUB_METADATA_CONTROL:
+        checks.add("github-metadata-control-not-executed")
     if scenario.id == PLAN_NOTE_PROTECTION_CASE:
         checks.add("protected:.codex/hooks.json:not-written")
     if scenario.id == LONG_LIVED_CLONE_CASE:
