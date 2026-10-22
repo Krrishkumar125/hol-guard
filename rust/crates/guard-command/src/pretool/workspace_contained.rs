@@ -202,6 +202,7 @@ pub(crate) fn command_shape(
     if links::unbounded_linked_writes(model, workspace) {
         return None;
     }
+    let linked = super::worktree_writes::linked_worktree_common_dir(workspace).is_some();
     let temp_fixed = !reach::rebinds_private_temp(&model.normalized_text);
     // `~` is the private home the launcher seeds only while nothing rebinds it.
     let home_fixed = !model.normalized_text.contains("HOME");
@@ -256,6 +257,12 @@ pub(crate) fn command_shape(
             && !(name == "chmod" && chmod::plain_mode(&segment.arguments))
             && !(name == "kill" && kill::jobs_only(&segment.arguments))
         {
+            return None;
+        }
+        // A linked worktree's grant covers the index, `HEAD`, merge state and
+        // the shared refs and objects, not the rebase, sequencer or bisect
+        // state, so Git that writes it keeps its review there.
+        if name == "git" && linked && git_metadata::writes_linked_admin_state(&segment.arguments) {
             return None;
         }
         if name == "git" && git_metadata::writes_denied_metadata(&segment.arguments) {

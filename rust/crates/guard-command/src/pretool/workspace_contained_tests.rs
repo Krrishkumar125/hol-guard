@@ -459,6 +459,13 @@ fn a_linked_worktree_contains_git_with_its_shared_directory() {
         "git worktree remove --force ../other",
         "git config user.email agent@example.com",
         "git push origin HEAD",
+        // Rebase, sequencer, bisect and squash state are outside the grant.
+        "git rebase main",
+        "git cherry-pick HEAD~1",
+        "git revert --no-edit HEAD",
+        "git bisect start",
+        "git am -3 fix.patch",
+        "git merge --squash main",
     ] {
         assert_ne!(reason("omp", command, &tree, true), CONTAINED, "{command}");
     }
