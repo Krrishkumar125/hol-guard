@@ -112,7 +112,8 @@ def _request(
     command_extensions, policy_master = _command_controls(root)
     provision_native_policy_verifier_key(root, policy_master)
     if fresh:
-        assert close_native_residents(root)
+        closed = close_native_residents(root)
+        assert closed
         assert not _state_files(state_dir)
     policy_snapshot = build_policy_snapshot_v3(
         config={
