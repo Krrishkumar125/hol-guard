@@ -14,6 +14,9 @@ pub(crate) mod git_helper_fixture;
 #[path = "support/business_properties.rs"]
 pub(crate) mod business_properties;
 
+#[path = "../../../test_support/unique_nanos.rs"]
+pub(crate) mod unique_nanos;
+
 pub mod business_command_properties;
 pub mod business_gmail_plain;
 pub mod business_gmail_transfer;
@@ -68,6 +71,7 @@ pub mod pretool_file_copies;
 pub mod pretool_file_mutations;
 pub mod pretool_file_reads;
 pub mod pretool_find_brace_expansion;
+pub mod pretool_find_exec_programs;
 pub mod pretool_find_hidden_home_match;
 pub mod pretool_forged_worktree;
 pub mod pretool_generic;
