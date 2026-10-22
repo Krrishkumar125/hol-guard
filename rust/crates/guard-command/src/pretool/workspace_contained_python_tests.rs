@@ -233,7 +233,7 @@ fn poetry_project(name: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn a_poetry_verb_that_reads_the_project_runs_inside_the_sandbox() {
+fn a_poetry_read_that_stays_in_the_project_runs_inside_the_sandbox() {
     let ws = poetry_project("poetry-reads");
     for command in [
         "poetry check",
@@ -242,9 +242,6 @@ fn a_poetry_verb_that_reads_the_project_runs_inside_the_sandbox() {
         "poetry version --short",
         "poetry --no-interaction check",
         "poetry -q version",
-        "poetry run python -V",
-        "poetry run pytest -q",
-        "poetry run -- pytest -q",
     ] {
         for harness in ["codex", "claude-code", "omp"] {
             let (reason, _) = outcome(harness, command, &ws);
@@ -267,6 +264,10 @@ fn every_poetry_verb_that_reaches_a_registry_keeps_its_review() {
         "poetry publish --build",
         "poetry self update",
         "poetry source add internal https://example.invalid/simple",
+        "poetry run pip install ./local-package",
+        "poetry run python -m pip install ./local-package",
+        "poetry run pytest -q",
+        "poetry run -- pytest -q",
     ] {
         for harness in ["codex", "claude-code", "omp"] {
             let (reason, minimum) = outcome(harness, command, &ws);
@@ -286,6 +287,16 @@ fn a_poetry_verb_that_writes_or_moves_the_project_keeps_its_review() {
     for command in [
         "poetry version 2.0.0",
         "poetry version patch",
+        "poetry version -- patch",
+        "poetry version -- 2.0.0",
+        "poetry version --project=../dashboard",
+        "poetry version -C../dashboard",
+        "poetry version -P../dashboard",
+        "poetry check --directory=../dashboard",
+        "poetry check --project ../dashboard",
+        "poetry check --unknown-option",
+        "poetry run -C ../dashboard pytest",
+        "poetry run --project=../dashboard pytest",
         "poetry -C ../dashboard run pytest",
         "poetry --directory ../dashboard check",
         "poetry --project ../dashboard version",
