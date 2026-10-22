@@ -8,6 +8,7 @@ unavailable resident leaves the approval unminted rather than guessed.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -192,3 +193,26 @@ def test_a_batch_splits_before_it_outgrows_the_request(monkeypatch: pytest.Monke
     artifacts = [wide("mcp:one"), wide("mcp:two"), wide("mcp:three")]
     assert bridge.native_artifact_content_hashes(artifacts) == [_HASH_A] * 3
     assert sent == [["mcp:one"], ["mcp:two"], ["mcp:three"]]
+
+
+def test_a_batch_fits_the_request_the_transport_actually_sends(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The split measures an artifact the way the request spells it on the wire.
+
+    The envelope is written with the separators ``json.dumps`` uses by default,
+    so a compact measurement undercounts every comma and colon it carries. An
+    artifact with many short arguments is mostly separators, and a batch of them
+    was counted under the cap and refused whole once it was sent, which lost
+    every hash in it.
+    """
+
+    monkeypatch.setattr(bridge, "_MAX_BATCH_BYTES", 8192)
+
+    def busy(artifact_id: str) -> GuardArtifact:
+        return replace(_artifact(artifact_id), args=[f"a{index}" for index in range(120)])
+
+    artifacts = [busy(f"mcp:acme{index}") for index in range(24)]
+    batches = list(bridge._batches(artifacts))
+    assert [item for batch in batches for item in batch] == artifacts
+    for batch in batches:
+        on_the_wire = json.dumps([bridge.artifact_content_hash_fields(item) for item in batch])
+        assert len(on_the_wire.encode("utf-8")) <= bridge._MAX_BATCH_BYTES

@@ -35,6 +35,8 @@ _MAX_REQUEST_BYTES = 4 * 1024 * 1024
 # A batch stops short of the request cap so the schema, request id and the
 # framing around the artifacts still fit beside them.
 _MAX_BATCH_BYTES = _MAX_REQUEST_BYTES - 64 * 1024
+# The ``", "`` that joins one artifact to the next in the request's array.
+_ARTIFACT_ENVELOPE_BYTES = 2
 _HASH_LENGTH = 64
 _HASH_ALPHABET = frozenset("0123456789abcdef")
 
@@ -103,17 +105,19 @@ def _batches(artifacts: Sequence[GuardArtifact]) -> Iterator[Sequence[GuardArtif
     and lose every hash in it, so the size is measured as the batch is filled.
     An artifact that is larger than a whole batch still goes on its own: the
     resident refuses it by itself rather than taking the rest down with it.
+
+    The measurement spells the artifact the way the transport does, with the
+    separators ``json.dumps`` uses by default and the two bytes that join it to
+    the artifact before it. A compact spelling would undercount every comma and
+    colon in the request, so a harness carrying many short arguments could fill
+    a batch the transport then refuses whole.
     """
 
     start = 0
     bytes_so_far = 0
     for index, artifact in enumerate(artifacts):
-        encoded = len(
-            json.dumps(
-                artifact_content_hash_fields(artifact),
-                separators=(",", ":"),
-                default=str,
-            ).encode()
+        encoded = _ARTIFACT_ENVELOPE_BYTES + len(
+            json.dumps(artifact_content_hash_fields(artifact), default=str).encode()
         )
         if index > start and (index - start >= _MAX_ARTIFACTS or bytes_so_far + encoded > _MAX_BATCH_BYTES):
             yield artifacts[start:index]
