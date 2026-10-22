@@ -35,11 +35,14 @@ const SLOT_NAMES: &[&str] = &[
 static BRACED: OnceLock<Regex> = OnceLock::new();
 static SUBSTITUTION: OnceLock<Regex> = OnceLock::new();
 
-/// `${NAME}` or `${NAME:-word}`, capturing the operator and the word.
+/// `${NAME}` or `${NAME:-word}`, capturing the operator and the word. The
+/// word may itself be one `${OTHER}`.
 fn braced_regex() -> &'static Regex {
     BRACED.get_or_init(|| {
-        Regex::new(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(?::?([-=+?])([^}]*))?\}$")
-            .expect("URL braced substitution rule must compile")
+        Regex::new(
+            r"^\$\{[A-Za-z_][A-Za-z0-9_]*(?::?([-=+?])(\$\{[A-Za-z_][A-Za-z0-9_]*\}|[^}]*))?\}$",
+        )
+        .expect("URL braced substitution rule must compile")
     })
 }
 
@@ -166,6 +169,7 @@ mod tests {
             "https://alice:${GITEA_TOKEN:-}@git.lan/alice/notes.git",
             "https://alice:${GITEA_TOKEN:-$FALLBACK_TOKEN}@git.lan/alice/notes.git",
             "git push https://ci:${CI_TOKEN:?required}@git.lan/repo.git",
+            "https://alice:${GITEA_TOKEN:-${FALLBACK_TOKEN}}@git.lan/alice/notes.git",
             "git push https://ci:${CI_TOKEN?required}@git.lan/repo.git",
             "https://alice:test@git.lan/alice/notes.git",
             "https://alice:%(token)s@git.lan/alice/notes.git",
