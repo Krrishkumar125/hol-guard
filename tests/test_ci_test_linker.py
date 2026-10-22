@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
-from pathlib import Path
 
 from tests.release_workflow_helpers import load_workflow
 
