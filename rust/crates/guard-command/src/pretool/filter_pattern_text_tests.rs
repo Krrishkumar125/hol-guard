@@ -20,8 +20,9 @@ fn a_stdin_filter_pattern_is_not_a_sensitive_target() {
 
 /// Only the filter's own arguments are set aside. A producer that names a
 /// sensitive file keeps its signal, a credential word keeps its signal
-/// wherever it appears, and a matcher that opens a file of its own is not a
-/// stdin filter at all.
+/// wherever it appears, a matcher that opens a file of its own is not a stdin
+/// filter at all, and a word the shell can still act on — an attached
+/// redirect, an unquoted glob — is not a pattern yet.
 #[test]
 fn only_a_proven_stdin_filter_sheds_its_pattern() {
     for command in [
@@ -32,6 +33,8 @@ fn only_a_proven_stdin_filter_sheds_its_pattern() {
         "ls -R . | grep -f .env",
         "ls -R . | grep --file=.env",
         "ls -R . | grep -r .env /etc",
+        "ls -R . | grep .env<.env",
+        "ls -a . | grep -v .env*",
         "ls -R . | PATTERN=.env grep $PATTERN",
     ] {
         assert!(

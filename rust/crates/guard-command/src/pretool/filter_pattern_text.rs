@@ -33,6 +33,30 @@ pub(super) fn command_without_patterns(model: &CanonicalCommandV1) -> Option<Str
     masked.then(|| parts.join(" ; "))
 }
 
+/// Shell text that makes a word do more than match the lines it is handed: a
+/// redirect opens a file, a glob expands into further operands, and a
+/// substitution brings in text no screen has seen. The model keeps each of
+/// them inside the word it was written against.
+const EXPANDABLE: [char; 10] = ['<', '>', '*', '?', '[', '$', '`', '&', ';', '('];
+
+/// Whether a segment is a later pipeline stage whose words a caller may set
+/// aside as patterns. Being handed standard input is not enough on its own:
+/// `grep .env<.env` opens the very file the mask would hide, and
+/// `grep -v .env*` expands into one once `.env.local` exists beside it, so a
+/// word carrying shell syntax stays in view.
+pub(super) fn maskable_filter_segment(segment: &CommandSegmentV1) -> bool {
+    segment.pipeline_index > 0
+        && !segment.arguments.is_empty()
+        && segment.environment_names.is_empty()
+        && segment.wrapper_chain.is_empty()
+        && !segment.path_overridden
+        && segment.tokens.len() == segment.arguments.len() + 1
+        && !segment
+            .tokens
+            .iter()
+            .any(|token| token.contains(EXPANDABLE))
+}
+
 /// One segment's program name alone, when the segment is a later pipeline
 /// stage whose arguments are proven to read only standard input. Those
 /// arguments are switches, counts and patterns; the proof refuses a file
@@ -40,13 +64,7 @@ pub(super) fn command_without_patterns(model: &CanonicalCommandV1) -> Option<Str
 /// the stage opens.
 fn segment_without_patterns(segment: &CommandSegmentV1) -> Option<String> {
     let executable = segment.executable.as_deref()?;
-    if segment.pipeline_index == 0
-        || segment.arguments.is_empty()
-        || !segment.environment_names.is_empty()
-        || !segment.wrapper_chain.is_empty()
-        || segment.path_overridden
-        || segment.tokens.len() != segment.arguments.len() + 1
-    {
+    if !maskable_filter_segment(segment) {
         return None;
     }
     let stdin_only = match super::executable_basename(executable) {
