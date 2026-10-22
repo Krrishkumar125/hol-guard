@@ -389,7 +389,7 @@ fn fingerprint_path_tree(root: &Path, home_dir: &Path) -> Option<String> {
     let mut entries = Vec::with_capacity(paths.len());
     for path in &paths {
         entries.push(json!({
-            "path": redact_local_path(path, home_dir),
+            "path": redact_resolved_path(&resolve(path).unwrap_or_else(|_| path.clone()), home_dir),
             "sha256": fingerprint_file_bytes(path)?,
         }));
     }
