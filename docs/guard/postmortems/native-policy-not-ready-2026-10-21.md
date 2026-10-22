@@ -55,35 +55,55 @@ direction.
 
 ## The fix
 
-`#5658` has two halves.
+The catalog drift has to be repaired where it is recorded. `#5648` migrates the
+installed command pack's activation at daemon startup: when the activated
+engine no longer matches the installed one, `migrate_active`
+(`src/codex_plugin_scanner/guard/catalog_delivery/installed_upgrade.py`)
+finishes any anchored transition and prepares a candidate activation for the
+engine the runtime actually ships, before any policy is prepared. A home that
+has drifted stops producing a binding the runtime cannot admit.
 
-- **Rust.** Declare the command-admission codes in
-  `NATIVE_COMMAND_CONTROL_ERROR_CODES` so `safe_error_response` stops rewriting
-  them. A new resident test pins that these codes reach the publisher unchanged.
-- **Python.** The publisher now retries once without the command binding when a
-  push is refused for a reason listed in `COMMAND_BINDING_UNUSABLE_CODES`. The
-  snapshot republishes in `enforce` mode, minus command extensions, and the hook
-  barrier opens. Any other refusal still fails closed, unchanged.
+`#5658` makes the next failure of this shape legible rather than repairing this
+one. `safe_error_response` rewrites any code outside its declared vocabulary
+into `native_request_invalid_json`, and the fifteen failures raised while
+admitting a command binding were all undeclared. They are declared now, so the
+publisher and every log built on it see the refusal the resident actually
+raised. A resident test pins that those codes cross the boundary unchanged.
 
-The recovery list includes `native_request_invalid_json` on purpose: a resident
-built before the Rust half shipped reports every admission failure under that
-code, and those installs are exactly the ones that are stuck. The Python half is
-what unblocks an already-wedged machine; the Rust half makes the next failure
-legible.
+### What was tried and removed
 
-Losing command extensions is a real reduction in coverage. It is strictly better
-than losing all enforcement, which is what the old behavior did, and the
-publisher records why the binding was dropped.
+An earlier shape of `#5658` had the publisher retry once without the command
+binding when admission refused it. That cannot work, and it should not.
+
+It cannot work because `next_floor`
+(`rust/crates/guard-runtime/src/policy_store_command_floor.rs`) refuses any
+snapshot that drops `command_extensions` once a protected command-control floor
+exists, and that floor survives restarts. Every affected home reports
+`health = protected`, so the retry is refused with
+`native_command_control_binding_removed` before admission is reached. The
+machine stays wedged.
+
+It should not, because `with_command_loader` runs only when the binding is
+present. A binding-less snapshot silently drops managed and signed-cloud
+layers, `global_lockdown`, per-target controls, authority epochs and
+`active_security_digest`. The retry would have lowered a policy floor without
+approval in exchange for a recovery that never arrives.
+`protected_floor_refuses_a_snapshot_that_drops_the_command_binding` pins the
+refusal so this is not proposed again.
 
 ## Verification
 
-`tests/test_native_hook_barrier_command_binding_wedge.py` drives the real
-publisher and the real `HookWorker` against a resident that refuses every push
-carrying a command binding — which is what a drifted catalog does — and asserts
-the barrier opens on the republished snapshot. Against the pre-fix transport,
-that file and the transport unit tests fail 21 of 24; against the fix, 24 pass.
-The three that pass either way are the negative controls that must keep failing
-closed.
+`#5648`'s migration is reached on an affected home: its trigger is
+`previous.engine != installed.engine`, and the home that reported this incident
+had an activated engine that no installed runtime builds. Confirming that the
+migration completes and the home un-wedges requires installing a build that
+contains it on that machine and watching `prepare_workspace_policy` return a
+policy. Until that is done, this is a diagnosis supported by the source, not an
+accepted fix.
+
+`#5658` is verified at the boundary it changes: the resident test shows the
+admission codes reaching the publisher unchanged, and the floor test shows the
+binding-less push refused both in-process and after a restart.
 
 ## Why the first attempt shipped broken
 
@@ -109,6 +129,14 @@ gaps, in the order they mattered:
 - **"Released" was reported as "fixed."** A merged PR and a published version
   are facts about the repository. Neither is a fact about the machine that
   reported the problem.
+- **The test fixture did not model the thing that refuses.** The second attempt
+  was declared fixed on a suite that passed. Its fake resident accepted any
+  push that carried no command binding, so it modelled a resident with no
+  command-control floor — which no affected home is. The suite proved the
+  publisher does what it was written to do, not that the resident would accept
+  it. A reviewer found the floor; the tests could not have. A fixture that
+  stands in for the component under test has to be checked against that
+  component's real refusals before its passes mean anything.
 
 ## What changed so this does not repeat
 
@@ -125,3 +153,8 @@ production wiring that emitted the message, run acceptance against the reporting
 configuration rather than a clean one, never root-cause from a wire code without
 reading its emission site, prove the new test fails without the fix, and state
 which claim you actually hold.
+
+One rule was added after the second attempt: a fixture that stands in for the
+component the fix depends on has to be checked against that component's real
+refusals. A fake that accepts what the real one rejects turns a green suite into
+evidence of nothing.
