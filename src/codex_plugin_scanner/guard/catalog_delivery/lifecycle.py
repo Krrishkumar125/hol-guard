@@ -158,7 +158,12 @@ def record(operation, purpose, *, key: bytes, **fields) -> dict[str, Any]:
     """
     from ..runtime.extension_control_authority import ExtensionControlAuthorityError
 
-    result = invoke("record", operation=operation, purpose=purpose, key=key.hex(), **fields)
+    try:
+        result = invoke("record", operation=operation, purpose=purpose, key=key.hex(), **fields)
+    except (TypeError, OverflowError) as error:
+        # A record the request cannot carry is refused by name here, the way the
+        # runtime refuses one it can read but will not accept.
+        raise ValueError("pack_lifecycle_record_payload_invalid") from error
     fault = result.get("fault")
     if fault == "tampered":
         raise ExtensionControlAuthorityError(str(result.get("reason")))
