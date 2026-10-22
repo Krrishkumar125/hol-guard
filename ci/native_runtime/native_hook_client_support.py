@@ -100,14 +100,20 @@ def _request(
 ) -> bytes:
     runtime_identity = hashlib.sha256(runtime.read_bytes()).hexdigest()
     rule_digest = _rule_digest(runtime)
+    # Reading the store answers through a resident that this process starts in
+    # root/native-runtime, the state directory the tests drive. When the test
+    # has not started a resident there yet, stop that one so the test begins
+    # from an empty state directory with no resident owned by pytest. A test
+    # that already keeps residents there (a handoff) is left as it arranged.
+    state_dir = root / "native-runtime"
+    fresh = not _state_files(state_dir)
     # The store mints its policy integrity key here, and refuses to mint one
     # once a native verifier key is already on disk. Bind before provisioning.
     command_extensions, policy_master = _command_controls(root)
     provision_native_policy_verifier_key(root, policy_master)
-    # Reading the store answers through a resident that this process starts in
-    # root/native-runtime, the state directory the tests drive. Stop it so each
-    # test starts from an empty state directory with no resident owned by pytest.
-    assert close_native_residents(root)
+    if fresh:
+        assert close_native_residents(root)
+        assert not _state_files(state_dir)
     policy_snapshot = build_policy_snapshot_v3(
         config={
             "mode": "enforce",
