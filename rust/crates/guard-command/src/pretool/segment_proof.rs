@@ -274,6 +274,7 @@ pub(super) fn exact_safe_segment_with_context(
         "ls" => {
             super::listing_reads::safe_listing_segment(&segment.text, &segment.arguments, context)
         }
+        "tree" => super::tree_reads::safe_tree_segment(&segment.arguments, context),
         "test" => safe_reads::safe_file_predicate_arguments(&segment.arguments, context),
         "[" => segment
             .arguments

@@ -158,6 +158,7 @@ mod shell_script;
 mod stderr_merge;
 mod stdin_filters;
 mod symlink_writes;
+mod tree_reads;
 mod version_probes;
 #[cfg(test)]
 #[path = "pretool/workspace_contained_runner_tests.rs"]
