@@ -84,6 +84,10 @@ fn decide(
     if query.kind != EXTENSION_ALLOW_HINT_QUERY_KIND {
         return Err("native_extension_allow_hint_kind_invalid".to_owned());
     }
+    // A fixed floor needs no evaluation, and none is run under the lease for it.
+    if !is_extension_review(&query.native_extension_evidence) {
+        return Ok(None);
+    }
     let started = Instant::now();
     let base = evaluate_with(query, &[], controls)?;
     if base.authority_failure
@@ -91,7 +95,6 @@ fn decide(
             base.evaluation.decision_plane.action.as_str(),
             "review" | "require-reapproval"
         )
-        || !is_extension_review(&query.native_extension_evidence)
     {
         return Ok(None);
     }

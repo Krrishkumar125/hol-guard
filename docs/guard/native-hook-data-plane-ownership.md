@@ -154,9 +154,11 @@ PreTool floor never gets one. Python
 (`native_extension_allow_hint.py`) builds the query from the evidence the review
 already holds and shape-checks the answer; with no resident there is no hint
 and no Python recomputation. The one remaining mirror is the cheap gate that
-decides whether a paused review is worth asking about at all: the resident's
+decides whether a paused review is worth asking about at all (not under an
+authority failure, held for review, and the extension review itself rather than
+a fixed floor): `compute_extension_allow_hint`, the resident's
 `allow_hint_candidate` check and `native_review_allow_hint._definite_review_binding`
-state the same rule, and the recorded vectors in
+state the same rule, the resident stays authoritative, and the recorded vectors in
 `rust/crates/guard-runtime/testdata/hook_direct_review/` pin the resident and
 daemon copies together. The settle proofs and the counterfactual that verifies a
 hint before it is stored are Rust-owned.

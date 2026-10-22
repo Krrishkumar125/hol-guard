@@ -21,9 +21,11 @@ from .command_evaluation_types import CompositeCommandEvaluation
 from .extension_control_runtime import ExtensionControlRuntimeSnapshot
 
 EXTENSION_ALLOW_HINT_SCHEMA = "guard.extension-allow-hint.v1"
-# Bounds a stored hint's id lists: the resident names at most three permissions
-# and reports at most twelve relied-on ones.
+# Bounds a stored hint's id lists. The resident names at most three permissions
+# (the client enforces that on its reply) and reports at most twelve relied-on
+# ones; a stored hint keeps the wider bound it has always had.
 _MAX_HINT_IDS = 12
+_EXTENSION_REVIEW_REASON = "native_command_review_required"
 
 
 def _valid_hint_ids(items: object, *, allow_empty: bool) -> list[str] | None:
@@ -51,10 +53,17 @@ def compute_extension_allow_hint(
     """
 
     # The resident decides everything; this only spares it a round trip for a
-    # command that already runs or is held by a fixed authority failure.
+    # command that already runs, is held by a fixed authority failure, or is held
+    # by a fixed PreTool floor (sensitive access, Guard self-protection, ...) that
+    # no extension Allow can settle.
     if snapshot.authority_failure is not None or evaluation.decision_plane.action not in (
         "review",
         "require-reapproval",
+    ):
+        return None
+    if isinstance(native_evidence, dict) and (
+        native_evidence.get("minimum_action") == "block"
+        or native_evidence.get("reason_code") != _EXTENSION_REVIEW_REASON
     ):
         return None
     return native_extension_allow_hint(

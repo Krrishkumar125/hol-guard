@@ -15,7 +15,7 @@ import threading
 import time
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from .native_daemon_route import _decide
 from .native_resident_decision import ResidentOperation, shape_fields
@@ -31,9 +31,10 @@ _TIMEOUT_SECONDS: Final = 5.0
 # A bounded reduction pass is answered after its budget, so the ask outlives
 # the budget by the time the resident needs to finish the verified full set.
 _RESPONSE_SLACK_SECONDS: Final = 2.0
-_MAX_BUDGET_MS: Final = 60_000
-# The resident bounds the canonical request to 1 MiB; the envelope adds a little.
-_MAX_REQUEST_BYTES: Final = 1024 * 1024 + 64 * 1024
+# The resident refuses a canonical request over 1 MiB, so the client never sends
+# a larger envelope: an ask the resident would refuse is not made at all.
+_MAX_REQUEST_BYTES: Final = 1024 * 1024
+_MAX_HINT_PERMISSIONS: Final = 3
 _MAX_CONCURRENT_ASKS: Final = 4
 _SLOTS: Final = threading.BoundedSemaphore(_MAX_CONCURRENT_ASKS)
 _HINT_FIELDS: Final = {
@@ -66,13 +67,22 @@ _OPERATION: Final = ResidentOperation(
 )
 
 
-def _timing(deadline: float | None) -> tuple[float, int | None]:
-    """The ask's timeout and the resident's reduction budget for ``deadline``."""
+def _timing(deadline: float | None) -> tuple[float, int | None] | None:
+    """The ask's timeout and the resident's reduction budget for ``deadline``.
+
+    The ask never outlives ``deadline``; the reduction budget leaves the resident
+    the slack it needs to answer the verified full set. ``None`` once the
+    deadline has passed: there is no time left to ask.
+    """
 
     if deadline is None:
         return _TIMEOUT_SECONDS, None
-    remaining = max(0.0, deadline - time.monotonic())
-    return min(_TIMEOUT_SECONDS, remaining + _RESPONSE_SLACK_SECONDS), min(int(remaining * 1000), _MAX_BUDGET_MS)
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return None
+    timeout = min(_TIMEOUT_SECONDS, remaining)
+    slack = min(_RESPONSE_SLACK_SECONDS, timeout / 2)
+    return timeout, int((timeout - slack) * 1000)
 
 
 def _query(entry: CommandEvaluationInput, budget_ms: int | None) -> dict[str, object]:
@@ -101,12 +111,16 @@ def native_extension_allow_hint(
 ) -> dict[str, object] | None:
     """Permission ids whose Allow state would let ``entry``'s command run, or None.
 
-    ``deadline`` (``time.monotonic()``) bounds the resident's optional reduction
-    pass: once it has passed, the already verified full permission set is
-    answered as it is. ``None`` also covers an unavailable resident.
+    ``deadline`` (``time.monotonic()``) bounds the ask and the resident's
+    optional reduction pass: the ask is not made once it has passed, and a
+    reduction that runs out of budget answers the verified full permission set
+    as it is. ``None`` also covers an unavailable resident.
     """
 
-    timeout_seconds, budget_ms = _timing(deadline)
+    timing = _timing(deadline)
+    if timing is None:
+        return None
+    timeout_seconds, budget_ms = timing
     parsed: list[dict[str, object] | None] = []
 
     def validate(payload: dict[str, Any]) -> None:
@@ -118,7 +132,7 @@ def native_extension_allow_hint(
             return
         shape_fields(hint, _HINT_FIELDS, lambda: _OPERATION.fail(_OPERATION.invalid))
         checked = validated_extension_allow_hint(hint)
-        if checked is None:
+        if checked is None or len(cast(list[str], checked["permission_ids"])) > _MAX_HINT_PERMISSIONS:
             raise _OPERATION.fail(_OPERATION.invalid)
         parsed.append(checked)
 

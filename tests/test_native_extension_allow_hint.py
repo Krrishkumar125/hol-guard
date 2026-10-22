@@ -128,20 +128,51 @@ def test_a_null_hint_is_no_hint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     assert len(resident.requests) == 1
 
 
-def test_a_deadline_becomes_a_relative_reduction_budget(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_a_deadline_bounds_the_ask_and_becomes_a_relative_reduction_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     resident = _resident(monkeypatch, _answers(None))
     entry = _entry(tmp_path)
 
     client.native_extension_allow_hint(entry, guard_home=tmp_path)
     client.native_extension_allow_hint(entry, guard_home=tmp_path, deadline=time.monotonic() + 3.0)
-    client.native_extension_allow_hint(entry, guard_home=tmp_path, deadline=time.monotonic() - 1.0)
     client.native_extension_allow_hint(entry, guard_home=tmp_path, deadline=time.monotonic() + 3600.0)
 
-    unbounded, bounded, spent, capped = (cast(dict[str, Any], request["query"]) for request in resident.requests)
-    assert "reduction_budget_ms" not in unbounded
-    assert 0 < bounded["reduction_budget_ms"] <= 3000
-    assert spent["reduction_budget_ms"] == 0
-    assert capped["reduction_budget_ms"] == 60_000
+    unbounded, bounded, capped = resident.requests
+    assert "reduction_budget_ms" not in cast(dict[str, Any], unbounded["query"])
+    assert resident.transport_kwargs[0]["timeout_seconds"] == pytest.approx(5.0, abs=0.1)
+    # The ask never outlives the deadline, and its reduction budget leaves slack
+    # for the resident to answer the verified full set.
+    assert 0 < resident.transport_kwargs[1]["timeout_seconds"] <= 3.0
+    bounded_budget = cast(dict[str, Any], bounded["query"])["reduction_budget_ms"]
+    assert 0 < bounded_budget < resident.transport_kwargs[1]["timeout_seconds"] * 1000
+    assert resident.transport_kwargs[2]["timeout_seconds"] == pytest.approx(5.0, abs=0.1)
+    assert cast(dict[str, Any], capped["query"])["reduction_budget_ms"] == 3000
+
+
+@pytest.mark.parametrize("offset", [-1.0, 0.0])
+def test_a_spent_deadline_asks_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, offset: float) -> None:
+    resident = _resident(monkeypatch, _answers(dict(HINT)))
+
+    hint = client.native_extension_allow_hint(_entry(tmp_path), guard_home=tmp_path, deadline=time.monotonic() + offset)
+
+    assert hint is None
+    assert resident.requests == []
+
+
+def test_the_client_never_sends_a_request_the_resident_refuses_as_too_large() -> None:
+    assert client._MAX_REQUEST_BYTES == 1024 * 1024  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_hint_naming_more_than_three_permissions_is_no_hint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def hint_with(count: int) -> dict[str, object]:
+        return {**HINT, "permission_ids": [f"command.git.permission.p{index}" for index in range(count)]}
+
+    _resident(monkeypatch, _answers(hint_with(3)))
+    assert client.native_extension_allow_hint(_entry(tmp_path), guard_home=tmp_path) == hint_with(3)
+
+    _resident(monkeypatch, _answers(hint_with(4)))
+    assert client.native_extension_allow_hint(_entry(tmp_path), guard_home=tmp_path) is None
 
 
 @pytest.mark.parametrize(
@@ -214,6 +245,12 @@ def test_an_unavailable_resident_is_no_hint_and_never_recomputed(
     assert resident.requests == []
 
 
+REVIEW_EVIDENCE: dict[str, object] = {
+    "minimum_action": "review",
+    "reason_code": "native_command_review_required",
+}
+
+
 def _stub_evaluation(action: str) -> Any:
     return SimpleNamespace(decision_plane=SimpleNamespace(action=action), command=object())
 
@@ -253,7 +290,32 @@ def test_an_authority_failure_costs_no_resident_question(monkeypatch: pytest.Mon
         _stub_evaluation("review"),
         command_text=COMMAND,
         snapshot=SimpleNamespace(authority_failure="unavailable"),
-        native_evidence={},
+        native_evidence=dict(REVIEW_EVIDENCE),
+    )
+
+    assert hint is None
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        {**REVIEW_EVIDENCE, "minimum_action": "block"},
+        {**REVIEW_EVIDENCE, "reason_code": "native_sensitive_access_review"},
+        {"minimum_action": "review"},
+        {},
+    ],
+)
+def test_a_fixed_floor_review_costs_no_resident_question(
+    monkeypatch: pytest.MonkeyPatch, evidence: dict[str, object]
+) -> None:
+    calls = _recording_client(monkeypatch)
+
+    hint = hint_module.compute_extension_allow_hint(
+        _stub_evaluation("review"),
+        command_text=COMMAND,
+        snapshot=SimpleNamespace(authority_failure=None),
+        native_evidence=evidence,
     )
 
     assert hint is None
@@ -272,7 +334,7 @@ def test_a_held_review_asks_the_resident_with_its_home_and_deadline(
         _stub_evaluation(action),
         command_text=COMMAND,
         snapshot=snapshot,
-        native_evidence={"minimum_action": "review"},
+        native_evidence=dict(REVIEW_EVIDENCE),
         cwd=tmp_path,
         home_dir=tmp_path,
         guard_home=tmp_path / "guard-home",
@@ -285,7 +347,7 @@ def test_a_held_review_asks_the_resident_with_its_home_and_deadline(
     assert calls[0]["deadline"] == deadline
     entry = calls[0]["entry"]
     assert entry.command_text == COMMAND
-    assert entry.native_extension_evidence == {"minimum_action": "review"}
+    assert entry.native_extension_evidence == REVIEW_EVIDENCE
     assert entry.extension_control_snapshot is snapshot
     assert entry.cwd == tmp_path
     assert entry.home_dir == tmp_path
