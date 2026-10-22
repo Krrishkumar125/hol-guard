@@ -51,8 +51,11 @@ const QUIET_FLAGS: &[&str] = &[
     "-v",
 ];
 
+// pip's user site lives under the home directory, so a read of it answers
+// for whichever home the command runs with.
+const USER_SCOPE_FLAG: &str = "--user";
 /// Which installed distributions a listing covers.
-const SCOPE_FLAGS: &[&str] = &["--local", "-l", "--user"];
+const SCOPE_FLAGS: &[&str] = &["--local", "-l", USER_SCOPE_FLAG];
 
 const LIST_FLAGS: &[&str] = &["--not-required", "--editable", "-e", "--include-editable"];
 
@@ -172,6 +175,22 @@ pub(super) fn safe_pip_words(words: &[&str]) -> bool {
         Some("cache") => cache_query(rest),
         _ => false,
     }
+}
+
+/// Whether the read stays inside the environment the command names.
+///
+/// A contained run is given the workspace as its `HOME`, so a read that
+/// resolves out of the home directory reports the sandbox's own layout
+/// instead of the developer's: the cache lives under `~/.cache`, and the
+/// user site under `~/.local`. A listing of the wrong environment is a worse
+/// answer than the review it replaces, so those two forms keep the review
+/// they have today, where they run against the real home. Everything else a
+/// query reads is the environment's own metadata, which the interpreter
+/// finds from its own prefix.
+pub(super) fn environment_read_words(words: &[&str]) -> bool {
+    safe_pip_words(words)
+        && !matches!(split_subcommand(words), Some((Some("cache"), _)))
+        && !words.iter().any(|word| *word == USER_SCOPE_FLAG)
 }
 
 /// Splits the leading quiet options off, then the subcommand. `--version`

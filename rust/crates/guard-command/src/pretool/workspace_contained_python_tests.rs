@@ -1,7 +1,9 @@
 //! A Python package query reports what an environment already holds, so it
 //! runs inside the workspace sandbox the way `npm ls` and `cargo tree` do.
-//! Everything that installs keeps the admission it has today. A host without
-//! the sandbox, such as Windows, keeps the admission for the queries too.
+//! Everything that installs keeps the admission it has today, as does every
+//! read that resolves through the home directory the sandbox replaces. A host
+//! without the sandbox, such as Windows, keeps the admission for the queries
+//! too.
 use crate::pretool::workspace_contained_tests::{controls, host, workspace, CONTAINED};
 
 const PROJECT: &str = "[project]\nname = \"app-portal\"\nversion = \"0.1.0\"\n";
@@ -46,10 +48,6 @@ fn a_package_query_reads_the_environment_inside_the_sandbox() {
         "uv pip freeze",
         "uv pip show requests",
         "uv pip check",
-        "pipx list",
-        "pipx list --short",
-        "pipx environment",
-        "pipx environment --value PIPX_HOME",
     ] {
         for harness in ["codex", "claude-code", "omp"] {
             let (reason, _) = outcome(harness, command, &ws);
@@ -96,8 +94,6 @@ fn an_option_or_operand_outside_the_query_keeps_its_review() {
         ".venv/bin/pip list requests",
         ".venv/bin/pip show",
         "uv pip list --target build",
-        "pipx list extra",
-        "pipx environment --value",
     ] {
         for harness in ["codex", "claude-code", "omp"] {
             let (reason, minimum) = outcome(harness, command, &ws);
@@ -116,6 +112,33 @@ fn a_uv_query_without_a_materialized_environment_keeps_its_review() {
     for harness in ["codex", "claude-code", "omp"] {
         let (reason, _) = outcome(harness, "uv pip list", &bare);
         assert_ne!(reason, CONTAINED, "{harness}");
+    }
+}
+
+#[test]
+fn a_read_the_sandbox_would_answer_for_itself_keeps_its_review() {
+    // A contained run is given the workspace as its `HOME`, so pip's cache,
+    // the user site and every `pipx` layout resolve inside the sandbox. Each
+    // of these would report that directory instead of the developer's, which
+    // is a worse answer than the review it would replace.
+    let ws = project("python-home-reads");
+    for command in [
+        ".venv/bin/pip cache dir",
+        ".venv/bin/pip cache info",
+        ".venv/bin/pip cache list",
+        ".venv/bin/pip list --user",
+        ".venv/bin/pip freeze --user",
+        "uv pip list --user",
+        "pipx list",
+        "pipx list --short",
+        "pipx environment",
+        "pipx environment --value PIPX_HOME",
+    ] {
+        for harness in ["codex", "claude-code", "omp"] {
+            let (reason, minimum) = outcome(harness, command, &ws);
+            assert_ne!(reason, CONTAINED, "{harness}: {command}");
+            assert_eq!(minimum, "review", "{harness}: {command} ({reason})");
+        }
     }
 }
 
