@@ -202,14 +202,51 @@ fn rejects_a_release_path_that_leaves_the_releases_tree() {
     }
 }
 
+// A title is prose: a release legitimately named "under <1ms" must not take
+// the whole archive off the screen. The projection therefore carries angle
+// brackets through verbatim, for React to escape as text, and still refuses
+// the bidi and control code points that no renderer makes safe.
 #[test]
-fn rejects_markup_in_a_release_title() {
+fn carries_a_markup_shaped_title_as_text_but_refuses_control_code_points() {
+    let markup = "<img src=x onerror=alert(1)>";
     let mut document = index_document();
-    document["releases"][0]["title"] = json!("<img src=x onerror=alert(1)>");
+    document["releases"][0]["title"] = json!(markup);
+    let frame = run(request("index", &document));
+    assert_eq!(outcome(&frame), ("ok", None));
     assert_eq!(
-        outcome(&run(request("index", &document))),
-        ("error", Some("release_feed_payload_invalid"))
+        projected(&frame)["releases"][0]["title"],
+        json!(markup),
+        "the title projects unchanged, so nothing downstream sees an escaped form it would double-escape"
     );
+
+    for hostile in [
+        "title\u{202e}reversed",
+        "title\u{0000}null",
+        "title\u{200b}zero-width",
+    ] {
+        let mut document = index_document();
+        document["releases"][0]["title"] = json!(hostile);
+        assert_eq!(
+            outcome(&run(request("index", &document))),
+            ("error", Some("release_feed_payload_invalid")),
+            "a title carrying a control or bidi code point must not project"
+        );
+    }
+}
+
+// The fields that become a URL, an attribute or a key keep the stricter
+// plain-text bound: an angle bracket there is never legitimate.
+#[test]
+fn rejects_markup_in_an_identity_field() {
+    for key in ["slug", "rawTag", "versionLabel", "path"] {
+        let mut document = index_document();
+        document["releases"][0][key] = json!("<img src=x onerror=alert(1)>");
+        assert_eq!(
+            outcome(&run(request("index", &document))),
+            ("error", Some("release_feed_payload_invalid")),
+            "{key} must not carry markup"
+        );
+    }
 }
 
 #[test]
