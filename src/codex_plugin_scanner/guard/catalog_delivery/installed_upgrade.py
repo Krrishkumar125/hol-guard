@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import json
 
-from ..runtime.extension_control_authority import AuthorityHealth, ExtensionControlAuthorityError, layers_to_json
+from ..runtime.extension_control_authority import (
+    AuthorityHealth,
+    AuthorityPhase,
+    ExtensionControlAuthorityError,
+    layers_to_json,
+)
 from ..runtime.extension_control_contract import ControlLayerKind
 from ..runtime.extension_control_proof import ExtensionControlMutation
 from ..runtime.generated_command_catalog import GeneratedCommandCatalog
@@ -19,6 +24,13 @@ def migrate_active(store, installed):
     # Finish an anchored replacement before preparing another one. A shared
     # read cannot resume the SQL/anchor journal after an interrupted startup.
     with store._extension_control_authority_lock():
+        key = store._authority_key(required=True)
+        anchor = store._read_anchor(key=key)
+        if anchor is not None and anchor.phase is AuthorityPhase.ANCHORED:
+            with store._connect() as connection:
+                # The native resume plan authenticates the already-admitted
+                # transition and its pack binding; no new approval is issued.
+                store._resume_transition(connection, anchor.revision, key=key)
         store._read_extension_control_authority_locked(previous.metadata.catalog_digest)
     previous = activation_store.read(store)
     if previous.engine == installed.engine:

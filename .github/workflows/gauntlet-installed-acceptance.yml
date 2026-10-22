@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: gauntlet-installed-acceptance-${{ github.ref }}
@@ -96,6 +97,52 @@ jobs:
 
       - name: Lane tests
         run: uv run --no-sync python -m pytest tests/test_gauntlet_installed_lane.py -q
+
+      - name: Resolve the retained-policy predecessor used by CI
+        id: prior
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prior_sha=$(python3 -c 'import pathlib,re; print(re.search(r"NATIVE_OFFLINE_PREVIOUS_SHA: ([0-9a-f]{40})", pathlib.Path(".github/workflows/ci.yml").read_text()).group(1))')
+          prior_run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test -n "$prior_run" && test "$prior_run" != null
+          echo "sha=$prior_sha" >> "$GITHUB_OUTPUT"
+          echo "run=$prior_run" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the matching historical client
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ steps.prior.outputs.sha }}
+          path: previous-client
+          persist-credentials: false
+
+      - name: Restore the matching predecessor artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRIOR_SHA: ${{ steps.prior.outputs.sha }}
+          PRIOR_RUN: ${{ steps.prior.outputs.run }}
+        run: |
+          set -euo pipefail
+          gh run download "$PRIOR_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "pytest-prior-native-command-evaluators-$PRIOR_SHA" --dir "$RUNNER_TEMP/retained-native"
+          gh run download "$PRIOR_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "pytest-prior-native-command-projections-$PRIOR_SHA" --dir previous-client
+
+      - name: Gauntlet retained-policy upgrade acceptance
+        env:
+          HOL_GUARD_NATIVE_REGRESSION: '1'
+          HOL_GUARD_NATIVE_BINARY: ${{ github.workspace }}/rust/target/${{ env.TARGET }}/release/hol-guard-runtime
+          HOL_GUARD_NATIVE_SOURCE_COMPILER: ${{ env.COMPILER }}
+          HOL_GUARD_BUILD_SOURCE_COMPILER: ${{ env.COMPILER }}
+          NATIVE_ACTIVATION_PREVIOUS_BINARY: ${{ runner.temp }}/retained-native/hol-guard-runtime
+          NATIVE_ACTIVATION_PREVIOUS_SOURCE: ${{ github.workspace }}/previous-client
+        run: |
+          set -euo pipefail
+          test "$(git -C previous-client rev-parse HEAD)" = '${{ steps.prior.outputs.sha }}'
+          chmod 0755 "$NATIVE_ACTIVATION_PREVIOUS_BINARY" "$RUNNER_TEMP/retained-native/guard-command-source"
+          uv run --no-sync python -m pytest -q --tb=short tests/test_native_pack_offline_upgrade.py
 
       - name: Assemble the native wheel
         env:
