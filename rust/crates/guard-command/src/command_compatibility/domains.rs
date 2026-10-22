@@ -439,7 +439,7 @@ pub(super) fn observe(
         // such as `src/tokenizer.ts`, is the edit the agent was asked to make.
         if (output_write
             && sensitive(&segment.text)
-            && !source_names::only_source_file_names(&segment.text, &segment.tokens))
+            && !source_names::only_source_file_names(&segment.text, &segment.tokens, &executable))
             || (redirect == Redirect::Stderr
                 && segment.tokens.iter().any(|token| {
                     if token.contains(char::is_whitespace) {
