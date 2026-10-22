@@ -256,3 +256,97 @@ fn the_sealed_system_program_directories_are_reachable() {
     assert!(outside(&root, "planted", tools.to_str().unwrap()));
     let _ = fs::remove_dir_all(&root);
 }
+
+/// A scratch root under the build directory rather than the shared temporary
+/// directory. A tool directory is only granted when every directory above it
+/// is this user's or root's and no other account can write it, and `/tmp` is
+/// world-writable, so a tree built there can never be accepted.
+fn sealed_scratch() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/guard-launch-roots-sealed")
+        .join(format!(
+            "{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        ));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("workspace")).unwrap();
+    root.canonicalize().unwrap()
+}
+
+/// Whether `program` is unreachable with `root` as the caller's HOME, so the
+/// answer does not depend on the account the tests run under.
+fn outside_at_home(root: &Path, program: &str, search_path: &str) -> bool {
+    let workspace = root.join("workspace");
+    launches_outside_exec_roots(
+        [(program, vec![Some(workspace.clone())])],
+        search_path,
+        Some(root),
+        &workspace,
+    )
+}
+
+#[test]
+fn a_tool_directory_inside_an_installed_package_tree_is_reachable() {
+    // The layout a harness puts on the agent shell's PATH: a vendored
+    // directory inside a platform package, named by the harness rather than
+    // `bin` or `shims`, holding the tool it wants always found.
+    let root = sealed_scratch();
+    let vendored = root.join(
+        "node_modules/@vendor/harness-cli-linux-x64/vendor/x86_64-unknown-linux-gnu/cli-path",
+    );
+    fs::create_dir_all(&vendored).unwrap();
+    tool(&vendored.join("rg"), "#!/bin/sh\nexit 0\n");
+    let search_path = format!("{}:/usr/bin:/bin", vendored.display());
+
+    assert!(!outside_at_home(&root, "rg", &search_path));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_link_directory_of_an_installed_package_tree_reaches_the_package_it_names() {
+    // `node_modules/.bin` holds links into the packages beside it, so the
+    // directory on PATH is not where the program it names actually lives.
+    let root = sealed_scratch();
+    let package = root.join("node_modules/harness-cli/bin");
+    let links = root.join("node_modules/.bin");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&links).unwrap();
+    tool(&package.join("rg"), "#!/bin/sh\nexit 0\n");
+    std::os::unix::fs::symlink(package.join("rg"), links.join("rg")).unwrap();
+    let search_path = format!("{}:/usr/bin:/bin", links.display());
+
+    assert!(!outside_at_home(&root, "rg", &search_path));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_directory_outside_any_package_tree_is_still_unreachable() {
+    // The grant is the installed dependency tree, not every sealed directory
+    // the caller happens to put on PATH.
+    let root = sealed_scratch();
+    let loose = root.join("vendor/cli-path");
+    fs::create_dir_all(&loose).unwrap();
+    tool(&loose.join("rg"), "#!/bin/sh\nexit 0\n");
+    let search_path = format!("{}:/usr/bin:/bin", loose.display());
+
+    assert!(outside_at_home(&root, "rg", &search_path));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_package_tree_inside_the_workspace_grants_no_root_of_its_own() {
+    // The workspace is already executable inside the sandbox; a dependency
+    // tree below it must not widen the grant to anything above the workspace.
+    let root = sealed_scratch();
+    let links = root.join("workspace/node_modules/.bin");
+    let outer = root.join("node_modules/escaped/bin");
+    fs::create_dir_all(&links).unwrap();
+    fs::create_dir_all(&outer).unwrap();
+    tool(&outer.join("rg"), "#!/bin/sh\nexit 0\n");
+    std::os::unix::fs::symlink(outer.join("rg"), links.join("rg")).unwrap();
+    let search_path = format!("{}:/usr/bin:/bin", links.display());
+
+    assert!(outside_at_home(&root, "rg", &search_path));
+    let _ = fs::remove_dir_all(&root);
+}
