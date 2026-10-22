@@ -260,12 +260,20 @@ fn composer_tree(directory: &Path, workspace: &Path) -> Option<PathBuf> {
     tree.is_dir().then_some(tree)
 }
 
-/// The value `.bundle/config` holds for `key`.
-fn bundle_setting(config: &str, key: &str) -> Option<String> {
-    config.lines().find_map(|line| {
+/// The value `.bundle/config` holds for `key`: `Some(None)` when the file does
+/// not set it, and `None` when it sets it more than once. Bundler keeps the
+/// last of a repeated key, so a reader that took the first would answer for a
+/// tree the run does not read, and a repeat is ambiguous enough to refuse.
+fn bundle_setting(config: &str, key: &str) -> Option<Option<String>> {
+    let mut values = config.lines().filter_map(|line| {
         let (name, value) = line.split_once(':')?;
         (name.trim() == key).then(|| value.trim().trim_matches(['"', '\'']).to_owned())
-    })
+    });
+    let first = values.next();
+    if values.next().is_some() {
+        return None;
+    }
+    Some(first)
 }
 
 /// The directory Bundler reads this project's gems from. Bundler puts them
@@ -274,18 +282,29 @@ fn bundle_setting(config: &str, key: &str) -> Option<String> {
 /// replaces; a path that leaves the workspace is one it does not hold.
 fn bundle_tree(directory: &Path, workspace: &Path) -> Option<PathBuf> {
     let config = read_config(&directory.join(".bundle").join("config"))??;
+    // `BUNDLE_PATH__SYSTEM` and its siblings choose the system gem home
+    // whatever `BUNDLE_PATH` says, so a configuration that sets one does not
+    // name this directory's bundle.
+    if config.lines().any(|line| {
+        line.split_once(':')
+            .is_some_and(|(name, _)| name.trim().starts_with("BUNDLE_PATH__"))
+    }) {
+        return None;
+    }
     // A Gemfile or app-config elsewhere makes this directory's files not the
     // bundle's.
-    if bundle_setting(&config, "BUNDLE_GEMFILE").is_some()
-        || bundle_setting(&config, "BUNDLE_APP_CONFIG").is_some()
+    if bundle_setting(&config, "BUNDLE_GEMFILE")?.is_some()
+        || bundle_setting(&config, "BUNDLE_APP_CONFIG")?.is_some()
     {
         return None;
     }
-    let path = bundle_setting(&config, "BUNDLE_PATH").or_else(|| {
-        bundle_setting(&config, "BUNDLE_DEPLOYMENT")
+    let deployment = bundle_setting(&config, "BUNDLE_DEPLOYMENT")?;
+    let path = match bundle_setting(&config, "BUNDLE_PATH")? {
+        Some(path) => path,
+        None => deployment
             .filter(|value| value == "true")
-            .map(|_| "vendor/bundle".to_owned())
-    })?;
+            .map(|_| "vendor/bundle".to_owned())?,
+    };
     let tree = inside(directory, &path, workspace)?;
     tree.is_dir().then_some(tree)
 }

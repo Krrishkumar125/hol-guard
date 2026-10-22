@@ -179,7 +179,6 @@ fn a_verb_the_lists_do_not_hold_keeps_its_review() {
     let php = php_project("php-unknown");
     for command in [
         "composer",
-        "composer --version",
         "composer archive",
         "composer exec --list",
         "composer run-script",
@@ -190,6 +189,11 @@ fn a_verb_the_lists_do_not_hold_keeps_its_review() {
             assert_ne!(reason, CONTAINED, "{harness}: {command}");
             assert_eq!(minimum, "review", "{harness}: {command} ({reason})");
         }
+    }
+    // A lone version query records no package observation: a plain program.
+    for harness in ["codex", "claude-code", "omp"] {
+        let contained = outcome(harness, "composer --version", &php).0 == CONTAINED;
+        assert_eq!(contained, host(), "{harness}");
     }
     let ruby = ruby_project("ruby-unknown");
     for command in [
@@ -429,6 +433,19 @@ fn bundler_reads_the_bundle_its_configuration_names() {
             &format!("---\nBUNDLE_PATH: \"vendor/bundle\"\n{moved}\n"),
         );
         assert!(!run("bundle", &ws, &exec), "{moved}");
+    }
+    // Bundler keeps the last of a repeated key, so a file that sets one twice
+    // names no tree; `BUNDLE_PATH__SYSTEM` selects the caller's gem home.
+    for config in [
+        "BUNDLE_PATH: \"vendor/bundle\"\nBUNDLE_PATH: \"/opt/gems\"\n",
+        "BUNDLE_PATH: \"/opt/gems\"\nBUNDLE_PATH: \"vendor/bundle\"\n",
+        "BUNDLE_PATH: \"vendor/bundle\"\nBUNDLE_PATH: \"vendor/bundle\"\n",
+        "BUNDLE_DEPLOYMENT: \"true\"\nBUNDLE_DEPLOYMENT: \"false\"\n",
+        "BUNDLE_PATH: \"vendor/bundle\"\nBUNDLE_PATH__SYSTEM: \"true\"\n",
+    ] {
+        configure_bundle(&ws, &format!("---\n{config}"));
+        assert!(!run("bundle", &ws, &exec), "{config}");
+        assert!(!run("bundle", &ws, &["list"]), "{config}");
     }
 }
 

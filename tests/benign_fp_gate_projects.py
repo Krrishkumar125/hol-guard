@@ -224,8 +224,7 @@ def _vendored_toolchain(workspace: Path) -> None:
     _write(workspace / "Gemfile", 'source "https://rubygems.invalid"\n\ngem "rspec"\n')
     _write(
         workspace / "Gemfile.lock",
-        "GEM\n  remote: https://rubygems.invalid/\n  specs:\n\nDEPENDENCIES\n  rspec\n\n"
-        "BUNDLED WITH\n   2.5.9\n",
+        "GEM\n  remote: https://rubygems.invalid/\n  specs:\n\nDEPENDENCIES\n  rspec\n\nBUNDLED WITH\n   2.5.9\n",
     )
     # `bundle exec` only reads the workspace when the bundle is installed into
     # it; the fixture's `.bundle/config` is what points Bundler there.
@@ -269,6 +268,8 @@ def host_tool_path(home: Path, search_path: str) -> str:
     sqlite = home / ".asdf" / "installs" / "sqlite" / "3.46.1" / "bin"
     cargo = home / ".cargo" / "bin"
     local_bin = home / ".local" / "bin"
+    php = home / ".asdf" / "installs" / "php" / "8.3.6" / "bin"
+    ruby = home / ".asdf" / "installs" / "ruby" / "3.3.0" / "bin"
     tools = (
         (bun, ("bun",)),
         (node, ("node", "npm", "npx", "yarn")),
@@ -276,16 +277,27 @@ def host_tool_path(home: Path, search_path: str) -> str:
         (cargo, ("uv",)),
         # Composer and Bundler install themselves wherever the host's PHP or
         # Ruby setup put them, often a directory the sandbox executes nothing
-        # from, so stand-ins go first on PATH and the gate measures the command
-        # rather than this host's package layout.
-        (local_bin, ("composer", "bundle", "bundler")),
+        # from. The stand-ins sit in version-manager installs, which the sandbox
+        # accepts the way it accepts a developer's own, so the gate measures the
+        # command rather than this host's package layout.
+        (php, ("composer",)),
+        (ruby, ("bundle", "bundler")),
     )
     for directory, names in tools:
         for name in names:
             _write(directory / name, stand_in)
             (directory / name).chmod(0o755)
     return os.pathsep.join(
-        [str(local_bin), str(node), str(sqlite), str(cargo), search_path, str(bun)]
+        [
+            str(local_bin),
+            str(node),
+            str(sqlite),
+            str(cargo),
+            str(php),
+            str(ruby),
+            search_path,
+            str(bun),
+        ]
     )
 
 
