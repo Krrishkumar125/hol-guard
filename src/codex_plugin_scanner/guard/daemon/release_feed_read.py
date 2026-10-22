@@ -158,12 +158,7 @@ def _read_bounded(response: _ReadableBody, limit: int) -> bytes:
 
 
 def _supports_release_feed(status: NativeRuntimeStatus) -> bool:
-    if (
-        not status.available
-        or not status.compatible
-        or status.identity is None
-        or status.capabilities is None
-    ):
+    if not status.available or not status.compatible or status.identity is None or status.capabilities is None:
         return False
     features = set(status.capabilities.features)
     return _RESIDENT_PROTOCOL_FEATURE in features and RELEASE_FEED_NATIVE_FEATURE in features

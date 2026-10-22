@@ -388,7 +388,10 @@ fn prose_keeps_the_angle_brackets_release_notes_are_written_with() {
     assert_eq!(outcome(&frame), ("ok", None));
     let body = projected(&frame);
     assert_eq!(body["title"], json!("Hooks answer in <1ms"));
-    assert_eq!(body["changes"][0]["summary"], json!("Reject a payload when depth > 8."));
+    assert_eq!(
+        body["changes"][0]["summary"],
+        json!("Reject a payload when depth > 8.")
+    );
 }
 
 #[test]
@@ -424,16 +427,16 @@ fn bidi_and_control_characters_never_reach_the_screen() {
 #[test]
 fn an_instant_is_a_whole_timestamp_or_it_is_nothing() {
     for bad in [
-        "2026-10-14T09:30:00",          // no zone at all
-        "2026-10-14T09:3000.000Z",      // the second separator is missing
-        "2026-10-14T09:30:61Z",         // no such second
-        "2026-10-14T09:30:0aZ",         // the seconds are not digits
-        "2026-10-14T09:30:00.Z",        // a fraction with no digits
+        "2026-10-14T09:30:00",             // no zone at all
+        "2026-10-14T09:3000.000Z",         // the second separator is missing
+        "2026-10-14T09:30:61Z",            // no such second
+        "2026-10-14T09:30:0aZ",            // the seconds are not digits
+        "2026-10-14T09:30:00.Z",           // a fraction with no digits
         "2026-10-14T09:30:00.1234567890Z", // more fraction than a timestamp carries
-        "2026-10-14T09:30:00+24:00",    // no such zone
-        "2026-10-14T09:30:00+05:60",    // no such zone minute
-        "2026-10-14T09:30:00+0530",     // the zone separator is missing
-        "2026-10-14T09:30:00Z ",        // trailing text
+        "2026-10-14T09:30:00+24:00",       // no such zone
+        "2026-10-14T09:30:00+05:60",       // no such zone minute
+        "2026-10-14T09:30:00+0530",        // the zone separator is missing
+        "2026-10-14T09:30:00Z ",           // trailing text
     ] {
         let mut document = detail_document();
         document["publishedAt"] = json!(bad);

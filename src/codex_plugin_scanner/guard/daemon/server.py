@@ -3140,9 +3140,7 @@ class _GuardDaemonHandler(
                 return
             slug = slugs[0]
         page = _release_feed_number(params.get("page"), default=1)
-        page_size = _release_feed_number(
-            params.get("pageSize"), default=MAX_RELEASE_FEED_PAGE_SIZE
-        )
+        page_size = _release_feed_number(params.get("pageSize"), default=MAX_RELEASE_FEED_PAGE_SIZE)
         if page is None or page_size is None:
             self._write_json({"error": RELEASE_FEED_REQUEST_INVALID}, status=400)
             return

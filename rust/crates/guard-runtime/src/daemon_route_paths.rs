@@ -276,7 +276,9 @@ pub(crate) fn local_surface_session_allowed(method: &str, path: &str) -> bool {
             // session token, never the daemon auth token, so these two reads
             // must be session paths or the tab 401s on every load.
             matches!(path, "/v1/releases/index" | "/v1/releases/release")
-                || (n == 4 && starts_with(&parts, &["v1", "requests"]) && parts[3] == "business-summary")
+                || (n == 4
+                    && starts_with(&parts, &["v1", "requests"])
+                    && parts[3] == "business-summary")
                 || (n == 4 && starts_with(&parts, &["v1", "mcp-policy", "requests"]))
                 || (n == 3
                     && (starts_with(&parts, &["v1", "requests"])

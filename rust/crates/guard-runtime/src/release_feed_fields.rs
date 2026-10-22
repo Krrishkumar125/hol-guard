@@ -138,7 +138,8 @@ pub(super) fn iso_instant(value: &str) -> Option<String> {
     {
         return None;
     }
-    let two = |index: usize| i64::from(bytes[index] - b'0') * 10 + i64::from(bytes[index + 1] - b'0');
+    let two =
+        |index: usize| i64::from(bytes[index] - b'0') * 10 + i64::from(bytes[index + 1] - b'0');
     let (month, day, hour, minute, second) = (two(5), two(8), two(11), two(14), two(17));
     if !(1..=12).contains(&month)
         || !(1..=31).contains(&day)
@@ -181,7 +182,10 @@ pub(super) fn iso_instant(value: &str) -> Option<String> {
     Some(value.to_owned())
 }
 
-pub(super) fn required_instant(object: &Map<String, Value>, key: &str) -> Result<String, FeedError> {
+pub(super) fn required_instant(
+    object: &Map<String, Value>,
+    key: &str,
+) -> Result<String, FeedError> {
     field_str(object, key)
         .and_then(iso_instant)
         .ok_or(FeedError::Payload)
