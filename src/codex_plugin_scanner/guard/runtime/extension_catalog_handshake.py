@@ -32,6 +32,7 @@ _POSTURE_FIELDS = ("extensionCatalogDigest", "extensionCatalogViewDigest", "mana
 # Session fields the verdict reads. Nothing else crosses to the resident.
 _SESSION_FIELDS = (*_POSTURE_FIELDS, "updatedAt")
 _MALFORMED = "Native Extension catalog answer is malformed"
+_INVALID_ACK = "Invalid Extension catalog sync response"
 
 
 @dataclass(frozen=True)
@@ -120,13 +121,29 @@ def _observe(
     }, body
 
 
-def validate_extension_catalog_sync_response(payload: object, *, expected_digest: str, guard_home: Path | None) -> None:
-    """Fail closed unless the resident accepts the acknowledgement for this digest."""
+def validate_extension_catalog_sync_response(
+    payload: object, *, expected_digest: str, guard_home: Path | None
+) -> dict[str, object] | None:
+    """Fail closed unless the resident accepts the acknowledgement for this digest.
+
+    Returns None once accepted. When the resident cannot be reached the acknowledgement
+    stays unverified, so the session reports the same unavailable downgrade as the
+    handshake instead of claiming an upload it could not check.
+    """
 
     try:
-        native_wire_call("v1_sync_ack", guard_home=guard_home, response=payload, expected_digest=expected_digest)
-    except ExtensionCatalogLimitError as error:
-        raise RuntimeError("Invalid Extension catalog sync response") from error
+        verdict = native_wire_call(
+            "v1_sync_ack", guard_home=guard_home, response=payload, expected_digest=expected_digest
+        )
+    except ExtensionCatalogUnavailableError:
+        return dict(_CATALOG_RUNTIME_UNAVAILABLE)
+    except ValueError as error:
+        # An acknowledgement the wire cannot carry (a non-finite number, an oversize body)
+        # is as invalid as one the resident refuses.
+        raise RuntimeError(_INVALID_ACK) from error
+    if verdict.get("accepted") is not True:
+        raise RuntimeError(_INVALID_ACK)
+    return None
 
 
 def runtime_session_success_summary(

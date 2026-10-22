@@ -102,13 +102,30 @@ fn split_scheme(url: &str) -> (String, &str) {
     }
 }
 
-/// A bracketed host must be a well-formed IPv6 literal; unbalanced or
-/// otherwise invalid brackets are refused rather than guessed at.
+/// A bracketed host is an IPv6 literal with an optional zone, or an IPvFuture
+/// literal (`v`, hex digits, a dot, then at least one character).
+fn bracketed_literal_is_valid(host: &str) -> bool {
+    if let Some(future) = host.strip_prefix('v') {
+        return future.split_once('.').is_some_and(|(version, address)| {
+            !version.is_empty()
+                && version.chars().all(|c| c.is_ascii_hexdigit())
+                && !address.is_empty()
+        });
+    }
+    match host.split_once('%') {
+        Some((address, zone)) => {
+            !zone.is_empty() && !zone.contains('%') && address.parse::<Ipv6Addr>().is_ok()
+        }
+        None => host.parse::<Ipv6Addr>().is_ok(),
+    }
+}
+
+/// Unbalanced or otherwise invalid brackets are refused rather than guessed at.
 fn bracketed_host_is_valid(netloc: &str) -> bool {
     match (netloc.find('['), netloc.find(']')) {
         (None, None) => true,
         (Some(open), Some(close)) if open < close => {
-            netloc[open + 1..close].parse::<Ipv6Addr>().is_ok()
+            bracketed_literal_is_valid(&netloc[open + 1..close])
         }
         _ => false,
     }

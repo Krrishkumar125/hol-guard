@@ -273,6 +273,76 @@ def test_catalog_upload_response_validation_fails_closed(tmp_path: Path) -> None
         )
 
 
+def _acknowledgement(**overrides: object) -> dict[str, object]:
+    return {
+        "schemaVersion": "guard.extension-catalog-sync.v1",
+        "accepted": True,
+        "catalogDigest": _DIGEST,
+        "alreadyKnown": False,
+        "deviceCount": 1,
+        "firstSeenAt": "2026-08-25T00:00:00Z",
+        "lastSeenAt": "2026-08-25T00:00:00Z",
+        **overrides,
+    }
+
+
+def test_catalog_upload_response_is_accepted_by_the_resident(tmp_path: Path) -> None:
+    assert (
+        handshake_module.validate_extension_catalog_sync_response(
+            _acknowledgement(), expected_digest=_DIGEST, guard_home=tmp_path
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("count", (float("nan"), float("inf")))
+def test_catalog_upload_response_the_wire_cannot_carry_is_invalid(count: float, tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="Invalid Extension catalog sync response"):
+        handshake_module.validate_extension_catalog_sync_response(
+            _acknowledgement(deviceCount=count), expected_digest=_DIGEST, guard_home=tmp_path
+        )
+
+
+@pytest.mark.parametrize("verdict", ({}, {"accepted": False}, {"accepted": "true"}))
+def test_a_resident_verdict_that_does_not_accept_fails_closed(
+    verdict: dict[str, object], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(handshake_module, "native_wire_call", lambda *_a, **_k: verdict)
+    with pytest.raises(RuntimeError, match="Invalid Extension catalog sync response"):
+        handshake_module.validate_extension_catalog_sync_response(
+            _acknowledgement(), expected_digest=_DIGEST, guard_home=tmp_path
+        )
+
+
+def test_unreachable_resident_leaves_the_upload_unverified_and_downgrades(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    catalog = runner.build_builtin_extension_catalog_wire(
+        guard_version=runner.__version__, generated_at="2026-08-25T00:00:00Z", guard_home=tmp_path
+    )
+    digest = str(catalog["catalogDigest"])
+    real = handshake_module.native_wire_call
+
+    def resident(action: str, **fields: object) -> dict[str, object]:
+        if action == "v1_sync_ack":
+            raise runner_sync.ExtensionCatalogUnavailableError("Native Extension catalog runtime unavailable")
+        return real(action, **fields)
+
+    monkeypatch.setattr(handshake_module, "native_wire_call", resident)
+    monkeypatch.setattr(runner, "_guard_sync_request", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        runner, "_urlopen_json_with_timeout_retry", lambda **_kwargs: _acknowledgement(catalogDigest=digest)
+    )
+    summary = runner._sync_extension_catalog_from_runtime_handshake(
+        guard_home=tmp_path,
+        auth_context={},
+        runtime_sync_url=_URL,
+        runtime_response=_catalog_handshake(digest, known=False),
+        session_payload={"extensionCatalogDigest": digest, "updatedAt": "2026-08-25T00:00:00Z"},
+    )
+    assert summary == handshake_module._CATALOG_RUNTIME_UNAVAILABLE
+
+
 def test_runtime_session_summary_uses_server_normalized_device_identity() -> None:
     session_payload = {
         "sessionId": "runtime-session-1",

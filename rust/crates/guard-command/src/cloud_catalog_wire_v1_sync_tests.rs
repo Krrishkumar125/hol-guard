@@ -324,6 +324,14 @@ fn the_upload_url_keeps_scheme_authority_and_query_only() {
         ),
         ("\u{1}https://hol.org/a", format!("https://hol.org/{sync}")),
         ("https://[::1]:8080/a", format!("https://[::1]:8080/{sync}")),
+        (
+            "https://[fe80::1%25en0]:8080/a",
+            format!("https://[fe80::1%25en0]:8080/{sync}"),
+        ),
+        (
+            "https://[v1.fe80::a]/a",
+            format!("https://[v1.fe80::a]/{sync}"),
+        ),
         ("https://hol.org/a?", format!("https://hol.org/{sync}")),
         (
             "https://hol.org/a?b?c#d",
@@ -369,6 +377,11 @@ fn an_upload_url_without_a_scheme_and_authority_is_refused() {
         "https://::1]/a",
         "https://[hol.org]/a",
         "https://[1.2.3.4]/a",
+        "https://[fe80::1%]/a",
+        "https://[fe80::1%a%b]/a",
+        "https://[v.a]/a",
+        "https://[vg.a]/a",
+        "https://[v1.]/a",
     ] {
         let payload = negotiate(&session(), &signal(false), &built(10, 100), configured);
         assert_eq!(
