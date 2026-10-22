@@ -14,7 +14,6 @@ from codex_plugin_scanner.guard.daemon.extension_control_api import ExtensionCon
 from codex_plugin_scanner.guard.daemon.extension_control_targets import request_metadata
 from codex_plugin_scanner.guard.managed_controls_policy_bundle import (
     MANAGED_CONTROLS_REVISION_STATE_KEY,
-    build_managed_controls_revision_state,
 )
 from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 from codex_plugin_scanner.guard.runtime.extension_control_contract import (
@@ -33,6 +32,7 @@ from tests.guard_extension_control_authority_fixtures import _PASSWORD, MemorySe
 from tests.guard_extension_control_authority_fixtures import (
     _allow_local_terminal_confirmation as _allow_local_terminal_confirmation,
 )
+from tests.managed_controls_activation_support import managed_revision_state
 from tests.native_activation_support import compiled_lifecycle as compiled_lifecycle
 from tests.native_activation_support import seed
 from tests.test_extension_pack_installed_profile import installed as installed
@@ -192,7 +192,7 @@ def test_managed_update_after_api_check_rejects_before_reservation_or_consumptio
         # API has already checked the old view; publish a genuine authenticated
         # managed revision under EX before the commit obtains that same lease.
         with flow.store._extension_control_authority_lock():
-            state = build_managed_controls_revision_state(1, authority_key=flow.store._authority_key(required=True))
+            state = managed_revision_state(1, authority_key=flow.store._authority_key(required=True))
             flow.store.set_sync_payload(MANAGED_CONTROLS_REVISION_STATE_KEY, state, "unit")
         return commit(*args, **kwargs)
 

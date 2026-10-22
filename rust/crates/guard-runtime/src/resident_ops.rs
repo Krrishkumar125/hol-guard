@@ -292,6 +292,12 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
             ResidentOperationV1::ExtensionControl(request) => {
                 crate::extension_control_op::evaluate_extension_control_request(&request)
             }
+            ResidentOperationV1::ExtensionAllowHint(request) => {
+                crate::extension_allow_hint_op::evaluate_with_store(&request, policy_store)
+            }
+            ResidentOperationV1::ApprovalExtensionRecommendation(request) => {
+                crate::approval_extension_recommendation_op::evaluate_with_store(&request, policy_store)
+            }
             ResidentOperationV1::ComposioRole(request) => {
                 crate::composio_role_op::evaluate_composio_role_request(&request)
             }
@@ -500,6 +506,9 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
                     &request,
                 )
             }
+            ResidentOperationV1::ArtifactContentHash(request) => {
+                crate::artifact_content_hash_op::evaluate_artifact_content_hash_request(&request)
+            }
             ResidentOperationV1::ConsumerArtifactCompose(request) => {
                 crate::consumer_artifact_compose_op::evaluate_consumer_artifact_compose_request(
                     &request,
@@ -648,6 +657,11 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
             // here; the daemon adapter only moves bytes (no Python fallback).
             ResidentOperationV1::DiscoveryPlacementProject(request) => {
                 crate::discovery_placement_op::evaluate_discovery_placement_project(&request)
+            }
+            // Untrusted portal release bytes are validated and projected here;
+            // the daemon adapter only moves bytes (no Python fallback).
+            ResidentOperationV1::ReleaseFeedProject(request) => {
+                crate::release_feed_op::evaluate_release_feed_project(&request)
             }
             ResidentOperationV1::DataFlowAnalyze(request) => {
                 crate::data_flow_analyze_op::evaluate_data_flow_analyze(&request)

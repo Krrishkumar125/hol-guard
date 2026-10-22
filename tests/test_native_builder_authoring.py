@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -141,12 +142,14 @@ def test_fixed_installed_bundle_uses_native_traversal_and_selected_archive(
 
     # The selected archive is admitted by the pinned runtime, not a Python parser.
     monkeypatch.setattr(lifecycle, "invoke", native_invoke(native_hook_force))
-    from codex_plugin_scanner.guard.catalog_delivery.located_store import LocatedStore
-
-    lookup_entry = script("extension_delivery_objects").lookup_entry
     from codex_plugin_scanner.guard.catalog_delivery.pack_archives import archive_bytes
     from codex_plugin_scanner.guard.catalog_delivery.pack_store import PackReader
     from codex_plugin_scanner.guard.extension_builder.bundle_baseline import validation_base
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    from extension_delivery_located_store import LocatedStore
+
+    lookup_entry = script("extension_delivery_objects").lookup_entry
 
     store, request = release_for(native, tmp_path / "release", 1660)
     assets, fetched = {}, []

@@ -14,6 +14,7 @@ from .activation_types import ActivationHeader
 from .authority import DIGEST, SHA
 from .located_store import LocatedStore
 from .metadata_objects import ObjectStore, encoded, validate_reference
+from .object_native import sessioned
 from .pack_store import PackReader, decode
 from .preparation import IDENTITY, MAX_SELECTED, PreparedCommandPacks
 from .selection import PUBLICATION
@@ -254,7 +255,9 @@ def admission_is_current(header: ActivationHeader, now: int) -> bool:
     )["current"]
 
 
+@sessioned
 def open_record(data, expected_digest, expected_mac, *, key, directory):
+    """Read one record. Its distribution, pages and registry share one runtime."""
     value = verify_header(data, expected_digest, expected_mac, key=key)
     reader = PackReader(directory / "objects")
     validate_reference(value["distribution"])

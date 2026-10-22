@@ -152,7 +152,7 @@ Older releases are preserved in the [changelog archive](docs/changelog-archive.m
 * **native:** honour a merge Allow on repositories named after Guard, and check out fetched branches without review ([#5555](https://github.com/hashgraph-online/hol-guard/issues/5555)) ([e05dd08](https://github.com/hashgraph-online/hol-guard/commit/e05dd08be4dffc5d8cf7f5a3f0000ec6881993e1))
 * **native:** normalize extension ids in the native command catalog lookup ([#5554](https://github.com/hashgraph-online/hol-guard/issues/5554)) ([2aaaf77](https://github.com/hashgraph-online/hol-guard/commit/2aaaf77d573069e4ca1eeb2efb9001610b724c1e))
 * **policy:** pin the Guard Cloud policy-bundle signing key as a built-in anchor ([#5508](https://github.com/hashgraph-online/hol-guard/issues/5508)) ([5df1bde](https://github.com/hashgraph-online/hol-guard/commit/5df1bde66256567c70cd69da330ee2f4dc06cb68))
-* **pretool:** keep the Windows drive proof on the part of a git target that exists ([#5490](https://github.com/hashgraph-online/hol-guard/issues/5490)) ([bfae84f](https://github.com/hashgraph-online/hol-guard/commit/bfae84f20bdfbae96420262bd5fea305c7d54fbc))
+* **pretool:** keep the Windows drive proof on the existing part of a git target ([#5490](https://github.com/hashgraph-online/hol-guard/issues/5490)) ([bfae84f](https://github.com/hashgraph-online/hol-guard/commit/bfae84f20bdfbae96420262bd5fea305c7d54fbc))
 * **pretool:** read a Windows working directory as the path it names ([#5504](https://github.com/hashgraph-online/hol-guard/issues/5504)) ([ee917ff](https://github.com/hashgraph-online/hol-guard/commit/ee917ff1933f768ea9d2be113c80ad9aa89cb30e))
 * **resident:** wait for an exiting owner before spawning on Windows ([#5494](https://github.com/hashgraph-online/hol-guard/issues/5494)) ([4fbafd7](https://github.com/hashgraph-online/hol-guard/commit/4fbafd737c505c2b26653493aacc62e50ecd43d1))
 * **secure-fs:** classify a source inside a linked workspace by its target ([#5500](https://github.com/hashgraph-online/hol-guard/issues/5500)) ([002f3f5](https://github.com/hashgraph-online/hol-guard/commit/002f3f5677fd8dafd50164a18aff965bd9a069db))
@@ -163,7 +163,7 @@ Older releases are preserved in the [changelog archive](docs/changelog-archive.m
 
 ### Performance Improvements
 
-* **guard:** prove the npm an install will run in the resident ([#5478](https://github.com/hashgraph-online/hol-guard/issues/5478)) ([41a96ac](https://github.com/hashgraph-online/hol-guard/commit/41a96ac3b985f1d99cb8e5ce2f84c5ed2b06ba5a))
+* **guard:** prove an npm install will run in the resident ([#5478](https://github.com/hashgraph-online/hol-guard/issues/5478)) ([41a96ac](https://github.com/hashgraph-online/hol-guard/commit/41a96ac3b985f1d99cb8e5ce2f84c5ed2b06ba5a))
 
 
 ### Documentation

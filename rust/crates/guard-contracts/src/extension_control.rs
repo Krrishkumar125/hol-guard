@@ -9,7 +9,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::NativeExtensionControlLayerV1;
+use crate::{
+    ExtensionControlPreviewRegistryV1, ExtensionControlSemanticPreviewV1,
+    NativeExtensionControlLayerV1,
+};
 
 /// Schema discriminator for the request.
 pub const EXTENSION_CONTROL_REQUEST_SCHEMA: &str = "guard-extension-control-request.v1";
@@ -91,6 +94,36 @@ pub enum ExtensionControlQueryV1 {
         registry: ExtensionControlRegistryV1,
         scenarios: Vec<ExtensionControlScenarioV1>,
     },
+    /// The digest that identifies the runtime snapshot of one authority view.
+    SnapshotDigest {
+        catalog_digest: String,
+        health: String,
+        revision: u64,
+        managed_revision: u64,
+        layers: Vec<NativeExtensionControlLayerV1>,
+    },
+    /// The digest a commit proof binds: replacing the layers at
+    /// `previous_revision` with `layers`, for this actor and request.
+    MutationDigest {
+        previous_revision: i64,
+        catalog_digest: String,
+        layers: Vec<NativeExtensionControlLayerV1>,
+        actor_id: String,
+        idempotency_key: String,
+        nonce: String,
+    },
+    /// The digest a first-enrollment proof binds.
+    EnrollmentDigest {
+        catalog_digest: String,
+        actor_id: String,
+        nonce: String,
+    },
+    /// The semantic preview of replacing `current_layers` with `proposed_layers`.
+    Preview {
+        registry: ExtensionControlPreviewRegistryV1,
+        current_layers: Vec<NativeExtensionControlLayerV1>,
+        proposed_layers: Vec<NativeExtensionControlLayerV1>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -160,6 +193,18 @@ pub enum ExtensionControlPayloadV1 {
     },
     Resolve {
         scenarios: Vec<ExtensionControlScenarioResultV1>,
+    },
+    SnapshotDigest {
+        digest: String,
+    },
+    MutationDigest {
+        digest: String,
+    },
+    EnrollmentDigest {
+        digest: String,
+    },
+    Preview {
+        preview: ExtensionControlSemanticPreviewV1,
     },
 }
 
