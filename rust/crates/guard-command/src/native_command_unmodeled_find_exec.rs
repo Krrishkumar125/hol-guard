@@ -1,6 +1,6 @@
 //! Reading the program a `find -exec` runs out of the command text.
-use super::command_basename;
 use super::xargs::{command_index, plain_program};
+use super::{command_basename, INTERPRETERS};
 use std::collections::BTreeSet;
 
 /// find's actions that run a program named by the words after them.
@@ -32,6 +32,14 @@ pub(super) fn find_exec_programs(shell: &str) -> Option<BTreeSet<String>> {
             .map(|(index, _)| index)
             .collect();
         if actions.is_empty() {
+            // A piece that runs no `-exec` still runs. `find src -exec
+            // basename x \; ; sh -c '...'` names `basename` for the find and
+            // runs an unbounded shell straight after it, so reading the find
+            // alone would bound the half of the text that was never the
+            // uncertainty.
+            if command_index(&words).is_some_and(|index| runs_something_else(words[index])) {
+                return None;
+            }
             continue;
         }
         found = true;
@@ -53,6 +61,18 @@ pub(super) fn find_exec_programs(shell: &str) -> Option<BTreeSet<String>> {
             if !plain_program(operand) {
                 return None;
             }
+            // find runs the whole body, not its first word: `-exec nohup sh
+            // -c '...' \;` names `nohup`, which reads as an ordinary program
+            // while the shell behind it runs whatever it is handed. The body
+            // is read through to its terminator so the program that actually
+            // runs cannot hide behind a wrapper.
+            if words[action + 1..]
+                .iter()
+                .take_while(|word| !matches!(**word, "+" | "\\"))
+                .any(|word| runs_something_else(word))
+            {
+                return None;
+            }
             let program = command_basename(operand);
             // A `.cmd` launcher runs the program it is named for, the way
             // `command_basename` already reads a `.exe` suffix.
@@ -63,4 +83,16 @@ pub(super) fn find_exec_programs(shell: &str) -> Option<BTreeSet<String>> {
         }
     }
     found.then_some(programs)
+}
+
+/// Whether the word runs something other than itself, read the way the shell
+/// reads it.
+///
+/// `command_basename` treats a backslash as a path separator, so it reads
+/// `s\h` as `h` while the shell unescapes the word and runs `sh`. A word
+/// carrying one is answered as an interpreter rather than read two ways: the
+/// `-exec` terminator is the one backslash that reaches this, and the callers
+/// above take it off first.
+fn runs_something_else(word: &str) -> bool {
+    word.contains('\\') || INTERPRETERS.contains(&command_basename(word).as_str())
 }

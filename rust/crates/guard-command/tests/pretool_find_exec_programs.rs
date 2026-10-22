@@ -109,3 +109,33 @@ fn an_exec_child_that_changes_files_is_still_stopped() {
         );
     }
 }
+
+#[test]
+fn a_shell_the_find_does_not_name_keeps_the_evaluation_failure() {
+    let (root, _cleanup) = workspace("hidden-shell");
+    let controls = git_github_controls("default", "default");
+    for command in [
+        // A second command runs its own shell: naming the find's child bounds
+        // only the half of the text that was never the uncertainty.
+        "find src -type f -exec basename {} \\; ; sh -c 'echo hi'",
+        "find src -type f -exec basename {} \\; && bash -c 'echo hi'",
+        // A wrapper in front of the child hides the shell it launches.
+        "find src -type f -exec nohup sh -c 'echo hi' \\;",
+        "find src -type f -exec command sh -c 'echo hi' \\;",
+        "find src -type f -exec time python3 -c 'print(1)' \\;",
+        // An escaped name the shell unescapes to `sh` must not read as `h`.
+        "find src -type f -exec s\\h -c 'echo hi' \\;",
+    ] {
+        let result = evaluate(&root, &controls, command);
+        assert_eq!(
+            result.reason_code, EVALUATION_FAILED,
+            "{command}: {}",
+            result.reason
+        );
+        assert_ne!(
+            result.minimum_action, "allow",
+            "{command}: {}",
+            result.reason
+        );
+    }
+}
