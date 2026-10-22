@@ -210,6 +210,16 @@ jobs:
           } >> "$GITHUB_ENV"
         env:
           SCCACHE_MODE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'READ_WRITE' || 'READ_ONLY' }}
+      - name: Check compiler cache readiness
+        if: matrix.check != 'clippy' && steps.runtime-archive.outputs.cache-hit != 'true'
+        run: |
+          # --zero-stats connects to an existing daemon or starts one. Startup
+          # storage failures precede SCCACHE_IGNORE_SERVER_IO_ERROR's fallback.
+          # Diagnostics can include signed cache URLs; keep them runner-local.
+          if ! sccache --zero-stats > "$RUNNER_TEMP/sccache-readiness.log" 2>&1; then
+            echo "::warning::Compiler cache unavailable; compiling directly."
+            echo "HOL_GUARD_CI_SCCACHE=off" >> "$GITHUB_ENV"
+          fi
       - name: Provision the Linux test linker
         if: matrix.check != 'clippy' && steps.runtime-archive.outputs.cache-hit != 'true'
         # The checked test wrapper links with lld. Reuse the runner's linker
