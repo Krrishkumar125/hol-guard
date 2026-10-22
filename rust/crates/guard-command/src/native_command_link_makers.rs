@@ -7,7 +7,10 @@ use super::command_words;
 /// names the file. Copies that make or keep links (`cp -l`, `-a`, `-P`, `-d`,
 /// `-R`, `--preserve=links`), `ditto`, which keeps links by default, archive
 /// or sync tools that recreate them, and Git commands that write a working
-/// tree, which may hold committed symlinks, count too. Names are compared
+/// tree, which may hold committed symlinks, count too. So does `--ext-diff`
+/// on any Git command: it runs the program `diff.external` names, which is
+/// free to leave a link behind whatever the subcommand itself does. Names are
+/// compared
 /// case-insensitively without `.exe` or `.cmd`, and any `--sy` option is
 /// taken as GNU's abbreviation of `--symbolic-link`.
 pub(super) fn creates_links(literal: &str) -> bool {
@@ -47,7 +50,8 @@ pub(super) fn creates_links(literal: &str) -> bool {
                 | "submodule"
                 | "mv"
                 | "bisect"
-        ) || group_writes_tree(word, listed.get(index + 1).copied())
+        ) || *word == "--ext-diff"
+            || group_writes_tree(word, listed.get(index + 1).copied())
     });
     command_words(literal).any(|word| {
         let base = word.rsplit(['/', '\\']).next().unwrap_or(word);
@@ -84,7 +88,9 @@ pub(super) fn creates_links(literal: &str) -> bool {
 /// alone made every one of them a link maker, so an ordinary file write beside
 /// `git worktree list` lost its literal redirect and failed evaluation. The
 /// operation that follows the group decides; one that is missing or not named
-/// here keeps the group counted as a tree write.
+/// here keeps the group counted as a tree write. `git stash show` takes diff
+/// options, but an `--ext-diff` among them is caught by the caller's own check
+/// before the operation is read.
 fn group_writes_tree(word: &str, operation: Option<&str>) -> bool {
     let reports = match word {
         "worktree" => ["list", "prune", "remove", "lock", "unlock"].as_slice(),

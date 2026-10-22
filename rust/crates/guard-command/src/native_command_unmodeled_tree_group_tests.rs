@@ -43,3 +43,20 @@ fn a_worktree_or_stash_operation_that_writes_a_tree_keeps_the_failure() {
         assert_eq!(decision(&controls, command).1, FAILED, "{command}");
     }
 }
+
+/// `--ext-diff` runs the program `diff.external` names, so a reporting
+/// operation carrying it can still leave a link a later redirect writes
+/// through. Narrowing the group words must not hand that option a literal
+/// redirect, on `git stash show` or on any other Git command.
+#[test]
+fn an_external_diff_helper_keeps_the_failure_whatever_the_operation_reports() {
+    let controls = controls(serde_json::json!([]), false);
+    for command in [
+        "echo hi > docs/a.md && git stash show --ext-diff",
+        "echo hi > docs/a.md && git stash show --ext-diff stash@{0}",
+        "echo hi > docs/a.md && git diff --ext-diff",
+        "echo hi > docs/a.md && git log -p --ext-diff",
+    ] {
+        assert_eq!(decision(&controls, command).1, FAILED, "{command}");
+    }
+}
