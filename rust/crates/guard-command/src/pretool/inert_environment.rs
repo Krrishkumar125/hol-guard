@@ -54,13 +54,20 @@ fn literal_value(value: &str) -> bool {
 }
 
 /// Whether `NAME=VALUE` sets a variable that cannot redirect execution.
+///
+/// Presentation names and a default-equivalent pager are proven here. Every
+/// other name goes through the shared settings screen, which keeps lookup,
+/// loading, configuration, home, credential, trust-anchor and endpoint
+/// families unproven, so `NODE_ENV=test`, `CI=1` and a project's own
+/// `LOG_LEVEL=debug` read as the values they are.
 pub(super) fn inert_assignment(token: &str) -> bool {
     let Some((name, value)) = token.split_once('=') else {
         return false;
     };
     literal_value(value)
         && (presentation_name(name)
-            || (PAGER_NAMES.contains(&name) && DEFAULT_EQUIVALENT_PAGERS.contains(&value)))
+            || (PAGER_NAMES.contains(&name) && DEFAULT_EQUIVALENT_PAGERS.contains(&value))
+            || crate::command_compatibility::environment::ordinary_setting_name(name))
 }
 
 /// Whether `name` alone, with no value, is one of those variables.

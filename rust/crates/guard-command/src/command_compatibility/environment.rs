@@ -244,6 +244,38 @@ pub(crate) fn code_or_redirect_environment_name(name: &str) -> bool {
     }
 }
 
+/// Fragments of settings that move where a later program connects: a host,
+/// a port, a database endpoint, a package index or a mirror. None of them
+/// names code, a config file, a home or a trust anchor, so the markers above
+/// let them through, while the value they carry decides whose server answers.
+/// `PG*` is spelled as a prefix because libpq settings (`PGHOST`, `PGUSER`,
+/// `PGSERVICE`) steer a connection under names that carry no marker word.
+const ENDPOINT_MARKERS: &[&str] = &[
+    "ADDR", "DSN", "ENDPOINT", "HOST", "INDEX", "MIRROR", "PORT", "PROXY", "REGISTRY", "SERVER",
+    "URI", "URL",
+];
+
+/// A setting that redirects where a later program connects.
+pub(crate) fn endpoint_steering_environment_name(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    upper.starts_with("PG") || ENDPOINT_MARKERS.iter().any(|marker| upper.contains(marker))
+}
+
+/// A setting whose whole effect is a value the command reads for itself:
+/// either a known-inert name such as `CI` or `NODE_ENV`, or an ordinary
+/// project name that steers nothing. Every family that can redirect what
+/// runs — lookup, loading, config, home, credentials, the trust anchor and
+/// the endpoint — keeps its signal, so a caller can treat the rest as a
+/// value and nothing more.
+pub(crate) fn ordinary_setting_name(name: &str) -> bool {
+    !trust_anchor_environment_name(name)
+        && !endpoint_steering_environment_name(name)
+        && !credential_routing_environment_name(name)
+        && (inert_environment_name(name)
+            || (crate::pretool::generic::chain_literals::ordinary_name(name)
+                && !code_or_redirect_environment_name(name)))
+}
+
 #[cfg(test)]
 pub(super) fn supported(segment: &CommandSegmentV1) -> bool {
     segment
