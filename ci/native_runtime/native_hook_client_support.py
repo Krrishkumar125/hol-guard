@@ -26,6 +26,7 @@ from codex_plugin_scanner.guard.native_policy_snapshot import (
     derive_native_policy_verifier_key,
     provision_native_policy_verifier_key,
 )
+from codex_plugin_scanner.guard.native_resident_client import close_native_residents
 from codex_plugin_scanner.guard.store import GuardStore
 
 _NATIVE_BINARY = os.environ.get("HOL_GUARD_NATIVE_BINARY")
@@ -103,6 +104,10 @@ def _request(
     # once a native verifier key is already on disk. Bind before provisioning.
     command_extensions, policy_master = _command_controls(root)
     provision_native_policy_verifier_key(root, policy_master)
+    # Reading the store answers through a resident that this process starts in
+    # root/native-runtime, the state directory the tests drive. Stop it so each
+    # test starts from an empty state directory with no resident owned by pytest.
+    assert close_native_residents(root)
     policy_snapshot = build_policy_snapshot_v3(
         config={
             "mode": "enforce",
