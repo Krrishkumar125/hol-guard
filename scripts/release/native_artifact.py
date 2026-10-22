@@ -284,7 +284,7 @@ def restore(api: API, directory: Path) -> bool:
         extract(data, staged)
         verify(staged)
         staged.rename(directory)
-    print(f"Verified prepared artifact {artifact['id']} from its successful trusted target job")
+    print("Verified prepared artifact from its successful trusted target job")
     return True
 
 

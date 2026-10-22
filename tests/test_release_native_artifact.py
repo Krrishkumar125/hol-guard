@@ -131,12 +131,13 @@ class FakeAPI:
         return self.data
 
 
-def test_completed_target_can_restore_while_other_targets_are_running(prepared, tmp_path):
+def test_completed_target_can_restore_while_other_targets_are_running(prepared, tmp_path, capsys):
     _, data = prepared
     destination = tmp_path / "restored"
     assert native.restore(FakeAPI(data), destination)
     assert (destination / "runtime").read_bytes() == b"runtime"
     assert (destination / "compiler").read_bytes() == b"compiler"
+    assert capsys.readouterr().out == "Verified prepared artifact from its successful trusted target job\n"
 
 
 @pytest.mark.parametrize(
