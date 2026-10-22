@@ -122,6 +122,7 @@ pub mod pretool_git_worktree_remote_branch;
 pub mod pretool_git_worktree_session;
 pub mod pretool_git_worktree_siblings;
 pub mod pretool_github_conversation;
+pub mod pretool_github_metadata;
 pub mod pretool_github_reads;
 pub mod pretool_grep_pattern_clearance;
 pub mod pretool_grep_repository_metadata;

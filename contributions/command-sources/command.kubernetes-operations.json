@@ -831,7 +831,7 @@
       },
       {
         "action_classes": [
-          "Kubernetes destructive command"
+          "Kubernetes security administration command"
         ],
         "baseline_floor": "review",
         "configurable": true,
@@ -857,7 +857,7 @@
       },
       {
         "action_classes": [
-          "Kubernetes destructive command"
+          "Kubernetes network tunnel command"
         ],
         "baseline_floor": "review",
         "configurable": true,
@@ -6876,7 +6876,7 @@
       },
       {
         "action_classes": [
-          "Kubernetes destructive command"
+          "Kubernetes security administration command"
         ],
         "default_mode": "review",
         "description": "Creates or updates role and role-binding permissions from a manifest.",
@@ -7014,7 +7014,7 @@
       },
       {
         "action_classes": [
-          "Kubernetes destructive command"
+          "Kubernetes network tunnel command"
         ],
         "default_mode": "review",
         "description": "Opens a local proxy that provides access to the configured cluster API.",

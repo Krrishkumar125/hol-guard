@@ -8,6 +8,8 @@ pub(crate) use super::stderr_merge::without_stderr_merge;
 
 #[path = "segment_proof_cwd.rs"]
 mod cwd;
+#[path = "github_metadata_text.rs"]
+mod github_metadata_text;
 pub(super) use cwd::{
     after_read_prefix, cwd_read_executable, exact_safe_cwd_compound, verified_cwd_compound_context,
     verified_cwd_list_context,
@@ -230,10 +232,13 @@ pub(super) fn exact_safe_segment_with_context(
     } else {
         Vec::new()
     };
+    let secret_namespace = github_metadata_text::secret_namespace(segment);
+    let sensitive_text =
+        secret_namespace.map(|index| github_metadata_text::without_namespace(segment, index));
     if (!inert_search
         && !super::source_file_read_segment(segment)
         && super::git_search_text::sensitive_beyond_patterns(
-            &segment.text,
+            sensitive_text.as_deref().unwrap_or(&segment.text),
             super::git_search_text::segment_without_patterns(segment),
         ))
         || (!matches!(basename, "rg" | "grep" | "fd")
@@ -243,6 +248,7 @@ pub(super) fn exact_safe_segment_with_context(
                 .enumerate()
                 .any(|(index, argument)| {
                     Some(index) != jq_filter
+                        && Some(index) != secret_namespace
                         && !search_text.contains(&index)
                         && sensitive_path_argument(argument)
                 }))
