@@ -181,6 +181,58 @@ def test_keeps_installs_when_hook_repair_reports_a_problem(
     assert venv.exists()
 
 
+def test_converges_when_hook_repair_only_reports_information(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _launcher(home)
+    venv = _pipx_venv(home)
+    note = "Refreshed the OpenCode pretool plugin during update. Restart OpenCode to load it."
+    monkeypatch.setattr(update_commands, "_repair_supported_harnesses_in_process", lambda **_: ([], [note]))
+    monkeypatch.setattr(
+        desktop_converge,
+        "converge_on_desktop_core",
+        lambda context, **kwargs: converge_on_desktop_core(
+            context,
+            path_env=str(home / ".local" / "bin"),
+            retire_runtime=lambda _: True,
+            retire_daemons=lambda: None,
+            refresh_package_shims=lambda: None,
+            **kwargs,
+        ),
+    )
+
+    payload, _, notes = repair_hooks_then_converge(
+        _context(home, tmp_path),
+        store=object(),  # pyright: ignore[reportArgumentType]
+        workspace=None,
+        now="2026-10-22T00:00:00Z",
+    )
+
+    assert payload["status"] == "converged", payload
+    assert notes == [note]
+    assert not venv.exists()
+
+
+def test_keeps_installs_when_the_daemon_will_not_stop(home: Path, tmp_path: Path) -> None:
+    _ = _launcher(home)
+    venv = _pipx_venv(home)
+
+    def retire_daemons() -> None:
+        raise RuntimeError("daemon did not exit")
+
+    payload = converge_on_desktop_core(
+        _context(home, tmp_path),
+        path_env=str(home / ".local" / "bin"),
+        retire_runtime=lambda _: True,
+        retire_daemons=retire_daemons,
+        refresh_package_shims=lambda: None,
+    )
+
+    assert payload["status"] == "partial"
+    assert payload["removed"] == []
+    assert venv.exists()
+
+
 def test_removes_a_relative_link_left_by_a_deleted_venv(home: Path) -> None:
     link = home / ".local" / "bin" / "hol-guard"
     link.symlink_to(Path("..") / "pipx" / "venvs" / "hol-guard" / "bin" / "hol-guard")

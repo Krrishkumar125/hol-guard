@@ -34,6 +34,8 @@ _DEFERRED_NOTE = (
     "Kept the other HOL Guard installs because harness hook repair reported a problem. "
     "Fix it, then run hol-guard desktop converge."
 )
+# Every harness repair failure note starts with this; success notes do not.
+_REPAIR_FAILURE_MARKER = "Could not "
 
 
 def converge_on_desktop_core(
@@ -60,7 +62,18 @@ def converge_on_desktop_core(
         payload["status"] = "planned"
         return payload
     if not inventory.empty:
-        _ = (retire_daemons or (lambda: _retire_daemons(context.guard_home)))()
+        try:
+            _ = (retire_daemons or (lambda: _retire_daemons(context.guard_home)))()
+        except (OSError, RuntimeError) as error:
+            payload.update(
+                {
+                    "status": "partial",
+                    "removed": [],
+                    "daemon_restart_required": False,
+                    "notes": [f"Kept the other HOL Guard installs: could not stop the Guard daemon: {error}"],
+                }
+            )
+            return payload
     result = remove_foreign_installs(
         inventory,
         retire_runtime=retire_runtime or _resident_retirer(context.guard_home),
@@ -102,8 +115,9 @@ def repair_hooks_then_converge(
 ) -> tuple[dict[str, object], list[dict[str, object]], list[str]]:
     """Point every hook at this Core, then retire the installs it supersedes.
 
-    Installs are removed only after hook repair finished without a problem, so
-    no harness is left calling a deleted binary. Returns the converge payload,
+    Installs are removed only after hook repair finished without a failure, so
+    no harness is left calling a deleted binary. Informational notes, such as
+    a reminder to restart OpenCode, do not hold converge back. Returns the converge payload,
     the repaired managed installs and the repair notes.
     """
 
@@ -118,7 +132,7 @@ def repair_hooks_then_converge(
         now=now,
         dry_run=False,
     )
-    if repair_notes:
+    if any(_REPAIR_FAILURE_MARKER in note for note in repair_notes):
         planned = converge_on_desktop_core(context, dry_run=True)
         if planned["status"] == "planned" and planned.get("found"):
             planned["status"] = "deferred"
@@ -253,7 +267,9 @@ def _ensure_user_path_shim(home: Path, launcher: Path, removed_dirs: frozenset[P
     try:
         bin_dir.mkdir(parents=True, exist_ok=True)
         temporary = bin_dir / _SHIM_TEMP_NAME
-        _ = temporary.write_text(text, encoding="utf-8")
+        # newline="" keeps the CRLF endings cmd.exe expects on Windows.
+        with temporary.open("w", encoding="utf-8", newline="") as handle:
+            _ = handle.write(text)
         temporary.chmod(0o755)
         os.replace(temporary, target)
     except OSError as error:
