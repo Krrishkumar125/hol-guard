@@ -120,8 +120,8 @@ fn a_query_round_trips_to_the_bytes_the_caller_sent() {
         json!({ "artifact": artifact() }),
         json!({ "content": RECORDED_CONTENT_HASH }),
     ] {
-        let mut wire = serde_json::to_value(query(sent.clone())).expect("the query serializes");
-        let parsed = wire.as_object_mut().expect("the query is an object");
+        let wire = serde_json::to_value(query(sent.clone())).expect("the query serializes");
+        let parsed = wire.as_object().expect("the query is an object");
         let fields = sent.as_object().expect("the fields are an object");
         for name in ["artifact", "content"] {
             assert_eq!(
