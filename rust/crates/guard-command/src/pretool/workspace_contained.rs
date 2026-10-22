@@ -66,6 +66,8 @@ mod script;
 mod settings;
 #[path = "workspace_contained_sibling.rs"]
 mod sibling;
+#[path = "workspace_contained_vendored.rs"]
+mod vendored;
 
 pub(super) use keeps_work::keeping_arguments;
 pub(super) use reach::PRIVATE_TEMP_WITH_FALLBACK;
