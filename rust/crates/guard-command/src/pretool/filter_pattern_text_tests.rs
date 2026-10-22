@@ -30,7 +30,7 @@ fn only_a_proven_stdin_filter_sheds_its_pattern() {
         "ls -R ~/.ssh | grep -v known_hosts",
         "ls -R . | grep AWS_SECRET_ACCESS_KEY",
         "ls -R . | grep -f .env",
-        "ls -R . | grep --file=.ssh/patterns",
+        "ls -R . | grep --file=.env",
         "ls -R . | grep -r .env /etc",
         "ls -R . | PATTERN=.env grep $PATTERN",
     ] {
