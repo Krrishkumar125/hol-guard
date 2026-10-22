@@ -1,4 +1,6 @@
 use super::*;
+#[path = "hook_direct_review_queue_size_tests.rs"]
+mod size_tests;
 use crate::policy_store::policy_store_direct_lane::{DirectLaneBinding, DirectLaneReviewFacts};
 
 fn ask_binding() -> DirectLaneBinding {
@@ -292,10 +294,7 @@ fn a_silent_review_blocks_after_queueing_its_request_and_event() {
         true,
         false,
     );
-    let safe = format!(
-        "{safe} {}",
-        crate::blocked_request_mode::approval_wait_hint("r-new")
-    );
+    let safe = format!("{safe} <wait>");
     // Without a daemon token Codex cannot sign the loopback link, so it says
     // so instead of handing out an unsigned one.
     for (harness, reason) in [
@@ -345,6 +344,14 @@ fn a_silent_review_blocks_after_queueing_its_request_and_event() {
             false,
         )
         .unwrap();
+        let reason = reason.replace(
+            "<wait>",
+            &crate::blocked_request_mode::approval_wait_hint_for_home(
+                "r-new",
+                &guard_home,
+                "/home/user",
+            ),
+        );
         let mut blocked = result.as_object().unwrap().clone();
         blocked.insert("decision".to_owned(), json!("deny"));
         blocked.insert("minimum_action".to_owned(), json!("block"));

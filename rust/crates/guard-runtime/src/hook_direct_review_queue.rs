@@ -233,15 +233,31 @@ fn silent(
         request,
         Map::new(),
     )?;
-    let reason = if retry_reuses_approval {
-        format!(
-            "{reason} {}",
-            crate::blocked_request_mode::approval_wait_hint(&stored_id)
+    let hint = if retry_reuses_approval {
+        crate::blocked_request_mode::approval_wait_hint_for_home(
+            &stored_id,
+            context.guard_home,
+            context.home_dir,
         )
     } else {
-        reason
+        String::new()
     };
-    let unlinked = silent_block(context.harness, result, &reason).unwrap_or(unlinked);
+    let reason = if hint.is_empty() {
+        reason
+    } else {
+        format!("{reason} {hint}")
+    };
+    // Diagnostics must not crowd the notification out of a hook protocol
+    // that drops extra fields. A compact block preserves the wait command.
+    let unlinked = silent_block(context.harness, result, &reason)
+        .or_else(|| {
+            silent_block(
+                context.harness,
+                &Map::new(),
+                &format!("HOL Guard paused this action. {hint}"),
+            )
+        })
+        .unwrap_or(unlinked);
     // The request is queued now, so a link that cannot be added keeps the
     // unlinked block rather than handing the hook back.
     let linked = approval_url.and_then(|url| {

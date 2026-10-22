@@ -249,7 +249,7 @@ def pause_native_pre_tool_for_approval(
         raw_url = queued.get("approval_url") if queued is not None and link else None
         request_id = queued.get("request_id") if queued is not None else None
         if identity is not None and isinstance(request_id, str):
-            reason = f"{reason} {approval_wait_hint(request_id)}".strip()
+            reason = f"{reason} {approval_wait_hint(request_id, guard_home=guard_home, home_dir=home_dir)}".strip()
         if isinstance(raw_url, str) and raw_url.strip():
             # The agent passes the link on, so the user can open the queued row.
             reason = native_review_reason(canonical_harness(harness), reason, raw_url.strip(), guard_home=guard_home)

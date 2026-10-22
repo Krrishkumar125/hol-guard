@@ -80,7 +80,7 @@ def _queue_local_protect_approvals(
                 reason_code="native_package_review",
                 approval_queued=True,
             )
-            guidance = f"{guidance} {approval_wait_hint(request_id)}".strip()
+            guidance = f"{guidance} {approval_wait_hint(request_id, guard_home=guard_home)}".strip()
             response_payload["approval_resume"] = {
                 "request_id": request_id,
                 "poll_path": f"/v1/requests/{request_id}",

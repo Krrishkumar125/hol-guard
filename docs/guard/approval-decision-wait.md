@@ -15,6 +15,14 @@ blocked or was not found, and 2 means the wait timed out. A timeout leaves the
 request pending and is never approval. An agent can continue other permitted
 work and wait again later.
 
+A removed request returns `not_found` immediately. A store outage returns
+`approval_store_unavailable` with exit status 3 and an unknown decision.
+Neither result authorizes a retry.
+
+For a custom Guard home the printed command includes `--home <configured-home>`
+so it reads the database that queued the request. Home overrides keep Guard's
+existing inspection review; they do not gain a new automatic allow.
+
 After an allow decision, retry the identical action through Guard. Waiting
 does not approve, consume approval, or execute the action. Guard revalidates
 the retry against its normal command and artifact binding. A changed command
