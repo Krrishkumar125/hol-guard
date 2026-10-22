@@ -426,7 +426,13 @@ pub(super) fn local_package_work(
             let Some(directory) = directory.as_deref() else {
                 return false;
             };
-            return super::vendored::local_vendored_work(&name, &segment.arguments, directory);
+            return super::vendored::local_vendored_work(
+                &name,
+                &segment.arguments,
+                &segment.environment_names,
+                directory,
+                workspace,
+            );
         }
         if !NODE_MANAGERS.contains(&name.as_str()) {
             // A runner still here was not proved to start an installed tool,

@@ -22,8 +22,27 @@
 //! the lists below, and an option this module does not know keeps the command
 //! out as well, because Composer's `show --latest` and `--available` turn a
 //! local listing into a registry query.
+//!
+//! Three more things decide which project and which tree a run reads, and
+//! each keeps the command out when it cannot be read as a plain path under the
+//! workspace:
+//!
+//! * Composer reads `-d` and `--working-dir` from anywhere on the line,
+//!   including behind the script it runs and behind `--`, and the project it
+//!   moves to is not the one the checks looked at.
+//! * The tree is wherever the project's own configuration puts it:
+//!   `config.vendor-dir` in `composer.json` and `BUNDLE_PATH` in
+//!   `.bundle/config`. A directory that merely carries the conventional name
+//!   is no proof of where the packages are read from, and a path that leaves
+//!   the workspace, by `..`, by an absolute name or by a link, is one the
+//!   sandbox does not hold.
+//! * A verb that hands the line to a project tool may hand it to a package
+//!   manager (`composer exec composer install`, `bundle exec gem install`),
+//!   which installs what it runs. Package review reads the outer command, so
+//!   the delegated line keeps its review here.
 
-use std::path::Path;
+use std::io::Read;
+use std::path::{Component, Path, PathBuf};
 
 /// The managers that install into a directory the project owns.
 pub(super) const VENDORED_MANAGERS: &[&str] = &["composer", "bundle", "bundler"];
@@ -83,61 +102,243 @@ const COMPOSER_PROGRAM_VERBS: &[&str] = &["exec", "run", "run-script"];
 /// project tool; the rest report what the bundle already holds.
 const BUNDLE_LOCAL_VERBS: &[&str] = &["exec", "list", "show", "check"];
 
+// The variables that move a manager's project, configuration or dependency
+// directories. Set in front of the command, any of them replaces what the
+// project's own files say, so the tree those files name is no longer the one
+// the run reads.
+const COMPOSER_VARIABLE_PREFIXES: &[&str] = &["COMPOSER"];
+const BUNDLE_VARIABLE_PREFIXES: &[&str] = &["BUNDLE", "GEM_", "RUBY"];
+
+/// Package tools a delegated line must not name. Each one installs, fetches or
+/// updates what it runs, so a verb that hands the line to one is not the local
+/// work this module admits.
+const DELEGATED_PACKAGE_TOOLS: &[&str] = &[
+    "composer", "bundle", "bundler", "gem", "npm", "npx", "pnpm", "pnpx", "yarn", "bun", "bunx",
+    "pip", "pip3", "pipx", "pipenv", "poetry", "uv", "uvx", "cargo", "go", "brew", "apt",
+    "apt-get", "dnf", "yum", "apk",
+];
+
+/// How much of a project's configuration is read to find its dependency tree.
+const CONFIG_BYTES: u64 = 1 << 20;
+
 /// Whether a Composer or Bundler segment runs a verb against a dependency
 /// tree the workspace holds. `directory` is where the chain stands by the time
 /// the segment runs, so a `cd` ahead of it decides which project is read.
-pub(super) fn local_vendored_work(name: &str, arguments: &[String], directory: &Path) -> bool {
-    let words: Vec<&str> = arguments
-        .iter()
-        .map(String::as_str)
-        .take_while(|word| *word != "--")
-        .collect();
-    if name == "composer" {
-        local_composer_work(&words, directory)
+pub(super) fn local_vendored_work(
+    name: &str,
+    arguments: &[String],
+    environment_names: &[String],
+    directory: &Path,
+    workspace: &Path,
+) -> bool {
+    let composer = name == "composer";
+    let prefixes = if composer {
+        COMPOSER_VARIABLE_PREFIXES
     } else {
-        local_bundle_work(&words, directory)
+        BUNDLE_VARIABLE_PREFIXES
+    };
+    if environment_names.iter().any(|variable| {
+        let variable = variable.to_ascii_uppercase();
+        prefixes.iter().any(|prefix| variable.starts_with(prefix))
+    }) {
+        return false;
+    }
+    let arguments: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    if composer {
+        local_composer_work(&arguments, directory, workspace)
+    } else {
+        local_bundle_work(&arguments, directory, workspace)
     }
 }
 
-fn local_composer_work(words: &[&str], directory: &Path) -> bool {
-    let mut rest = words
+/// The arguments up to the `--` that ends a verb's own options.
+fn before_separator<'a>(arguments: &[&'a str]) -> Vec<&'a str> {
+    arguments
         .iter()
         .copied()
-        .skip_while(|word| COMPOSER_INERT_FLAGS.contains(word));
-    let Some(verb) = rest.next() else {
+        .take_while(|word| *word != "--")
+        .collect()
+}
+
+/// Whether `word` is Composer's working-directory option in a spelling its
+/// argument parser reads: `-d`, `-dPATH`, a short cluster that carries `d`
+/// such as `-qd`, `--working-dir` or `--working-dir=PATH`.
+fn moves_composer(word: &str) -> bool {
+    if word == "--working-dir" || word.starts_with("--working-dir=") {
+        return true;
+    }
+    word.starts_with('-') && !word.starts_with("--") && word[1..].contains('d')
+}
+
+/// Whether the line a verb hands on names a package tool anywhere: as the
+/// program, behind `env` or `sh -c`, or as an interpreter's script. The names
+/// are matched on the last path component, so `vendor/bin/composer` and
+/// `composer.phar` count.
+fn names_a_package_tool(words: &[&str]) -> bool {
+    words.iter().any(|word| {
+        word.split(|character: char| {
+            character.is_whitespace()
+                || matches!(
+                    character,
+                    ';' | '&' | '|' | '(' | ')' | '`' | '"' | '\'' | '='
+                )
+        })
+        .filter(|piece| !piece.is_empty())
+        .any(|piece| {
+            let base = piece
+                .rsplit('/')
+                .next()
+                .unwrap_or(piece)
+                .to_ascii_lowercase();
+            let base = base.strip_suffix(".phar").unwrap_or(&base);
+            DELEGATED_PACKAGE_TOOLS.contains(&base)
+        })
+    })
+}
+
+/// `relative` joined onto `directory`, when it is a plain path the workspace
+/// holds: no expansion, no `..`, no absolute name, and no link on the way that
+/// resolves outside the workspace. A path that does not exist yet passes; the
+/// caller decides whether it has to.
+fn inside(directory: &Path, relative: &str, workspace: &Path) -> Option<PathBuf> {
+    if relative.is_empty() || relative.contains(['$', '{', '}', '~', '`', '\\', '\0']) {
+        return None;
+    }
+    let path = Path::new(relative);
+    if !path
+        .components()
+        .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
+    {
+        return None;
+    }
+    let joined = directory.join(path);
+    match joined.canonicalize() {
+        Ok(real) => real
+            .starts_with(workspace.canonicalize().ok()?)
+            .then_some(joined),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(joined),
+        Err(_) => None,
+    }
+}
+
+/// The text of a configuration file, `Some(None)` when it does not exist and
+/// `None` when it cannot be read whole.
+fn read_config(path: &Path) -> Option<Option<String>> {
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Some(None),
+        Err(_) => return None,
+    };
+    let mut text = Vec::new();
+    file.take(CONFIG_BYTES + 1).read_to_end(&mut text).ok()?;
+    if text.len() as u64 > CONFIG_BYTES {
+        return None;
+    }
+    String::from_utf8(text).ok().map(Some)
+}
+
+/// The directory Composer reads this project's packages from, when the
+/// project's own configuration puts it, or leaves it, under the workspace and
+/// the packages are installed there.
+fn composer_tree(directory: &Path, workspace: &Path) -> Option<PathBuf> {
+    let manifest = match read_config(&directory.join("composer.json"))? {
+        Some(text) => serde_json::from_str::<serde_json::Value>(&text).ok()?,
+        None => serde_json::Value::Null,
+    };
+    let setting = |key: &str| -> Option<Option<String>> {
+        match manifest.get("config").and_then(|config| config.get(key)) {
+            None => Some(None),
+            Some(serde_json::Value::String(value)) => Some(Some(value.clone())),
+            Some(_) => None,
+        }
+    };
+    let vendor = setting("vendor-dir")?.unwrap_or_else(|| "vendor".to_owned());
+    let tree = inside(directory, &vendor, workspace)?;
+    if let Some(bin) = setting("bin-dir")? {
+        inside(directory, &bin.replace("{$vendor-dir}", &vendor), workspace)?;
+    }
+    tree.is_dir().then_some(tree)
+}
+
+/// The value `.bundle/config` holds for `key`.
+fn bundle_setting(config: &str, key: &str) -> Option<String> {
+    config.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        (name.trim() == key).then(|| value.trim().trim_matches(['"', '\'']).to_owned())
+    })
+}
+
+/// The directory Bundler reads this project's gems from. Bundler puts them
+/// where the project's own `.bundle/config` says, so a bundle that config does
+/// not name resolves through the caller's gem home, which the sandbox
+/// replaces; a path that leaves the workspace is one it does not hold.
+fn bundle_tree(directory: &Path, workspace: &Path) -> Option<PathBuf> {
+    let config = read_config(&directory.join(".bundle").join("config"))??;
+    // A Gemfile or app-config elsewhere makes this directory's files not the
+    // bundle's.
+    if bundle_setting(&config, "BUNDLE_GEMFILE").is_some()
+        || bundle_setting(&config, "BUNDLE_APP_CONFIG").is_some()
+    {
+        return None;
+    }
+    let path = bundle_setting(&config, "BUNDLE_PATH").or_else(|| {
+        bundle_setting(&config, "BUNDLE_DEPLOYMENT")
+            .filter(|value| value == "true")
+            .map(|_| "vendor/bundle".to_owned())
+    })?;
+    let tree = inside(directory, &path, workspace)?;
+    tree.is_dir().then_some(tree)
+}
+
+fn local_composer_work(arguments: &[&str], directory: &Path, workspace: &Path) -> bool {
+    if arguments.iter().any(|word| moves_composer(word)) {
+        return false;
+    }
+    let words = before_separator(arguments);
+    let Some(index) = words
+        .iter()
+        .position(|word| !COMPOSER_INERT_FLAGS.contains(word))
+    else {
         return false;
     };
+    let verb = words[index];
     if !COMPOSER_LOCAL_VERBS.contains(&verb) {
         return false;
     }
-    if COMPOSER_VENDOR_VERBS.contains(&verb) && !directory.join("vendor").is_dir() {
+    if COMPOSER_VENDOR_VERBS.contains(&verb) && composer_tree(directory, workspace).is_none() {
         return false;
     }
     if COMPOSER_PROGRAM_VERBS.contains(&verb) {
         // The script or binary comes first; what follows is its own line,
-        // which the sandbox bounds like any other workspace command.
-        return rest.next().is_some_and(|word| !word.starts_with('-'));
+        // which the sandbox bounds like any other workspace command, unless
+        // it hands the work to a package manager.
+        let line = &arguments[index + 1..];
+        return line.first().is_some_and(|word| !word.starts_with('-'))
+            && !names_a_package_tool(line);
     }
-    rest.all(|word| !word.starts_with('-') || COMPOSER_INERT_FLAGS.contains(&word))
+    words[index + 1..]
+        .iter()
+        .all(|word| !word.starts_with('-') || COMPOSER_INERT_FLAGS.contains(word))
 }
 
-fn local_bundle_work(words: &[&str], directory: &Path) -> bool {
-    let mut rest = words.iter().copied();
-    let Some(verb) = rest.next() else {
+fn local_bundle_work(arguments: &[&str], directory: &Path, workspace: &Path) -> bool {
+    let words = before_separator(arguments);
+    let Some(&verb) = words.first() else {
         return false;
     };
     if !BUNDLE_LOCAL_VERBS.contains(&verb) {
         return false;
     }
-    // Without a bundle beside the manifest the gems resolve through the
-    // caller's own home, which the sandbox replaces.
-    if !directory.join("vendor").join("bundle").is_dir() {
+    // Without a bundle the project's configuration names, the gems resolve
+    // through the caller's own home, which the sandbox replaces.
+    if bundle_tree(directory, workspace).is_none() {
         return false;
     }
     if verb != "exec" {
-        return rest.all(|word| !word.starts_with('-'));
+        return words[1..].iter().all(|word| !word.starts_with('-'));
     }
-    rest.next().is_some_and(|word| !word.starts_with('-'))
+    let line = &arguments[1..];
+    line.first().is_some_and(|word| !word.starts_with('-')) && !names_a_package_tool(line)
 }
 
 #[cfg(test)]
