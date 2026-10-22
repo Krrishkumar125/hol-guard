@@ -394,7 +394,15 @@ pub(super) fn local_package_work(
             return super::compiled::local_cargo_work(&arguments, directory);
         }
         if PYTHON_MANAGERS.contains(&name.as_str()) {
-            return super::python::local_python_work(&name, &segment.arguments);
+            let Some(directory) = directory.as_deref() else {
+                return false;
+            };
+            return super::python::local_python_work(
+                &name,
+                executable,
+                &segment.arguments,
+                directory,
+            );
         }
         if name == "uv" {
             let Some(directory) = directory.as_deref() else {

@@ -29,6 +29,12 @@ fn project(name: &str) -> std::path::PathBuf {
     std::fs::write(ws.join("pyproject.toml"), PROJECT).unwrap();
     std::fs::write(ws.join("uv.lock"), "version = 1\n").unwrap();
     std::fs::create_dir_all(ws.join(".venv/bin")).unwrap();
+    // What makes the prefix a virtual environment pip reads without the user site.
+    std::fs::write(
+        ws.join(".venv/pyvenv.cfg"),
+        "home = /usr/bin\nversion = 3.12.3\n",
+    )
+    .unwrap();
     for name in ["pip", "pip3", "python"] {
         std::fs::write(ws.join(".venv/bin").join(name), "#!/bin/sh\n").unwrap();
     }
@@ -152,6 +158,28 @@ fn a_query_beside_an_install_keeps_the_whole_command_out() {
         for harness in ["codex", "claude-code", "omp"] {
             let (reason, _) = outcome(harness, command, &ws);
             assert_ne!(reason, CONTAINED, "{harness}: {command}");
+        }
+    }
+}
+
+#[test]
+fn a_pip_outside_a_virtual_environment_keeps_its_review() {
+    // Outside a virtual environment pip reports the user site under the home
+    // directory the sandbox replaces, so the listing would describe the
+    // sandbox and `pip show` would miss what the developer installed.
+    let ws = project("python-bare-pip");
+    std::fs::create_dir_all(ws.join("tools/bin")).unwrap();
+    std::fs::write(ws.join("tools/bin/pip"), "#!/bin/sh\n").unwrap();
+    for command in [
+        "pip list",
+        "pip3 freeze",
+        "pip show requests",
+        "tools/bin/pip list",
+    ] {
+        for harness in ["codex", "claude-code", "omp"] {
+            let (reason, minimum) = outcome(harness, command, &ws);
+            assert_ne!(reason, CONTAINED, "{harness}: {command}");
+            assert_eq!(minimum, "review", "{harness}: {command} ({reason})");
         }
     }
 }

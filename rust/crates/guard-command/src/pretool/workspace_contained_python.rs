@@ -27,14 +27,49 @@ use std::path::Path;
 /// already exists. `uvx` fetches the tool it names, `poetry` and `pipenv`
 /// install what they run, and `pipx` reports a home the sandbox replaces, so
 /// none of them reaches this.
-pub(super) fn local_python_work(name: &str, arguments: &[String]) -> bool {
+///
+/// The pip has to be a virtual environment's own. Outside one, pip reports the
+/// user site under the home directory as well, which the sandbox replaces, so
+/// a bare `pip list` would describe the sandbox and `pip show` would miss the
+/// packages the developer installed for themselves. That is the same wrong
+/// environment the `--user` and cache spellings are kept out for.
+pub(super) fn local_python_work(
+    name: &str,
+    executable: &str,
+    arguments: &[String],
+    directory: &Path,
+) -> bool {
     match name {
         "pip" | "pip3" => {
             let words: Vec<&str> = arguments.iter().map(String::as_str).collect();
-            super::super::pip_reads::environment_read_words(&words)
+            virtual_environment_executable(executable, directory)
+                && super::super::pip_reads::environment_read_words(&words)
         }
         _ => false,
     }
+}
+
+/// Whether the spelled executable lives in a virtual environment's `bin`. The
+/// prefix beside that directory holds `pyvenv.cfg`, which is what makes the
+/// environment one pip reads without the user site. A bare name carries no
+/// prefix to check, so it is never one.
+fn virtual_environment_executable(executable: &str, directory: &Path) -> bool {
+    let spelled = Path::new(executable);
+    if spelled
+        .parent()
+        .is_none_or(|parent| parent.as_os_str().is_empty())
+    {
+        return false;
+    }
+    let resolved = if spelled.is_absolute() {
+        spelled.to_owned()
+    } else {
+        directory.join(spelled)
+    };
+    resolved
+        .parent()
+        .and_then(Path::parent)
+        .is_some_and(|prefix| prefix.join("pyvenv.cfg").is_file())
 }
 
 /// Whether `uv pip <rest>` is one of pip's own queries against the project's
