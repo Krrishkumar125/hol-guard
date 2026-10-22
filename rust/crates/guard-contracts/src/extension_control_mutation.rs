@@ -11,8 +11,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::NativeExtensionControlLayerV1;
-
 /// One extension of the catalog a mutation resolves its targets against.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
