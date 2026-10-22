@@ -227,11 +227,14 @@ enum Unreadable {
 
 /// `directory` hidden whole, in place of every mask and every unwalked
 /// directory below it. A mask below it would otherwise be mounted onto a path
-/// the empty directory does not hold, which fails the launch.
-fn hide(directory: &Path, masks: &mut Vec<(PathBuf, bool)>, pending: &mut Vec<PathBuf>) {
+/// the empty directory does not hold, which fails the launch. False once the
+/// masks pass their budget, which a hidden directory counts against as a
+/// named credential does: each one is a mount of its own.
+fn hide(directory: &Path, masks: &mut Vec<(PathBuf, bool)>, pending: &mut Vec<PathBuf>) -> bool {
     masks.retain(|(path, _)| !path.starts_with(directory));
     pending.retain(|path| !path.starts_with(directory));
     masks.push((directory.to_path_buf(), true));
+    masks.len() <= MAX_MASKS
 }
 
 /// Credential files and directories already inside `root`. Each is hidden
@@ -251,7 +254,9 @@ fn credential_masks(root: &Path, unreadable: Unreadable) -> Option<Vec<(PathBuf,
         let listing = match std::fs::read_dir(&directory) {
             Ok(listing) => listing,
             Err(_) if hides(&directory) => {
-                hide(&directory, &mut masks, &mut pending);
+                if !hide(&directory, &mut masks, &mut pending) {
+                    return None;
+                }
                 continue;
             }
             Err(_) => return None,
@@ -269,7 +274,9 @@ fn credential_masks(root: &Path, unreadable: Unreadable) -> Option<Vec<(PathBuf,
             });
             let Some((path, file_type)) = named else {
                 if hides(&directory) {
-                    hide(&directory, &mut masks, &mut pending);
+                    if !hide(&directory, &mut masks, &mut pending) {
+                        return None;
+                    }
                     break;
                 }
                 return None;

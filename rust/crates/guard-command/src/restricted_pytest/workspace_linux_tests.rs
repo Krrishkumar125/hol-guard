@@ -131,6 +131,34 @@ fn a_directory_of_a_granted_tree_that_cannot_be_listed_is_hidden_not_refused() {
 }
 
 #[test]
+fn hidden_directories_count_against_the_mask_budget_too() {
+    // Hiding a directory mounts over it, so a tree full of directories that
+    // cannot be listed reaches the same cap a tree full of credentials does.
+    if nix::unistd::geteuid().is_root() {
+        return;
+    }
+    let root = root("tree-hidden-budget");
+    let tree = root.join("node_modules/harness-cli");
+    std::fs::create_dir_all(&tree).unwrap();
+    let closed: Vec<PathBuf> = (0..=MAX_MASKS)
+        .map(|n| tree.join(format!("f{n}")))
+        .collect();
+    for directory in &closed {
+        std::fs::create_dir(directory).unwrap();
+        std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o000)).unwrap();
+    }
+    let mut request = input(&root, &["/bin/sh", "-c", "true"]);
+    request.exec_roots = vec![root.join("node_modules")];
+    let error = workspace_argv(&request).unwrap_err();
+    assert_eq!(error.reason_code, PYTEST_SANDBOX_UNAVAILABLE_REASON_CODE);
+    assert!(error.message.contains("package tree"), "{}", error.message);
+    for directory in &closed {
+        std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn a_tree_holding_more_credentials_than_the_budget_refuses_the_launch() {
     // The masks are mount arguments, so their number is capped. A tree past
     // the cap is refused with a reason of its own rather than bound with the
