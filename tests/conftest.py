@@ -24,6 +24,7 @@ pytest_plugins = [
     "tests.approval_reuse_fixtures",
     "tests.containment_resident",
     "tests.native_runtime_fixtures",
+    "tests.native_object_runtime",
     "tests.native_resident_teardown",
     "tests.optional_command_catalog_fixtures",
 ]
@@ -93,6 +94,14 @@ def _fresh_verified_runtime_copy() -> Iterator[None]:
     native_executable_root.release_copies()
     yield
     native_executable_root.release_copies()
+
+
+@pytest.fixture(autouse=True)
+def _checkout_runtime_judges_distribution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let a source checkout validate distribution roots with the pinned runtime."""
+    from tests.native_distribution_support import route_distribution
+
+    route_distribution(monkeypatch)
 
 
 @pytest.fixture(autouse=True)

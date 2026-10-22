@@ -22,7 +22,7 @@ from ..approval_gate import (
 from ..catalog_delivery import lifecycle
 from ..json_transport import escape_json_for_html
 from ..native_command_control_authority_io import NativeCommandControlAuthorityUnavailableError
-from ..native_extension_control import NativeExtensionControlError, compose_control_layers
+from ..native_extension_control import PREVIEW_LIMIT_CODES, NativeExtensionControlError, compose_control_layers
 from ..runtime import command_inspection
 from ..runtime.command_extensions import CommandSafetyExtensionRegistry
 from ..runtime.extension_control_authority import (
@@ -389,6 +389,8 @@ class ExtensionControlApiService:
             try:
                 return self._preview_locked(payload)
             except NativeExtensionControlError as error:
+                if error.code in PREVIEW_LIMIT_CODES:
+                    raise ExtensionControlApiError(400, "control_limit_exceeded") from error
                 raise ExtensionControlApiError(503, "native_runtime_unavailable") from error
 
     def _preview_locked(self, payload: dict[str, object]) -> dict[str, object]:

@@ -104,18 +104,25 @@ class StressResult:
         )
 
     @property
+    def soak_failures(self) -> tuple[str, ...]:
+        """Name each bounded 100k soak criterion a completed run missed."""
+
+        checks = {
+            "run": self.passed,
+            "requests": self.requests >= _SOAK_MIN_REQUESTS,
+            "receipts": self.receipts >= _SOAK_MIN_RECEIPTS,
+            "rss_baseline": self.rss_baseline_bytes > 0,
+            "rss_growth": self.rss_growth <= _SOAK_MAX_RSS_GROWTH,
+            "threads": 0 < self.max_threads <= _SOAK_MAX_THREADS,
+            "file_descriptors": 0 < self.max_file_descriptors <= _SOAK_MAX_FILE_DESCRIPTORS,
+        }
+        return tuple(name for name, met in checks.items() if not met)
+
+    @property
     def soak_passed(self) -> bool:
         """Apply the bounded 100k soak contract to a completed run."""
 
-        return (
-            self.passed
-            and self.requests >= _SOAK_MIN_REQUESTS
-            and self.receipts >= _SOAK_MIN_RECEIPTS
-            and self.rss_baseline_bytes > 0
-            and self.rss_growth <= _SOAK_MAX_RSS_GROWTH
-            and 0 < self.max_threads <= _SOAK_MAX_THREADS
-            and 0 < self.max_file_descriptors <= _SOAK_MAX_FILE_DESCRIPTORS
-        )
+        return not self.soak_failures
 
 
 def _count_fixture_receipts(store: GuardStore) -> int:
@@ -383,7 +390,12 @@ def main() -> int:
         settle_seconds=cast(float, args.settle_seconds),
         max_hook_latency_ms=cast(float, args.max_hook_latency_ms),
     )
-    payload = {**asdict(result), "passed": result.passed, "soak_passed": result.soak_passed}
+    payload = {
+        **asdict(result),
+        "passed": result.passed,
+        "soak_passed": result.soak_passed,
+        "soak_failures": list(result.soak_failures),
+    }
     rendered = json.dumps(payload, sort_keys=True)
     print(rendered)
     if args.json is not None:

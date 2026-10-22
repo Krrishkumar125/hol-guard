@@ -195,6 +195,7 @@ pub(crate) enum ResidentOperationV1 {
     NativeBashReviewCheck(guard_contracts::NativeBashReviewCheckRequestV1),
     ComposioRole(guard_contracts::ComposioRoleRequestV1),
     ExtensionControl(guard_contracts::ExtensionControlRequestV1),
+    ExtensionAllowHint(guard_contracts::ExtensionAllowHintRequestV1),
     GithubCliClassify(GithubCliClassifyRequestV1),
     GithubWorkflowPrepare(guard_contracts::GithubWorkflowPrepareRequestV1),
     ProtectRequest(ProtectRequestRequestV1),
