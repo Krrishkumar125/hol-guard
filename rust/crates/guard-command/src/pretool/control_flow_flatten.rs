@@ -11,6 +11,11 @@
 //! iteration doing the work the single pass already describes. Every other
 //! loop keeps its review.
 //!
+//! The loop's redirection is the file its `read` consumes, so the flat list
+//! opens with a read of that file and then the body's own commands. Carrying
+//! the redirection onto each item instead would model the same access as a
+//! shape no proof covers, which is a review for work that only reads.
+//!
 //! Each list item still faces the ordinary proofs, and anything this
 //! recognizer does not fully understand returns `None`, which keeps the
 //! existing review behavior.
@@ -74,28 +79,46 @@ fn flatten_conditional(rest: &str) -> Option<String> {
 /// doing the work that one pass already stands for. A loop whose test is
 /// anything else may never end, and a body that writes would repeat its
 /// effect for as long as it runs, so neither is flattened.
+///
+/// The flat list reads the redirected file and then runs the body. `read`
+/// itself only binds a name from that file, so the read of the file is the
+/// whole of what the loop's test reaches.
 fn flatten_loop(rest: &str) -> Option<String> {
     let (test, _, after_test) = body_items(rest, "", &["do"])?;
     let (body, _, tail) = body_items(after_test, "", &["done"])?;
-    if !driven_by_a_read(&test) || !redirect_tail(tail)?.starts_with('<') {
+    if !driven_by_a_read(&test) {
         return None;
     }
+    let source = read_source(&redirect_tail(tail)?)?;
     if body
         .iter()
         .any(|(text, _)| text.contains('>') || text.contains('<'))
     {
         return None;
     }
-    let mut parts: Vec<(String, &'static str)> = Vec::new();
-    collect(&mut parts, test)?;
+    let mut parts: Vec<(String, &'static str)> = vec![(format!("cat {source}"), "; ")];
     collect(&mut parts, body)?;
-    assemble(&parts, tail)
+    assemble(&parts, "")
 }
 
 /// Whether a loop's test is the single `read` that empties the redirected
-/// input, which is what makes the iteration count finite.
+/// input, which is what makes the iteration count finite. A test that opens a
+/// file of its own is some other loop.
 fn driven_by_a_read(test: &[(String, &'static str)]) -> bool {
-    matches!(test, [(text, _)] if text.split_whitespace().next() == Some("read"))
+    matches!(
+        test,
+        [(text, _)]
+            if text.split_whitespace().next() == Some("read")
+                && !text.contains(['<', '>'])
+    )
+}
+
+/// The file a loop's input redirection names, for the plain `< FILE` tail and
+/// nothing else. A second redirection, a descriptor, or `<>` leaves a shape
+/// this recognizer does not model.
+fn read_source(tail: &str) -> Option<String> {
+    let target = tail.strip_prefix('<')?.trim();
+    (!target.is_empty() && !target.contains(['<', '>', '&', ' ', '\t'])).then(|| target.to_owned())
 }
 
 /// Add a list's items, rejecting an empty list and any item whose command

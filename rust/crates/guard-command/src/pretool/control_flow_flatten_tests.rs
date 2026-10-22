@@ -1,7 +1,8 @@
 use super::flatten;
 
-/// The lists a conditional or a loop holds come back as one plain list, with
-/// the construct's own redirection on every item.
+/// The lists a conditional holds come back as one plain list, with the
+/// construct's own redirection on every item. A loop's list opens with a read
+/// of the file its `read` consumes.
 #[test]
 fn a_construct_flattens_to_the_lists_it_holds() {
     for (command, expected) in [
@@ -24,7 +25,7 @@ fn a_construct_flattens_to_the_lists_it_holds() {
         ("if true; then ls; fi", "true; ls"),
         (
             "while read line; do echo hi; done < README.md",
-            "read line < README.md; echo hi < README.md",
+            "cat README.md; echo hi",
         ),
         (
             "if [ -f README.md ]\nthen\ncat README.md\nfi",
@@ -32,7 +33,7 @@ fn a_construct_flattens_to_the_lists_it_holds() {
         ),
         (
             "while read name; do cat README.md; wc -l README.md; done < list.txt",
-            "read name < list.txt; cat README.md < list.txt; wc -l README.md < list.txt",
+            "cat list.txt; cat README.md; wc -l README.md",
         ),
     ] {
         assert_eq!(
@@ -74,6 +75,10 @@ fn an_unmodeled_construct_keeps_its_review() {
         "until [ -f build/done ]; do ls build; done",
         "while read name; do wc -l README.md; done",
         "while read name; do cat README.md > copy.md; done < list.txt",
+        "while read line < other.txt; do echo hi; done < README.md",
+        "while read line; do echo hi; done <> README.md",
+        "while read line; do echo hi; done < README.md > copy.md",
+        "while read line; do echo hi; done <&3",
     ] {
         assert!(
             flatten(command).is_none(),

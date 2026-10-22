@@ -1138,6 +1138,9 @@ fn evaluate_single_command(
 }
 
 #[cfg(test)]
+#[path = "pretool/control_flow_tests.rs"]
+mod control_flow_tests;
+#[cfg(test)]
 #[path = "pretool/for_loop_tests.rs"]
 mod for_loop_tests;
 #[cfg(test)]
