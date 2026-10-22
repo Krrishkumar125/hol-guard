@@ -525,8 +525,9 @@ fn remove_input_redirect(
     {
         return None;
     }
+    // The guard above leaves `out` empty or ended by its own separator, so
+    // the removed redirect needs none of its own.
     *input_source = Some(target);
-    out.push(' ');
     Some(index)
 }
 
