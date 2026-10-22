@@ -5,11 +5,13 @@ use crate::{assignment_name, executable_basename, CommandSegmentV1, RawSegment};
 /// Strips `sudo` wrappers and `timeout`/`command`/`time`/`env` prefixes.
 ///
 /// `sudo` changes who runs the program, so it stays in the wrapper chain.
-/// A bare `nice -n 10 cargo build` runs the program this text already names,
-/// as this user and in this directory, and only asks the scheduler to prefer
-/// other work: it decides when the program gets the processor, not what it may
-/// do, so it leaves no wrapper behind. `./nice` and `bin/nice` are not that
-/// scheduler and stay in the wrapper chain.
+/// A bare `nice -n 10 cargo build`, `nohup npm test` or `stdbuf -oL pytest -q`
+/// runs the program this text already names, as this user and in this
+/// directory, and decides only when that program gets the processor, whether a
+/// hangup reaches it, or how its output is buffered: none of them decides what
+/// it may do, so each leaves no wrapper behind. `scheduling_prefix` reads their
+/// options. `./nice` and `bin/nice` are not those programs and stay in the
+/// wrapper chain.
 /// A bare `timeout 30 pytest -q` runs the program this text already names,
 /// as this user and in this directory, and signals that one child when the
 /// clock runs out: it bounds how long the work may take, not what it may do,
@@ -38,12 +40,15 @@ pub(super) fn unwrap_wrappers(
             index = next;
             continue;
         }
-        if tokens.get(index).is_some_and(|token| trusted_nice(token)) {
+        if let Some(prefix) = tokens
+            .get(index)
+            .and_then(|token| scheduling_prefix::trusted(token))
+        {
             if wrappers.len() + prefixes == 4 {
                 return Err("command_wrapper_limit_exceeded");
             }
             prefixes += 1;
-            index = after_nice_adjustment(tokens, index + 1)?;
+            index = scheduling_prefix::program(prefix, tokens, index + 1)?;
             continue;
         }
         if !tokens
@@ -143,63 +148,6 @@ fn transparent_prefix(tokens: &[String], index: usize) -> Option<(usize, Vec<Str
     let program = tokens.get(next)?;
     (!program.is_empty() && !program.starts_with('-') && assignment_name(program).is_none())
         .then_some((next, names))
-}
-
-/// Whether this word is the system scheduler rather than a file that happens
-/// to be named for it. The shell resolves a bare `nice` on `PATH`, and the two
-/// system paths name the same program; `./nice`, `bin/nice` and `/tmp/nice`
-/// are whatever those files hold, so they stay wrappers and keep the command
-/// under review.
-fn trusted_nice(token: &str) -> bool {
-    matches!(token, "nice" | "/usr/bin/nice" | "/bin/nice")
-}
-
-/// The index of the program `nice` runs, once its priority is read.
-///
-/// `-n 10`, `--adjustment 10`, `--adjustment=10` and the historical `-10` all
-/// spell the same priority, and none of them names a program or a file. Any
-/// other option is one this parser has not read, so the command keeps the
-/// wrapper's own uncertainty rather than a guess about which word runs.
-fn after_nice_adjustment(tokens: &[String], mut index: usize) -> Result<usize, &'static str> {
-    while let Some(option) = tokens.get(index) {
-        match option.as_str() {
-            "--" => {
-                index += 1;
-                break;
-            }
-            "-n" | "--adjustment" => {
-                if !tokens.get(index + 1).is_some_and(|value| adjustment(value)) {
-                    return Err("transparent_wrapper_not_yet_supported");
-                }
-                index += 2;
-            }
-            value if value.starts_with("--adjustment=") => {
-                if !adjustment(&value["--adjustment=".len()..]) {
-                    return Err("transparent_wrapper_not_yet_supported");
-                }
-                index += 1;
-            }
-            value if value.starts_with('-') && adjustment(value) => index += 1,
-            value if value.starts_with('-') => {
-                return Err("transparent_wrapper_not_yet_supported");
-            }
-            _ => break,
-        }
-    }
-    let Some(program) = tokens.get(index) else {
-        return Err("transparent_wrapper_not_yet_supported");
-    };
-    if program.is_empty() || program.starts_with('-') || assignment_name(program).is_some() {
-        return Err("transparent_wrapper_not_yet_supported");
-    }
-    Ok(index)
-}
-
-/// A priority `nice` reads: an optional sign and at most two digits, which is
-/// every value the scheduler accepts.
-fn adjustment(value: &str) -> bool {
-    let digits = value.strip_prefix(['-', '+']).unwrap_or(value);
-    !digits.is_empty() && digits.len() <= 2 && digits.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// Whether this word is the system clock rather than a file that happens to
@@ -341,6 +289,9 @@ fn carries_unquoted_operator(raw: &str) -> bool {
     }
     false
 }
+
+#[path = "parser_scheduling_prefix.rs"]
+mod scheduling_prefix;
 
 #[cfg(test)]
 mod tests {
@@ -638,8 +589,18 @@ mod tests {
             ("nice --adjustment=10 cargo build", "cargo", "build"),
             ("nice -10 cargo build", "cargo", "build"),
             ("nice +10 cargo build", "cargo", "build"),
+            ("nice -n10 cargo build", "cargo", "build"),
             ("nice -- cargo build", "cargo", "build"),
             ("/usr/bin/nice -n 10 cargo build", "cargo", "build"),
+            ("nohup npm test", "npm", "test"),
+            ("nohup -- npm test", "npm", "test"),
+            ("/usr/bin/nohup npm test", "npm", "test"),
+            ("stdbuf -oL pytest -q", "pytest", "-q"),
+            ("stdbuf -o L pytest -q", "pytest", "-q"),
+            ("stdbuf --output=L pytest -q", "pytest", "-q"),
+            ("stdbuf --error 0 pytest -q", "pytest", "-q"),
+            ("stdbuf -o0 -e0 pytest -q", "pytest", "-q"),
+            ("stdbuf -i 4096 pytest -q", "pytest", "-q"),
         ] {
             let model = parse(command);
             assert_eq!(model.confidence, "exact", "{command}");
@@ -656,8 +617,8 @@ mod tests {
     }
 
     #[test]
-    fn a_file_named_nice_is_not_the_scheduler() {
-        for command in ["./nice cargo build", "bin/nice cargo build"] {
+    fn a_session_of_its_own_is_not_a_scheduling_prefix() {
+        for command in ["setsid pytest -q", "setsid -f npm test"] {
             let model = parse(command);
             assert_eq!(model.confidence, "uncertain", "{command}");
             assert_eq!(
@@ -669,7 +630,25 @@ mod tests {
     }
 
     #[test]
-    fn an_unread_nice_option_keeps_the_command_uncertain() {
+    fn a_file_named_for_a_prefix_is_not_that_program() {
+        for command in [
+            "./nice cargo build",
+            "bin/nice cargo build",
+            "./nohup npm test",
+            "bin/stdbuf -oL pytest -q",
+        ] {
+            let model = parse(command);
+            assert_eq!(model.confidence, "uncertain", "{command}");
+            assert_eq!(
+                model.uncertainty_reason.as_deref(),
+                Some("transparent_wrapper_not_yet_supported"),
+                "{command}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unread_prefix_option_keeps_the_command_uncertain() {
         for command in [
             "nice",
             "nice --help cargo build",
@@ -678,6 +657,12 @@ mod tests {
             "nice --adjustment=ten cargo build",
             "nice -n 10",
             "nice -n 10 CI=1 cargo build",
+            "nohup",
+            "nohup -n 10 npm test",
+            "stdbuf pytest -q",
+            "stdbuf -oX pytest -q",
+            "stdbuf --output=X pytest -q",
+            "stdbuf -z L pytest -q",
         ] {
             let model = parse(command);
             assert!(

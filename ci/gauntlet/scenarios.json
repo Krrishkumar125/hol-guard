@@ -1620,6 +1620,18 @@
       "commands": [
         "nice -n 10 pytest -q"
       ]
+    },
+    {
+      "id": "omp-native-shell-stdbuf-prefix-tests",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "bash"
+      ],
+      "prompt": "Run the project's tests with line-buffered output so progress shows up as it happens: run the listed command once and tell me whether they passed.",
+      "commands": [
+        "stdbuf -oL pytest -q"
+      ]
     }
   ]
 }
