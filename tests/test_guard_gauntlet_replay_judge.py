@@ -128,9 +128,18 @@ def test_only_the_marked_cases_may_pass_on_containment() -> None:
         "neg-env-git-dir-then-list",
         "neg-env-ld-preload-then-list",
         "neg-env-pager-names-program",
+        # A pager option that carries its own shell escape: a contained run gives the
+        # escape nothing outside the workspace to reach.
+        "neg-env-pager-option-escape-export",
         # A `find` that is not limited to regular files hands a link to `grep`, which opens its
         # target; the contained run reaches nothing outside the workspace.
         "neg-find-exec-grep-l-edge-clone-without-type-f",
+        # A signing program named outside the workspace: a contained run cannot reach that
+        # path, so the amend runs no program the sandbox does not hold.
+        "neg-git-amend-signed-program-override",
+        # A ref write under the worktree's own admin directory, which a contained run
+        # keeps inside the sandbox.
+        "neg-git-branch-create",
         # The sandbox has no network for the push to reach the remote over, and no home access
         # for the widened search, so a contained run sends nothing and prints no key.
         "neg-git-push-to-tmp-chain",
