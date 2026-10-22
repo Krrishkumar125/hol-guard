@@ -25,17 +25,16 @@ pub(super) fn creates_links(literal: &str) -> bool {
                 && !word.starts_with("--")
                 && word.contains(['s', 'a', 'P', 'd', 'r', 'R', 'l']))
     });
-    let writes_tree = words().any(|word| {
+    let listed: Vec<&str> = words().collect();
+    let writes_tree = listed.iter().enumerate().any(|(index, word)| {
         matches!(
-            word,
+            *word,
             "checkout"
                 | "checkout-index"
                 | "switch"
                 | "restore"
                 | "reset"
                 | "clone"
-                | "worktree"
-                | "stash"
                 | "pull"
                 | "merge"
                 | "rebase"
@@ -48,7 +47,7 @@ pub(super) fn creates_links(literal: &str) -> bool {
                 | "submodule"
                 | "mv"
                 | "bisect"
-        )
+        ) || group_writes_tree(*word, listed.get(index + 1).copied())
     });
     command_words(literal).any(|word| {
         let base = word.rsplit(['/', '\\']).next().unwrap_or(word);
@@ -76,4 +75,21 @@ pub(super) fn creates_links(literal: &str) -> bool {
         ) || (link_copy && matches!(name, "cp" | "gcp"))
             || (writes_tree && name == "git")
     })
+}
+
+/// Whether a Git subcommand group lays down a working tree. `worktree` and
+/// `stash` each name several operations, and only some of them write files:
+/// `git worktree add` and `git stash pop` do, while `git worktree list` and
+/// `git stash list` only report what already exists. Counting the group word
+/// alone made every one of them a link maker, so an ordinary file write beside
+/// `git worktree list` lost its literal redirect and failed evaluation. The
+/// operation that follows the group decides; one that is missing or not named
+/// here keeps the group counted as a tree write.
+fn group_writes_tree(word: &str, operation: Option<&str>) -> bool {
+    let reports = match word {
+        "worktree" => ["list", "prune", "remove", "lock", "unlock"].as_slice(),
+        "stash" => ["list", "show", "drop", "clear"].as_slice(),
+        _ => return false,
+    };
+    !operation.is_some_and(|operation| reports.contains(&operation))
 }
