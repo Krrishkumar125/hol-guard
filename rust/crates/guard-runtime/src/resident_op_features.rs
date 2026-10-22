@@ -63,6 +63,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_command::catalog_prepare::BATCH_CAPABILITY,
     guard_command::cloud_catalog::CAPABILITY,
     crate::discovery_placement_op::DISCOVERY_PLACEMENT_FEATURE,
+    crate::release_feed_op::RELEASE_FEED_FEATURE,
     guard_contracts::GIT_EXECUTION_SAFETY_FEATURE,
     guard_contracts::COMPOUND_GIT_INSPECTION_FEATURE,
     guard_contracts::CODEX_TOOL_OUTPUT_FEATURE,

@@ -662,6 +662,7 @@ mod protect_request_op;
 mod pyjson;
 #[cfg(test)]
 mod registry_vectors_tests;
+mod release_feed_op;
 mod request_context_op;
 mod request_context_shell;
 mod resident_client;
