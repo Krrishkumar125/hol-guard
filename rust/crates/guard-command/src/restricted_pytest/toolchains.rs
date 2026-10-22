@@ -8,7 +8,7 @@ use std::os::unix::fs::MetadataExt;
 #[path = "user_tools.rs"]
 mod user_tools;
 pub(super) use user_tools::{
-    host_cargo_caches, host_corepack_home, host_go_module_cache, host_rustup_home,
+    host_cargo_caches, host_corepack_home, host_go_module_cache, host_rustup_home, is_package_tree,
 };
 
 /// Where `xcode-select -s` records the developer directory: the current

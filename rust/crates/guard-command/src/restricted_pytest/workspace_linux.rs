@@ -269,18 +269,31 @@ fn workspace_argv(input: &Input) -> Result<Vec<String>, RestrictedPytestError> {
     let backend = trusted_backend_executable(&input.backend_executable)
         .ok_or_else(|| unavailable("The workspace sandbox backend is not trusted."))?;
     let too_large = || unavailable("The workspace is too large for the workspace sandbox.");
-    let mut masks = credential_masks(&input.workspace).ok_or_else(too_large)?;
-    if let Some((linked, _, _)) = shared {
-        masks.extend(credential_masks(linked.checkout()).ok_or_else(too_large)?);
-        masks.sort();
-        masks.dedup();
-    }
     let exec_roots: Vec<PathBuf> = input
         .exec_roots
         .iter()
         .filter(|root| !root.starts_with(&input.workspace))
         .cloned()
         .collect();
+    let mut masks = credential_masks(&input.workspace).ok_or_else(too_large)?;
+    if let Some((linked, _, _)) = shared {
+        masks.extend(credential_masks(linked.checkout()).ok_or_else(too_large)?);
+    }
+    // An installed dependency tree is granted whole, because the links a tool
+    // directory inside it holds point at the packages beside them. The rest
+    // of the tree comes with it, so a credential file anywhere in it is
+    // hidden exactly as one in the workspace is. The other granted roots name
+    // a single tool or cache directory and carry no tree to walk.
+    for root in exec_roots
+        .iter()
+        .filter(|root| is_package_tree(root.as_path()) && root.is_dir())
+    {
+        masks.extend(credential_masks(root).ok_or_else(|| {
+            unavailable("A granted package tree is too large for the workspace sandbox.")
+        })?);
+    }
+    masks.sort();
+    masks.dedup();
     let mut argv = base_argv(&backend, &exec_roots);
     for file in &input.read_files {
         let regular = std::fs::symlink_metadata(file).is_ok_and(|meta| meta.file_type().is_file());

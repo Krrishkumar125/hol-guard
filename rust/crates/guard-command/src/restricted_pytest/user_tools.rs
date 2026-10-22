@@ -83,8 +83,10 @@ pub(super) fn tool_root(canonical: &Path, homes: &[PathBuf], workspace: &Path) -
 /// packages beside it, and a grant of the directory holding the links would
 /// not reach the programs they name. It is held to what [`tool_root`] asks of
 /// a tool directory: outside the workspace, credential folders and agent
-/// state, and sealed from `/` down, so no other account can swap what it
-/// names. Read-only, like every other granted root.
+/// state, and sealed from `/` down. Sealing the PATH entry alone would not
+/// cover the directories its entries resolve into, which are the programs the
+/// run would actually execute, so [`sealed_link_targets`] holds those to the
+/// same rule. Read-only, like every other granted root.
 pub(super) fn package_tree_root(
     canonical: &Path,
     homes: &[PathBuf],
@@ -108,8 +110,70 @@ pub(super) fn package_tree_root(
                 .any(|state| root.starts_with(home.join(state)))
                 && !sensitive_for_exec(root, home)
         })
-        && sealed_ancestry(canonical);
+        && sealed_ancestry(canonical)
+        && sealed_link_targets(canonical, root);
     admitted.then(|| root.to_path_buf())
+}
+
+/// Entries a tool directory inside a package tree may hold before the grant
+/// is refused instead of checked in part.
+const MAX_TREE_LINKS: usize = 1024;
+
+/// Every entry of `entries`, the PATH directory, that resolves into `root`
+/// lands in a directory no other account can write. The entries of a `.bin`
+/// directory are links into the packages beside it, so those package
+/// directories, not the directory holding the links, are what the run
+/// executes from; granting the tree without checking them would let any
+/// account that can write one of them choose the program. A target outside
+/// `root` is not reached through this grant and is left to the rules that
+/// cover wherever it does live. A directory holding more than
+/// [`MAX_TREE_LINKS`] entries is refused rather than checked in part.
+fn sealed_link_targets(entries: &Path, root: &Path) -> bool {
+    let Ok(listing) = std::fs::read_dir(entries) else {
+        return false;
+    };
+    let mut sealed: Vec<PathBuf> = Vec::new();
+    for (seen, entry) in listing.flatten().enumerate() {
+        if seen >= MAX_TREE_LINKS {
+            return false;
+        }
+        let Some(directory) = entry
+            .path()
+            .canonicalize()
+            .ok()
+            .and_then(|target| target.parent().map(Path::to_path_buf))
+        else {
+            continue;
+        };
+        if !directory.starts_with(root) || sealed.contains(&directory) {
+            continue;
+        }
+        if !sealed_below(root, &directory) {
+            return false;
+        }
+        sealed.push(directory);
+    }
+    true
+}
+
+/// Every directory from `root` down to `directory` is this user's or root's
+/// and no other account can write it. The caller has already sealed `root`
+/// and everything above it, so only what lies below it is walked again.
+fn sealed_below(root: &Path, directory: &Path) -> bool {
+    let uid = nix::unistd::geteuid().as_raw();
+    directory
+        .ancestors()
+        .take_while(|ancestor| *ancestor != root)
+        .all(|ancestor| private_directory(ancestor, uid))
+}
+
+/// Whether `root` is an installed dependency tree, granted whole by
+/// [`package_tree_root`] rather than named as narrowly as the other tool
+/// directories are. Such a grant carries whatever else the tree holds, so the
+/// Linux sandbox hides the credential files inside it as it does the
+/// workspace's.
+pub(super) fn is_package_tree(root: &Path) -> bool {
+    root.file_name() == Some(OsStr::new(PACKAGE_TREE))
 }
 
 /// Shared directories below HOME that many unrelated tools write into. A

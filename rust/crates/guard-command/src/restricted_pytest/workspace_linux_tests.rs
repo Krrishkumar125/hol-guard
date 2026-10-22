@@ -61,6 +61,47 @@ fn the_workspace_is_an_overlay_with_credentials_hidden() {
 }
 
 #[test]
+fn a_credential_inside_a_granted_package_tree_is_hidden_too() {
+    // A dependency tree is granted whole, so the rest of it comes with the
+    // tool directory that earned the grant. What it holds is withheld the
+    // way the workspace's own credentials are.
+    let root = root("package-tree");
+    let tree = root.join("node_modules");
+    let package = tree.join("harness-cli");
+    std::fs::create_dir_all(package.join(".ssh")).unwrap();
+    std::fs::write(package.join(".npmrc"), "//registry/:_authToken=x").unwrap();
+    std::fs::write(tree.join(".env"), "TOKEN=1").unwrap();
+    std::fs::write(package.join("index.js"), "").unwrap();
+    let mut request = input(&root, &["/bin/sh", "-c", "true"]);
+    request.exec_roots = vec![tree.clone(), PathBuf::from("/opt/tool")];
+    let argv = workspace_argv(&request).unwrap();
+    let text = |path: PathBuf| path.to_string_lossy().into_owned();
+    assert!(after(&argv, "--ro-bind-try", &text(tree.clone())));
+    assert!(after(&argv, "/dev/null", &text(package.join(".npmrc"))));
+    assert!(after(&argv, "/dev/null", &text(tree.join(".env"))));
+    assert!(after(&argv, "--tmpfs", &text(package.join(".ssh"))));
+    assert!(!argv.iter().any(|value| value.ends_with("index.js")));
+    // The grant is still read-only, and the masks mount over it.
+    let bound = argv
+        .windows(2)
+        .position(|pair| pair[0] == "--ro-bind-try" && pair[1] == text(tree.clone()))
+        .unwrap();
+    let masked = argv
+        .windows(2)
+        .position(|pair| pair[1] == text(package.join(".npmrc")))
+        .unwrap();
+    assert!(bound < masked, "{argv:?}");
+    // A narrow tool directory grant names no tree and is not walked.
+    let tools = root.join("tools/bin");
+    std::fs::create_dir_all(&tools).unwrap();
+    std::fs::write(tools.join(".npmrc"), "x").unwrap();
+    request.exec_roots = vec![tools.clone()];
+    let argv = workspace_argv(&request).unwrap();
+    assert!(!argv.iter().any(|value| value.ends_with("tools/bin/.npmrc")));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn a_script_outside_the_workspace_is_bound_read_only_as_that_one_file() {
     let root = root("script");
     std::fs::create_dir_all(root.join("scratch")).unwrap();
