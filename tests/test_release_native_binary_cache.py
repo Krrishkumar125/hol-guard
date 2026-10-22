@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -179,3 +182,45 @@ def test_duplicate_sources_wait_without_canceling_publish_calls():
     assert "matrix.target" in group
     assert "inputs.version" in group
     assert "github.run_id" not in group
+
+
+@pytest.mark.parametrize("precompiled", [False, True])
+def test_publish_generates_once_for_prepared_binaries_and_before_fallback_compilation(tmp_path, precompiled):
+    job = load_workflow(ROOT / ".github/workflows/publish.yml")["jobs"]["build-native-guard-wheels"]
+    step = next(step for step in job["steps"] if step.get("name") == "Verify native command program is current")
+    script = step["run"].replace("${{ github.event_name }}", "push")
+    script = script.replace("${{ github.event.pull_request.base.sha }}", "b" * 40)
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    events = tmp_path / "events.jsonl"
+    for name in ("python", "cargo"):
+        executable = tools / name
+        executable.write_text(
+            f"#!{sys.executable}\n"
+            "import json,os,sys\n"
+            "from pathlib import Path\n"
+            "with open(os.environ['EVENT_LOG'], 'a') as output:\n"
+            "    output.write(json.dumps([Path(sys.argv[0]).name,*sys.argv[1:]])+'\\n')\n"
+        )
+        executable.chmod(0o755)
+    subprocess.run(
+        ["bash", "-e", "-c", script],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
+            "EVENT_LOG": str(events),
+            "PRECOMPILED": str(precompiled).lower(),
+            "SOURCE_COMPILER": "source-compiler",
+            "RUST_TARGET": "aarch64-apple-darwin",
+        },
+        check=True,
+    )
+    commands = [json.loads(line) for line in events.read_text().splitlines()]
+    verifier = ["python", "scripts/ci/verify_native_command_program.py", "--compiler", "source-compiler"]
+    if precompiled:
+        assert commands == [verifier]
+    else:
+        assert commands[0] == ["python", "scripts/build_native_command_program.py", "--compiler", "source-compiler"]
+        assert commands[1][:2] == ["cargo", "build"]
+        assert commands[2:] == [verifier]
