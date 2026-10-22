@@ -14,6 +14,7 @@ use rusqlite::{params, Connection};
 use serde_json::{json, Map, Value};
 
 use super::evaluate;
+use super::installed_upgrade::binding_names;
 use super::layers::{layers_to_json, manifest_sha256, Manifest};
 use super::records::{
     authenticated_record, canonical, private_hash, ANCHOR_PURPOSE, CATALOG_MANIFEST_PURPOSE,
@@ -506,4 +507,26 @@ fn read_composed_settles_in_one_round_trip_or_hands_back_the_base_view() {
         json!(TARGET)
     );
     assert_eq!(result["composed"]["layers"][0]["controls"], json!([]));
+}
+
+#[test]
+fn installed_upgrade_reads_the_head_snapshot_binding() {
+    let activation = json!(catalog('d'));
+    let payload = |value: Value| value.as_object().expect("object").clone();
+    // An install written by a client older than this upgrade dropped the
+    // retained pack record on its last packless control commit, so the head it
+    // hands the upgrade carries no binding at all. The activation row behind it
+    // is already pinned by record, digest and mac, and the upgrade seals the
+    // binding the head is missing, so that head is rebound rather than refused.
+    assert!(binding_names(&payload(json!({"revision": 1})), &activation));
+    assert!(binding_names(
+        &payload(json!({"command_pack_record_digest": catalog('d')})),
+        &activation
+    ));
+    // A head that names a different activation is still a refusal: the upgrade
+    // only tolerates a missing binding, never a conflicting one.
+    assert!(!binding_names(
+        &payload(json!({"command_pack_record_digest": catalog('e')})),
+        &activation
+    ));
 }

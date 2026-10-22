@@ -151,6 +151,12 @@ def initialize(tmp_path, monkeypatch):
     old = apply("previous-release")
     old_identity = lifecycle.installed_identity(authority)
     assert "command.agentbridge" in old.selected
+    # Every later settings change leaves the pack selection alone and so
+    # commits without a pack record. Clients before the installed upgrade
+    # dropped the retained binding on such a commit, so the head snapshot
+    # this checkpoint hands the upgrade is unbound above a bound activation,
+    # which is the ordinary state of an install that has been used at all.
+    assert apply("previous-release-settings").record_digest == old.record_digest
     before, _floor = lifecycle_store.inspect(store)
     remote_identity = {**old_identity, "profile": "remote", "version": "100.7"}
     remote_floor = lifecycle.invoke("transition", key=_key(store).hex(), floor=before, candidate=remote_identity)[

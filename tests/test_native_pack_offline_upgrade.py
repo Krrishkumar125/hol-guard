@@ -221,10 +221,10 @@ def test_real_packaged_cross_engine_and_changed_source_offline_api_upgrade(tmp_p
                     layer["controls"] = []
                 with pytest.raises(ExtensionControlAuthorityError, match="changed controls"):
                     _migrate(changed, **kwargs)
-                for field in ("release", "next_floor"):
+                for field, refusal in (("release", "release evidence"), ("next_floor", "identity mismatch")):
                     evidence = copy.deepcopy(kwargs["installed_upgrade"])
                     evidence[field] = None
-                    with pytest.raises(ExtensionControlAuthorityError, match="not authorized"):
+                    with pytest.raises(ExtensionControlAuthorityError, match=refusal):
                         _migrate(action, **{**kwargs, "installed_upgrade": evidence})
                 assert activation_store.read(store).engine == _old
                 return _migrate(action, **kwargs)
@@ -240,6 +240,18 @@ def test_real_packaged_cross_engine_and_changed_source_offline_api_upgrade(tmp_p
                 with pytest.raises(RuntimeError, match="fixture interrupted after anchored upgrade"):
                     store.migrate_installed_command_pack_authority()
             assert activation_store.read(store).engine == old.engine
+        with store._connect() as connection:
+            head = connection.execute(
+                "select snapshot_json from extension_control_authority_snapshot where singleton = 1"
+            ).fetchone()
+        # The first upgrade reads an unbound head: the prior client's last
+        # settings change carried no pack record, so it dropped the retained
+        # binding, and refusing that head would leave the authority stale and
+        # every hook closed. The upgrade rebinds it, and this client keeps the
+        # binding across the packless settings change below, so the second
+        # upgrade reads a bound head.
+        bound = "command_pack_record_digest" in json.loads(head[0])
+        assert bound == (version != "3.50.0a1")
         store.migrate_installed_command_pack_authority()
         recovered = activation_store.read(store)
         # Startup must recover without asking the user to reapprove unchanged
