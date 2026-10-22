@@ -191,12 +191,15 @@ def guard_cli_launcher() -> str:
     """Return the argv0 Guard writes into harness hooks, MCP proxies and launchers.
 
     A source install keeps the running interpreter. A frozen Core uses the
-    prune-safe launcher, so a Desktop update never strands an installed hook on
-    a removed ``versions/<release>/`` executable.
+    prune-safe launcher when one can be spawned directly, so a Desktop update
+    does not strand an installed hook on a removed ``versions/<release>/``
+    executable.
 
-    Harnesses and the native fallback spawn this argv0 directly, without a
-    command interpreter, so Windows keeps the Core executable rather than a
-    batch-file shim.
+    Harnesses spawn MCP servers and exec-form hooks without a command
+    interpreter, and Node refuses to spawn a batch file that way. Windows
+    Desktop only ships a ``current-hol-guard.cmd`` shim, so there this keeps
+    the Core executable, exactly as before; post-update harness repair rebinds
+    those entries to the new release.
     """
 
     if not bool(getattr(sys, "frozen", False)):
