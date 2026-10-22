@@ -85,10 +85,10 @@ fn local_poetry_work(arguments: &[String], _directory: &Path) -> bool {
 
     match verb {
         "check" => words.all(|word| {
-            *word == "--lock" || POETRY_INERT_FLAGS.contains(&word)
+            word == "--lock" || POETRY_INERT_FLAGS.contains(&word)
         }),
         "version" => words.all(|word| {
-            *word == "--short" || POETRY_INERT_FLAGS.contains(&word)
+            word == "--short" || POETRY_INERT_FLAGS.contains(&word)
         }),
         _ => false,
     }
