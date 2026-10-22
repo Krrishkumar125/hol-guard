@@ -51,13 +51,16 @@ fn dependency_link_chains_keep_every_boundary_of_the_single_link() {
         format!("{link} && cd {worktree} && ls"),
         format!("{link} && ln -s {primary}/node_modules {worktree}/node_modules/pkg/inner"),
         // A Git read that walks the working tree could resolve the fresh
-        // link; only a ref-store listing joins the chain.
+        // link, and a listing can start a pager; only the current-branch
+        // read joins the chain.
         format!("{link} && git -C {worktree} status"),
         format!("{link} && git -C {worktree} status --short"),
         format!("{link} && git -C {worktree} diff"),
         format!("{link} && git -C {worktree} grep -n x"),
         format!("{link} && git -C {worktree} ls-files"),
         format!("{link} && git -C {worktree} branch weekly-report"),
+        format!("{link} && git -C {worktree} branch -a"),
+        format!("{link} && git -C {worktree} tag --list"),
         // A search operand could read through the fresh link.
         format!("ln -s {primary}/node_modules {worktree}/cfg && grep -rn . {worktree}/cfg/"),
         format!("ln -s {primary}/node_modules {worktree}/cfg && grep -n x {worktree}/cfg/pkg/a.js"),
@@ -91,7 +94,7 @@ fn a_directory_created_earlier_in_the_chain_is_not_a_proven_missing_root() {
 }
 
 #[test]
-fn a_ref_store_listing_beside_the_link_is_quiet() {
+fn the_current_branch_read_beside_the_link_is_quiet() {
     let session = session("link-chain-branch");
     let primary = session.primary.display();
     let worktree = session.worktree.display();
@@ -99,8 +102,6 @@ fn a_ref_store_listing_beside_the_link_is_quiet() {
     for cwd in [&session.org, &session.primary, &session.worktree] {
         for command in [
             format!("{link} && git -C {worktree} branch --show-current"),
-            format!("{link} && git -C {worktree} branch -a"),
-            format!("{link} && git -C {worktree} tag --list"),
             format!("git -C {worktree} branch --show-current && {link}"),
         ] {
             assert_eq!(action(&session, &command, cwd), "allow", "{command}");

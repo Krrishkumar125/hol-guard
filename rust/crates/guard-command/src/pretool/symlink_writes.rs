@@ -20,10 +20,9 @@ use std::path::{Component, Path, PathBuf};
 /// `grep` and `rg` only filter piped output: a file operand could read
 /// through the fresh link, which did not exist when the operand was proven.
 ///
-/// Git joins on the same terms: only a branch or tag listing, which reads the
-/// ref store and never walks the working tree, so the fresh link is not a
-/// path it can follow. `git status`, `git diff` and `git grep` do read the
-/// working tree and stay out.
+/// Git joins only as `git branch --show-current` (see [`current_branch_read`]).
+/// Branch and tag listings can start a configured pager, and `git status`,
+/// `git diff` and `git grep` read the working tree, so they stay out.
 pub(super) fn link_chain(
     model: &crate::CanonicalCommandV1,
     context: super::PathContext<'_>,
@@ -43,23 +42,29 @@ pub(super) fn link_chain(
             !segment.text.replace("2>&1", "").contains(['>', '<'])
                 && (segment.executable.as_deref() != Some("ln") || segment.pipeline_index == 0)
                 && (segment.executable.as_deref() != Some("git")
-                    || ref_store_listing(segment, context))
+                    || current_branch_read(segment, context))
                 && (!matches!(segment.executable.as_deref(), Some("grep" | "rg"))
                     || (segment.pipeline_index > 0
                         && super::segment_proof::stdin_filter_segment(segment)))
         })
 }
 
-/// A `git branch` or `git tag` listing: it prints names from the ref store
-/// and reads no path in the working tree, so a link created beside it in the
-/// same command is not a path the listing can resolve through.
-fn ref_store_listing(segment: &crate::CommandSegmentV1, context: super::PathContext<'_>) -> bool {
+/// `git [-C <dir>] branch --show-current`: Git prints the branch HEAD names
+/// and returns before it sets up a pager, so no configured helper runs
+/// whatever the repository configuration holds, including configuration a
+/// link created earlier in the command makes reachable. The `-C` route must
+/// already hold a repository: a route that does not exist yet could be the
+/// fresh link itself, which the configuration probe never saw.
+pub(super) fn current_branch_read(
+    segment: &crate::CommandSegmentV1,
+    context: super::PathContext<'_>,
+) -> bool {
     let Some(inspected) =
         crate::command_compatibility::git_inspection_arguments(&segment.arguments, context)
     else {
         return false;
     };
-    // The leading options name the route the listing runs in; a sensitive one
+    // The leading options name the route the read runs in; a sensitive one
     // is refused here as it is for a Git read standing on its own.
     let leading = &segment.arguments[..segment.arguments.len() - inspected.len()];
     if leading
@@ -68,13 +73,8 @@ fn ref_store_listing(segment: &crate::CommandSegmentV1, context: super::PathCont
     {
         return false;
     }
-    match inspected.split_first() {
-        Some((subcommand, rest)) if subcommand == "branch" => {
-            super::git_branch_listing::is_listing(rest)
-        }
-        Some((subcommand, rest)) if subcommand == "tag" => super::git_tag_listing::is_listing(rest),
-        _ => false,
-    }
+    matches!(inspected, [subcommand, flag] if subcommand == "branch" && flag == "--show-current")
+        && !super::git_helper_context::routes_to_no_repository(segment, context)
 }
 
 pub(super) fn safe_symlink_arguments(
