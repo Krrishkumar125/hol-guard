@@ -55,6 +55,10 @@ runs:
         tests/test_guard_durable_io.py \
         tests/test_guard_managed_install_context.py \
         tests/test_guard_private_file_io.py
+      uv run --no-sync python -m ruff check \
+        scripts/release/native_artifact.py \
+        scripts/release/prepared_native.py \
+        tests/test_release_native_artifact.py
     shell: bash
   - name: Check formatting for production sources
     run: |
@@ -63,6 +67,16 @@ runs:
         tests/test_guard_durable_io.py \
         tests/test_guard_managed_install_context.py \
         tests/test_guard_private_file_io.py
+      if ! uv run --no-sync python -m ruff format --check \
+        scripts/release/native_artifact.py \
+        scripts/release/prepared_native.py \
+        tests/test_release_native_artifact.py; then
+        uv run --no-sync python -m ruff format --diff \
+          scripts/release/native_artifact.py \
+          scripts/release/prepared_native.py \
+          tests/test_release_native_artifact.py || true
+        exit 1
+      fi
     shell: bash
   - run: uv run --no-sync basedpyright --level error
     shell: bash
