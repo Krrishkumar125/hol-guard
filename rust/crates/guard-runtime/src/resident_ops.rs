@@ -105,6 +105,9 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
             ResidentOperationV1::CommandModel(request) => {
                 crate::oneshot::evaluate_command_model_request(&request)
             }
+            ResidentOperationV1::PreToolUse(request) if request.extension_evidence => {
+                crate::pre_tool_extension_evidence_op::evaluate_with_store(&request, policy_store)
+            }
             ResidentOperationV1::PreToolUse(request) => {
                 crate::oneshot::evaluate_pre_tool_request(&request)
             }
