@@ -93,6 +93,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::HOOK_DECISION_NATIVE_PERMISSION_PERSIST_FEATURE,
     guard_contracts::HOOK_DECISION_ARTIFACT_REVIEW_ROUTE_FEATURE,
     guard_contracts::HOOK_DECISION_JSON_EXIT_CODE_FEATURE,
+    guard_contracts::HOOK_DECISION_NATIVE_EDGE_REASON_FEATURE,
     guard_contracts::HOOK_DECISION_ARTIFACT_FINALIZE_FEATURE,
     guard_contracts::HOOK_DECISION_ARTIFACT_REUSE_STEP_FEATURE,
     guard_contracts::HOOK_DECISION_HOOK_ROUTE_FEATURE,
@@ -152,4 +153,5 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     #[cfg(target_os = "macos")]
     guard_contracts::NATIVE_BASH_RESULT_POLICY_FEATURE,
     guard_contracts::SKILL_WORKFLOW_PREFLIGHT_FEATURE,
+    guard_contracts::INVENTORY_SOURCE_EVIDENCE_FEATURE,
 ];
