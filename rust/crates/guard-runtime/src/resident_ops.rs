@@ -295,6 +295,9 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
             ResidentOperationV1::ExtensionAllowHint(request) => {
                 crate::extension_allow_hint_op::evaluate_with_store(&request, policy_store)
             }
+            ResidentOperationV1::ApprovalExtensionRecommendation(request) => {
+                crate::approval_extension_recommendation_op::evaluate_with_store(&request, policy_store)
+            }
             ResidentOperationV1::ComposioRole(request) => {
                 crate::composio_role_op::evaluate_composio_role_request(&request)
             }
@@ -646,6 +649,11 @@ pub(crate) fn evaluate_resident_bytes_with_cancellation(
             // here; the daemon adapter only moves bytes (no Python fallback).
             ResidentOperationV1::DiscoveryPlacementProject(request) => {
                 crate::discovery_placement_op::evaluate_discovery_placement_project(&request)
+            }
+            // Untrusted portal release bytes are validated and projected here;
+            // the daemon adapter only moves bytes (no Python fallback).
+            ResidentOperationV1::ReleaseFeedProject(request) => {
+                crate::release_feed_op::evaluate_release_feed_project(&request)
             }
             ResidentOperationV1::DataFlowAnalyze(request) => {
                 crate::data_flow_analyze_op::evaluate_data_flow_analyze(&request)

@@ -22,6 +22,7 @@ mod aibom_vectors_tests;
 mod antigravity_detect;
 mod approval;
 mod approval_bulk_eligibility_op;
+mod approval_extension_recommendation_op;
 mod approval_gate_consumers;
 mod approval_gate_enrollment;
 mod approval_gate_grants;
@@ -263,6 +264,7 @@ mod extension_allow_hint_op;
 mod extension_control_authority_op;
 mod extension_control_op;
 mod extension_control_preview_op;
+mod extension_control_proof;
 #[path = "adapters/detection/gemini_detect.rs"]
 mod gemini_detect;
 mod git_execution_safety_binary;
@@ -554,6 +556,8 @@ mod mcp_relay_servers;
 mod mcp_runtime_evidence_op;
 mod mcp_sensitive_read;
 #[cfg(test)]
+mod mcp_sensitive_read_artifact_tests;
+#[cfg(test)]
 mod mcp_sensitive_read_vectors_tests;
 mod mcp_stdio_session_op;
 mod mcp_tool_call_identity_build;
@@ -665,6 +669,7 @@ mod protect_request_op;
 mod pyjson;
 #[cfg(test)]
 mod registry_vectors_tests;
+mod release_feed_op;
 mod request_context_op;
 mod request_context_shell;
 mod resident_client;
