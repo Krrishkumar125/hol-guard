@@ -109,3 +109,26 @@ fn feature_is_advertised() {
     assert!(crate::resident_op_features::RESIDENT_OP_FEATURES
         .contains(&MCP_SENSITIVE_READ_ARTIFACT_FEATURE));
 }
+
+/// The op answers a request whose `request_sha256` it recomputes by serializing
+/// the query it parsed. A field the caller left out that came back as `null`
+/// would change those bytes, and every answer would fail the caller's binding
+/// check rather than reach a verdict.
+#[test]
+fn a_query_round_trips_to_the_bytes_the_caller_sent() {
+    for sent in [
+        json!({ "artifact": artifact() }),
+        json!({ "content": RECORDED_CONTENT_HASH }),
+    ] {
+        let mut wire = serde_json::to_value(query(sent.clone())).expect("the query serializes");
+        let parsed = wire.as_object_mut().expect("the query is an object");
+        let fields = sent.as_object().expect("the fields are an object");
+        for name in ["artifact", "content"] {
+            assert_eq!(
+                parsed.get(name),
+                fields.get(name),
+                "{name} came back differently than it was sent: {wire}"
+            );
+        }
+    }
+}

@@ -56,13 +56,13 @@ pub struct McpSensitiveReadContextQueryV1 {
     /// The artifact's own fields, from which the resident spells the content
     /// hash that binds the token to the artifact it covers. A caller sends
     /// this; the hash itself is never computed outside the resident.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact: Option<Map<String, Value>>,
     /// The content hash as the retired Python helper spelled it. Only the
     /// recorded parity corpus still carries it: those vectors were taken from
     /// that helper and cannot be re-derived, so the resident keeps reading a
     /// hash it is handed. A live caller sends `artifact` instead.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     pub capabilities: Value,
     pub extension_control_digest: String,
