@@ -123,7 +123,7 @@ fn file_operands(tokens: &[String], executable: &str) -> Vec<bool> {
                 redirected = true;
                 return false;
             }
-            if !program.is_some_and(|program| index > program) {
+            if program.is_none_or(|program| index <= program) {
                 return false;
             }
             if token == "--" {
