@@ -9,7 +9,7 @@ use std::path::Path;
 
 struct Metadata<'a> {
     directory: &'a Path,
-    remaining: usize,
+    blob_limit: usize,
 }
 
 impl Metadata<'_> {
@@ -18,7 +18,6 @@ impl Metadata<'_> {
             || !digest
                 .bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-            || self.remaining == 0
         {
             return Err(REFUSED);
         }
@@ -27,18 +26,17 @@ impl Metadata<'_> {
                 .directory
                 .join("objects")
                 .join(format!("{digest}.json")),
-            self.remaining.min(65536),
+            65536,
         )
         .map_err(|_| REFUSED)?
         .bytes;
-        self.remaining -= bytes.len();
         Ok(bytes)
     }
 
     fn blob(&mut self, reference: &Value) -> Res<Vec<u8>> {
         let reference: PackObjectRef =
             serde_json::from_value(reference.clone()).map_err(|_| tampered(REFUSED))?;
-        if reference.expanded_length > self.remaining {
+        if reference.expanded_length > self.blob_limit {
             return Err(tampered(REFUSED));
         }
         read_pack_blob(&reference, &mut |digest| self.fetch(digest)).map_err(|_| tampered(REFUSED))
@@ -55,6 +53,24 @@ pub(super) fn validate_predecessor(
     opened: &Value,
     catalog: &str,
     directory: &Path,
+) -> Res<()> {
+    validate_predecessor_with_limits(
+        snapshot,
+        expected,
+        opened,
+        catalog,
+        directory,
+        PackAdmissionBudget::resident(),
+    )
+}
+
+fn validate_predecessor_with_limits(
+    snapshot: &Map<String, Value>,
+    expected: &Value,
+    opened: &Value,
+    catalog: &str,
+    directory: &Path,
+    mut limits: PackAdmissionBudget,
 ) -> Res<()> {
     // A present null, malformed binding or explicit mismatch is never legacy.
     if let Some(binding) = snapshot.get("command_pack_record_digest") {
@@ -80,10 +96,11 @@ pub(super) fn validate_predecessor(
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         })
         .ok_or_else(|| tampered(REFUSED))?;
-    let limits = PackAdmissionBudget::resident();
     let mut metadata = Metadata {
         directory,
-        remaining: limits.program_bytes,
+        // These are the immutable-object format bounds, independent of the
+        // aggregate program admission budget. read_pack_blob also enforces it.
+        blob_limit: 8 * 1024 * 1024,
     };
     let set_bytes = guard_secure_fs::read_bounded(
         &directory.join("sets").join(format!("{program}.json")),
@@ -146,6 +163,15 @@ pub(super) fn validate_predecessor(
         // Read only hash-bound metadata. Old nodes are not admitted or executed:
         // a new engine must never treat its predecessor's IR as its own IR.
         let pack = metadata.json(&manifest["program"])?;
+        // Match ordinary admission's accounting dimension: only canonical
+        // program bytes spend program_bytes. Publication/index/manifest/catalog
+        // IO is bounded by its own object/blob/inventory format limits instead.
+        let canonical_program =
+            guard_policy_snapshot::canonical_json_bytes(&pack).map_err(|_| tampered(REFUSED))?;
+        limits.program_bytes = limits
+            .program_bytes
+            .checked_sub(canonical_program.len())
+            .ok_or_else(|| tampered(REFUSED))?;
         let catalog_bytes = metadata.blob(&manifest["catalog"])?;
         let catalog_value =
             crate::strict_json_value(&catalog_bytes).map_err(|_| tampered(REFUSED))?;

@@ -141,6 +141,15 @@ impl Fixture {
     }
 
     fn check(&self, binding: Option<Value>, catalog: Option<&str>) -> Res<()> {
+        self.check_with_limits(binding, catalog, PackAdmissionBudget::resident())
+    }
+
+    fn check_with_limits(
+        &self,
+        binding: Option<Value>,
+        catalog: Option<&str>,
+        limits: PackAdmissionBudget,
+    ) -> Res<()> {
         use super::super::super::records::{authenticated_record, verify_record, SNAPSHOT_PURPOSE};
         let mut snapshot = json!({"revision":1840,"catalog_digest":self.header["catalog_digest"],
             "layers_json":"[]","previous_digest":"7".repeat(64),"committed_at":"2026-10-22T00:00:00Z"})
@@ -151,12 +160,13 @@ impl Fixture {
         let (record, digest, mac) =
             authenticated_record(&snapshot, &KEY, SNAPSHOT_PURPOSE).unwrap();
         let snapshot = verify_record(&record, &digest, &mac, &KEY, SNAPSHOT_PURPOSE).unwrap();
-        validate_predecessor(
+        validate_predecessor_with_limits(
             &snapshot,
             &json!("8".repeat(64)),
             &self.opened()?,
             catalog.unwrap_or(self.header["catalog_digest"].as_str().unwrap()),
             self.directory.path(),
+            limits,
         )
     }
 }
@@ -273,4 +283,52 @@ fn legacy_recovery_uses_the_catalogs_canonical_identity() {
         "expanded_length":data.len(),"kind":"data"});
     fixture.rewrite_manifest();
     fixture.check(None, None).unwrap();
+}
+
+#[test]
+fn metadata_overhead_uses_individual_blob_bounds_not_the_program_budget() {
+    let fixture = Fixture::new();
+    let first = put(fixture.directory.path(), &json!("a".repeat(64)));
+    let second = put(fixture.directory.path(), &json!("b".repeat(64)));
+    let oversized = put(fixture.directory.path(), &json!("c".repeat(96)));
+    let mut reader = Metadata {
+        directory: fixture.directory.path(),
+        blob_limit: 96,
+    };
+    assert!(
+        first["expanded_length"].as_u64().unwrap() + second["expanded_length"].as_u64().unwrap()
+            > 96
+    );
+    assert_eq!(reader.json(&first).unwrap(), json!("a".repeat(64)));
+    assert_eq!(reader.json(&second).unwrap(), json!("b".repeat(64)));
+    assert!(reader.json(&oversized).is_err());
+}
+
+#[test]
+fn legacy_program_budget_excludes_metadata_overhead_but_still_caps_programs() {
+    let fixture = Fixture::new();
+    let program_bytes = guard_policy_snapshot::canonical_json_bytes(&fixture.program)
+        .unwrap()
+        .len();
+    let limits = PackAdmissionBudget {
+        program_bytes,
+        ..PackAdmissionBudget::resident()
+    };
+    fixture.check_with_limits(None, None, limits).unwrap();
+    assert!(fixture
+        .check_with_limits(
+            None,
+            None,
+            PackAdmissionBudget {
+                program_bytes: program_bytes - 1,
+                ..limits
+            }
+        )
+        .is_err());
+    let contract: Value = serde_json::from_str(include_str!(
+        "../../../../../contracts/catalog-delivery/packs.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(contract["max_blob_bytes"], json!(8 * 1024 * 1024));
+    assert_eq!(contract["max_object_bytes"], json!(65536));
 }
