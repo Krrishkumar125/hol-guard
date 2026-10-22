@@ -166,11 +166,12 @@ def test_enrollment_proof_is_exact_one_use_and_redacted(tmp_path: Path) -> None:
 
 
 def test_enrollment_proof_rejects_remote_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    enrollment = _enrollment()
     _configure(tmp_path)
     monkeypatch.setenv("SSH_CONNECTION", "client server")
 
     with pytest.raises(ExtensionControlProofError, match="requires a local terminal"):
-        _require_local_terminal_confirmation(_enrollment())
+        _require_local_terminal_confirmation(enrollment)
 
 
 @pytest.mark.parametrize("console_mode_result, expected", [(1, True), (0, False)])
@@ -334,6 +335,8 @@ def test_windows_session_probe_rejects_native_api_failure(monkeypatch: pytest.Mo
 
 
 def test_windows_enrollment_uses_console_stdio_without_posix_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    enrollment = _enrollment()
+
     class ConsoleStream(io.StringIO):
         def __init__(self, value: str, descriptor: int) -> None:
             super().__init__(value)
@@ -361,12 +364,14 @@ def test_windows_enrollment_uses_console_stdio_without_posix_flags(monkeypatch: 
         lambda: True,
     )
 
-    _require_local_terminal_confirmation(_enrollment())
+    _require_local_terminal_confirmation(enrollment)
 
     assert 'Type "ENROLL EXTENSION CONTROL local-admin"' in stdout.getvalue()
 
 
 def test_windows_enrollment_rejects_mismatched_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
+    enrollment = _enrollment()
+
     class ConsoleStream(io.StringIO):
         def __init__(self, value: str, descriptor: int) -> None:
             super().__init__(value)
@@ -397,10 +402,12 @@ def test_windows_enrollment_rejects_mismatched_confirmation(monkeypatch: pytest.
     )
 
     with pytest.raises(ExtensionControlProofError, match="confirmation did not match"):
-        _require_local_terminal_confirmation(_enrollment())
+        _require_local_terminal_confirmation(enrollment)
 
 
 def test_windows_enrollment_rejects_redirected_stdio(monkeypatch: pytest.MonkeyPatch) -> None:
+    enrollment = _enrollment()
+
     class RedirectedStream(io.StringIO):
         def fileno(self) -> int:
             return 10
@@ -413,10 +420,11 @@ def test_windows_enrollment_rejects_redirected_stdio(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr("codex_plugin_scanner.guard.runtime.extension_control_proof.sys.stdout", RedirectedStream())
 
     with pytest.raises(ExtensionControlProofError, match="requires an interactive local terminal"):
-        _require_local_terminal_confirmation(_enrollment())
+        _require_local_terminal_confirmation(enrollment)
 
 
 def test_windows_enrollment_rejects_ssh_before_console_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    enrollment = _enrollment()
     monkeypatch.setattr("codex_plugin_scanner.guard.runtime.extension_control_proof.os.name", "nt")
     monkeypatch.setenv("SSH_CONNECTION", "client server")
     monkeypatch.setattr(
@@ -425,10 +433,12 @@ def test_windows_enrollment_rejects_ssh_before_console_probe(monkeypatch: pytest
     )
 
     with pytest.raises(ExtensionControlProofError, match="requires a local terminal"):
-        _require_local_terminal_confirmation(_enrollment())
+        _require_local_terminal_confirmation(enrollment)
 
 
 def test_windows_enrollment_rejects_remote_session_before_console_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    enrollment = _enrollment()
+
     class ConsoleStream(io.StringIO):
         def fileno(self) -> int:
             return 10
@@ -455,7 +465,7 @@ def test_windows_enrollment_rejects_remote_session_before_console_probe(monkeypa
     )
 
     with pytest.raises(ExtensionControlProofError, match="requires a local terminal"):
-        _require_local_terminal_confirmation(_enrollment())
+        _require_local_terminal_confirmation(enrollment)
 
 
 def test_terminal_descriptors_accept_linux_tty_alias_and_stdin_pty(
@@ -506,6 +516,7 @@ def test_terminal_descriptors_fail_closed_when_session_cannot_be_read(
 def test_enrollment_accepts_linux_tty_alias_for_same_controlling_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    enrollment = _enrollment()
     expected = "ENROLL EXTENSION CONTROL local-admin\n"
     process_groups = {10: 4200, 11: 4200}
 
@@ -552,7 +563,7 @@ def test_enrollment_accepts_linux_tty_alias_for_same_controlling_session(
         type("InteractiveInput", (), {"isatty": lambda self: True, "fileno": lambda self: 11})(),
     )
 
-    _require_local_terminal_confirmation(_enrollment())
+    _require_local_terminal_confirmation(enrollment)
 
 
 @pytest.mark.parametrize(
@@ -679,10 +690,11 @@ def test_terminal_locality_rejects_remote_logind_session_without_login_record(
 
 
 def test_enrollment_proof_rejects_mosh_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    enrollment = _enrollment()
     monkeypatch.setenv("MOSH_CONNECTION", "client server")
 
     with pytest.raises(ExtensionControlProofError, match="requires a local terminal"):
-        _require_local_terminal_confirmation(_enrollment())
+        _require_local_terminal_confirmation(enrollment)
 
 
 def test_extension_control_proof_rejects_stale_grant(tmp_path: Path) -> None:
