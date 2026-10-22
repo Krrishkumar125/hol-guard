@@ -533,7 +533,18 @@ mod tests {
     /// so the stdin proof refuses it while an ordinary pattern keeps it.
     #[test]
     fn an_expandable_pattern_is_not_proven_stdin_text() {
-        for line in ["-v .env", "--invert-match secret", "^handler"] {
+        for line in [
+            "-v .env",
+            "--invert-match secret",
+            "^handler",
+            // A regex joins two words with `.*`, and its text names no
+            // file: only a credential marker standing in the word itself
+            // makes the shell able to reach one.
+            "cookie.*name",
+            "a.*b",
+            "auth_token.*=",
+            "Delegate.*=>",
+        ] {
             assert!(safe_rg_stdin_arguments(&arguments(line)), "{line}");
         }
         for line in [".env{,.local}", "-e .env{,.local}", ".env*", ".ssh/*"] {

@@ -254,6 +254,20 @@ fn expand_brace_globs(pattern: &str) -> Option<Vec<String>> {
     None
 }
 pub(super) fn glob_can_select_sensitive_path(value: &str) -> bool {
+    glob_selects_sensitive_path(value, true)
+}
+/// The marker tests `glob_can_select_sensitive_path` makes about the glob's
+/// own text, leaving out the family that asks only whether some longer
+/// string the glob could match would hold a marker. A path operand is
+/// refused on that wider question because another proof can still clear it.
+/// A pattern has no such proof, and the wider question refuses every regex
+/// with a `.*` in it: `cookie.*name` reaches a credential only if a file
+/// named `cookie.<something>name` is sitting there to be expanded onto the
+/// command line.
+pub(super) fn literal_glob_names_sensitive_path(value: &str) -> bool {
+    glob_selects_sensitive_path(value, false)
+}
+fn glob_selects_sensitive_path(value: &str, contains_family: bool) -> bool {
     let normalized = value.to_ascii_lowercase();
     if normalized.len() > 512
         || normalized
@@ -302,7 +316,8 @@ pub(super) fn glob_can_select_sensitive_path(value: &str) -> bool {
                     .any(|marker| {
                         glob_matches(bytes, marker.as_bytes())
                             || glob_intersects_prefix_family(bytes, format!("{marker}.").as_bytes())
-                            || glob_intersects_contains_family(bytes, marker.as_bytes(), true)
+                            || (contains_family
+                                && glob_intersects_contains_family(bytes, marker.as_bytes(), true))
                     })
             {
                 return true;
@@ -331,7 +346,8 @@ pub(super) fn glob_can_select_sensitive_path(value: &str) -> bool {
                 .iter()
                 .any(|candidate| glob_matches(bytes, candidate.as_bytes()))
                 || (env_hint && glob_intersects_prefix_family(bytes, b".env."))
-                || (family_hint
+                || (contains_family
+                    && family_hint
                     && [
                         b"private-key".as_slice(),
                         b"private_key",
@@ -412,7 +428,23 @@ pub(super) fn safe_grep_stdin_arguments(arguments: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::glob_can_select_sensitive_path;
+    use super::{glob_can_select_sensitive_path, literal_glob_names_sensitive_path};
+
+    /// Both forms read the glob's own text the same way. They part over the
+    /// wider question a path operand answers: whether some longer string the
+    /// glob could match would hold a credential marker. Every regex that
+    /// joins two words with `.*` could, so a pattern is read on its text
+    /// alone.
+    #[test]
+    fn a_regex_wildcard_names_no_credential_on_its_own_text() {
+        for selecting in [".env*", ".ssh/*", "*secret*", "id_*", "*.pem"] {
+            assert!(literal_glob_names_sensitive_path(selecting), "{selecting}");
+            assert!(glob_can_select_sensitive_path(selecting), "{selecting}");
+        }
+        for regex in ["cookie.*name", "a.*b", "auth_token.*=", "delegate.*=>"] {
+            assert!(!literal_glob_names_sensitive_path(regex), "{regex}");
+        }
+    }
 
     #[test]
     fn brace_sequences_still_select_sensitive_names() {

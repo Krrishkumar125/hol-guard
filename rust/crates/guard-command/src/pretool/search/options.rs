@@ -1,5 +1,6 @@
 use super::{
-    glob_can_select_sensitive_path, sensitive_path_argument, ReadContext, SearchValueRole,
+    glob_can_select_sensitive_path, literal_glob_names_sensitive_path, sensitive_path_argument,
+    ReadContext, SearchValueRole,
 };
 
 pub(super) fn unsafe_search_value(
@@ -52,7 +53,13 @@ pub(super) fn unsafe_search_value(
         // stage then opens, and `.env*` becomes one as soon as a second name
         // is beside it. A pattern whose expansions can select a credential
         // path is therefore not a pattern yet.
-        SearchValueRole::Pattern => glob_can_select_sensitive_path(value),
+        //
+        // Only the glob's own text answers that question. A regex carries
+        // `.*` wherever it joins two words, and asking whether some string
+        // the glob could match would hold a credential marker says yes to
+        // every one of them: `rg 'Delegate\b.*=>' src` is a search, not a
+        // file name.
+        SearchValueRole::Pattern => literal_glob_names_sensitive_path(value),
         SearchValueRole::Other => false,
     }
 }
