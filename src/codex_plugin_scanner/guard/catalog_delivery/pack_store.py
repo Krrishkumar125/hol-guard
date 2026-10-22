@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .object_native import call
+from .object_native import addressed
 
 MAX_OBJECT_BYTES = 64 * 1024
 MAX_BLOB_BYTES = 8 * 1024 * 1024
@@ -121,7 +121,7 @@ class PackReader:
     def blob(self, reference: dict[str, Any], depth: int = 0) -> bytes:
         # The runtime reads the cache directory and checks every object against
         # the length, digest and expansion its reference declares.
-        reply = call(
+        reply = addressed(
             "expand",
             mode="pack",
             directory=str(self.directory),
