@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard.models import GuardReceipt
 from codex_plugin_scanner.guard.runtime.observed_mcp_tools import (
     MAX_OBSERVED_MCP_TOOLS,
     discover_observed_mcp_tools,
@@ -441,3 +442,38 @@ def test_discovery_reads_the_projected_history_and_not_whole_rows(
     assert tool is not None
     catalog = store.read_local_cli_command_catalog(tool.identity.cli_id)
     assert {command.name for command in catalog} == {"read", "write"}
+
+
+def test_a_heavy_history_still_discovers_every_connector(tmp_path: Path) -> None:
+    """Issue #5449: the real store, the real scan, a history that is too wide to carry.
+
+    Each receipt below is small where the scan looks — a short tool label — and
+    heavy everywhere else, so the rows together are several times the native
+    response cap while their projection is a few kilobytes. Reading the rows
+    whole either refused the reply, which the Extensions refresh reported as a
+    failed provider scan, or came back short and lost the connectors behind the
+    truncation. Every seeded server has to survive the round trip.
+    """
+
+    store = GuardStore(tmp_path / "guard-home")
+    padding = "x" * (64 * 1024)
+    servers = [f"acme{index}" for index in range(12)]
+    for index in range(len(servers) * 5):
+        server = servers[index % len(servers)]
+        store.add_receipt(
+            GuardReceipt(
+                receipt_id=f"receipt-{index:04d}",
+                timestamp=f"2026-10-{(index % 28) + 1:02d}T12:00:00Z",
+                harness="claude-code",
+                artifact_id=f"mcp:{server}:read",
+                artifact_hash=f"{index:064x}",
+                policy_decision="allow",
+                capabilities_summary=padding,
+                changed_capabilities=(padding,),
+                provenance_summary=padding,
+                raw_command_text=f"tool:mcp__{server}__read",
+            )
+        )
+
+    assert discover_observed_mcp_tools(store, seen_at="2026-10-21T00:00:00Z") == 0
+    assert sorted(str(item["name"]) for item in store.list_local_cli_items()) == sorted(servers)
