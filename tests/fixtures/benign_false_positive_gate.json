@@ -11,9 +11,16 @@
     {
       "id": "guard-approval-decision-wait",
       "fix_area": "shell",
-      "harnesses": ["codex", "claude-code", "omp", "cursor"],
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
       "tool": "shell",
-      "tool_input": {"command": "hol-guard approvals wait req-1 --json"},
+      "tool_input": {
+        "command": "hol-guard approvals wait req-1 --json"
+      },
       "cwd": "worktree",
       "expect": "allow"
     },
@@ -18796,7 +18803,9 @@
     {
       "id": "find-exec-literal-interpreter-argument",
       "fix_area": "shell",
-      "harnesses": ["claude-code"],
+      "harnesses": [
+        "claude-code"
+      ],
       "tool": "shell",
       "tool_input": {
         "command": "find src -exec echo sh {} \\;"
@@ -18807,7 +18816,9 @@
     {
       "id": "find-exec-escaped-regex-argument",
       "fix_area": "shell",
-      "harnesses": ["claude-code"],
+      "harnesses": [
+        "claude-code"
+      ],
       "tool": "shell",
       "tool_input": {
         "command": "find src -exec grep -l 'foo\\.bar' {} +"
@@ -19173,13 +19184,8 @@
       "expect": "allow"
     },
     {
-<<<<<<< HEAD
-      "id": "github-cache-list",
-      "fix_area": "first-party-command-coverage",
-=======
       "id": "redirect-quoted-angle-commit-trailer",
       "fix_area": "redirect",
->>>>>>> origin/main
       "harnesses": [
         "codex",
         "zcode",
@@ -19189,16 +19195,6 @@
       ],
       "tool": "shell",
       "tool_input": {
-<<<<<<< HEAD
-        "command": "gh cache list --limit 5"
-      },
-      "cwd": "worktree",
-      "expect": "allow"
-    },
-    {
-      "id": "github-label-list",
-      "fix_area": "first-party-command-coverage",
-=======
         "command": "echo hi > docs/branch-audit.md && git add docs/branch-audit.md && git commit -q -m \"Add branch audit summary\n\nReported-by: Audit Bot <bot@example.invalid>\""
       },
       "cwd": "worktree",
@@ -19207,7 +19203,6 @@
     {
       "id": "redirect-heredoc-write-then-quoted-angle-commit",
       "fix_area": "redirect",
->>>>>>> origin/main
       "harnesses": [
         "codex",
         "zcode",
@@ -19217,16 +19212,6 @@
       ],
       "tool": "shell",
       "tool_input": {
-<<<<<<< HEAD
-        "command": "gh label list --json name"
-      },
-      "cwd": "worktree",
-      "expect": "allow"
-    },
-    {
-      "id": "github-secret-list",
-      "fix_area": "first-party-command-coverage",
-=======
         "command": "mkdir -p docs && cat > docs/branch-audit.md <<'EOF'\n# Branch audit\n\nThe audit checkout prints timestamps beside each log level.\nEOF\ngit worktree list && git add docs/branch-audit.md && git commit -q -m \"Add branch audit summary\n\nReported-by: Audit Bot <bot@example.invalid>\" && git status --short"
       },
       "cwd": "worktree",
@@ -19235,7 +19220,6 @@
     {
       "id": "redirect-quoted-html-tag-write",
       "fix_area": "redirect",
->>>>>>> origin/main
       "harnesses": [
         "codex",
         "zcode",
@@ -19245,7 +19229,57 @@
       ],
       "tool": "shell",
       "tool_input": {
-<<<<<<< HEAD
+        "command": "echo \"<section id=\\\"audit\\\">\" > docs/index.html"
+      },
+      "cwd": "worktree",
+      "expect": "allow_or_review"
+    },
+    {
+      "id": "github-cache-list",
+      "fix_area": "first-party-command-coverage",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh cache list --limit 5"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "github-label-list",
+      "fix_area": "first-party-command-coverage",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh label list --json name"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "github-secret-list",
+      "fix_area": "first-party-command-coverage",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
         "command": "gh secret list"
       },
       "cwd": "worktree",
@@ -19254,16 +19288,6 @@
     {
       "id": "github-variable-list",
       "fix_area": "first-party-command-coverage",
-=======
-        "command": "echo \"<section id=\\\"audit\\\">\" > docs/index.html"
-      },
-      "cwd": "worktree",
-      "expect": "allow_or_review"
-    },
-    {
-      "id": "neg-redirect-substitution-reads-private-key",
-      "fix_area": "negative",
->>>>>>> origin/main
       "harnesses": [
         "codex",
         "zcode",
@@ -19273,7 +19297,6 @@
       ],
       "tool": "shell",
       "tool_input": {
-<<<<<<< HEAD
         "command": "gh variable list"
       },
       "cwd": "worktree",
@@ -20058,9 +20081,23 @@
       "tool": "shell",
       "tool_input": {
         "command": "docker buildx --builder fixture imagetools create -t example/app:latest example/app:v1"
-=======
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-redirect-substitution-reads-private-key",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
         "command": "echo \"$(cat ${HOME}/.ssh/id_ed25519)\" > docs/branch-audit.md"
->>>>>>> origin/main
       },
       "cwd": "worktree",
       "expect": "not_allow"
