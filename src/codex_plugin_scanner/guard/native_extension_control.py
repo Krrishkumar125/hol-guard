@@ -574,13 +574,17 @@ def _same_layer(asked: ExtensionControlLayer, answered: ExtensionControlLayer) -
     )
 
 
-def _mutation_verdict(payload: dict[str, Any], asked: Sequence[ExtensionControlLayer] = ()) -> MutationVerdict:
+def _refusal(payload: dict[str, Any]) -> str | None:
     refusal = payload["refusal"]
     if refusal is not None and refusal not in MUTATION_REFUSAL_CODES:
         raise _invalid()
+    return refusal
+
+
+def _mutation_verdict(payload: dict[str, Any], asked: Sequence[ExtensionControlLayer]) -> MutationVerdict:
+    refusal = _refusal(payload)
     layers = tuple(_layer(raw) for raw in payload["layers"])
-    # A refusal carries no layers; an acceptance of a validate carries the
-    # asked layers (and a bounds or mutability verdict carries none).
+    # A refusal carries no layers; an acceptance carries the asked layers.
     if len(layers) != (len(asked) if refusal is None else 0):
         raise _invalid()
     if not all(_same_layer(before, after) for before, after in zip(asked, layers, strict=False)):
@@ -588,13 +592,22 @@ def _mutation_verdict(payload: dict[str, Any], asked: Sequence[ExtensionControlL
     return MutationVerdict(refusal, layers)
 
 
+_REFUSAL_FIELDS: Final = {"refusal": _OPT_STR}
 _MUTATION_FIELDS: Final = {"refusal": _OPT_STR, "layers": list}
+
+
+def _ask_refusal(query: dict[str, object], guard_home: Path | None) -> str | None:
+    """Ask a query whose answer is only the reason it refuses, if it does."""
+
+    if _wire_bytes(query) > _MAX_BATCH_BYTES:
+        raise _too_large()
+    return _ask(query, guard_home, _REFUSAL_FIELDS, _refusal)
 
 
 def _ask_mutation(
     query: dict[str, object],
     guard_home: Path | None,
-    asked: Sequence[ExtensionControlLayer] = (),
+    asked: Sequence[ExtensionControlLayer],
 ) -> MutationVerdict:
     if _wire_bytes(query) > _MAX_BATCH_BYTES:
         raise _too_large()
@@ -609,7 +622,7 @@ def mutation_bounds(
     """The reason ``layers`` break the bounds of one mutation, or ``None`` when they stay within them."""
 
     query: dict[str, object] = {"kind": "mutation_bounds", "layers": [_layer_wire(layer) for layer in layers]}
-    return _ask_mutation(query, guard_home).refusal
+    return _ask_refusal(query, guard_home)
 
 
 def validate_mutation(
@@ -655,7 +668,7 @@ def mutability_validate(
         "current_layers": [_layer_wire(layer) for layer in current_layers],
         "layers": [_layer_wire(layer) for layer in layers],
     }
-    return _ask_mutation(query, guard_home).refusal
+    return _ask_refusal(query, guard_home)
 
 
 def resolve_extension_controls(

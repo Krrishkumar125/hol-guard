@@ -69,7 +69,11 @@ def _wire(layer: Any) -> dict[str, object]:
 
 
 def _verdict(refusal: str | None = None, layers: tuple[Any, ...] = ()) -> dict[str, object]:
-    return {"kind": "mutation_verdict", "refusal": refusal, "layers": [_wire(layer) for layer in layers]}
+    return {"kind": "mutation_validate", "refusal": refusal, "layers": [_wire(layer) for layer in layers]}
+
+
+def _refusal(kind: str, refusal: str | None = None) -> dict[str, object]:
+    return {"kind": kind, "refusal": refusal}
 
 
 def _answer(payload: dict[str, object]) -> Any:
@@ -139,19 +143,19 @@ def test_validate_presents_a_refusal_without_layers(monkeypatch: pytest.MonkeyPa
 
 def test_bounds_sends_the_layers_alone_and_presents_the_reason(monkeypatch: pytest.MonkeyPatch) -> None:
     layers = (make_layer(), make_layer(ControlLayerKind.SIGNED_CLOUD))
-    requests = resident_answers(monkeypatch, _answer(_verdict("layer_limit_exceeded")))
+    requests = resident_answers(monkeypatch, _answer(_refusal("mutation_bounds", "layer_limit_exceeded")))
 
     assert bridge.mutation_bounds(layers) == "layer_limit_exceeded"
     assert request_query(requests[0]) == {"kind": "mutation_bounds", "layers": [_wire(layer) for layer in layers]}
 
-    resident_answers(monkeypatch, _answer(_verdict()))
+    resident_answers(monkeypatch, _answer(_refusal("mutation_bounds")))
     assert bridge.mutation_bounds(layers) is None
 
 
 def test_mutability_sends_the_catalog_without_an_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
     current = make_layer(ControlLayerKind.LOCAL_ADMIN)
     proposed = make_layer(ControlLayerKind.LOCAL_ADMIN, make_disabled(ControlTargetKind.PERMISSION, PERMISSION))
-    requests = resident_answers(monkeypatch, _answer(_verdict("immutable_permission")))
+    requests = resident_answers(monkeypatch, _answer(_refusal("mutability_validate", "immutable_permission")))
 
     assert bridge.mutability_validate(_registry(), (current,), (proposed,)) == "immutable_permission"
 
@@ -184,36 +188,36 @@ _LAYER: dict[str, Any] = _wire(_extension_layer(EXTENSION))
 @pytest.mark.parametrize(
     "payload",
     [
-        {"kind": "mutation_verdict"},
-        {"kind": "mutation_verdict", "refusal": None},
-        {"kind": "mutation_verdict", "layers": []},
-        {"kind": "mutation_verdict", "refusal": None, "layers": [], "extra": 1},
-        {"kind": "mutation_verdict", "refusal": 7, "layers": []},
-        {"kind": "mutation_verdict", "refusal": "made_up", "layers": []},
-        {"kind": "mutation_verdict", "refusal": "", "layers": []},
-        {"kind": "mutation_verdict", "refusal": None, "layers": {}},
-        {"kind": "mutation_verdict", "refusal": "unknown_extension", "layers": [_LAYER]},
-        {"kind": "mutation_verdict", "refusal": None, "layers": []},
-        {"kind": "mutation_verdict", "refusal": None, "layers": [_LAYER, _LAYER]},
-        {"kind": "mutation_verdict", "refusal": None, "layers": [{**_LAYER, "extra": 1}]},
-        {"kind": "mutation_verdict", "refusal": None, "layers": [{**_LAYER, "kind": "other"}]},
-        {"kind": "mutation_verdict", "refusal": None, "layers": [{**_LAYER, "schema_version": "9.9.9"}]},
-        {"kind": "mutation_verdict", "refusal": None, "layers": [{**_LAYER, "catalog_digest": "short"}]},
-        {"kind": "mutation_verdict", "refusal": None, "layers": [{**_LAYER, "global_lockdown": 1}]},
+        {"kind": "mutation_validate"},
+        {"kind": "mutation_validate", "refusal": None},
+        {"kind": "mutation_validate", "layers": []},
+        {"kind": "mutation_validate", "refusal": None, "layers": [], "extra": 1},
+        {"kind": "mutation_validate", "refusal": 7, "layers": []},
+        {"kind": "mutation_validate", "refusal": "made_up", "layers": []},
+        {"kind": "mutation_validate", "refusal": "", "layers": []},
+        {"kind": "mutation_validate", "refusal": None, "layers": {}},
+        {"kind": "mutation_validate", "refusal": "unknown_extension", "layers": [_LAYER]},
+        {"kind": "mutation_validate", "refusal": None, "layers": []},
+        {"kind": "mutation_validate", "refusal": None, "layers": [_LAYER, _LAYER]},
+        {"kind": "mutation_validate", "refusal": None, "layers": [{**_LAYER, "extra": 1}]},
+        {"kind": "mutation_validate", "refusal": None, "layers": [{**_LAYER, "kind": "other"}]},
+        {"kind": "mutation_validate", "refusal": None, "layers": [{**_LAYER, "schema_version": "9.9.9"}]},
+        {"kind": "mutation_validate", "refusal": None, "layers": [{**_LAYER, "catalog_digest": "short"}]},
+        {"kind": "mutation_validate", "refusal": None, "layers": [{**_LAYER, "global_lockdown": 1}]},
         {
-            "kind": "mutation_verdict",
+            "kind": "mutation_validate",
             "refusal": None,
             "layers": [{**_LAYER, "controls": [{"target_kind": "extension"}]}],
         },
         {
-            "kind": "mutation_verdict",
+            "kind": "mutation_validate",
             "refusal": None,
             "layers": [
                 {**_LAYER, "controls": [{"target_kind": "extension", "target_id": EXTENSION, "state": "maybe"}]}
             ],
         },
         {
-            "kind": "mutation_verdict",
+            "kind": "mutation_validate",
             "refusal": None,
             "layers": [
                 {**_LAYER, "controls": [{"target_kind": "extension", "target_id": "Not A Target", "state": "disabled"}]}
@@ -221,19 +225,19 @@ _LAYER: dict[str, Any] = _wire(_extension_layer(EXTENSION))
         },
         # A layer that is not the one asked about: another lockdown state, another control state,
         # another target kind, or another permission.
-        {"kind": "mutation_verdict", "refusal": None, "layers": [{**_LAYER, "global_lockdown": True}]},
+        {"kind": "mutation_validate", "refusal": None, "layers": [{**_LAYER, "global_lockdown": True}]},
         {
-            "kind": "mutation_verdict",
+            "kind": "mutation_validate",
             "refusal": None,
             "layers": [{**_LAYER, "controls": [{**_LAYER["controls"][0], "state": "enabled"}]}],
         },
         {
-            "kind": "mutation_verdict",
+            "kind": "mutation_validate",
             "refusal": None,
             "layers": [{**_LAYER, "controls": [{**_LAYER["controls"][0], "target_kind": "permission"}]}],
         },
-        {"kind": "mutation_verdict", "refusal": None, "layers": [{**_LAYER, "controls": []}]},
-        {"kind": "mutation_verdict", "refusal": None, "layers": [{**_LAYER, "catalog_digest": OTHER_DIGEST}]},
+        {"kind": "mutation_validate", "refusal": None, "layers": [{**_LAYER, "controls": []}]},
+        {"kind": "mutation_validate", "refusal": None, "layers": [{**_LAYER, "catalog_digest": OTHER_DIGEST}]},
     ],
 )
 def test_a_malformed_validate_verdict_raises(monkeypatch: pytest.MonkeyPatch, payload: dict[str, object]) -> None:
@@ -264,25 +268,66 @@ def test_a_validate_verdict_may_only_rename_extension_targets(monkeypatch: pytes
     assert caught.value.code == "native_extension_control_payload_invalid"
 
 
+def _ask_bounds(layers: tuple[Any, ...]) -> str | None:
+    return bridge.mutation_bounds(layers)
+
+
+def _ask_mutability(layers: tuple[Any, ...]) -> str | None:
+    return bridge.mutability_validate(_registry(), (), layers)
+
+
+@pytest.mark.parametrize(("kind", "ask"), [("mutation_bounds", _ask_bounds), ("mutability_validate", _ask_mutability)])
 @pytest.mark.parametrize(
-    "payload",
+    "fields",
     [
-        {"kind": "mutation_verdict", "refusal": None, "layers": [_LAYER]},
-        {"kind": "mutation_verdict", "refusal": "made_up", "layers": []},
-        {"kind": "mutation_verdict", "refusal": "layer_limit_exceeded", "layers": [_LAYER]},
-        {"kind": "mutation_verdict", "refusal": None},
+        {},
+        {"refusal": 7},
+        {"refusal": "made_up"},
+        {"refusal": ""},
+        {"refusal": None, "layers": []},
+        {"refusal": None, "extra": 1},
     ],
 )
-def test_a_malformed_bounds_or_mutability_verdict_raises(
-    monkeypatch: pytest.MonkeyPatch, payload: dict[str, object]
+def test_a_malformed_refusal_verdict_raises(
+    monkeypatch: pytest.MonkeyPatch, kind: str, ask: Any, fields: dict[str, object]
 ) -> None:
-    resident_answers(monkeypatch, _answer(payload))
+    resident_answers(monkeypatch, _answer({"kind": kind, **fields}))
 
-    with pytest.raises(bridge.NativeExtensionControlError) as bounds:
-        bridge.mutation_bounds((make_layer(),))
-    with pytest.raises(bridge.NativeExtensionControlError) as mutability:
-        bridge.mutability_validate(_registry(), (), (make_layer(),))
-    assert bounds.value.code == mutability.value.code == "native_extension_control_payload_invalid"
+    with pytest.raises(bridge.NativeExtensionControlError) as caught:
+        ask((make_layer(),))
+    assert caught.value.code == "native_extension_control_payload_invalid"
+
+
+@pytest.mark.parametrize(
+    ("answered", "ask"),
+    [
+        ("mutation_validate", _ask_bounds),
+        ("mutability_validate", _ask_bounds),
+        ("mutation_bounds", _ask_mutability),
+        ("mutation_validate", _ask_mutability),
+    ],
+)
+def test_a_verdict_of_another_query_is_no_verdict(monkeypatch: pytest.MonkeyPatch, answered: str, ask: Any) -> None:
+    resident_answers(monkeypatch, _answer({"kind": answered, "refusal": None, "layers": []}))
+
+    with pytest.raises(bridge.NativeExtensionControlError) as caught:
+        ask((make_layer(),))
+    assert caught.value.code == "native_extension_control_unavailable"
+
+
+def test_a_validate_verdict_of_another_query_is_no_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
+    resident_answers(monkeypatch, _answer(_refusal("mutation_bounds")))
+
+    with pytest.raises(bridge.NativeExtensionControlError) as caught:
+        bridge.validate_mutation(
+            _registry(),
+            (),
+            catalog_digest=DIGEST,
+            requested_catalog_digest=DIGEST,
+            current_layers=(),
+            layers=(make_layer(),),
+        )
+    assert caught.value.code == "native_extension_control_unavailable"
 
 
 def test_a_mutation_no_request_can_carry_is_refused_before_asking(monkeypatch: pytest.MonkeyPatch) -> None:

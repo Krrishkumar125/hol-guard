@@ -230,13 +230,24 @@ pub enum ExtensionControlPayloadV1 {
     Preview {
         preview: ExtensionControlSemanticPreviewV1,
     },
-    MutationVerdict {
+    /// The answer to `mutation_bounds`: null when the layers are inside every
+    /// limit, otherwise the limit reason.
+    MutationBounds {
+        refusal: Option<String>,
+    },
+    /// The answer to `mutation_validate`.
+    MutationValidate {
         /// Null when the mutation is accepted, otherwise the reason it is
         /// refused (one of the `EXTENSION_CONTROL_MUTATION_*` reasons).
         refusal: Option<String>,
         /// The validated mutation's layers, extension targets canonical. Empty
-        /// for every query but an accepted `mutation_validate`.
+        /// when the mutation is refused.
         layers: Vec<NativeExtensionControlLayerV1>,
+    },
+    /// The answer to `mutability_validate`: null when the draft may proceed,
+    /// otherwise the immutability reason.
+    MutabilityValidate {
+        refusal: Option<String>,
     },
 }
 

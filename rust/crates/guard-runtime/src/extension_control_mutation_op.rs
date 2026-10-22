@@ -44,7 +44,9 @@ const REGISTRY_INVALID: &str = "native_extension_control_registry_invalid";
 
 /// The answer to `mutation_bounds`.
 pub(crate) fn bounds(layers: &[NativeExtensionControlLayerV1]) -> ExtensionControlPayloadV1 {
-    verdict(limit_refusal(layers), Vec::new())
+    ExtensionControlPayloadV1::MutationBounds {
+        refusal: limit_refusal(layers).map(str::to_owned),
+    }
 }
 
 /// The answer to `mutation_validate`.
@@ -88,7 +90,7 @@ pub(crate) fn validate(
     if let Some(reason) = immutable_refusal(&targets, current_layers, &canonical) {
         return Ok(refused(reason));
     }
-    Ok(verdict(None, canonical))
+    Ok(validated(None, canonical))
 }
 
 /// The answer to `mutability_validate`.
@@ -100,24 +102,23 @@ pub(crate) fn mutability(
     let targets = MutationTargets::new(registry)?;
     typed_layers(current_layers)?;
     typed_layers(layers)?;
-    Ok(verdict(
-        immutable_refusal(&targets, current_layers, layers),
-        Vec::new(),
-    ))
+    Ok(ExtensionControlPayloadV1::MutabilityValidate {
+        refusal: immutable_refusal(&targets, current_layers, layers).map(str::to_owned),
+    })
 }
 
-fn verdict(
+fn validated(
     refusal: Option<&str>,
     layers: Vec<NativeExtensionControlLayerV1>,
 ) -> ExtensionControlPayloadV1 {
-    ExtensionControlPayloadV1::MutationVerdict {
+    ExtensionControlPayloadV1::MutationValidate {
         refusal: refusal.map(str::to_owned),
         layers,
     }
 }
 
 fn refused(reason: &str) -> ExtensionControlPayloadV1 {
-    verdict(Some(reason), Vec::new())
+    validated(Some(reason), Vec::new())
 }
 
 /// The first bound the layers break, checked from the coarsest down.

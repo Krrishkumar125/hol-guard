@@ -138,7 +138,11 @@ fn verdict(query: ExtensionControlQueryV1) -> (Option<String>, Vec<NativeExtensi
     let result = run(query);
     assert_eq!(result.status, "ok", "{}", result.code);
     match result.payload {
-        Some(ExtensionControlPayloadV1::MutationVerdict { refusal, layers }) => (refusal, layers),
+        Some(ExtensionControlPayloadV1::MutationValidate { refusal, layers }) => (refusal, layers),
+        Some(
+            ExtensionControlPayloadV1::MutationBounds { refusal }
+            | ExtensionControlPayloadV1::MutabilityValidate { refusal },
+        ) => (refusal, Vec::new()),
         other => panic!("expected a mutation verdict, got {other:?}"),
     }
 }
@@ -803,34 +807,68 @@ fn mutability_resolves_an_alias_to_its_extension() {
 }
 
 #[test]
-fn the_reply_carries_exactly_its_declared_fields() {
+fn each_reply_carries_its_query_kind_and_exactly_its_declared_fields() {
     let layers = vec![local(vec![extension_control(ALPHA, "disabled")])];
     let accepted = evaluate_extension_control_request(&request(validate_query(
         registry(),
         digest(),
         Vec::new(),
-        layers,
+        layers.clone(),
     )))
     .unwrap();
     let accepted: Value = serde_json::from_slice(&accepted).unwrap();
-    let payload = accepted["payload"].as_object().unwrap();
-    let mut keys: Vec<&str> = payload.keys().map(String::as_str).collect();
-    keys.sort_unstable();
-    assert_eq!(keys, vec!["kind", "layers", "refusal"]);
-    assert_eq!(payload["kind"], "mutation_verdict");
-    assert_eq!(payload["refusal"], Value::Null);
+    assert_eq!(accepted["payload"]["kind"], "mutation_validate");
+    assert_eq!(payload_keys(&accepted), vec!["kind", "layers", "refusal"]);
+    assert_eq!(accepted["payload"]["refusal"], Value::Null);
 
-    let refused = evaluate_extension_control_request(&request(bounds_query(vec![
+    let refused = evaluate_extension_control_request(&request(validate_query(
+        registry(),
+        other_digest(),
+        Vec::new(),
+        layers.clone(),
+    )))
+    .unwrap();
+    let refused: Value = serde_json::from_slice(&refused).unwrap();
+    assert_eq!(refused["status"], "ok");
+    assert_eq!(refused["code"], "ok");
+    assert_eq!(refused["payload"]["kind"], "mutation_validate");
+    assert_eq!(refused["payload"]["refusal"], "catalog_conflict");
+    assert_eq!(refused["payload"]["layers"], json!([]));
+
+    let bounds = evaluate_extension_control_request(&request(bounds_query(vec![
         local(Vec::new()),
         cloud(Vec::new()),
         local(Vec::new()),
     ])))
     .unwrap();
-    let refused: Value = serde_json::from_slice(&refused).unwrap();
-    assert_eq!(refused["status"], "ok");
-    assert_eq!(refused["code"], "ok");
-    assert_eq!(refused["payload"]["refusal"], "layer_limit_exceeded");
-    assert_eq!(refused["payload"]["layers"], json!([]));
+    let bounds: Value = serde_json::from_slice(&bounds).unwrap();
+    assert_eq!(bounds["status"], "ok");
+    assert_eq!(bounds["payload"]["kind"], "mutation_bounds");
+    assert_eq!(payload_keys(&bounds), vec!["kind", "refusal"]);
+    assert_eq!(bounds["payload"]["refusal"], "layer_limit_exceeded");
+
+    let mutability =
+        evaluate_extension_control_request(&request(ExtensionControlQueryV1::MutabilityValidate {
+            registry: registry(),
+            current_layers: Vec::new(),
+            layers,
+        }))
+        .unwrap();
+    let mutability: Value = serde_json::from_slice(&mutability).unwrap();
+    assert_eq!(mutability["payload"]["kind"], "mutability_validate");
+    assert_eq!(payload_keys(&mutability), vec!["kind", "refusal"]);
+    assert_eq!(mutability["payload"]["refusal"], Value::Null);
+}
+
+fn payload_keys(reply: &Value) -> Vec<&str> {
+    let mut keys: Vec<&str> = reply["payload"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    keys
 }
 
 #[test]
