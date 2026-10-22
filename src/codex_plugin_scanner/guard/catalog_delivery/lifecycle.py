@@ -263,8 +263,13 @@ def resident_answer(store, request: dict[str, Any]) -> dict[str, Any] | None:
     """The resident's answer to one `pack-lifecycle` request for this store.
 
     None means the resident did not answer, and the caller spawns the one-shot.
+    The resident serves a store by its database path, so a store without one
+    is answered by the one-shot.
     """
-    return _resident_answer((Path(store.guard_home), str(store.path)), request)
+    path = getattr(store, "path", None)
+    if path is None:
+        return None
+    return _resident_answer((Path(store.guard_home), str(path)), request)
 
 
 def _resident_answer(bound: tuple[Path, str], request: dict[str, Any]) -> dict[str, Any] | None:
