@@ -27,16 +27,12 @@ fn a_construct_flattens_to_the_lists_it_holds() {
             "read line < README.md; echo hi < README.md",
         ),
         (
-            "until [ -f build/done ]; do ls build; done",
-            "[ -f build/done ]; ls build",
-        ),
-        (
             "if [ -f README.md ]\nthen\ncat README.md\nfi",
             "[ -f README.md ]; cat README.md",
         ),
         (
-            "while read line; do wc -l README.md && echo ok; done",
-            "read line; wc -l README.md && echo ok",
+            "while read name; do cat README.md; wc -l README.md; done < list.txt",
+            "read name < list.txt; cat README.md < list.txt; wc -l README.md < list.txt",
         ),
     ] {
         assert_eq!(
@@ -50,6 +46,13 @@ fn a_construct_flattens_to_the_lists_it_holds() {
 /// Anything the grammar does not cover keeps its review: a value the
 /// construct binds for itself, a nested construct, a substitution, an empty
 /// branch, a `case` statement, and text that follows the closing keyword.
+///
+/// A loop that is not the bounded `while read ... < FILE` shape keeps it too.
+/// One flattened pass stands for every iteration, so it only describes the
+/// loop while the loop is known to stop and its body leaves nothing behind:
+/// `while true` never ends, `until` is never ended by a read, a `read` with
+/// no redirected input waits on the terminal, and a body that opens an output
+/// repeats that write for as long as the loop runs.
 #[test]
 fn an_unmodeled_construct_keeps_its_review() {
     for command in [
@@ -65,6 +68,12 @@ fn an_unmodeled_construct_keeps_its_review() {
         "for f in src/*.ts; do cat $f; done",
         "if [ -f README.md ]; then cat README.md",
         "while read line; do (cd /tmp && ls); done",
+        "while true; do echo hi; done",
+        "while :; do cat README.md >> out.txt; done",
+        "while [ -f build/lock ]; do ls build; done < README.md",
+        "until [ -f build/done ]; do ls build; done",
+        "while read name; do wc -l README.md; done",
+        "while read name; do cat README.md > copy.md; done < list.txt",
     ] {
         assert!(
             flatten(command).is_none(),

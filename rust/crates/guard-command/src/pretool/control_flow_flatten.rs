@@ -1,9 +1,17 @@
-//! A conditional or a loop runs a subset of the command lists written inside
-//! it: the branch whose test succeeds, or the body for as many iterations as
-//! the test allows. Writing those lists out as one plain list therefore runs
-//! at least as much as the construct ever can, so admitting the flat list
-//! admits the construct, and the loop or conditional grants no authority of
-//! its own. Each list item still faces the ordinary proofs, and anything this
+//! A conditional runs a subset of the command lists written inside it: the
+//! branch whose test succeeds. Writing those lists out as one plain list
+//! therefore runs at least as much as the construct ever can, so admitting
+//! the flat list admits the construct, and the conditional grants no
+//! authority of its own.
+//!
+//! A loop is only the same shape when it is known to stop and its body cannot
+//! build up across iterations, because one flattened pass stands for every
+//! iteration. `while read NAME; do ...; done < FILE` is that shape: the read
+//! ends at the file's end, and a body that writes nothing leaves each
+//! iteration doing the work the single pass already describes. Every other
+//! loop keeps its review.
+//!
+//! Each list item still faces the ordinary proofs, and anything this
 //! recognizer does not fully understand returns `None`, which keeps the
 //! existing review behavior.
 
@@ -13,8 +21,8 @@ use super::for_loop_unroll::body::{body_items, redirect_tail, substitute};
 const MAX_ITEMS: usize = 48;
 const MAX_FLATTENED_BYTES: usize = 8192;
 
-/// The flattened command list for a top-level `if`, `while` or `until`
-/// construct, or `None` when the command is anything else.
+/// The flattened command list for a top-level `if` construct or a bounded
+/// `while read` loop, or `None` when the command is anything else.
 pub(super) fn flatten(command: &str) -> Option<String> {
     if command
         .chars()
@@ -33,10 +41,8 @@ pub(super) fn flatten(command: &str) -> Option<String> {
     if let Some(rest) = keyword(text, "if") {
         return flatten_conditional(rest);
     }
-    for word in ["while", "until"] {
-        if let Some(rest) = keyword(text, word) {
-            return flatten_loop(rest);
-        }
+    if let Some(rest) = keyword(text, "while") {
+        return flatten_loop(rest);
     }
     None
 }
@@ -62,16 +68,34 @@ fn flatten_conditional(rest: &str) -> Option<String> {
     }
 }
 
-/// `while LIST; do LIST; done` and its `until` spelling. The body runs an
-/// unknown number of times, and every iteration runs the same item text, so
-/// writing each item once covers them all.
+/// `while read NAME...; do LIST; done < FILE`, the one loop shape a single
+/// flattened pass describes. The read ends at the file's end, so the loop
+/// stops on its own, and a body that opens no output keeps every iteration
+/// doing the work that one pass already stands for. A loop whose test is
+/// anything else may never end, and a body that writes would repeat its
+/// effect for as long as it runs, so neither is flattened.
 fn flatten_loop(rest: &str) -> Option<String> {
     let (test, _, after_test) = body_items(rest, "", &["do"])?;
     let (body, _, tail) = body_items(after_test, "", &["done"])?;
+    if !driven_by_a_read(&test) || !redirect_tail(tail)?.starts_with('<') {
+        return None;
+    }
+    if body
+        .iter()
+        .any(|(text, _)| text.contains('>') || text.contains('<'))
+    {
+        return None;
+    }
     let mut parts: Vec<(String, &'static str)> = Vec::new();
     collect(&mut parts, test)?;
     collect(&mut parts, body)?;
     assemble(&parts, tail)
+}
+
+/// Whether a loop's test is the single `read` that empties the redirected
+/// input, which is what makes the iteration count finite.
+fn driven_by_a_read(test: &[(String, &'static str)]) -> bool {
+    matches!(test, [(text, _)] if text.split_whitespace().next() == Some("read"))
 }
 
 /// Add a list's items, rejecting an empty list and any item whose command
