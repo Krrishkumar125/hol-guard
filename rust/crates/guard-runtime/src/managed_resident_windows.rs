@@ -158,7 +158,7 @@ mod tests {
     use std::io::{self, Read};
     use std::process::{Command, Stdio};
     use std::thread;
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant};
 
     const CHILD_MARKER_ENV: &str = "HOL_GUARD_TEST_LIVENESS_CHILD_MARKER";
     const CHILD_PARENT_ENV: &str = "HOL_GUARD_TEST_LIVENESS_CHILD_PARENT";
@@ -179,10 +179,7 @@ mod tests {
 
     #[test]
     fn liveness_pipe_remains_open_while_child_runs_and_closes_after_wait() {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock is after the Unix epoch")
-            .as_nanos();
+        let nonce = crate::unique_nanos::unique_nanos();
         let directory = env::temp_dir().join(format!(
             "guard-runtime-liveness-{}-{nonce}",
             std::process::id()
@@ -229,10 +226,7 @@ mod tests {
 
     #[test]
     fn liveness_pipe_closes_once_owner_and_clients_are_gone() {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock is after the Unix epoch")
-            .as_nanos();
+        let nonce = crate::unique_nanos::unique_nanos();
         let directory = env::temp_dir().join(format!(
             "guard-runtime-orphan-{}-{nonce}",
             std::process::id()
