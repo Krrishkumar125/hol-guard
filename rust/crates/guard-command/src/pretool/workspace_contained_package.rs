@@ -54,11 +54,13 @@ pub(crate) const PACKAGE_EXTENSIONS: &[&str] = &[
     RUST_PACKAGE_EXTENSION,
 ];
 // The Python managers the package firewall watches. Each installs what it
-// runs, so none of their verbs is local work; `uv` is the exception below.
+// runs, so only the queries [`super::python`] reads are local work; `uv` is
+// the exception below.
 const PYTHON_MANAGERS: &[&str] = &["pip", "pip3", "pipx", "uvx", "poetry", "pipenv"];
 // uv drives a project environment the workspace holds. Only the verbs that
-// read it are local: `pip`, `add`, `tool` and the rest reach a registry.
-const UV_LOCAL_VERBS: &[&str] = &["run", "tree", "export", "version"];
+// read it are local: `add`, `tool`, `sync` and the rest reach a registry, and
+// `pip` is local for the queries pip itself reads with.
+const UV_LOCAL_VERBS: &[&str] = &["run", "tree", "export", "version", "pip"];
 // A Go build compiles the sources the module cache already holds and writes
 // its objects to a private build cache. Only the verbs that stay there are
 // local: `get`, `install`, `mod` and `work` reach a registry, and `tool` and
@@ -380,6 +382,13 @@ fn local_uv_work(arguments: &[&str], directory: &Path, workspace: &Path) -> bool
     if !UV_LOCAL_VERBS.contains(&verb.as_str()) {
         return false;
     }
+    if verb == "pip" {
+        // `uv pip` drives the project environment through pip's own surface,
+        // so its queries are read by pip's allowlist and `install`, `sync`
+        // and `compile` fall out of it the way they do for pip itself.
+        return super::python::local_uv_pip_work(&arguments[uv.verb + 1..])
+            && uv.project.join(".venv").is_dir();
+    }
     if let Some(operand) = uv.operand.map(|operand| arguments[operand]) {
         // `uv version 2.0.0` writes the version into the project and locks it
         // again, a script named by URL is downloaded before it runs, and a
@@ -464,9 +473,11 @@ pub(super) fn local_package_work(
             return local_cargo_work(&arguments, directory);
         }
         if PYTHON_MANAGERS.contains(&name.as_str()) {
+            // A query reads an environment that already exists and writes
+            // nothing, so the sandbox bounds it like any other local read.
             // Every other Python manager installs what it runs, and `uvx`
             // fetches the tool it names, so each reaches a registry.
-            return false;
+            return super::python::local_python_work(&name, &segment.arguments);
         }
         if name == "uv" {
             let Some(directory) = directory.as_deref() else {

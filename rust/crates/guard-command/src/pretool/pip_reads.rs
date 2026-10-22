@@ -146,7 +146,14 @@ fn inert_line(line: &str) -> bool {
 
 pub(super) fn safe_pip_arguments(arguments: &[String]) -> bool {
     let words: Vec<&str> = arguments.iter().map(String::as_str).collect();
-    let (command, rest) = match split_subcommand(&words) {
+    safe_pip_words(&words)
+}
+
+/// The same reading surface, for a caller that already holds the words. `uv
+/// pip` puts pip's subcommands in front of the project environment, so one
+/// allowlist decides both spellings.
+pub(super) fn safe_pip_words(words: &[&str]) -> bool {
+    let (command, rest) = match split_subcommand(words) {
         Some(split) => split,
         None => return false,
     };

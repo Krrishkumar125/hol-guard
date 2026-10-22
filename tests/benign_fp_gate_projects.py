@@ -145,7 +145,9 @@ def _python_toolchain(workspace: Path) -> None:
     _write(workspace / "tests" / "test_fixture_app.py", "def test_version():\n    assert True\n")
     venv = workspace / ".venv"
     _write(venv / "pyvenv.cfg", "home = /usr/bin\nversion = 3.12.3\ninclude-system-site-packages = false\n")
-    for name in ("pytest", "ruff", "mypy"):
+    # `pip` and `pip3` come with the environment itself, so a project reads
+    # its installed packages through them as readily as it runs its tools.
+    for name in ("pytest", "ruff", "mypy", "pip", "pip3"):
         script = venv / "bin" / name
         _write(script, f"#!/bin/sh\nexec echo '{name}'\n")
         script.chmod(0o755)
