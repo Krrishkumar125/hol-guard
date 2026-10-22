@@ -454,6 +454,11 @@ python -m ci.gauntlet installed \
   reason code independently of nested harness verdicts. ZCode's nested
   `hooks.events` registration is required and its actual registered argv is
   replayed; legacy flat registration cannot satisfy the check.
+- Each replay records process round-trip milliseconds, including timed-out
+  attempts. Per-case and per-harness summaries report sample count, nearest-rank
+  p50/p90/p95/p99, mean and max. This includes interpreter/process startup and
+  is separate from the core lane's HTTP hook timing; small samples remain small
+  samples rather than a latency qualification claim.
 - **One pass uses a home with history.** The lane installs, writes the artifacts a previous
   version would have left (a stale Claude handler pointing at a command that no longer exists, a
   legacy `.codex/hooks.json`), installs again, and fails if a handler survives that the harness

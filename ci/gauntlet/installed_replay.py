@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from .installed_registration import guard_handlers, handler_argv, hook_groups
 from .installed_runtime import isolated_environment
+from .latency import summarize_process_latency
 
 #: Decisions that let the tool call through untouched.
 ALLOW_DECISIONS = {"allow", "allow_original", "approve", "quiet"}
@@ -138,6 +140,7 @@ def replay_case(
     environment = isolated_environment(home=home, guard_home=guard_home)
     runs: list[dict[str, Any]] = []
     for _ in range(repeat):
+        started = time.monotonic()
         try:
             completed = subprocess.run(
                 argv,
@@ -150,9 +153,11 @@ def replay_case(
                 check=False,
             )
         except subprocess.TimeoutExpired:
-            runs.append({"decision": "timeout", "reason": "hook did not answer", "exit_code": -1})
-            continue
-        runs.append(verdict(completed))
+            result = {"decision": "timeout", "reason": "hook did not answer", "exit_code": -1}
+        else:
+            result = verdict(completed)
+        result["elapsed_ms"] = round((time.monotonic() - started) * 1000, 3)
+        runs.append(result)
     signatures = Counter(signature(run) for run in runs)
     failures: list[str] = []
     if len(signatures) > 1:
@@ -182,6 +187,7 @@ def replay_case(
         "repeat": repeat,
         "signatures": dict(signatures),
         "runs": runs,
+        "latency": summarize_process_latency(runs),
         "failures": failures,
         "deterministic": len(signatures) == 1,
     }
@@ -207,6 +213,7 @@ def replay_harness(
         "harness": harness,
         "argv": argv,
         "cases": results,
+        "latency": summarize_process_latency([run for case in results for run in case["runs"]]),
         "failures": failures,
         "deterministic": all(result["deterministic"] for result in results),
     }

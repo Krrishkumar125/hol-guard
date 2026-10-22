@@ -132,7 +132,7 @@ jobs:
             --index-url https://pypi.org/simple "$WHEEL"
           python3 -m ci.gauntlet installed \
             --runtime "$RUNNER_TEMP/wheel-venv/bin/hol-guard" \
-            --harness claude-code codex omp \
+            --harness claude-code codex omp zcode \
             --repeat "$REPEAT" \
             $REPORT_ONLY \
             --output "$RUNNER_TEMP/evidence/wheel"
@@ -169,7 +169,7 @@ jobs:
           set -euo pipefail
           python3 -m ci.gauntlet installed \
             --runtime "$ONEDIR/hol-guard" \
-            --harness claude-code codex omp \
+            --harness claude-code codex omp zcode \
             --repeat "$REPEAT" \
             --require-frozen \
             $REPORT_ONLY \

@@ -76,6 +76,43 @@ def test_infrastructure_denials_do_not_count_as_attack_protection(tmp_path, monk
 HARNESSES = ["claude-code"]
 
 
+def test_registered_hook_percentiles_include_timeouts(tmp_path, monkeypatch):
+    import subprocess
+
+    clock = iter([0.0, 0.001, 1.0, 1.005, 2.0, 2.009])
+    monkeypatch.setattr("ci.gauntlet.installed_replay.time.monotonic", lambda: next(clock))
+    outcomes = iter([True, False, True])
+
+    def respond(*args, **kwargs):
+        if not next(outcomes):
+            raise subprocess.TimeoutExpired(args, 120)
+        return subprocess.CompletedProcess(args, 0, '{"decision":"allow"}', "")
+
+    monkeypatch.setattr(subprocess, "run", respond)
+    result = replay_case(
+        ["registered-hook"],
+        {"id": "timed", "expect": "allow", "payload": {}},
+        home=tmp_path,
+        guard_home=tmp_path / ".hol-guard",
+        workspace=tmp_path,
+        repeat=3,
+    )
+    assert result["latency"] == {
+        "method": "nearest-rank",
+        "scope": "registered-hook-process-round-trip",
+        "samples": 3,
+        "missing_samples": 0,
+        "timeouts": 1,
+        "p50_ms": 5.0,
+        "p90_ms": 9.0,
+        "p95_ms": 9.0,
+        "p99_ms": 9.0,
+        "max_ms": 9.0,
+        "mean_ms": 5.0,
+    }
+    assert result["failures"]
+
+
 @pytest.mark.parametrize("nested", [True, False])
 def test_zcode_requires_current_events_layout_and_replays_its_registered_command(tmp_path, nested):
     expectation = load_contract()["harnesses"]["zcode"]
