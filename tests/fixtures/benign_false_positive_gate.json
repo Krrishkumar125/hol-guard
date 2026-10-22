@@ -18255,6 +18255,57 @@
       "expect": "allow"
     },
     {
+      "id": "chain-assignment-then-listing",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "R=.; ls $R"
+      },
+      "cwd": "parent",
+      "expect": "allow"
+    },
+    {
+      "id": "chain-variable-root-then-read",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "R=.; cat $R/README.md"
+      },
+      "cwd": "parent",
+      "expect": "allow"
+    },
+    {
+      "id": "chain-inert-setting-then-listing",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "LC_ALL=C; ls ."
+      },
+      "cwd": "parent",
+      "expect": "allow"
+    },
+    {
       "id": "neg-sort-output-file",
       "fix_area": "negative",
       "harnesses": [

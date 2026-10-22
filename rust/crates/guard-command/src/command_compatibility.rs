@@ -206,7 +206,7 @@ fn assignment_prefix_is_unsupported(segment: &CommandSegmentV1) -> bool {
 /// name is inert or ordinary. A variable the session already exported passes
 /// its new value to later commands, so a name that steers the shell, lookup,
 /// loading, configuration or credentials keeps the evaluation failure.
-fn sets_ordinary_variables(segment: &CommandSegmentV1) -> bool {
+pub(crate) fn sets_ordinary_variables(segment: &CommandSegmentV1) -> bool {
     !segment.environment_names.is_empty()
         && segment.tokens.len() == segment.environment_names.len()
         && segment.arguments.is_empty()
