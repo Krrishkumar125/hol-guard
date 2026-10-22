@@ -288,12 +288,10 @@ fn is_sample(
         return false;
     }
     if classifier == "url-credential" {
-        // Only the password slot can hold the secret, so sample wording in the
-        // account or host (`test:…@`, `@example.com`) proves nothing.
-        return url_credential::password(matched).is_some_and(|password| {
-            url_credential::is_placeholder(password)
-                || (suppress_samples && sample_regex().is_match(password))
-        });
+        // Only a whole-password stand-in carries no secret. Sample wording in
+        // the account, host or part of the password (`test:…@`, `@example.com`,
+        // `test-Kq7…`) proves nothing.
+        return url_credential::password(matched).is_some_and(url_credential::is_placeholder);
     }
     if classifier == "credential-assignment"
         && (field_copy::is_field_copy(matched, rest_of_line)

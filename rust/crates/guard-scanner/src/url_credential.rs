@@ -10,20 +10,47 @@ use crate::masked_value;
 use regex::Regex;
 use std::sync::OnceLock;
 
+/// Words that fill the slot in docs and templates. Only a whole password
+/// counts, so `test-Kq7…` is still a credential.
 const SLOT_NAMES: &[&str] = &[
-    "password", "passwd", "pass", "pwd", "pw", "secret", "token", "apikey", "api_key", "api-key",
+    "password",
+    "passwd",
+    "pass",
+    "pwd",
+    "pw",
+    "secret",
+    "token",
+    "apikey",
+    "api_key",
+    "api-key",
+    "example",
+    "sample",
+    "placeholder",
+    "fake",
+    "dummy",
+    "invalid",
+    "test",
 ];
 
+static BRACED: OnceLock<Regex> = OnceLock::new();
 static SUBSTITUTION: OnceLock<Regex> = OnceLock::new();
 
-/// A whole password that is a template slot, such as `${TOKEN}`,
-/// `${TOKEN:-}`, `$TOKEN`, `$(cmd)`, `{password}`, `%s` or `%(password)s`. A
-/// bare `$name` counts only in one case, as variables are written, so a real
-/// password such as `$Kq7…` or a percent-encoded `%40…` is not a stand-in.
+/// `${NAME}` or `${NAME:-fallback}`, capturing the fallback.
+fn braced_regex() -> &'static Regex {
+    BRACED.get_or_init(|| {
+        Regex::new(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(?::?[-=+?]([^}]*))?\}$")
+            .expect("URL braced substitution rule must compile")
+    })
+}
+
+/// A whole password that is another template slot: `$TOKEN`, `$(cmd)`,
+/// `{password}`, `%s` or `%(password)s`. A bare `$name` counts only in one
+/// case, as variables are written, so a real password such as `$Kq7…` or a
+/// percent-encoded `%40…` is not a stand-in.
 fn substitution_regex() -> &'static Regex {
     SUBSTITUTION.get_or_init(|| {
         Regex::new(
-            r"^(?:\$\{[A-Za-z_][A-Za-z0-9_]*(?::?[-=+?][^}]*)?\}|\$(?:[A-Z_][A-Z0-9_]*|[a-z_][a-z0-9_]*)|\$\([^)]*\)|\{[A-Za-z_][A-Za-z0-9_.]*\}|%(?:\([A-Za-z_][A-Za-z0-9_]*\))?s)$",
+            r"^(?:\$(?:[A-Z_][A-Z0-9_]*|[a-z_][a-z0-9_]*)|\$\([^)]*\)|\{[A-Za-z_][A-Za-z0-9_.]*\}|%(?:\([A-Za-z_][A-Za-z0-9_]*\))?s)$",
         )
         .expect("URL substitution rule must compile")
     })
@@ -31,6 +58,12 @@ fn substitution_regex() -> &'static Regex {
 
 /// Whether a URL password is a stand-in rather than a credential.
 pub(crate) fn is_placeholder(password: &str) -> bool {
+    if let Some(captures) = braced_regex().captures(password) {
+        // `${PASSWORD:-Kq7…}` still prints its literal fallback.
+        return captures.get(1).is_none_or(|fallback| {
+            fallback.as_str().is_empty() || is_placeholder(fallback.as_str())
+        });
+    }
     substitution_regex().is_match(password)
         || password
             .chars()
@@ -90,6 +123,8 @@ mod tests {
             format!("https://alice:it's{password}@git.lan/alice/notes.git"),
             format!("https://test:{password}@git.lan/alice/notes.git"),
             format!("https://alice:{password}@example.com/notes.git"),
+            format!("https://alice:test-{password}@prod.lan/notes.git"),
+            format!("https://alice:${{PASSWORD:-{password}}}@git.lan/alice/notes.git"),
         ] {
             assert!(url_credential(&text), "{text:?}");
             assert!(
@@ -122,6 +157,8 @@ mod tests {
             "https://alice:${GITEA_TOKEN}@git.lan/alice/notes.git",
             "https://alice:$GITEA_TOKEN@git.lan/alice/notes.git",
             "https://alice:${GITEA_TOKEN:-}@git.lan/alice/notes.git",
+            "https://alice:${GITEA_TOKEN:-$FALLBACK_TOKEN}@git.lan/alice/notes.git",
+            "https://alice:test@git.lan/alice/notes.git",
             "https://alice:%(token)s@git.lan/alice/notes.git",
             "f\"postgres://{user}:{password}@{host}/app\"",
             "\"https://%s:%s@%s\" % (user, token, host)",
