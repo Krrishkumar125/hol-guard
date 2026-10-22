@@ -24,6 +24,9 @@ pub(super) fn may_run(operation: &str, options: &[&str]) -> bool {
         // describe prints a ref name; reflog prints the ref log's own entries.
         // blame is absent on purpose: it converts the blob it annotates.
         "describe" | "reflog" => false,
+        // A bisect log replays the session's own lines, and a note prints a
+        // blob that no path names, so no attribute selects a converter.
+        "bisect" | "notes" => false,
         _ => true,
     }
 }
@@ -139,6 +142,9 @@ mod tests {
             ("log", &["-1", "--oneline"][..]),
             ("log", &["-n5", "--stat", "--no-merges"][..]),
             ("branch", &["-vv"][..]),
+            ("bisect", &["log"][..]),
+            ("notes", &["list"][..]),
+            ("notes", &["show", "HEAD"][..]),
         ] {
             assert!(!may_run(operation, options), "{operation} {options:?}");
         }

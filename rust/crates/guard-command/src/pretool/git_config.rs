@@ -82,6 +82,8 @@ pub(super) fn execution_free_paging(
             | "shortlog"
             | "check-ignore"
             | "apply"
+            | "bisect"
+            | "notes"
     ) {
         return None;
     }
@@ -106,6 +108,11 @@ pub(super) fn execution_free_paging(
     }
     if matches!(operation, "shortlog" | "check-ignore")
         && !super::git_listing_reads::read_form(operation, &remaining[1..])
+    {
+        return None;
+    }
+    if matches!(operation, "bisect" | "notes")
+        && !super::git_side_record_reads::read_form(operation, &remaining[1..])
     {
         return None;
     }
