@@ -160,6 +160,7 @@ class Inputs:
         for name in EXTERNAL_ROOTS:
             self.tree(self.root / name)
         self.files.add(self.root / ".github/workflows/ci.yml")
+        self.files.add(self.root / ".github/workflows/rust-test-cache-warm.yml")
         # #[path] can reach production code outside the declared Cargo graph.
         scanned: set[Path] = set()
         while pending := self.files - scanned:

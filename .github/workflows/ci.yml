@@ -155,6 +155,11 @@ jobs:
     name: Rust workspace (${{ matrix.check }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Only main test jobs share the warmer's lock. PRs and Clippy stay parallel.
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && matrix.check != 'clippy' && format('trusted-rust-tests-{0}', github.sha) || format('rust-workspace-{0}-{1}-{2}', github.run_id, github.run_attempt, matrix.check) }}
+      queue: max
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -234,17 +239,7 @@ jobs:
           github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           CARGO_CHECK: ${{ matrix.check }}
-        run: |
-          case "$CARGO_CHECK" in
-            test-core) archive_packages=(--locked --workspace --exclude guard-command --exclude hol-guard-runtime --all-targets) ;;
-            test-command) archive_packages=(--locked --package guard-command --all-targets) ;;
-            test-runtime-1) archive_packages=(--locked --package hol-guard-runtime --all-targets) ;;
-            *) echo "Unsupported archive check" >&2; exit 64 ;;
-          esac
-          nextest_bin="$(python3 scripts/ci/install_nextest.py)"
-          PATH="$nextest_bin:$PATH" cargo nextest archive --manifest-path rust/Cargo.toml \
-            "${archive_packages[@]}" \
-            --archive-file "$RUNNER_TEMP/runtime-test-archive.tar.zst" --zstd-level 1
+        run: bash scripts/ci/archive_rust_tests.sh "$CARGO_CHECK"
       - name: Validate the locked Rust workspace
         env:
           CARGO_CHECK: ${{ matrix.check }}

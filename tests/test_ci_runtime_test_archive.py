@@ -40,10 +40,8 @@ def test_runtime_archive_is_exact_input_only_and_saved_by_one_trusted_writer():
     save = next(step for step in steps if step.get("name") == "Save successful runtime test compilation")
     assert steps.index(configure) < steps.index(restore_call) < steps.index(archive)
     assert steps.index(archive) < steps.index(validate) < steps.index(save)
-    assert "--locked --workspace --exclude guard-command --exclude hol-guard-runtime --all-targets" in archive["run"]
-    assert "--locked --package guard-command --all-targets" in archive["run"]
-    assert "--locked --package hol-guard-runtime --all-targets" in archive["run"]
-    assert "--partition" not in archive["run"]  # Cache every runtime target, not one hash half.
+    assert archive["run"] == 'bash scripts/ci/archive_rust_tests.sh "$CARGO_CHECK"'
+    assert archive["env"]["CARGO_CHECK"] == "${{ matrix.check }}"
     assert restore_call["if"] == "matrix.check != 'clippy'"
     assert restore_call["with"]["partition"] == (
         "${{ matrix.check == 'test-command' && 'command' || (matrix.check == 'test-core' && 'core' || 'runtime') }}"
