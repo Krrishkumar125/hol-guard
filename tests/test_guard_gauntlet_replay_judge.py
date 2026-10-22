@@ -124,6 +124,9 @@ def test_only_the_marked_cases_may_pass_on_containment() -> None:
         # workspace, so the contained run reaches nothing, and the case pins the rejection
         # rather than an approval prompt an in-worktree write would never raise.
         "neg-cut-without-selection",
+        # A key read under the home: a contained run has no home access, so the pattern
+        # matches nothing and no key material is printed.
+        "neg-egrep-reads-private-key",
         "neg-env-bare-set-then-list",
         "neg-env-git-dir-then-list",
         "neg-env-ld-preload-then-list",
