@@ -19442,6 +19442,7 @@
         "command": "gh config set editor vi"
       },
       "cwd": "worktree",
+      "contained_ok": true,
       "expect": "not_allow"
     },
     {
