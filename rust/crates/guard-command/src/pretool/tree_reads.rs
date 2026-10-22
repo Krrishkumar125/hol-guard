@@ -10,8 +10,12 @@
 
 use super::search;
 
-/// Short flags that change nothing a listing can reach.
-const INERT_SHORT: &str = "adfixRqNQpugshDFrtcvUCnASXJ";
+/// Short flags that change nothing a listing can reach. `-R` is not among
+/// them: at the `-L` depth limit it builds a fresh `tree` command line that
+/// embeds the directory name and the `-H` base reference, writes a
+/// `00Tree.html` file into each directory, and hands that string to the
+/// shell, so it both writes and runs text a listing never should.
+const INERT_SHORT: &str = "adfixqNQpugshDFrtcvUCnASXJ";
 
 /// Short flags that consume a value: depth, match and ignore patterns, and
 /// the HTML title and base reference.
@@ -67,10 +71,8 @@ fn flag(argument: &str) -> Option<Flag> {
     }
     let mut flag = Flag::default();
     let mut characters = argument.chars().skip(1).peekable();
-    if characters.peek().is_none() {
-        // A bare `-` is standard input, which is not a directory to walk.
-        return None;
-    }
+    // A bare `-` is standard input, which is not a directory to walk.
+    characters.peek()?;
     while let Some(letter) = characters.next() {
         if VALUED_SHORT.contains(letter) {
             // The rest of the cluster is the value, or the next argument is.
@@ -139,8 +141,9 @@ mod tests {
     /// `tree` is a names-only recursive listing, so it proves what `ls -R`
     /// proves: a repository's `.git` is not part of the output until `-a` asks
     /// for it. Depth and pattern flags carry values that are not operands,
-    /// `-A` is line-drawing rather than ls's almost-all, and `-o` writes the
-    /// listing to a file.
+    /// `-A` is line-drawing rather than ls's almost-all, `-o` writes the
+    /// listing to a file, and `-R` reruns `tree` through the shell at the
+    /// depth limit.
     #[test]
     fn a_tree_listing_screens_what_it_can_print() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -186,6 +189,8 @@ mod tests {
             ("tree -aL 2".to_owned(), false),
             ("tree -L 2 -a".to_owned(), false),
             ("tree -l .".to_owned(), false),
+            ("tree -R .".to_owned(), false),
+            ("tree -RL 2 -H base .".to_owned(), false),
             ("tree -o out.txt .".to_owned(), false),
             ("tree --fromfile .".to_owned(), false),
             ("tree -L".to_owned(), false),

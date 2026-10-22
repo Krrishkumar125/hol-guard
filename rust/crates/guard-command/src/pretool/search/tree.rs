@@ -81,8 +81,17 @@ pub(in crate::pretool) fn safe_recursive_listing_target(
     context: ReadContext<'_>,
     lists_hidden: bool,
 ) -> bool {
-    safe_walk_target(value, context, &[], &[], false, false, None, !lists_hidden)
-        || super::agent_root::agent_root_listing(value, context, true)
+    safe_walk_target(
+        value,
+        context,
+        &[],
+        &[],
+        WalkReach {
+            skip_hidden: !lists_hidden,
+            ..WalkReach::default()
+        },
+        None,
+    ) || super::agent_root::agent_root_listing(value, context, true)
 }
 
 /// Names-only recursive listing that reaches every entry, as `du` does.
@@ -133,10 +142,12 @@ pub(super) fn safe_recursive_target_excluding(
         context,
         excluded_files,
         excluded_directories,
-        git_metadata,
-        follow_links,
+        WalkReach {
+            git_metadata,
+            follow_links,
+            skip_hidden: false,
+        },
         None,
-        false,
     )
 }
 
@@ -156,10 +167,12 @@ pub(super) fn safe_recursive_target_cleared(
             context,
             excluded_files,
             excluded_directories,
-            true,
-            follow_links,
+            WalkReach {
+                git_metadata: true,
+                follow_links,
+                skip_hidden: false,
+            },
             Some(clearance),
-            false,
         )
 }
 
@@ -171,16 +184,28 @@ pub(super) fn inside_agent_state(path: &std::path::Path, context: ReadContext<'_
     })
 }
 
+/// What a walk is allowed to cross: git metadata, symbolic links, and
+/// whether a hidden entry is part of what the command can emit at all.
+#[derive(Clone, Copy, Default)]
+struct WalkReach {
+    git_metadata: bool,
+    follow_links: bool,
+    skip_hidden: bool,
+}
+
 fn safe_walk_target(
     value: &str,
     context: ReadContext<'_>,
     excluded_files: &[&str],
     excluded_directories: &[&str],
-    git_metadata: bool,
-    follow_links: bool,
+    reach: WalkReach,
     clearance: Option<&PatternClearance>,
-    skip_hidden: bool,
 ) -> bool {
+    let WalkReach {
+        git_metadata,
+        follow_links,
+        skip_hidden,
+    } = reach;
     // A recursive walk through `..` reaches a sibling tree whose ignore rules
     // were never inspected; only the sibling-repository proof admits that.
     if parent_component(value) {
