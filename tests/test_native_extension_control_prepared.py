@@ -88,6 +88,16 @@ def test_the_request_digest_asks_for_the_six_fields_that_make_a_request_and_noth
     assert "proof-1" not in json.dumps(requests[0])
 
 
+def test_request_wire_snapshot_copies_nested_fields_and_excludes_credentials() -> None:
+    layers = [{"controls": [], "global_lockdown": False}]
+    payload = {**_request(), "layers": layers, "approval_password": "not-retained"}
+    snapshot = bridge.request_json(payload)
+    assert "not-retained" not in snapshot
+    assert snapshot == bridge.request_json(dict(reversed(list(payload.items()))))
+    layers[0]["global_lockdown"] = True
+    assert snapshot != bridge.request_json(payload)
+
+
 def test_a_field_the_request_left_out_is_sent_as_null(monkeypatch: pytest.MonkeyPatch) -> None:
     requests = resident_answers(monkeypatch, _answer({"kind": "request_digest", "digest": DIGEST_A}))
 

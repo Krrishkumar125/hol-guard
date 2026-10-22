@@ -826,6 +826,19 @@ _REQUEST_DIGEST_FIELDS: Final = (
 )
 
 
+def request_json(payload: Mapping[str, object]) -> str:
+    """Snapshot the request wire fields for transport and committed-response replay."""
+    query: dict[str, object] = {"kind": "request_digest"}
+    query.update({field: payload.get(field) for field in _REQUEST_DIGEST_FIELDS})
+    try:
+        encoded = json.dumps(query, separators=(",", ":"), sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError) as error:
+        raise NativeExtensionControlError(f"{_OPERATION.prefix}_invalid_digest_input") from error
+    if len(encoded) > _MAX_BATCH_BYTES:
+        raise _too_large()
+    return encoded
+
+
 def request_digest(payload: Mapping[str, object], *, guard_home: Path | None = None) -> str:
     """The digest that identifies one apply request, computed by the resident.
 
@@ -836,14 +849,7 @@ def request_digest(payload: Mapping[str, object], *, guard_home: Path | None = N
     it matches no preview.
     """
 
-    query: dict[str, object] = {"kind": "request_digest"}
-    query.update({field: payload.get(field) for field in _REQUEST_DIGEST_FIELDS})
-    try:
-        size = len(json.dumps(query, separators=(",", ":"), allow_nan=False))
-    except ValueError as error:
-        raise NativeExtensionControlError(f"{_OPERATION.prefix}_invalid_digest_input") from error
-    if size > _MAX_BATCH_BYTES:
-        raise _too_large()
+    query = json.loads(request_json(payload))
     return _ask(query, guard_home, {"digest": str}, _digest)
 
 

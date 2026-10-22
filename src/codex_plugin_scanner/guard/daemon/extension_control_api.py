@@ -30,6 +30,7 @@ from ..native_extension_control import (
     mutability_validate,
     mutation_bounds,
     request_digest,
+    request_json,
     validate_mutation,
 )
 from ..runtime import command_inspection
@@ -123,7 +124,7 @@ class _PendingMutation:
 
 @dataclass(frozen=True, slots=True)
 class _AppliedMutation:
-    canonical_digest: str
+    request_json: str
     response: dict[str, object]
 
 
@@ -444,6 +445,8 @@ class ExtensionControlApiService:
             except NativeExtensionControlError as error:
                 if error.code in PREVIEW_LIMIT_CODES:
                     raise ExtensionControlApiError(400, "control_limit_exceeded") from error
+                if error.code == "native_extension_control_invalid_digest_input":
+                    raise ExtensionControlApiError(400, "invalid_mutation") from error
                 raise ExtensionControlApiError(503, "native_runtime_unavailable") from error
 
     def _preview_locked(self, payload: dict[str, object]) -> dict[str, object]:
@@ -551,11 +554,15 @@ class ExtensionControlApiService:
     def _apply_locked(self, payload: dict[str, object]) -> dict[str, object]:
         proof_id = required_request_string(payload, "proof_id")
         pending = self._proof_state(proof_id)
-        original_digest = self._apply_request_digest(payload)
+        try:
+            original_request = request_json(payload)
+        except NativeExtensionControlError as error:
+            raise ExtensionControlApiError(409, "proof_mismatch") from error
         if isinstance(pending, _AppliedMutation):
-            if pending.canonical_digest != original_digest:
+            if pending.request_json != original_request:
                 raise ExtensionControlApiError(409, "proof_mismatch")
             return dict(pending.response)
+        original_digest = self._apply_request_digest(payload)
         if pending.request_digest != original_digest:
             raise ExtensionControlApiError(409, "proof_mismatch")
         mutation = pending.mutation
@@ -629,7 +636,7 @@ class ExtensionControlApiService:
         }
         with self._proof_lock:
             _ = self._pending_proofs.pop(proof_id, None)
-            self._applied_mutations[proof_id] = _AppliedMutation(original_digest, response)
+            self._applied_mutations[proof_id] = _AppliedMutation(original_request, response)
             self._applied_mutations.move_to_end(proof_id)
             while len(self._applied_mutations) > _MAX_APPLIED_MUTATIONS:
                 _ = self._applied_mutations.popitem(last=False)
