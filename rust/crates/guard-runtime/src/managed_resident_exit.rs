@@ -238,11 +238,21 @@ pub(super) fn record_supervised_exit(
 ) {
     let code = exit_code.map_or_else(|| "none".to_owned(), |code| code.to_string());
     let ran_for_ms = ran_for.as_millis();
+    let stop_requested = restart_budget::take_requested_stop(
+        &supervised.scope,
+        supervised
+            .started
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since_epoch| {
+                u64::try_from(since_epoch.as_millis()).unwrap_or(u64::MAX)
+            }),
+    );
+    let orderly = restart_budget::orderly_exit(success, ran_for, stop_requested);
     let note = if !success {
         Some(format!(
             "native_resident_managed_exit_failed exit_code={code} ran_for_ms={ran_for_ms}"
         ))
-    } else if restart_budget::healthy_exit(success, ran_for) {
+    } else if orderly {
         None
     } else {
         // A resident that reports success before it can have served anything
@@ -262,7 +272,7 @@ pub(super) fn record_supervised_exit(
         note.as_deref(),
         supervised.started,
     );
-    let _ = restart_budget::release_after_exit(&scope, success, ran_for);
+    let _ = restart_budget::release_after_exit(&scope, orderly, ran_for);
     // The hold is released last: it is what tells a waiting stop that these
     // writes are over.
     #[cfg(windows)]

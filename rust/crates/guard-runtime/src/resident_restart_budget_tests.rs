@@ -300,12 +300,76 @@ const SERVED_RUN: Duration = Duration::from_secs(3);
 const INSTANT_RUN: Duration = Duration::from_millis(5);
 
 #[test]
-fn only_a_served_run_that_exited_cleanly_counts_as_healthy() {
-    assert!(healthy_exit(true, SERVED_RUN));
-    assert!(healthy_exit(true, Duration::from_millis(1_000)));
-    assert!(!healthy_exit(true, Duration::from_millis(999)));
-    assert!(!healthy_exit(false, SERVED_RUN));
-    assert!(!healthy_exit(false, INSTANT_RUN));
+fn only_a_served_run_that_exited_cleanly_counts_as_orderly() {
+    assert!(orderly_exit(true, SERVED_RUN, false));
+    assert!(orderly_exit(true, Duration::from_millis(1_000), false));
+    assert!(!orderly_exit(true, Duration::from_millis(999), false));
+    assert!(!orderly_exit(false, SERVED_RUN, false));
+    assert!(!orderly_exit(false, INSTANT_RUN, false));
+}
+
+#[test]
+fn a_run_that_was_asked_to_stop_is_orderly_however_briefly_it_lived() {
+    assert!(orderly_exit(true, INSTANT_RUN, true));
+    assert!(orderly_exit(true, Duration::from_millis(1), true));
+    // Being asked to stop does not excuse ending badly.
+    assert!(!orderly_exit(false, INSTANT_RUN, true));
+}
+
+#[test]
+fn a_requested_stop_note_is_read_once_by_the_run_that_left_it() {
+    let scope = temp_scope("requested-stop");
+    let started_ms = now_ms().unwrap();
+
+    assert!(!take_requested_stop(&scope, started_ms));
+    record_requested_stop(&scope).unwrap();
+    assert!(take_requested_stop(&scope, started_ms));
+    // Reading the note consumes it, so the next run starts without one.
+    assert!(!take_requested_stop(&scope, started_ms));
+    assert!(!scope.join(REQUESTED_STOP_FILE).exists());
+
+    std::fs::remove_dir_all(scope).unwrap();
+}
+
+#[test]
+fn a_note_left_before_a_run_began_cannot_forgive_its_crash() {
+    // A child whose supervisor never reaped it leaves its note behind. The
+    // run after it is still judged on its own exit, and takes the stale note
+    // away on its way past.
+    let scope = temp_scope("stale-note");
+    record_requested_stop(&scope).unwrap();
+    let started_later_ms = now_ms().unwrap() + 1;
+
+    assert!(!take_requested_stop(&scope, started_later_ms));
+    assert!(!scope.join(REQUESTED_STOP_FILE).exists());
+
+    std::fs::remove_dir_all(scope).unwrap();
+}
+
+#[test]
+fn repeated_requested_stops_never_open_the_restart_circuit() {
+    // The shape that took every prompt down: a second runtime sharing the
+    // guard home stops this one's resident the instant it starts, over and
+    // over inside one window. Each of those is a complete lifecycle.
+    let scope = temp_scope("requested-stop-loop");
+    for _ in 0..(MAX_RESTARTS_PER_WINDOW * 3) {
+        consume(&scope).expect("a stop that was asked for is never a restart");
+        let started_ms = now_ms().unwrap();
+        record_requested_stop(&scope).unwrap();
+        backdate_window(&scope, INSTANT_RUN.as_millis() as u64 + 1_000);
+        let stop_requested = take_requested_stop(&scope, started_ms);
+        assert!(stop_requested);
+        release_after_exit(
+            &scope,
+            orderly_exit(true, INSTANT_RUN, stop_requested),
+            INSTANT_RUN,
+        )
+        .unwrap();
+        assert_eq!(read_budget(&scope).attempts, 0);
+    }
+    consume(&scope).expect("the circuit stays closed after repeated requested stops");
+
+    std::fs::remove_dir_all(scope).unwrap();
 }
 
 #[test]
@@ -348,7 +412,7 @@ fn a_resident_that_exits_zero_immediately_keeps_its_restart_charge() {
     let scope = temp_scope("instant-success");
     for _ in 0..MAX_RESTARTS_PER_WINDOW {
         consume(&scope).unwrap();
-        release_after_exit(&scope, true, INSTANT_RUN).unwrap();
+        release_after_exit(&scope, orderly_exit(true, INSTANT_RUN, false), INSTANT_RUN).unwrap();
     }
     assert_eq!(
         consume(&scope).unwrap_err(),

@@ -44,6 +44,19 @@ fn backoff_ms(steps: u32) -> u64 {
         .min(RESTART_BACKOFF_MAX_MS)
 }
 
+/// The note a serving child leaves when a `shutdown` operation, rather than a
+/// fault, ended its run. It crosses exactly one process boundary -- from the
+/// child to the supervisor that reaps it -- and is removed as it is read.
+const REQUESTED_STOP_SCHEMA: &str = "hol-guard-resident-requested-stop.v1";
+const REQUESTED_STOP_FILE: &str = "requested-stop.json";
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RequestedStop {
+    schema: String,
+    requested_at_ms: u64,
+}
+
 struct RestartBudgetLock {
     file: File,
     #[cfg(windows)]
@@ -234,10 +247,14 @@ fn temporary_path(path: &Path) -> Result<PathBuf, String> {
     Ok(path.with_file_name(format!(".{name}.{}.tmp", std::process::id())))
 }
 
-/// Read this scope's budget when it already exists, validating the private
-/// file and its schema. Absent state is not an error: the first spawn in a
-/// home starts from a fresh budget.
-fn read_existing_budget(path: &Path, private_root: &Path) -> Result<Option<RestartBudget>, String> {
+/// Read one small private file this module owns. The budget and the
+/// requested-stop note sit in the same directory and are validated the same
+/// way, so a foreign or swapped file fails closed whichever one is read.
+fn read_private_bytes(
+    path: &Path,
+    private_root: &Path,
+    label: &'static str,
+) -> Result<Option<Vec<u8>>, String> {
     if !existing_private_file(path, private_root)? {
         return Ok(None);
     }
@@ -245,11 +262,12 @@ fn read_existing_budget(path: &Path, private_root: &Path) -> Result<Option<Resta
     let file = {
         #[cfg(windows)]
         {
-            crate::resident_state::open_private_read(path, 4096, "restart_budget", private_root)?
+            crate::resident_state::open_private_read(path, 4096, label, private_root)?
                 .ok_or_else(|| "native_resident_restart_budget_read_failed".to_owned())?
         }
         #[cfg(not(windows))]
         {
+            let _ = label;
             let mut options = OpenOptions::new();
             options.read(true);
             #[cfg(unix)]
@@ -291,6 +309,16 @@ fn read_existing_budget(path: &Path, private_root: &Path) -> Result<Option<Resta
     file.take(4097)
         .read_to_end(&mut bytes)
         .map_err(|_| "native_resident_restart_budget_read_failed".to_owned())?;
+    Ok(Some(bytes))
+}
+
+/// Read this scope's budget when it already exists, validating the private
+/// file and its schema. Absent state is not an error: the first spawn in a
+/// home starts from a fresh budget.
+fn read_existing_budget(path: &Path, private_root: &Path) -> Result<Option<RestartBudget>, String> {
+    let Some(bytes) = read_private_bytes(path, private_root, "restart_budget")? else {
+        return Ok(None);
+    };
     let value = crate::strict_json_value(&bytes)
         .map_err(|_| "native_resident_restart_budget_invalid".to_owned())?;
     let budget = serde_json::from_value::<RestartBudget>(value)
@@ -374,17 +402,87 @@ fn consume_before(scope: &Path, deadline: Option<Instant>) -> Result<(), String>
     write_private(&path, &encoded, &private_root)
 }
 
-/// Whether a finished resident run was an orderly start-serve-exit cycle.
+/// Whether a finished resident run was an orderly lifecycle rather than a
+/// restart.
 ///
 /// A one-shot `hol-guard hook` call owns the resident it spawns: the resident
 /// starts, answers, and shuts itself down a second after the call's lease
 /// drops. That is a complete lifecycle, not a restart, and charging it to the
 /// crash-loop budget made four ordinary tool calls inside a minute open the
-/// circuit. Only a run that failed -- a non-zero exit, a signal, or a
-/// success reported so fast the resident cannot have served anything -- keeps
-/// the charge its spawn took.
-pub(super) fn healthy_exit(success: bool, ran_for: Duration) -> bool {
-    success && ran_for.as_millis() >= HEALTHY_RUN_MIN_MS
+/// circuit.
+///
+/// A run that was asked to stop is orderly however briefly it lived. Asking
+/// it to live a second first is not a test of health: a resident is stopped
+/// the moment another runtime wants the home-wide owner lock, so two builds
+/// sharing one guard home stop each other's resident within milliseconds.
+/// Scoring those stops as crashes opened the circuit after three of them in a
+/// minute, and from there no resident could start, no policy could be
+/// published, and every prompt was refused with `native_policy_not_ready`.
+///
+/// Only a run that failed -- a non-zero exit, a signal, or a success reported
+/// so fast the resident cannot have served anything and nobody asked it to
+/// stop -- keeps the charge its spawn took.
+pub(super) fn orderly_exit(success: bool, ran_for: Duration, stop_requested: bool) -> bool {
+    success && (stop_requested || ran_for.as_millis() >= HEALTHY_RUN_MIN_MS)
+}
+
+/// Say that this run is ending because something asked it to stop.
+///
+/// The serving child is the only process that knows a `shutdown` operation
+/// ended its serve loop: its supervisor sees a process that exited cleanly
+/// after a few milliseconds, which on its own is indistinguishable from a
+/// crash loop reporting success.
+pub(super) fn record_requested_stop(scope: &Path) -> Result<(), String> {
+    let private_root = crate::resident_state::private_root_for_scope(scope)?;
+    let note = RequestedStop {
+        schema: REQUESTED_STOP_SCHEMA.to_owned(),
+        requested_at_ms: now_ms()?,
+    };
+    let encoded = serde_json::to_vec(&note)
+        .map_err(|_| "native_resident_restart_budget_encode_failed".to_owned())?;
+    write_private(&scope.join(REQUESTED_STOP_FILE), &encoded, &private_root)
+}
+
+/// Take the requested-stop note left by the run that started at `started_ms`.
+///
+/// The note is removed whether or not it belongs to that run: one written
+/// before the run began was left by an earlier child whose supervisor never
+/// reaped it, and it must not forgive a later crash. A note that cannot be
+/// read is no note, so an unreadable or foreign file keeps the charge.
+pub(super) fn take_requested_stop(scope: &Path, started_ms: u64) -> bool {
+    let Ok(private_root) = crate::resident_state::private_root_for_scope(scope) else {
+        return false;
+    };
+    let path = scope.join(REQUESTED_STOP_FILE);
+    #[cfg(windows)]
+    {
+        if recover_interrupted_replace(&path, &private_root).is_err() {
+            return false;
+        }
+    }
+    let requested_at_ms = read_requested_stop(&path, &private_root);
+    remove_private(&path, &private_root);
+    requested_at_ms.is_some_and(|requested_at_ms| requested_at_ms >= started_ms)
+}
+
+fn read_requested_stop(path: &Path, private_root: &Path) -> Option<u64> {
+    let bytes = read_private_bytes(path, private_root, "requested_stop").ok()??;
+    let value = crate::strict_json_value(&bytes).ok()?;
+    let note = serde_json::from_value::<RequestedStop>(value).ok()?;
+    (note.schema == REQUESTED_STOP_SCHEMA).then_some(note.requested_at_ms)
+}
+
+/// Removing the note is best effort in the same way writing it is: a note
+/// that outlives its run is rejected on age, so a failed removal costs
+/// nothing but the file.
+fn remove_private(path: &Path, private_root: &Path) {
+    #[cfg(windows)]
+    let _ = crate::resident_state::remove_windows_private_file(path, private_root);
+    #[cfg(not(windows))]
+    {
+        let _ = private_root;
+        let _ = fs::remove_file(path);
+    }
 }
 
 fn acquire_budget_lock_waiting(
@@ -425,10 +523,10 @@ fn acquire_budget_lock_waiting(
 /// `MAX_RESTARTS_PER_WINDOW` of them.
 pub(super) fn release_after_exit(
     scope: &Path,
-    success: bool,
+    orderly: bool,
     ran_for: Duration,
 ) -> Result<(), String> {
-    if !healthy_exit(success, ran_for) {
+    if !orderly {
         return Ok(());
     }
     let private_root = crate::resident_state::private_root_for_scope(scope)?;

@@ -265,7 +265,7 @@ pub(crate) fn serve_managed(
         );
     }
     let (policy_store, token, owner_alive) = startup?;
-    if cfg!(unix) {
+    let served = if cfg!(unix) {
         managed_resident_transport::serve_unix_managed(
             (&scope, &owner_lock),
             policy_store,
@@ -285,7 +285,15 @@ pub(crate) fn serve_managed(
             token,
             owner_alive,
         )
+    };
+    // The serve loops end on a `shutdown` operation by returning, so a
+    // requested stop reaches the supervisor as a clean exit and nothing else.
+    // Leave the note here, where the reason is still known, so the supervisor
+    // does not charge a stop it was asked for to the crash-loop budget.
+    if served.is_ok() && shutdown_requested() {
+        let _ = restart_budget::record_requested_stop(&scope);
     }
+    served
 }
 
 pub(crate) fn supervise_managed(
