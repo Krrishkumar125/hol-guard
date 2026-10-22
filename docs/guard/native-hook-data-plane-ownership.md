@@ -163,6 +163,41 @@ state the same rule, the resident stays authoritative, and the recorded vectors 
 daemon copies together. The settle proofs and the counterfactual that verifies a
 hint before it is stored are Rust-owned.
 
+The recommendation shown with a pending review is that stored hint re-checked
+on every read, and the resident owns it too. The
+`approval_extension_recommendation` resident op
+(`rust/crates/guard-runtime/src/approval_extension_recommendation_op.rs`) answers
+null when the hint no longer applies: it was recorded under another catalog, a
+named permission is gone or no longer configurable, a global lockdown or a
+disabled control blocks it, or a permission the queue-time check relied on has
+since been turned off. Otherwise it lists the permissions still to enable, marks
+the ones that call for a caution, and reports `authority_unavailable` unless the
+control authority is protected. Its second query names which risk classes call
+for a caution, which the connector recommendation uses. The op reads the
+lease-free admitted catalog and refuses a caller whose registry digest names a
+different catalog. The Python module (`approval_extension_recommendation.py`)
+only validates the stored hint, builds the wire view of the control layers it
+already holds, and shape-checks the answer; with no resident there is no
+recommendation and no Python evaluation.
+
+What a local Extension control draft may change is the resident's too. Three
+`extension_control` queries (`mutation_bounds`, `mutation_validate` and
+`mutability_validate`,
+`rust/crates/guard-runtime/src/extension_control_mutation_op.rs`) answer the
+checks a draft passes before it is previewed or committed: the layer and control
+counts one authority holds, the canonical id of every extension target (an alias
+resolves to its extension and two controls for one extension are refused), the
+catalog the draft and each of its layers is bound to, the targets the catalog
+knows, and the controls a local draft may not touch (the managed layer, a
+required extension and a permission the catalog fixes; a legacy control already
+in place is kept and dropping one is always allowed). The catalog is consulted
+before the request-local metadata overlay, by the same rules the Python lookup
+used. A refusal describes the draft, so it is an `ok` reply carrying a reason
+code and the daemon API maps the code to its HTTP status; only a request the
+resident cannot read is an error. Python (`ExtensionControlApiService`) parses
+the layers, asks, and builds the mutation from the canonical layers it gets
+back; with no resident there is no mutation and no Python validation.
+
 ## Harness route inventory
 
 The v2 contract maps all harnesses in `HARNESS_CONTRACTS`, including harnesses
