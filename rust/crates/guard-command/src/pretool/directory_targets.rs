@@ -427,9 +427,27 @@ impl<'a> super::PathContext<'a> {
                         .environment_names
                         .iter()
                         .any(|name| pip_selector(name))
+                    && super::pip_reads::redirected_configuration_inert(
+                        environment.xdg_config_home.as_deref(),
+                        environment
+                            .environment_names
+                            .iter()
+                            .any(|name| name.eq_ignore_ascii_case(XDG_CONFIG_HOME_NAME)),
+                    )
             }
-            None => !std::env::vars_os()
-                .any(|(name, value)| !value.is_empty() && pip_selector(&name.to_string_lossy())),
+            None => {
+                !std::env::vars_os()
+                    .any(|(name, value)| !value.is_empty() && pip_selector(&name.to_string_lossy()))
+                    && {
+                        let redirect = std::env::var(XDG_CONFIG_HOME_NAME)
+                            .ok()
+                            .filter(|value| !value.is_empty());
+                        super::pip_reads::redirected_configuration_inert(
+                            redirect.as_deref(),
+                            redirect.is_some(),
+                        )
+                    }
+            }
         };
         // ripgrep reads RIPGREP_CONFIG_PATH unless the command passes
         // `--no-config`, and ignores it only when it is empty. A stamped
@@ -478,6 +496,8 @@ impl<'a> super::PathContext<'a> {
 
 const RIPGREP_CONFIG_NAME: &str = "RIPGREP_CONFIG_PATH";
 
+const XDG_CONFIG_HOME_NAME: &str = "XDG_CONFIG_HOME";
+
 fn rustup_selector(name: &str) -> bool {
     name.eq_ignore_ascii_case("RUSTUP_TOOLCHAIN") || name.eq_ignore_ascii_case("RUSTUP_HOME")
 }
@@ -493,16 +513,20 @@ fn rustup_selector(name: &str) -> bool {
 /// that only change how it prints.
 ///
 /// pip asks platformdirs where its user and global configuration files live,
-/// so the four names platformdirs resolves those directories from move a
+/// so the names platformdirs resolves those directories from move a
 /// `pip.conf` out of the directories the file check reads: the config names
 /// on Linux, and the data names on macOS, where a configuration directory is
-/// a data directory. The remaining `XDG_` names, `XDG_RUNTIME_DIR` among
-/// them, name no directory pip reads configuration from.
+/// a data directory. `XDG_CONFIG_HOME` is not among them, because the stamp
+/// carries the directory it names and
+/// [`super::pip_reads::redirected_configuration_inert`] reads the `pip.conf`
+/// there, which is the file pip itself would read. The remaining `XDG_`
+/// names, `XDG_RUNTIME_DIR` among them, name no directory pip reads
+/// configuration from.
 fn pip_selector(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     if matches!(
         upper.as_str(),
-        "XDG_CONFIG_HOME" | "XDG_CONFIG_DIRS" | "XDG_DATA_HOME" | "XDG_DATA_DIRS"
+        "XDG_CONFIG_DIRS" | "XDG_DATA_HOME" | "XDG_DATA_DIRS"
     ) {
         return true;
     }

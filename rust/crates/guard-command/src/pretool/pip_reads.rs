@@ -29,8 +29,13 @@
 //! `/etc` and `/Library`, are not checked: writing any of them already means
 //! controlling the `pip` the command runs, which is the larger capability.
 //! The `XDG_` variables that would move the global files somewhere a user can
-//! write are rejected with the rest of pip's environment. See
-//! [`super::npm_reads`] for the same proof over `.npmrc`.
+//! write are rejected with the rest of pip's environment. `XDG_CONFIG_HOME`
+//! is the exception: it moves the *user* file, the stamp carries the
+//! directory it names, so [`redirected_configuration_inert`] reads the
+//! `pip.conf` there and the proof covers the file pip itself would read. A
+//! session that exports it — every Linux agent that follows the base
+//! directory specification — keeps its listings quiet instead of losing them
+//! all to review. See [`super::npm_reads`] for the same proof over `.npmrc`.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -100,6 +105,24 @@ fn configuration_inert(context: super::PathContext<'_>) -> bool {
         ]
         .iter()
         .all(|path| pip_conf_inert(path))
+}
+
+/// Report that a redirected user configuration directory adds no option.
+///
+/// `XDG_CONFIG_HOME` moves the file platformdirs hands pip out of the
+/// directories [`configuration_inert`] reads, so the proof follows it to the
+/// `pip.conf` the command would actually read. The redirect is provable only
+/// when the stamp carries an absolute directory for it: a session that
+/// exports the name without a stamped value, or with a relative one the proof
+/// cannot resolve, leaves the listing reviewed.
+pub(super) fn redirected_configuration_inert(directory: Option<&str>, exported: bool) -> bool {
+    match directory {
+        Some(directory) => {
+            let directory = Path::new(directory);
+            directory.is_absolute() && pip_conf_inert(&directory.join("pip").join("pip.conf"))
+        }
+        None => !exported,
+    }
 }
 
 /// A missing file is inert. Anything unreadable, oversized or not a regular
