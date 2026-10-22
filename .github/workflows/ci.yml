@@ -659,10 +659,11 @@ jobs:
             export GUARD_PYTEST_UNDER_COVERAGE=1
             coverage_args=(--cov --cov-branch --cov-report=)
           fi
+          # Standard public Linux runners provide four CPU cores.
           PYTHONPATH=scripts/ci GUARD_PYTEST_DURATION_OUTPUT=pytest-durations.json \
             uv run --no-sync python scripts/ci/run_projection_shard.py "$shard_file" -- \
             -p pytest_duration_report "@$shard_file" --tb=short --durations=10 \
-            -n 2 --dist loadfile --max-worker-restart 0 \
+            -n 4 --dist loadfile --max-worker-restart 0 \
             --reruns 1 --reruns-delay 2 \
             --deselect tests/test_guard_benign_false_positive_gate.py \
             --deselect tests/test_guard_gauntlet_replay_gate.py \
