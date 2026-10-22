@@ -29,6 +29,10 @@ from ..stable_guard_cli import durable_desktop_current_hol_guard
 from ..store import GuardStore
 
 _SHIM_TEMP_NAME = "hol-guard.desktop-shim.tmp"
+_DEFERRED_NOTE = (
+    "Kept the other HOL Guard installs because harness hook repair reported a problem. "
+    "Fix it, then run hol-guard desktop converge."
+)
 
 
 def converge_on_desktop_core(
@@ -38,6 +42,7 @@ def converge_on_desktop_core(
     path_env: str | None = None,
     retire_runtime: Callable[[Path], bool] | None = None,
     retire_daemons: Callable[[], object] | None = None,
+    refresh_package_shims: Callable[[], str | None] | None = None,
 ) -> dict[str, object]:
     """Remove superseded installs and point the user PATH at Desktop's launcher."""
 
@@ -60,6 +65,11 @@ def converge_on_desktop_core(
         retire_runtime=retire_runtime or _resident_retirer(context.guard_home),
     )
     notes = list(result.notes)
+    if result.removed:
+        # Package-manager shims bake the interpreter that wrote them, which may
+        # be the install just removed. Rewriting them here binds them to Core.
+        package_note = (refresh_package_shims or (lambda: _refresh_package_shims(context)))()
+        notes.extend([package_note] if package_note else [])
     shim = _ensure_user_path_shim(context.home_dir, launcher, result.removed_entry_dirs)
     resolved = shutil.which("hol-guard", path=path_env)
     on_desktop = resolved is not None and _resolves_to_launcher(Path(resolved), launcher)
@@ -79,6 +89,41 @@ def converge_on_desktop_core(
     return payload
 
 
+def repair_hooks_then_converge(
+    context: HarnessContext,
+    *,
+    store: GuardStore,
+    workspace: str | None,
+    now: str,
+    dry_run: bool = False,
+) -> tuple[dict[str, object], list[dict[str, object]], list[str]]:
+    """Point every hook at this Core, then retire the installs it supersedes.
+
+    Installs are removed only after hook repair finished without a problem, so
+    no harness is left calling a deleted binary. Returns the converge payload,
+    the repaired managed installs and the repair notes.
+    """
+
+    from . import update_commands as commands
+
+    if dry_run:
+        return converge_on_desktop_core(context, dry_run=True), [], []
+    repaired, repair_notes = commands._repair_supported_harnesses_in_process(
+        context=context,
+        store=store,
+        workspace=workspace,
+        now=now,
+        dry_run=False,
+    )
+    if repair_notes:
+        planned = converge_on_desktop_core(context, dry_run=True)
+        if planned["status"] == "planned" and planned.get("found"):
+            planned["status"] = "deferred"
+            planned["notes"] = [_DEFERRED_NOTE]
+            return planned, repaired, list(repair_notes)
+    return converge_on_desktop_core(context), repaired, list(repair_notes)
+
+
 def run_desktop_converge(
     args: argparse.Namespace,
     *,
@@ -89,27 +134,25 @@ def run_desktop_converge(
 ) -> int:
     """``hol-guard desktop converge``: repair hooks, retire other installs, restart the daemon."""
 
-    from . import update_commands as commands
     from .update_desktop_apply import refresh_desktop_core_daemon
 
-    dry_run = bool(getattr(args, "dry_run", False))
-    payload = converge_on_desktop_core(context, dry_run=dry_run)
+    payload, repaired, repair_notes = repair_hooks_then_converge(
+        context,
+        store=store,
+        workspace=str(workspace) if workspace else None,
+        now=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        dry_run=bool(getattr(args, "dry_run", False)),
+    )
     if payload["status"] not in {"skipped", "planned"}:
-        repaired, repair_notes = commands._repair_supported_harnesses_in_process(
-            context=context,
-            store=store,
-            workspace=str(workspace) if workspace else None,
-            now=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            dry_run=False,
-        )
         payload["managed_installs"] = repaired
-        notes = [*converge_notes(payload), *repair_notes]
+        notes = [*repair_notes, *converge_notes(payload)]
         if payload.get("daemon_restart_required"):
             refreshed, refresh_note = refresh_desktop_core_daemon(context, executable=Path(sys.executable).resolve())
             payload["daemon_refresh"] = refreshed
             notes.extend([refresh_note] if refresh_note else [])
         payload["notes"] = notes
-        payload["status"] = "partial" if notes else "converged"
+        if payload["status"] != "deferred":
+            payload["status"] = "partial" if notes else "converged"
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, sort_keys=True), file=output_stream)
     else:
@@ -132,7 +175,7 @@ def converge_notes(payload: dict[str, object]) -> list[str]:
 def _summary(payload: dict[str, object]) -> str:
     if payload["status"] == "skipped":
         return str(payload["message"])
-    key = "found" if payload["status"] == "planned" else "removed"
+    key = "found" if payload["status"] in {"planned", "deferred"} else "removed"
     entries = payload.get(key)
     paths = [str(item["path"]) for item in entries if isinstance(item, dict)] if isinstance(entries, list) else []
     verb = "Would remove" if key == "found" else "Removed"
@@ -157,6 +200,19 @@ def _resident_retirer(guard_home: Path) -> Callable[[Path], bool]:
         )
 
     return retire
+
+
+def _refresh_package_shims(context: HarnessContext) -> str | None:
+    from ..shims import package_shim_status, repair_package_shims
+
+    try:
+        installed = package_shim_status(context).get("installed_managers")
+        managers = tuple(str(item) for item in installed) if isinstance(installed, list) else ()
+        if managers:
+            _ = repair_package_shims(context, managers=managers)
+    except (OSError, RuntimeError, ValueError) as error:
+        return f"Could not rebind package firewall shims to the Desktop Core: {error}"
+    return None
 
 
 def _retire_daemons(guard_home: Path) -> None:
@@ -214,4 +270,4 @@ def _read_text(path: Path) -> str:
         return ""
 
 
-__all__ = ["converge_notes", "converge_on_desktop_core", "run_desktop_converge"]
+__all__ = ["converge_notes", "converge_on_desktop_core", "repair_hooks_then_converge", "run_desktop_converge"]

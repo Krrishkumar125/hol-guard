@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
+from codex_plugin_scanner.guard.cli import desktop_converge, update_commands
 from codex_plugin_scanner.guard.cli.commands_lifecycle_gate import lifecycle_gate_requirement
 from codex_plugin_scanner.guard.cli.commands_parser_desktop import _configure_guard_desktop_parser
-from codex_plugin_scanner.guard.cli.desktop_converge import converge_on_desktop_core
+from codex_plugin_scanner.guard.cli.desktop_converge import converge_on_desktop_core, repair_hooks_then_converge
 from codex_plugin_scanner.guard.desktop_foreign_installs import DESKTOP_PATH_SHIM_MARKER
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX venv and bin layout")
@@ -53,10 +54,14 @@ def _context(home: Path, tmp_path: Path) -> HarnessContext:
 
 def _converge(home: Path, tmp_path: Path, *, runtime_stops: bool = True, dry_run: bool = False) -> dict[str, object]:
     retired: list[Path] = []
+    package_refreshes: list[bool] = []
 
     def retire(runtime: Path) -> bool:
         retired.append(runtime)
         return runtime_stops
+
+    def refresh_package_shims() -> None:
+        package_refreshes.append(True)
 
     payload = converge_on_desktop_core(
         _context(home, tmp_path),
@@ -64,8 +69,10 @@ def _converge(home: Path, tmp_path: Path, *, runtime_stops: bool = True, dry_run
         path_env=str(home / ".local" / "bin"),
         retire_runtime=retire,
         retire_daemons=lambda: None,
+        refresh_package_shims=refresh_package_shims,
     )
     payload["_retired"] = retired
+    payload["_package_refreshes"] = len(package_refreshes)
     return payload
 
 
@@ -92,6 +99,7 @@ def test_removes_pipx_install_and_points_path_at_desktop(home: Path, tmp_path: P
     assert payload["_retired"] == [
         venv / "lib/python3.12/site-packages/codex_plugin_scanner/guard/_native/hol-guard-runtime"
     ]
+    assert payload["_package_refreshes"] == 1
 
 
 def test_keeps_install_whose_resident_will_not_stop(home: Path, tmp_path: Path) -> None:
@@ -104,6 +112,7 @@ def test_keeps_install_whose_resident_will_not_stop(home: Path, tmp_path: Path) 
     assert payload["status"] == "partial"
     assert venv.exists()
     assert (home / ".local" / "bin" / "hol-guard").is_symlink()
+    assert payload["_package_refreshes"] == 0
 
 
 def test_leaves_everything_when_desktop_has_no_core(home: Path, tmp_path: Path) -> None:
@@ -137,6 +146,34 @@ def test_never_replaces_a_users_own_wrapper(home: Path, tmp_path: Path) -> None:
     assert payload["path_shim"] == {"status": "unchanged"}
     assert "/opt/custom" in own.read_text()
     assert payload["status"] == "partial"
+
+
+def test_keeps_installs_when_hook_repair_reports_a_problem(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _launcher(home)
+    venv = _pipx_venv(home)
+    monkeypatch.setattr(
+        update_commands,
+        "_repair_supported_harnesses_in_process",
+        lambda **_: ([], ["Could not repair Codex hooks."]),
+    )
+    monkeypatch.setattr(
+        desktop_converge,
+        "converge_on_desktop_core",
+        lambda context, **kwargs: converge_on_desktop_core(context, path_env=str(home / ".local" / "bin"), **kwargs),
+    )
+
+    payload, _, notes = repair_hooks_then_converge(
+        _context(home, tmp_path),
+        store=object(),
+        workspace=None,
+        now="2026-10-22T00:00:00Z",  # pyright: ignore[reportArgumentType]
+    )
+
+    assert payload["status"] == "deferred"
+    assert notes == ["Could not repair Codex hooks."]
+    assert venv.exists()
 
 
 def test_converge_requires_the_update_approval_unless_dry_run() -> None:

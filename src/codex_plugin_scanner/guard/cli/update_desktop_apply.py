@@ -388,27 +388,18 @@ def _converge_installs(
     workspace: str | None,
     now: str | None,
 ) -> bool:
-    """Point every hook at this Core, then retire the installs it supersedes.
-
-    Hooks move first, so no harness is left calling a removed install. Returns
-    whether a removed install may have been serving the daemon.
-    """
+    """Repair hooks and retire superseded installs; return whether to restart the daemon."""
 
     from . import update_commands as commands
-    from .desktop_converge import converge_notes, converge_on_desktop_core
+    from .desktop_converge import converge_notes, repair_hooks_then_converge
 
     if context is None or store is None or now is None:
         return False
-    repaired_installs, repair_notes = commands._repair_supported_harnesses_in_process(
-        context=context,
-        store=store,
-        workspace=workspace,
-        now=now,
-        dry_run=False,
+    converged, repaired_installs, repair_notes = repair_hooks_then_converge(
+        context, store=store, workspace=workspace, now=now
     )
     if repaired_installs:
         payload["managed_installs"] = repaired_installs
-    converged = converge_on_desktop_core(context)
     payload["converge"] = converged
     notes = [*repair_notes, *converge_notes(converged)]
     if notes:
