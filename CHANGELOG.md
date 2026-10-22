@@ -95,6 +95,21 @@ Older releases are preserved in the [changelog archive](docs/changelog-archive.m
 * **native:** a package-intent parse now sends the caller's `PATH` to the resident. The resident is long-lived, so its own `PATH` is the one it was spawned with; a manager it cannot resolve (`npx` from a test or tool directory) made the TypeScript launch evidence incomplete and sent a contained typecheck back to review even though the caller resolved the manager fine.
 * **native:** a resident that answers a context-digest request with its own error envelope is now reported by that code — and recorded against the resilience breaker — instead of being flattened into `native_context_digest_result_invalid`. An envelope outside the contract keeps its code in the rejection reason, and a rejected result names the contract clause that rejected it with the offending keys, so a foreign frame, a stale frame and a truncated read are no longer indistinguishable.
 
+## [3.56.0](https://github.com/hashgraph-online/hol-guard/compare/v3.55.1...v3.56.0) (2026-10-22)
+
+
+### Features
+
+* **extensions:** classify Iterlay CLI side effects and read-only paths ([#5232](https://github.com/hashgraph-online/hol-guard/issues/5232)) ([d3c3bb0](https://github.com/hashgraph-online/hol-guard/commit/d3c3bb0cc2dad82eaaf1054e7d101bbdb4082867))
+
+
+### Bug Fixes
+
+* **hooks:** drop the harness tool-name spelling the adapter replaced ([#5680](https://github.com/hashgraph-online/hol-guard/issues/5680)) ([0207e15](https://github.com/hashgraph-online/hol-guard/commit/0207e1571819aa75a4ef41dde9edd5e8ee302802))
+* **native:** keep an ordinary setting out of contained execution ([#5686](https://github.com/hashgraph-online/hol-guard/issues/5686)) ([3daee24](https://github.com/hashgraph-online/hol-guard/commit/3daee24d01429afbfff64f5f56e9aad1750bd4d1))
+* **native:** let a shared dependency link stand beside a branch read ([#5652](https://github.com/hashgraph-online/hol-guard/issues/5652)) ([b681618](https://github.com/hashgraph-online/hol-guard/commit/b6816185930252ef14401cab8e0fbc6e8bed8d34))
+* **native:** read a quoted angle bracket as text, not a redirect ([#5647](https://github.com/hashgraph-online/hol-guard/issues/5647)) ([744f503](https://github.com/hashgraph-online/hol-guard/commit/744f5034faf8a35e0707c80be5126e762c30e3b6))
+
 ## [3.55.1](https://github.com/hashgraph-online/hol-guard/compare/v3.55.0...v3.55.1) (2026-10-22)
 
 
