@@ -141,6 +141,13 @@ fn pip_conf_inert(path: &Path) -> bool {
 /// Keys that only change how pip prints. Every other key is an option the
 /// command did not ask for, so the command goes back to review rather than
 /// this check guessing what the option does.
+///
+/// The value does not matter, because a key is listed here only when both of
+/// its values leave the command doing what it would do with no file at all.
+/// `disable-pip-version-check = false` is pip's own default, so reading it
+/// reviews a machine that writes the default down while admitting the machine
+/// that leaves it out, and both run the same command. A key whose value could
+/// add work the command did not ask for belongs outside this list instead.
 const INERT_KEYS: &[&str] = &[
     "disable-pip-version-check",
     "require-virtualenv",
@@ -369,11 +376,42 @@ fn pip_selector(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::safe_pip_arguments;
+    use super::{inert_line, safe_pip_arguments};
 
     fn safe(command: &str) -> bool {
         let arguments: Vec<String> = command.split_whitespace().map(str::to_owned).collect();
         safe_pip_arguments(&arguments)
+    }
+
+    #[test]
+    fn a_printing_key_is_inert_whichever_value_it_carries() {
+        for line in [
+            "",
+            "   ",
+            "# a comment",
+            "; a comment",
+            "[list]",
+            "disable-pip-version-check = false",
+            "disable-pip-version-check = true",
+            "disable_pip_version_check: no",
+            "require-virtualenv = false",
+            "format = freeze",
+        ] {
+            assert!(inert_line(line), "{line}");
+        }
+    }
+
+    #[test]
+    fn a_key_that_adds_work_the_command_did_not_ask_for_is_not_inert() {
+        for line in [
+            "index-url = https://example.invalid/simple",
+            "extra-index-url = https://example.invalid/simple",
+            "target = /tmp/elsewhere",
+            "cache-dir = /tmp/elsewhere",
+            "retries = 20",
+        ] {
+            assert!(!inert_line(line), "{line}");
+        }
     }
 
     #[test]
