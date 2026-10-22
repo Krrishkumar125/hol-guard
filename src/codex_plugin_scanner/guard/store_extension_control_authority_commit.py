@@ -102,6 +102,29 @@ class ExtensionControlAuthorityCommitMixin:
                 lifecycle_store.enroll_installed(self, installed)
             return self._bootstrap_extension_control_authority(catalog_digest, key=None)
 
+    def enroll_extension_control_authority_by_default(self, catalog_digest: str) -> ExtensionControlAuthorityView:
+        """Enroll a never-enrolled authority at daemon startup, with no layers.
+
+        Only a home with neither a snapshot nor a vault anchor reads as
+        unenrolled; a home that lost one of them reads as tampered or restores
+        from its export, so this never re-enrolls over existing controls. The
+        authority starts at revision 0 with no layers, which grants nothing the
+        packaged defaults do not already allow; every later control change
+        still needs an approval-gated proof. Any other health is returned as is.
+        """
+
+        with self._extension_control_authority_lock():
+            current = self._read_extension_control_authority_locked(catalog_digest)
+            if current.health is not AuthorityHealth.UNENROLLED:
+                return current
+            from .catalog_delivery import lifecycle_store
+            from .catalog_delivery.preparation_authority import load_installed_bundle
+
+            installed = load_installed_bundle()
+            if installed is not None and not lifecycle_store.floor_enrolled(self):
+                lifecycle_store.enroll_installed(self, installed)
+            return self._bootstrap_extension_control_authority(catalog_digest, key=None)
+
     def commit_extension_control_layers(
         self,
         layers: tuple[ExtensionControlLayer, ...],
