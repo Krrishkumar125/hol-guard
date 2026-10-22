@@ -494,3 +494,27 @@ def test_daemon_refreshes_resident_snapshot_after_external_authority_change(
         assert daemon._server.extension_control_runtime.current().revision == 7
     finally:
         daemon.stop()
+
+
+def test_resident_snapshot_digest_matches_the_python_digest() -> None:
+    # The digest the Python snapshot computed for this view before the resident
+    # took it over; policy versions and saved bindings carry it.
+    catalog = "ab" * 32
+    local = ExtensionControlLayer(
+        CONTROL_SCHEMA_VERSION,
+        ControlLayerKind.LOCAL_ADMIN,
+        catalog,
+        False,
+        (
+            ExtensionControl(
+                ControlTarget(ControlTargetKind.PERMISSION, "command.alpha.permission.write"), ControlState.ENABLED
+            ),
+            ExtensionControl(ControlTarget(ControlTargetKind.EXTENSION, "command.alpha"), ControlState.DISABLED),
+        ),
+    )
+    cloud = ExtensionControlLayer(CONTROL_SCHEMA_VERSION, ControlLayerKind.SIGNED_CLOUD, catalog, True, ())
+    view = ExtensionControlAuthorityView(AuthorityHealth.PROTECTED, 3, catalog, (local, cloud), managed_revision=2)
+
+    snapshot = ExtensionControlRuntimeSnapshot.from_authority_view(view)
+
+    assert snapshot.effective_digest == "b174519abd9d7b38cd53d4d3a856e60357db724e45a08423a7d1b81a127055bb"

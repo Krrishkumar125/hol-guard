@@ -16,13 +16,13 @@ use guard_command::extension_control::{
 };
 use guard_command::extension_trust::extension_is_active_for_class;
 use guard_contracts::{
-    ExtensionControlComposedControlV1, ExtensionControlComposedV1, ExtensionControlFailureV1,
-    ExtensionControlItemResultV1, ExtensionControlItemV1, ExtensionControlPayloadV1,
-    ExtensionControlQueryV1, ExtensionControlRegistryExtensionV1,
+    runtime_snapshot_digest, ExtensionControlComposedControlV1, ExtensionControlComposedV1,
+    ExtensionControlFailureV1, ExtensionControlItemResultV1, ExtensionControlItemV1,
+    ExtensionControlPayloadV1, ExtensionControlQueryV1, ExtensionControlRegistryExtensionV1,
     ExtensionControlRegistryPermissionV1, ExtensionControlRegistryV1, ExtensionControlRequestV1,
     ExtensionControlResultV1, ExtensionControlScenarioResultV1, ExtensionControlScenarioV1,
-    NativeExtensionControlLayerV1, EXTENSION_CONTROL_MAX_BYTES, EXTENSION_CONTROL_REQUEST_SCHEMA,
-    EXTENSION_CONTROL_RESULT_SCHEMA,
+    NativeExtensionControlLayerV1, RuntimeSnapshot, EXTENSION_CONTROL_MAX_BYTES,
+    EXTENSION_CONTROL_REQUEST_SCHEMA, EXTENSION_CONTROL_RESULT_SCHEMA,
 };
 use serde_json::Value;
 
@@ -33,6 +33,14 @@ use crate::package_authority_op::request_digest_with_limit;
 const MAX_SCENARIOS: usize = 64;
 const MAX_ITEMS: usize = 4_096;
 const TRUST_CLASSES: [&str; 3] = ["first-party", "trusted-library", "external"];
+const AUTHORITY_HEALTH: [&str; 6] = [
+    "unenrolled",
+    "protected",
+    "degraded-unacknowledged",
+    "degraded-acknowledged",
+    "tampered",
+    "recovery-required",
+];
 
 pub(crate) fn evaluate_extension_control_request(
     request: &ExtensionControlRequestV1,
@@ -80,6 +88,28 @@ fn decide(request: &ExtensionControlRequestV1) -> Result<ExtensionControlPayload
                 .map(|scenario| resolve_scenario(&registry, scenario))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(ExtensionControlPayloadV1::Resolve { scenarios })
+        }
+        ExtensionControlQueryV1::SnapshotDigest {
+            catalog_digest,
+            health,
+            revision,
+            managed_revision,
+            layers,
+        } => {
+            if !AUTHORITY_HEALTH.contains(&health.as_str()) {
+                return Err("native_extension_control_snapshot_invalid".to_owned());
+            }
+            typed_layers(layers)?;
+            let digest = runtime_snapshot_digest(&RuntimeSnapshot {
+                catalog_digest,
+                health,
+                revision: *revision,
+                managed_revision: *managed_revision,
+                layers,
+                active_security_digest: None,
+            })
+            .map_err(|_| "native_extension_control_snapshot_invalid".to_owned())?;
+            Ok(ExtensionControlPayloadV1::SnapshotDigest { digest })
         }
     }
 }

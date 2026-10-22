@@ -404,3 +404,32 @@ def resolve_extension_controls(
         authority_failure,
     )
     return resolve_scenarios(registry, (scenario,), guard_home=guard_home)[0].items[0]
+
+
+def snapshot_digest(
+    *,
+    catalog_digest: str,
+    health: str,
+    revision: int,
+    managed_revision: int,
+    layers: Iterable[ExtensionControlLayer],
+    guard_home: Path | None = None,
+) -> str:
+    """The digest that identifies the runtime snapshot of one authority view."""
+
+    query: dict[str, object] = {
+        "kind": "snapshot_digest",
+        "catalog_digest": catalog_digest,
+        "health": health,
+        "revision": revision,
+        "managed_revision": managed_revision,
+        "layers": [_layer_wire(layer) for layer in layers],
+    }
+
+    def parse(payload: dict[str, Any]) -> str:
+        digest = payload["digest"]
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            raise _invalid()
+        return digest
+
+    return _ask(query, guard_home, {"digest": str}, parse)

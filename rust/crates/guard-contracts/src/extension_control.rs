@@ -91,6 +91,14 @@ pub enum ExtensionControlQueryV1 {
         registry: ExtensionControlRegistryV1,
         scenarios: Vec<ExtensionControlScenarioV1>,
     },
+    /// The digest that identifies the runtime snapshot of one authority view.
+    SnapshotDigest {
+        catalog_digest: String,
+        health: String,
+        revision: u64,
+        managed_revision: u64,
+        layers: Vec<NativeExtensionControlLayerV1>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -160,6 +168,9 @@ pub enum ExtensionControlPayloadV1 {
     },
     Resolve {
         scenarios: Vec<ExtensionControlScenarioResultV1>,
+    },
+    SnapshotDigest {
+        digest: String,
     },
 }
 

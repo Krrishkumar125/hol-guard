@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterator
@@ -14,7 +13,6 @@ from dataclasses import dataclass
 from .extension_control_authority import AuthorityHealth, ExtensionControlAuthorityView
 from .extension_control_contract import ExtensionControlLayer, ResolverFailureCode
 
-_RUNTIME_SNAPSHOT_SCHEMA = "guard.extension-control-runtime-snapshot.v1"
 _NO_CONTROL_DIGEST = hashlib.sha256(b"hol.guard.extension-control:none:v1").hexdigest()
 _MAX_PROTECTED_FLOORS = 32
 _ACTIVE_SNAPSHOT: ContextVar[ExtensionControlRuntimeSnapshot | None] = ContextVar(
@@ -48,24 +46,25 @@ class ExtensionControlRuntimeSnapshot:
 
     @classmethod
     def from_authority_view(cls, view: ExtensionControlAuthorityView) -> ExtensionControlRuntimeSnapshot:
-        payload = {
-            "catalog_digest": view.catalog_digest,
-            "health": view.health.value,
-            "layers": sorted(
-                (_layer_payload(layer) for layer in view.layers),
-                key=lambda item: str(item["kind"]),
-            ),
-            "revision": view.revision,
-            "managed_revision": view.managed_revision,
-            "schema_version": _RUNTIME_SNAPSHOT_SCHEMA,
-        }
-        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-        framed = f"{_RUNTIME_SNAPSHOT_SCHEMA}\x00{len(canonical)}\x00{canonical}"
+        """The snapshot of ``view``, identified by the digest the resident computes.
+
+        The resident checks the same digest when it installs a command-control
+        binding, so computing it there leaves one definition of it.
+        """
+
+        from ..native_extension_control import snapshot_digest
+
         return cls(
             health=view.health,
             revision=view.revision,
             catalog_digest=view.catalog_digest,
-            effective_digest=hashlib.sha256(framed.encode("utf-8")).hexdigest(),
+            effective_digest=snapshot_digest(
+                catalog_digest=view.catalog_digest,
+                health=view.health.value,
+                revision=view.revision,
+                managed_revision=view.managed_revision,
+                layers=view.layers,
+            ),
             layers=view.layers,
             managed_revision=view.managed_revision,
             unread=view.unread,
