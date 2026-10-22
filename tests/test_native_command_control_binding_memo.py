@@ -26,7 +26,8 @@ _INPUT_KEY = memo.input_key
 
 
 @pytest.fixture(autouse=True)
-def _reuse(monkeypatch: pytest.MonkeyPatch) -> None:
+def _reuse(_command_control_binding_memo: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Runs after the suite-wide fixture that stubs the key out.
     monkeypatch.setattr(memo, "input_key", _INPUT_KEY)
 
 
@@ -65,6 +66,28 @@ def test_input_key_holds_until_an_input_moves(tmp_path: Path, monkeypatch: pytes
 
     monkeypatch.setattr(lifecycle, "runtime_fingerprint", lambda: ((1, 2, 3, 4, 6),))
     assert memo.input_key(store) not in {None, third}
+
+
+def test_input_key_moves_when_only_a_row_payload_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A payload edited in place, with its digest and MAC left alone, fails
+    # verification on a full read; the memo must not serve over it.
+    store = _store(tmp_path, monkeypatch)
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            "insert into extension_command_pack_activation values (1, 1, '{}', ?, ?, '2026-01-01T00:00:00Z')",
+            ("a" * 64, "b" * 64),
+        )
+    _pending(store, 1)
+    before = memo.input_key(store)
+    for statement in (
+        "update extension_command_pack_activation set record_json = '{\"edited\":true}'",
+        "update extension_command_pack_pending set link_json = '{\"edited\":true}'",
+    ):
+        with sqlite3.connect(store.path) as connection:
+            connection.execute(statement)
+        after = memo.input_key(store)
+        assert after not in {None, before}
+        before = after
 
 
 def test_input_key_is_unavailable_when_an_input_cannot_be_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

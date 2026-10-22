@@ -70,7 +70,7 @@ def _pack_rows(store: GuardStore) -> list[object]:
             [
                 list(row)
                 for row in connection.execute(
-                    "select revision, record_digest, record_mac from extension_command_pack_activation"
+                    "select revision, record_json, record_digest, record_mac from extension_command_pack_activation"
                 )
             ]
             if "extension_command_pack_activation" in tables
@@ -80,7 +80,8 @@ def _pack_rows(store: GuardStore) -> list[object]:
             [
                 list(row)
                 for row in connection.execute(
-                    "select control_revision, record_digest, record_mac, link_digest, link_mac "
+                    "select control_revision, record_json, record_digest, record_mac, "
+                    "link_json, link_digest, link_mac "
                     "from extension_command_pack_pending order by control_revision"
                 )
             ]
