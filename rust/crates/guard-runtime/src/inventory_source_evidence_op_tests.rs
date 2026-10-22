@@ -134,7 +134,14 @@ fn the_answer_is_bound_to_the_request_that_asked_for_it() {
     assert_eq!(result.status, "ok");
     assert_eq!(result.code, "ok");
     assert_eq!(result.request_id, "inventory-source-evidence-test");
-    assert_eq!(result.request_sha256.len(), 64);
+    // `_payload` binds the reply by `"sha256:" + _canonical_request_sha256`,
+    // so the digest carries its prefix or the bridge drops the answer.
+    let digest = result
+        .request_sha256
+        .strip_prefix("sha256:")
+        .expect("prefixed digest");
+    assert_eq!(digest.len(), 64);
+    assert!(digest.chars().all(|char| char.is_ascii_hexdigit()));
     assert_eq!(result.payload, Some(json!({ "evidence": [] })));
 }
 

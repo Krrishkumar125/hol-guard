@@ -77,16 +77,16 @@ pub(crate) fn inspect_aibom_source_path(
 ) -> AibomSourceInspection {
     let path_class = classify_path_class(path, home_dir, workspace_dir);
     let mut link_kind = "copy";
-    let mut validation_state = "missing";
+    let validation_state;
     let mut target_content_hash = None;
     let mut hop_fingerprints = Vec::new();
+
+    let path_fingerprint = fingerprint_redacted_path(path, home_dir, workspace_dir);
 
     // A broken symlink does not exist but is still a link to inspect.
     if !exists(path) && !is_symlink(path) {
         return build_inspection(
-            path,
-            home_dir,
-            workspace_dir,
+            path_fingerprint,
             path_class,
             link_kind,
             "missing",
@@ -117,9 +117,7 @@ pub(crate) fn inspect_aibom_source_path(
     }
 
     build_inspection(
-        path,
-        home_dir,
-        workspace_dir,
+        path_fingerprint,
         path_class,
         link_kind,
         validation_state,
@@ -182,17 +180,21 @@ fn classified_candidate(
 }
 
 /// `fingerprint_redacted_path`.
+///
+/// A link and the file it leads to have to fingerprint differently, or the hop
+/// list reads as a cycle the moment the first hop is taken. So a symlink keeps
+/// its own name and only its parent is resolved; everything else resolves
+/// whole. The chosen path is then redacted as it stands, never resolved again.
 pub(crate) fn fingerprint_redacted_path(
     path: &Path,
     home_dir: &Path,
     workspace_dir: Option<&Path>,
 ) -> String {
-    let mut candidate = path.to_path_buf();
-    if !is_symlink(path) {
-        if let Ok(resolved) = resolve(path) {
-            candidate = resolved;
-        }
-    }
+    let candidate = if is_symlink(path) {
+        link_in_its_resolved_parent(path)
+    } else {
+        resolve(path).unwrap_or_else(|_| path.to_path_buf())
+    };
     if let Some(workspace) = workspace_dir {
         if let Ok(root) = resolve(workspace) {
             if let Ok(relative) = candidate.strip_prefix(&root) {
@@ -200,22 +202,34 @@ pub(crate) fn fingerprint_redacted_path(
             }
         }
     }
-    fingerprint_text(&redact_local_path(&candidate, home_dir))
+    fingerprint_text(&redact_resolved_path(&candidate, home_dir))
 }
 
-/// `redact_local_path(path, home_dir=home_dir)`: the home-relative spelling,
-/// or the bare file name when the path lies outside the home directory.
-fn redact_local_path(candidate: &Path, home_dir: &Path) -> String {
+/// The link's own place: its parent resolved, its own name left alone.
+fn link_in_its_resolved_parent(path: &Path) -> PathBuf {
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+        return path.to_path_buf();
+    };
+    match resolve(parent) {
+        Ok(resolved) => resolved.join(name),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
+/// `redact_local_path(path, home_dir=home_dir)` over a path already resolved as
+/// far as it should be: the home-relative spelling, or the bare file name when
+/// the path lies outside the home directory.
+fn redact_resolved_path(candidate: &Path, home_dir: &Path) -> String {
     let file_name = || {
         candidate
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default()
     };
-    let (Ok(resolved), Ok(home)) = (resolve(candidate), resolve(home_dir)) else {
+    let Ok(home) = resolve(home_dir) else {
         return file_name();
     };
-    match resolved.strip_prefix(&home) {
+    match candidate.strip_prefix(&home) {
         Ok(relative) => format!("{{home}}/{}", relative_posix(relative)),
         Err(_) => file_name(),
     }
@@ -223,16 +237,13 @@ fn redact_local_path(candidate: &Path, home_dir: &Path) -> String {
 
 /// `_build_inspection`.
 fn build_inspection(
-    path: &Path,
-    home_dir: &Path,
-    workspace_dir: Option<&Path>,
+    path_fingerprint: String,
     path_class: &'static str,
     link_kind: &'static str,
     validation_state: &'static str,
     target_content_hash: Option<String>,
     hop_fingerprints: Vec<String>,
 ) -> AibomSourceInspection {
-    let path_fingerprint = fingerprint_redacted_path(path, home_dir, workspace_dir);
     let source_fingerprint = fingerprint_mapping(&json!({
         "path": path_fingerprint,
         "link_kind": link_kind,
