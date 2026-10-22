@@ -173,3 +173,26 @@ fn prompt_capability_is_portable_and_containment_matches_dispatch() {
         .iter()
         .any(|feature| feature == "cursor-hook-bridge-v1"));
 }
+
+#[test]
+fn command_admission_failures_reach_the_publisher_unchanged() {
+    // A publisher that cannot tell which admission check rejected its binding
+    // has nothing to recover from: every push looks like a malformed request,
+    // so the resident keeps no policy and every prompt fails closed. Each
+    // admission failure must therefore survive the safe-error transport as
+    // itself.
+    for code in [
+        "native_active_pack_security_binding_mismatch",
+        "native_active_pack_security_program_mismatch",
+        "native_command_compatibility_inventory_mismatch",
+        "native_command_pack_cache_invalid",
+        "native_command_pack_selection_missing",
+        "native_command_program_digest_mismatch",
+        "native_command_required_pack_missing",
+    ] {
+        let response: Value = serde_json::from_slice(&safe_error_response(code, false))
+            .expect("admission error is JSON");
+        assert_eq!(response["error"], code);
+        assert_eq!(response["retryable"], false);
+    }
+}

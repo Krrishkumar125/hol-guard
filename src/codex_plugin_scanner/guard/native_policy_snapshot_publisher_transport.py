@@ -18,6 +18,41 @@ from .native_policy_snapshot_contract import _policy_snapshot_push_bytes_v3
 from .native_policy_snapshot_direct_lane import DIRECT_LANE_PUSH_FEATURE
 from .native_policy_snapshot_generation import native_policy_snapshot_v3
 
+# An activated command catalog names a command program that only a runtime
+# packaged with the same program, or one whose pack cache still rebuilds it,
+# can admit. A guard home shared by two runtime builds, or one whose catalog
+# was activated by a different build, therefore has a binding this runtime
+# rejects on every push. Rejecting the whole snapshot would leave the resident
+# with no policy at all, so every prompt would fail closed for as long as the
+# catalog and the installed runtime disagree. Publish the snapshot without the
+# command binding instead: that is the state a clean install publishes before
+# it activates a catalog, so Guard keeps enforcing with the command program
+# packaged in this runtime rather than stopping work entirely.
+COMMAND_BINDING_UNUSABLE_CODES = frozenset(
+    {
+        "native_active_pack_security_binding_mismatch",
+        "native_active_pack_security_invalid",
+        "native_active_pack_security_program_mismatch",
+        "native_command_compatibility_inventory_mismatch",
+        "native_command_pack_budget_exceeded",
+        "native_command_pack_cache_identity_invalid",
+        "native_command_pack_cache_invalid",
+        "native_command_pack_cache_noncanonical",
+        "native_command_pack_cache_read_failed",
+        "native_command_pack_index_invalid",
+        "native_command_pack_inventory_invalid",
+        "native_command_pack_link_invalid",
+        "native_command_pack_selection_invalid",
+        "native_command_pack_selection_missing",
+        "native_command_program_binding_mismatch",
+        "native_command_required_pack_missing",
+        # Residents built before the admission codes reached the transport
+        # allow list rewrite every one of them to this code, so a runtime that
+        # predates that change still recovers instead of wedging.
+        "native_request_invalid_json",
+    }
+)
+
 
 def _stamp_runtime_program_digest(
     command_extensions: Mapping[str, object],
@@ -120,7 +155,8 @@ def _publish_snapshot_v3(
         from .native_policy_snapshot_business_bridge import capture_business_binding
 
         business_policy = capture_business_binding(business_policy)
-    bound_extensions = _stamp_runtime_program_digest(command_extensions, capabilities)
+    bound_extensions: Mapping[str, object] | None = _stamp_runtime_program_digest(command_extensions, capabilities)
+    publisher._command_binding_unusable = None
     while True:
         # A cold or replacement resident needs the Rust startup allowance.
         # The warm publication deadline cannot truncate startup and then
@@ -173,7 +209,16 @@ def _publish_snapshot_v3(
             payload=encoded,
             deadline_monotonic=publication_deadline,
         )
-        ack = _ack_from_resident_output(output)
+        try:
+            ack = _ack_from_resident_output(output)
+        except NativePolicySnapshotError as error:
+            if bound_extensions is None or str(error) not in COMMAND_BINDING_UNUSABLE_CODES:
+                raise
+            # Retry once without the binding. A second failure is reported as
+            # itself: the snapshot, not the command catalog, is unpublishable.
+            bound_extensions = None
+            publisher._command_binding_unusable = str(error)
+            continue
         if ack is None:
             raise NativePolicySnapshotError(
                 (native_resident_client_failure_code() if output is None else "native_policy_snapshot_ack_invalid")
