@@ -6,10 +6,11 @@
 //!
 //! A loop is only the same shape when it is known to stop and its body cannot
 //! build up across iterations, because one flattened pass stands for every
-//! iteration. `while read NAME; do ...; done < FILE` is that shape: the read
-//! ends at the file's end, and a body that writes nothing leaves each
-//! iteration doing the work the single pass already describes. Every other
-//! loop keeps its review.
+//! iteration. `while read NAME; do ...; done < FILE` is that shape, for a
+//! plain relative `FILE`: the read ends at that file's end, and a body that
+//! writes nothing leaves each iteration doing the work the single pass
+//! already describes. A device or a path outside the workspace need never
+//! end, so neither is taken. Every other loop keeps its review.
 //!
 //! The loop's redirection is the file its `read` consumes, so the flat list
 //! opens with a read of that file and then the body's own commands. Carrying
@@ -134,9 +135,20 @@ fn driven_by_a_read(test: &[(String, &'static str)]) -> bool {
 /// The file a loop's input redirection names, for the plain `< FILE` tail and
 /// nothing else. A second redirection, a descriptor, or `<>` leaves a shape
 /// this recognizer does not model.
+///
+/// Only a plain relative spelling counts. The loop stops because its `read`
+/// reaches the input's end, and a character device such as `/dev/urandom` or
+/// `/dev/stdin` has no end, so a loop reading one runs without bound and a
+/// single flattened pass stands for nothing. An absolute path, a `~` home
+/// path, a `-` and a `..` segment all leave the workspace the flat list is
+/// read against, so they keep their review too.
 fn read_source(tail: &str) -> Option<String> {
     let target = tail.strip_prefix('<')?.trim();
-    (!target.is_empty() && !target.contains(['<', '>', '&', ' ', '\t'])).then(|| target.to_owned())
+    let plain = !target.is_empty()
+        && !target.starts_with(['/', '-', '~'])
+        && !target.split('/').any(|segment| segment == "..")
+        && !target.contains(['<', '>', '&', ' ', '\t']);
+    plain.then(|| target.to_owned())
 }
 
 /// Add a list's items, rejecting an empty list and any item whose command

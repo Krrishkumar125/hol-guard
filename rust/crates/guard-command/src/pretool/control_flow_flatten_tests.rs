@@ -56,8 +56,9 @@ fn a_construct_flattens_to_the_lists_it_holds() {
 /// One flattened pass stands for every iteration, so it only describes the
 /// loop while the loop is known to stop and its body leaves nothing behind:
 /// `while true` never ends, `until` is never ended by a read, a `read` with
-/// no redirected input waits on the terminal, and a body that opens an output
-/// repeats that write for as long as the loop runs.
+/// no redirected input waits on the terminal, a read of a character device or
+/// of a path outside the workspace need never reach an end, and a body that
+/// opens an output repeats that write for as long as the loop runs.
 ///
 /// A `read` that binds `PATH` or another name the body's command lookup
 /// depends on keeps its review as well: the flat list would resolve its
@@ -95,6 +96,12 @@ fn an_unmodeled_construct_keeps_its_review() {
         "while read line path; do ls; done < README.md",
         "if true; then echo a\\ ; rm -rf build; fi",
         "while read line; do echo a\\ ; rm -rf build; done < README.md",
+        "while read line; do echo hi; done < /dev/urandom",
+        "while read line; do echo hi; done < /dev/stdin",
+        "while read line; do echo hi; done < /etc/passwd",
+        "while read line; do echo hi; done < ../list.txt",
+        "while read line; do echo hi; done < ~/list.txt",
+        "while read line; do echo hi; done < -",
     ] {
         assert!(
             flatten(command).is_none(),
