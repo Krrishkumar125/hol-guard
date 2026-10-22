@@ -1608,6 +1608,18 @@
       "commands": [
         "npm ci"
       ]
+    },
+    {
+      "id": "omp-native-shell-nice-prefix-tests",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "bash"
+      ],
+      "prompt": "Run the project's tests at a low scheduling priority so they stay out of the way of other work: run the listed command once and tell me whether they passed.",
+      "commands": [
+        "nice -n 10 pytest -q"
+      ]
     }
   ]
 }
