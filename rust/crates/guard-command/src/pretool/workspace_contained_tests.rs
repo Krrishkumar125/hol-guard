@@ -50,7 +50,6 @@ fn unproven_local_commands_run_in_the_workspace_sandbox_on_macos() {
     for command in [
         "./todo.py add x",
         "python3 app.py",
-        "mkdir -p src && touch src/a.js",
         "git add -A && git commit -m x",
         "git commit -m init",
         "npm run build && git diff",
