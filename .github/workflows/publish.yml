@@ -295,6 +295,7 @@ jobs:
       fast_codegen: ${{ inputs.release_channel == 'alpha' }}
     permissions:
       contents: read
+      actions: read
 
   build:
     name: Build + Verify
