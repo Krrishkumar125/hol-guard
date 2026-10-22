@@ -116,14 +116,18 @@ fn an_inclusion_that_selects_git_does_not_outrank_the_metadata_check() {
         project.join(".git/config"),
         "[remote \"origin\"]\n\turl = https://token@example.test/x.git\n",
     );
-    // A path-shaped inclusion takes the walk into `.git`, where a content
-    // search prints the remote URL's token. A recursive `grep` over the same
-    // checkout is refused that file, and an inclusion cannot win more.
+    // A path-shaped inclusion that matches `.git` itself takes the walk
+    // inside it, where a content search prints the remote URL's token. A
+    // recursive `grep` over the same checkout is refused that file, and an
+    // inclusion cannot win more.
     assert!(!proven(&project, &["**/*"], &home));
-    assert!(!proven(&project, &[".git/**"], &home));
+    // An inclusion that only names paths *below* `.git` never reaches it:
+    // ripgrep prunes the directory unless a glob matches the directory
+    // itself, so `-g '.git/**'` lists nothing from a checkout.
+    assert!(proven(&project, &[".git/**"], &home));
 
-    // The same inclusions over a configuration that carries no credential
-    // keep their proof: the screen reads what the file holds, and refusing
+    // The same inclusion over a configuration that carries no credential
+    // keeps its proof: the screen reads what the file holds, and refusing
     // every checkout's `.git` would hold an ordinary repository-wide search.
     let (home, project) = fixture();
     write(
@@ -131,5 +135,4 @@ fn an_inclusion_that_selects_git_does_not_outrank_the_metadata_check() {
         "[remote \"origin\"]\n\turl = https://example.test/x.git\n",
     );
     assert!(proven(&project, &["**/*"], &home));
-    assert!(proven(&project, &[".git/**"], &home));
 }
