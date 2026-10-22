@@ -20,8 +20,14 @@ import {
   pageRangeLabel,
   verificationLabel,
   whatsNewStorageKey,
+  contributorMonogram,
+  mergeContributors,
+  contributorTone,
+  dedupeChanges,
+  groupReleaseAssets,
+  groupReleasesByTrain,
 } from "./releases-model";
-import type { ReleaseChange, ReleaseIndex, ReleaseSummary } from "./releases-types";
+import type { ReleaseChange, ReleaseContributor, ReleaseIndex, ReleaseSummary } from "./releases-types";
 
 function installLocalStorage(): Map<string, string> {
   const store = new Map<string, string>();
@@ -262,6 +268,146 @@ function change(kind: ReleaseChange["kind"], id: string): ReleaseChange {
   assert.equal(formatReleaseDate("not-a-date"), "not-a-date");
   assert.notEqual(formatReleaseDate("2026-10-18T00:00:00Z"), "Invalid Date");
   assert.equal(channelLabel("preview"), "Preview");
+}
+
+// The feed tells one pull request three ways. Taken from a real alpha, whose
+// 23 entries describe 11 merges: the generated lead, the classified change,
+// and the raw merge commit behind it.
+{
+  const change = (over: Partial<ReleaseChange>): ReleaseChange => ({
+    id: over.id ?? "c",
+    kind: over.kind ?? "other",
+    summary: over.summary ?? "",
+    evidenceUrl: over.evidenceUrl ?? null,
+  });
+  const raw: ReleaseChange[] = [
+    change({ id: "1", summary: "Documented change: Guard 3.53.0a3 retires the Python shim." }),
+    change({
+      id: "2",
+      kind: "fixed",
+      summary: "**runtime**: retire the Python data-flow projection shim (#5496)",
+      evidenceUrl: "https://github.com/hashgraph-online/hol-guard/pull/5496",
+    }),
+    change({
+      id: "3",
+      summary: "Merged pull request #5496: refactor(runtime): retire the Python shim (#5496)",
+      evidenceUrl: "https://github.com/hashgraph-online/hol-guard/pull/5496",
+    }),
+    change({ id: "4", kind: "security", summary: "Bound the release feed response (#5500)" }),
+  ];
+  const deduped = dedupeChanges(raw, true);
+  assert.deepEqual(
+    deduped.map((entry) => entry.id),
+    ["2", "4"],
+    "one entry per pull request, keeping the classified prose",
+  );
+  // The merge-commit restatement wins nothing even when it arrives first.
+  assert.equal(dedupeChanges([raw[2], raw[1]], true)[0].id, "2");
+  // Without notes the generated lead is the only prose there is, so it stays.
+  assert.equal(dedupeChanges(raw, false).length, 3);
+  // An entry naming no pull request cannot be folded into another.
+  const loose = [change({ id: "a", summary: "Rebuilt the catalog" }), change({ id: "b", summary: "Rotated keys" })];
+  assert.equal(dedupeChanges(loose, true).length, 2);
+}
+
+// Seventeen files for one alpha: the platform someone is on, then provenance.
+{
+  const asset = (name: string) => ({ name, url: `https://example.test/${name}` });
+  const { groups, provenance } = groupReleaseAssets([
+    asset("hol-guard-core-3.53.0a3-aarch64-apple-darwin"),
+    asset("hol-guard-core-3.53.0a3-aarch64-apple-darwin.attested.json"),
+    asset("hol-guard-core-3.53.0a3-x86_64-unknown-linux-gnu"),
+    asset("hol_guard-3.53.0a3-py3-none-win_amd64.whl"),
+    asset("hol_guard-3.53.0a3-py3-none-any.whl"),
+    asset("hol-guard-v3.53.0a3.intoto.jsonl"),
+    asset("something-else.bin"),
+  ]);
+  assert.deepEqual(
+    groups.map((group) => [group.label, group.assets.length]),
+    [
+      ["macOS", 1],
+      ["Linux", 1],
+      ["Windows", 1],
+      ["Any platform", 1],
+      ["Other files", 1],
+    ],
+  );
+  assert.equal(provenance.length, 2, "attestations are evidence, not downloads");
+}
+
+// The rail groups a page of versions by the train they belong to.
+{
+  const groups = groupReleasesByTrain([
+    summary({ slug: "a", versionLabel: "3.53.1", train: "3.53" }),
+    summary({ slug: "b", versionLabel: "3.53.0", train: "3.53" }),
+    summary({ slug: "c", versionLabel: "3.52.0", train: "3.52" }),
+  ]);
+  assert.deepEqual(
+    groups.map((group) => [group.train, group.releases.length]),
+    [
+      ["3.53", 2],
+      ["3.52", 1],
+    ],
+  );
+}
+
+// Contributor chips are derived here rather than fetched from GitHub, so the
+// screen stays on the device's own origin.
+{
+  const contributor = (over: Partial<ReleaseContributor>): ReleaseContributor =>
+    ({
+      creditId: "x",
+      contributorType: "human",
+      login: "zerocodefast",
+      displayName: null,
+      githubNumericId: 4211,
+      roles: ["author"],
+      verificationMethod: "pull-request-author",
+      evidenceUrl: null,
+      ...over,
+    }) as ReleaseContributor;
+  assert.equal(contributorMonogram(contributor({})), "ZE");
+  assert.equal(contributorMonogram(contributor({ login: "a", displayName: null })), "A");
+  // A login of nothing but punctuation still produces a chip.
+  assert.equal(contributorMonogram(contributor({ login: "---" })), "?");
+  // The same contributor always gets the same tone, across releases.
+  assert.equal(contributorTone(contributor({})), contributorTone(contributor({})));
+}
+
+// One credit row per change folds into one person per release.
+{
+  const credit = (over: Partial<ReleaseContributor>): ReleaseContributor =>
+    ({
+      creditId: "c",
+      contributorType: "human",
+      login: "zerocodefast",
+      displayName: null,
+      githubNumericId: 4211,
+      roles: ["implementation"],
+      verificationMethod: "pull-request-author",
+      evidenceUrl: null,
+      ...over,
+    }) as ReleaseContributor;
+
+  const roster = mergeContributors([
+    credit({ creditId: "1" }),
+    credit({ creditId: "2", roles: ["implementation", "tests"] }),
+    credit({ creditId: "3", roles: ["docs"] }),
+    credit({ creditId: "4", login: "someone-else", githubNumericId: 99, roles: ["review"] }),
+  ]);
+  assert.equal(roster.length, 2);
+  assert.equal(roster[0].login, "zerocodefast");
+  assert.equal(roster[0].credits, 3);
+  assert.deepEqual(roster[0].roles, ["docs", "implementation", "tests"]);
+  assert.equal(roster[1].credits, 1);
+
+  // The strongest proof a person has carries the chip.
+  const promoted = mergeContributors([
+    credit({ creditId: "1", verificationMethod: "verified-coauthor", evidenceUrl: null }),
+    credit({ creditId: "2", evidenceUrl: "https://github.com/o/r/pull/5" }),
+  ]);
+  assert.equal(promoted[0].verificationMethod, "pull-request-author");
+  assert.equal(promoted[0].evidenceUrl, "https://github.com/o/r/pull/5");
 }
 
 console.log("releases-model.test.ts passed");
