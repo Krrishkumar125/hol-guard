@@ -131,6 +131,9 @@ def test_only_the_marked_cases_may_pass_on_containment() -> None:
         # A `find` that is not limited to regular files hands a link to `grep`, which opens its
         # target; the contained run reaches nothing outside the workspace.
         "neg-find-exec-grep-l-edge-clone-without-type-f",
+        # `git bisect run` starts the program the text names; a contained run starts it with
+        # no network and no home access, so it reaches nothing outside the workspace.
+        "neg-git-bisect-run-starts-a-program",
         # The sandbox has no network for the push to reach the remote over, and no home access
         # for the widened search, so a contained run sends nothing and prints no key.
         "neg-git-push-to-tmp-chain",

@@ -48,7 +48,6 @@ fn uncertain_git_attribution_requires_review_instead_of_a_hard_block() {
     let binding = binding_with_layers(serde_json::json!([]));
     for command in [
         "git cat-file --batch-check",
-        "git notes list",
         "git -c core.sshCommand=payload fetch origin main",
         "git fetch origin --upload-pack=payload",
         "git fetch https://example.invalid/project.git",
@@ -147,7 +146,6 @@ fn a_disabled_permission_still_blocks_uncertain_and_redirected_commands() {
     let binding = binding_with_layers(disabled_permission_layer("command.git.push"));
     for command in [
         "git cat-file --batch-check",
-        "git notes list",
         "git push origin main > /tmp/push.log",
     ] {
         let result = evaluate(&binding, command);

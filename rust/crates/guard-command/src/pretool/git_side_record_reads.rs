@@ -151,6 +151,8 @@ mod tests {
             "--ref build show HEAD",
             "--ref refs/notes/build show HEAD~2",
             "--ref a --ref b list",
+            // `list` here is the ref the option chose, and bare `git notes` lists it.
+            "--ref list",
         ] {
             assert!(read_form("notes", &words(arguments)), "{arguments}");
         }
@@ -178,7 +180,6 @@ mod tests {
             "list --ref=build HEAD",
             "show --ref build HEAD",
             "--ref",
-            "--ref list",
             "--ref=",
             "--ref ../outside list",
             "--ref=../outside show HEAD",
