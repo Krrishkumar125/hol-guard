@@ -66,6 +66,8 @@ pub(super) fn project(
     let mut escaped = false;
     let mut heredocs: Vec<(String, bool)> = Vec::new();
     let mut saw_heredoc = false;
+    // The single file a plain `< path` redirect feeds the first command.
+    let mut input_source: Option<String> = None;
     let mut removed = false;
     let mut targets: Vec<String> = Vec::new();
     let mut bounded_writes = true;
@@ -134,9 +136,15 @@ pub(super) fn project(
                 removed = true;
                 continue;
             }
-            '<' => {
+            '<' if chars.get(index + 1) == Some(&'<') => {
                 index = remove_quoted_heredoc(&chars, index, &mut out, &mut heredocs)?;
                 saw_heredoc = true;
+                removed = true;
+                continue;
+            }
+            '<' => {
+                index =
+                    remove_input_redirect(&chars, index, &mut out, separated, &mut input_source)?;
                 removed = true;
                 continue;
             }
@@ -160,6 +168,14 @@ pub(super) fn project(
     if same_command_aside_from_descriptor_spacing(raw, &command) {
         return None;
     }
+    // `cmd < file` reads `file` and hands its bytes to `cmd` on standard
+    // input, which is what `cat file | cmd` does. Modelling it that way keeps
+    // the read under the proof `cat` already gets and leaves `cmd` an
+    // operand-free filter, the shape it actually runs in.
+    let command = match &input_source {
+        Some(source) => format!("cat {source} | {command}"),
+        None => command,
+    };
     let command = relative_saved_reads(command, &targets, context.cwd);
     let model = crate::parse_command(&CommandModelRequestV1 {
         command: command.clone(),
@@ -463,6 +479,53 @@ fn remove_output_redirect(
         context.cwd,
     );
     targets.push(target);
+    out.push(' ');
+    Some(index)
+}
+
+/// Remove a plain `< path` input redirect, recording the file it reads.
+///
+/// Only the first command's own redirect is modelled: once a separator,
+/// pipe, group or substitution has been seen, the redirect belongs to a
+/// later command and prefixing a reader would misplace the read. `<<`,
+/// `<<<`, `<&` and `<>` are other forms and keep the fail-closed path, as
+/// does a second redirect or a target the shell would expand.
+fn remove_input_redirect(
+    chars: &[char],
+    start: usize,
+    out: &mut String,
+    separated: bool,
+    input_source: &mut Option<String>,
+) -> Option<usize> {
+    if separated
+        || input_source.is_some()
+        || matches!(chars.get(start + 1), Some('&' | '>'))
+        || !trailing_word(out).is_empty()
+    {
+        return None;
+    }
+    let mut index = start + 1;
+    while matches!(chars.get(index), Some(' ' | '\t')) {
+        index += 1;
+    }
+    let target_start = index;
+    while chars
+        .get(index)
+        .is_some_and(|value| !value.is_whitespace() && !matches!(value, ';' | '|' | '&' | ')'))
+    {
+        index += 1;
+    }
+    let target: String = chars[target_start..index].iter().collect();
+    if target.is_empty()
+        || target.len() > 4096
+        || target.starts_with('-')
+        || !target
+            .chars()
+            .all(|value| value.is_ascii_alphanumeric() || "._-/+@%,=:~".contains(value))
+    {
+        return None;
+    }
+    *input_source = Some(target);
     out.push(' ');
     Some(index)
 }

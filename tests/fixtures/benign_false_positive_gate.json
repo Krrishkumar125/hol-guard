@@ -18495,6 +18495,40 @@
       },
       "cwd": "parent",
       "expect": "allow"
+    },
+    {
+      "id": "stdin-redirect-line-count",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "wc -l < README.md"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "stdin-redirect-sorted-head",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "sort < package.json | head -3"
+      },
+      "cwd": "parent",
+      "expect": "allow"
     }
   ],
   "mcp_cases": [
