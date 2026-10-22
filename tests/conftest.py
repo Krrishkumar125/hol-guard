@@ -20,6 +20,7 @@ isolate_user_home()
 
 pytest_plugins = [
     "tests.bundle_first_cloud",
+    "tests.command_control_binding_memo_fixtures",
     "tests.approval_mode_fixtures",
     "tests.approval_reuse_fixtures",
     "tests.containment_resident",
