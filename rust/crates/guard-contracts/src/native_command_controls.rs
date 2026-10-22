@@ -90,6 +90,12 @@ pub struct NativeCommandControlAuthorityV1 {
 }
 
 impl NativeCommandControlAuthorityV1 {
+    /// The authority a device starts with: the first epoch, the all-zero key
+    /// and no recovery pending.
+    pub fn is_initial(&self) -> bool {
+        self.epoch == 1 && self.authority_key_id == "0".repeat(64) && self.recovery.is_none()
+    }
+
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.epoch == 0 || self.mutation_revision == 0 || !valid_digest(&self.authority_key_id) {
             return Err("native_command_control_authority_invalid");
@@ -234,6 +240,29 @@ fn valid_target(value: &str) -> bool {
 }
 
 impl NativeCommandControlBindingV1 {
+    /// The binding a device has before it ever enrolls: unenrolled, nothing
+    /// saved, no layers, and the initial authority with no recovery pending.
+    /// Enforcement keeps packaged protection for it instead of a global
+    /// block, and the advisory allow hint judges it as it will be once
+    /// enrolled. Any other unenrolled binding is a lost authority.
+    pub fn is_initial_defaults(&self) -> bool {
+        self.has_first_install_shape()
+            && self
+                .authority
+                .as_ref()
+                .is_some_and(NativeCommandControlAuthorityV1::is_initial)
+    }
+
+    /// Unenrolled with nothing saved and no layers. It names a first install
+    /// only together with the initial authority, see
+    /// [`Self::is_initial_defaults`].
+    pub fn has_first_install_shape(&self) -> bool {
+        self.health == "unenrolled"
+            && self.revision == 0
+            && self.managed_revision == 0
+            && self.layers.is_empty()
+    }
+
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.schema != NATIVE_COMMAND_CONTROL_BINDING_SCHEMA
             || [
