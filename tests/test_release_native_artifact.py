@@ -334,7 +334,7 @@ def test_known_repo_budget_refuses_changed_or_duplicate_inventory(prepared, monk
         return result
 
     monkeypatch.setattr(api, "get", unstable_get)
-    with pytest.raises(ValueError, match="inventory.*changed during admission"):
+    with pytest.raises(ValueError, match=r"inventory.*changed during admission"):
         native.upload_allowed(api, prepared[0])
 
 
