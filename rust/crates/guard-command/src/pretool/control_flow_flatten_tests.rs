@@ -35,6 +35,10 @@ fn a_construct_flattens_to_the_lists_it_holds() {
             "while read name; do cat README.md; wc -l README.md; done < list.txt",
             "cat list.txt; cat README.md; wc -l README.md",
         ),
+        (
+            "while read -r line; do echo hi; done < README.md",
+            "cat README.md; echo hi",
+        ),
     ] {
         assert_eq!(
             flatten(command).as_deref(),
@@ -54,6 +58,12 @@ fn a_construct_flattens_to_the_lists_it_holds() {
 /// `while true` never ends, `until` is never ended by a read, a `read` with
 /// no redirected input waits on the terminal, and a body that opens an output
 /// repeats that write for as long as the loop runs.
+///
+/// A `read` that binds `PATH` or another name the body's command lookup
+/// depends on keeps its review as well: the flat list would resolve its
+/// command words against the environment the loop replaced. So does an item
+/// ending in an escaped space, whose backslash would escape the separator
+/// once the space is trimmed and swallow the rest of the list.
 #[test]
 fn an_unmodeled_construct_keeps_its_review() {
     for command in [
@@ -79,6 +89,12 @@ fn an_unmodeled_construct_keeps_its_review() {
         "while read line; do echo hi; done <> README.md",
         "while read line; do echo hi; done < README.md > copy.md",
         "while read line; do echo hi; done <&3",
+        "while read PATH; do ls; done < README.md",
+        "while read -r PATH; do ls; done < README.md",
+        "while read http_proxy; do ls; done < README.md",
+        "while read line path; do ls; done < README.md",
+        "if true; then echo a\\ ; rm -rf build; fi",
+        "while read line; do echo a\\ ; rm -rf build; done < README.md",
     ] {
         assert!(
             flatten(command).is_none(),

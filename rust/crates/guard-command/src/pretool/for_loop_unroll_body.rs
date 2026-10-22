@@ -71,6 +71,9 @@ pub(crate) fn body_items<'a>(
                         ("; ", 1)
                     };
                 let trimmed = item.trim().to_owned();
+                if ends_in_an_open_escape(&trimmed) {
+                    return None;
+                }
                 if trimmed.is_empty() {
                     // Blank separators (after `do`, doubled newlines) are fine;
                     // an empty slot around && or || is not.
@@ -188,6 +191,16 @@ pub(crate) fn body_items<'a>(
         }
     }
     None
+}
+
+/// Whether the item ends in a backslash with nothing left for it to escape.
+/// `echo a\ ` ends in an escaped space, and trimming that space leaves the
+/// backslash to escape the separator instead: the written list runs `echo a `
+/// and then the next command, while the trimmed text would hand that command
+/// to `echo` as arguments. No command list is described by both, so the
+/// construct keeps its review.
+fn ends_in_an_open_escape(item: &str) -> bool {
+    (item.len() - item.trim_end_matches('\\').len()) % 2 == 1
 }
 
 /// Whether a body item can change the loop variable or `IFS`, so a later

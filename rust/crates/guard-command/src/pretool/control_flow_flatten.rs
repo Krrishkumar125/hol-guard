@@ -21,6 +21,7 @@
 //! existing review behavior.
 
 use super::for_loop_unroll::body::{body_items, redirect_tail, substitute};
+use super::for_loop_unroll::{ordinary_loop_name, valid_identifier};
 
 /// Enough room for a conditional with a handful of `elif` arms.
 const MAX_ITEMS: usize = 48;
@@ -104,13 +105,30 @@ fn flatten_loop(rest: &str) -> Option<String> {
 /// Whether a loop's test is the single `read` that empties the redirected
 /// input, which is what makes the iteration count finite. A test that opens a
 /// file of its own is some other loop.
+///
+/// The names the `read` binds matter as much as the word itself. `read` fills
+/// them for every line of the input, so `while read PATH` rebinds `PATH` for
+/// the body and changes which program each of its command words resolves to.
+/// The flat list would then stand for commands the loop never ran. Only the
+/// ordinary lowercase names `for` already admits as loop variables are taken,
+/// and `-r`, which only stops backslash processing, is the one option allowed
+/// before them.
 fn driven_by_a_read(test: &[(String, &'static str)]) -> bool {
-    matches!(
-        test,
-        [(text, _)]
-            if text.split_whitespace().next() == Some("read")
-                && !text.contains(['<', '>'])
-    )
+    let [(text, _)] = test else {
+        return false;
+    };
+    if text.contains(['<', '>']) {
+        return false;
+    }
+    let mut words = text.split_whitespace();
+    if words.next() != Some("read") {
+        return false;
+    }
+    let mut names = words.peekable();
+    if names.peek() == Some(&"-r") {
+        names.next();
+    }
+    names.all(|name| valid_identifier(name) && ordinary_loop_name(name))
 }
 
 /// The file a loop's input redirection names, for the plain `< FILE` tail and

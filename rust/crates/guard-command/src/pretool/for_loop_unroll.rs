@@ -112,7 +112,7 @@ fn next_word(text: &str) -> Option<(&str, &str)> {
     (end > 0).then(|| (&text[..end], &text[end..]))
 }
 
-fn valid_identifier(name: &str) -> bool {
+pub(super) fn valid_identifier(name: &str) -> bool {
     // Loop variables also modify the environment seen by commands in the
     // body. Rebinding PATH, HOME, IFS, Git configuration variables, or other
     // exported uppercase names can change which commands actually execute.
@@ -243,6 +243,6 @@ fn header_words(text: &str) -> Option<(Vec<String>, &str)> {
 /// `valid_identifier` already limits loop variables to lowercase names. The
 /// `*_proxy` names are lowercase environment variables, and the zsh specials
 /// change shell state, so binding either changes what the body would run.
-fn ordinary_loop_name(name: &str) -> bool {
+pub(super) fn ordinary_loop_name(name: &str) -> bool {
     !name.ends_with("_proxy") && !SHELL_SPECIAL_NAMES.contains(&name)
 }
