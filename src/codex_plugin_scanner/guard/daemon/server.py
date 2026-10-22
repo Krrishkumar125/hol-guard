@@ -726,7 +726,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
             )
         except Exception as error:
             record_background_event("default_authority_enrollment_failed", failure_detail(error))
-            _LOGGER.warning("Extension-control authority could not be enrolled by default: %s", error, exc_info=True)
+            _LOGGER.warning("Extension-control authority could not be enrolled by default: %s", failure_detail(error))
             return
         if view.health is not AuthorityHealth.PROTECTED:
             record_background_event("default_authority_enrollment_skipped", f"health={view.health.value}")
