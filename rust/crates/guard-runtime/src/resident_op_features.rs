@@ -14,6 +14,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::COMPOSIO_ROLE_FEATURE,
     guard_contracts::EXTENSION_CONTROL_FEATURE,
     guard_contracts::EXTENSION_ALLOW_HINT_FEATURE,
+    guard_contracts::APPROVAL_EXTENSION_RECOMMENDATION_FEATURE,
     guard_contracts::GITHUB_CLI_CLASSIFY_FEATURE,
     guard_contracts::PROTECT_REQUEST_FEATURE,
     guard_contracts::CLAIM_APPROVAL_REUSE_FEATURE,
@@ -102,6 +103,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::HOOK_ARTIFACT_COMPOSE_FEATURE,
     guard_contracts::HOOK_ARTIFACT_FACTS_FEATURE,
     guard_contracts::HOOK_ARTIFACT_FACTS_CONTENT_HASH_FEATURE,
+    guard_contracts::ARTIFACT_CONTENT_HASH_FEATURE,
     guard_contracts::HOOK_ARTIFACT_COMPOSE_PACKAGE_FIREWALL_ACCESS_FEATURE,
     guard_contracts::HOOK_ARTIFACT_COMPOSE_PROMPT_REASON_FEATURE,
     guard_contracts::HOOK_ARTIFACT_COMPOSE_REMEMBERED_RULE_FEATURE,
@@ -149,4 +151,5 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     #[cfg(target_os = "macos")]
     guard_contracts::NATIVE_BASH_RESULT_POLICY_FEATURE,
     guard_contracts::SKILL_WORKFLOW_PREFLIGHT_FEATURE,
+    guard_contracts::INVENTORY_SOURCE_EVIDENCE_FEATURE,
 ];
