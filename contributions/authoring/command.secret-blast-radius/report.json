@@ -45,7 +45,7 @@
     }
   ],
   "reviewedOperations": 1,
-  "revisionDigest": "7e55ab728f3d06867fce33c4b956bbd4d92100e489baecdd26ea8e7f10bc2959",
+  "revisionDigest": "c0809c06204cd042173f90fd5bd2a7b595bfc878bc91f363b94919d036261600",
   "schemaVersion": "guard.extension-coverage-report.v1",
   "unknownOperationBehavior": "review",
   "upstreamVersion": "0.4.2"
