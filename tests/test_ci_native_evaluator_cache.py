@@ -68,6 +68,17 @@ def test_linux_cache_skips_only_compilation_and_always_verifies_current_sources(
     assert steps.index(binaries) < steps.index(verify) < steps.index(save)
     assert 'rustup toolchain install "$toolchain" --profile minimal --component rustfmt' in formatting["run"]
     assert "verify_native_command_program.py" in verify["run"]
+    build = next(step for step in steps if step.get("name") == "Build native command evaluators once for pytest shards")
+    timings = next(step for step in steps if step.get("name") == "Retain native compilation timings")
+    assert build["run"].splitlines()[0].endswith(" --timings")
+    assert timings["if"] == f"always() && {MISS}"
+    assert timings["with"] == {
+        "name": "native-compilation-timings-linux",
+        "path": "rust/target/cargo-timings/cargo-timing.html",
+        "if-no-files-found": "ignore",
+        "retention-days": 1,
+    }
+    assert steps.index(build) < steps.index(binaries) < steps.index(verify) < steps.index(timings)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="The Linux cache preflight uses executable mode bits")
