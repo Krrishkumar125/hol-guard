@@ -13,6 +13,7 @@ from .activation_types import ActivationHeader
 from .authority import DIGEST
 from .located_store import LocatedStore
 from .metadata_objects import ObjectStore, encoded
+from .object_native import sessioned
 from .pack_store import decode
 from .preparation import PreparedCommandPacks
 
@@ -134,6 +135,7 @@ def admission_is_current(header: ActivationHeader, now: int) -> bool:
     )["current"]
 
 
+@sessioned
 def open_record(data, expected_digest, expected_mac, *, key, directory):
     """The authenticated activation and the local inventories it binds; the runtime checks each."""
     opened = lifecycle.record(

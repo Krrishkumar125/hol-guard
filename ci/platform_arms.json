@@ -131,19 +131,19 @@
    "body": "932641bbbcc7"
   },
   {
-   "verdict": "windows-unsupported",
-   "note": "The `pwd`-literal chain proof requires the agent's user to own the checkout and its `.git`; there is no POSIX uid to compare on Windows, so ownership is never proven and the chain stays reviewed. Tightening it would mean an ACL read Guard does not make yet.",
+   "verdict": "other-platform",
+   "note": "Windows reads the owner's SID through `guard_runtime_windows_process::owned_by_current_user`, so this arm is left for a target that is neither Unix nor Windows: it has no ownership primitive at all, ownership is never proven, and the chain stays reviewed.",
    "file": "rust/crates/guard-command/src/pretool/chain_literals_pwd.rs",
    "item": "fn owned(_: &Path) -> bool",
-   "cfg": "not(unix)",
+   "cfg": "not(any(unix, windows))",
    "body": "ca2728a0b3e0"
   },
   {
-   "verdict": "windows-unsupported",
-   "note": "The same proof walks to the repository root only while the device number stays the same, so a mount crossed mid-walk ends it. `st_dev` has no Windows counterpart Guard reads today, so the walk never starts and the chain stays reviewed.",
+   "verdict": "other-platform",
+   "note": "Windows tells volumes apart by hashing the canonical path's own volume prefix, so this arm is left for a target that is neither Unix nor Windows: with no device number and no volume prefix to read, the walk never starts and the chain stays reviewed.",
    "file": "rust/crates/guard-command/src/pretool/chain_literals_pwd.rs",
    "item": "fn filesystem(_: &Path) -> Option<u64>",
-   "cfg": "not(unix)",
+   "cfg": "not(any(unix, windows))",
    "body": "80936b2804b3"
   },
   {

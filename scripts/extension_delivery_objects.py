@@ -14,6 +14,7 @@ from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import (
 from codex_plugin_scanner.guard.catalog_delivery.metadata_objects import (
     validate_reference as validate_reference,
 )
+from codex_plugin_scanner.guard.catalog_delivery.object_native import sessioned
 from codex_plugin_scanner.guard.catalog_delivery.pack_store import MAX_OBJECT_BYTES, PackReader
 
 
@@ -90,6 +91,7 @@ def read_index_page(reader: PackReader, reference: dict[str, Any], count: int, p
     return value
 
 
+@sessioned
 def lookup_entry(reader, reference, count, identity, prefix=""):
     """Return one entry or a complete absence proof without fetching siblings."""
     if not isinstance(identity, str) or not identity.isascii() or not 0 < len(identity) <= 256:

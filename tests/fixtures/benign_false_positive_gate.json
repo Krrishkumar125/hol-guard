@@ -9111,6 +9111,40 @@
       "expect": "allow"
     },
     {
+      "id": "git-worktree-add-remote-only-branch",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add ${ORG}/app-portal-remote-review feat/remote-only-review"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "git-worktree-add-unknown-branch",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add ${ORG}/app-portal-unknown-review feat/never-fetched-review"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "git-worktree-add-existing-branch-tail",
       "fix_area": "worktree-add",
       "harnesses": [
@@ -14899,6 +14933,102 @@
       "tool": "shell",
       "tool_input": {
         "command": ".venv/bin/python -m pytest -q tests"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "venv-interpreter-version",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": ".venv/bin/python --version"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "venv-interpreter-version-short",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": ".venv/bin/python -V"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "venv-interpreter-linked-name-version",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": ".venv/bin/python3 --version"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "venv-interpreter-module-pip-list",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": ".venv/bin/python -m pip list"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "venv-activate-then-module-pytest",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "source .venv/bin/activate && python -m pytest -q"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "venv-activate-only",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "source .venv/bin/activate"
       },
       "cwd": "worktree",
       "expect": "allow"

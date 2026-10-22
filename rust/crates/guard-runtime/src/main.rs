@@ -245,6 +245,7 @@ mod data_flow_analyze_op;
 mod decision_authority_op;
 #[cfg(test)]
 mod decision_authority_vectors_tests;
+mod delivery_object;
 mod developer_inspection_authority_op;
 mod developer_inspection_host;
 #[path = "adapters/detection/devin_detect.rs"]
@@ -258,8 +259,10 @@ mod discovery_placement_op;
 mod edge;
 mod edge_git_push;
 mod encrypted_secret_store;
+mod extension_allow_hint_op;
 mod extension_control_authority_op;
 mod extension_control_op;
+mod extension_control_preview_op;
 #[path = "adapters/detection/gemini_detect.rs"]
 mod gemini_detect;
 mod git_execution_safety_binary;
