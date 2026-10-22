@@ -72,6 +72,13 @@ runs:
         $ErrorActionPreference = 'Stop'
         $PSNativeCommandUseErrorActionPreference = $true
         cargo test --manifest-path rust/Cargo.toml --locked -p hol-guard-runtime --lib shim_op
+    - name: Export fresh offline data through the native Windows fallback
+      if: inputs.shim-gate == 'native-op'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        cargo test --manifest-path rust/Cargo.toml --locked -p hol-guard-runtime --lib fresh_non_unix_export_preserves_native_exclusive_creation
     - name: Observe direct-lane policy inputs as CPython stats them
       if: inputs.shim-gate == 'native-op'
       shell: pwsh

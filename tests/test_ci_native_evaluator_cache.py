@@ -182,3 +182,23 @@ def test_native_offline_previous_caches_pinned_artifacts_and_verifies_executable
     assert save["if"] == PREVIOUS_WRITE
     assert save["with"]["key"] == "${{ steps.previous-cache.outputs.cache-primary-key }}"
     assert steps.index(identify) < steps.index(restore) < steps.index(build) < steps.index(require) < steps.index(save)
+
+
+def test_quality_action_lints_and_formats_offline_export_and_ci_cache_contracts() -> None:
+    steps = composite_action_steps("ci-job-quality")
+    required_paths = {
+        "src/",
+        "tests/test_guard_durable_io.py",
+        "tests/test_guard_managed_install_context.py",
+        "tests/test_guard_private_file_io.py",
+        "tests/test_native_offline_cache.py",
+        "tests/test_ci_native_evaluator_cache.py",
+    }
+    for name, invocation in (
+        ("Lint production sources", "python -m ruff check"),
+        ("Check formatting for production sources", "python -m ruff format --check"),
+    ):
+        step = next(step for step in steps if step.get("name") == name)
+        assert invocation in step["run"]
+        assert required_paths <= set(step["run"].replace("\\", "").split())
+        assert not step.get("continue-on-error", False)

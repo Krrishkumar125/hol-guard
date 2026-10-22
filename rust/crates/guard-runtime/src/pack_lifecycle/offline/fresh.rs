@@ -6,6 +6,9 @@ use super::*;
 #[cfg(unix)]
 #[path = "fresh/io.rs"]
 mod io;
+#[cfg(all(test, not(unix)))]
+#[path = "fresh/non_unix_tests.rs"]
+mod non_unix_tests;
 #[cfg(all(test, unix))]
 #[path = "fresh/tests.rs"]
 mod tests;

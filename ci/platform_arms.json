@@ -1291,6 +1291,14 @@
    "body": "d8031d1df298"
   },
   {
+   "file": "rust/crates/guard-runtime/src/pack_lifecycle/offline/fresh.rs",
+   "item": "fn batch -- non-Unix block",
+   "verdict": "posix-primitive",
+   "note": "Directory fsync and descriptor-relative publication are Unix primitives. Windows keeps the existing generic digest-bound, file-synced, no-clobber publication after native exclusive create_dir; it does not defer directory barriers. fresh/non_unix_tests.rs::fresh_non_unix_export_preserves_native_exclusive_creation proves exported Root/data bytes and rejection of existing or partial destinations on the native-op gate in .github/actions/ci-job-windows-shim-admin/action.yml, reusing its existing hol-guard-runtime --lib test executable.",
+   "cfg": "not(unix)",
+   "body": "d27b2ebbdb53"
+  },
+  {
    "file": "rust/crates/guard-runtime/src/package_context_build_op.rs",
    "item": "const UNSUPPORTED_PLATFORM: &str",
    "verdict": "windows-unsupported",
