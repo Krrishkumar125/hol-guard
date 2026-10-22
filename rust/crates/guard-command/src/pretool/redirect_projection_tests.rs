@@ -77,8 +77,6 @@ fn projects_literal_output_redirects_and_quoted_cat_heredocs() {
             "cat package.json | sort  | head -3",
             false,
         ),
-        // The interpreter keeps its own floor on the other side of the pipe.
-        ("sh < script.sh", "cat script.sh | sh", false),
     ] {
         let projection = project(command, context()).unwrap_or_else(|| panic!("{command}"));
         // The test workspace does not exist, so no write is bounded.
@@ -136,6 +134,11 @@ fn keeps_redirects_that_can_execute_hide_input_or_reach_sensitive_paths_unprojec
         "cat <> notes.txt",
         "wc -l <",
         "wc -l < -",
+        // A bare shell on the other side of the pipe is a wrapper around a
+        // script this text does not hold, so the model stays uncertain
+        // (`transparent_wrapper_not_yet_supported`) and the projection keeps
+        // the fail-closed path rather than standing in for it.
+        "sh < script.sh",
         // Nothing to remove: the command as written is evaluated directly.
         "npm ci --ignore-scripts 2>&1 | tail -15",
         "git status 2>/dev/null",

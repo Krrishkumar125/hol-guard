@@ -143,8 +143,7 @@ pub(super) fn project(
                 continue;
             }
             '<' => {
-                index =
-                    remove_input_redirect(&chars, index, &mut out, separated, &mut input_source)?;
+                index = remove_input_redirect(&chars, index, &out, separated, &mut input_source)?;
                 removed = true;
                 continue;
             }
@@ -493,7 +492,7 @@ fn remove_output_redirect(
 fn remove_input_redirect(
     chars: &[char],
     start: usize,
-    out: &mut String,
+    out: &str,
     separated: bool,
     input_source: &mut Option<String>,
 ) -> Option<usize> {
