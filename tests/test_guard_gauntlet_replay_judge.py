@@ -142,6 +142,9 @@ def test_only_the_marked_cases_may_pass_on_containment() -> None:
         # A file listing of a home service lane or credential store: a contained run has no
         # home access, so it prints no name the home keeps there.
         "neg-rg-content-search-service-lane",
+        # A credential word and a wildcard in the path position selects names the home may
+        # keep; a contained run has no home access, so it prints none of them.
+        "neg-rg-credential-word-wildcard-as-path-operand",
         "neg-rg-files-hidden-service-lane",
         "neg-rg-files-home-credential-store",
         "neg-rg-files-no-ignore-service-lane",
