@@ -86,15 +86,20 @@ def _probe() -> dict[str, object]:
         destination = output / "format-output.txt"
         protected_path = shlex.quote(str(secret_file))
         cat, copy = _tool("cat"), _tool("cp")
-        command = (
-            f"if secret=$({shlex.quote(cat)} {protected_path} 2>/dev/null); then printf '%s' \"$secret\"; exit 91; fi; "
-            f"if printf changed 2>/dev/null > {protected_path}; then exit 92; fi; "
-            f"{shlex.quote(copy)} format-input.txt output/format-output.txt"
+        # The containment contract caps each argv token at 256 bytes, and the
+        # script names the protected path twice, so it runs from a workspace
+        # file instead of an inline `sh -c` argument.
+        script = workspace / "probe.sh"
+        _ = script.write_text(
+            f"if secret=$({shlex.quote(cat)} {protected_path} 2>/dev/null); then printf '%s' \"$secret\"; exit 91; fi\n"
+            f"if printf changed 2>/dev/null > {protected_path}; then exit 92; fi\n"
+            f"{shlex.quote(copy)} format-input.txt output/format-output.txt\n",
+            encoding="utf-8",
         )
         request: dict[str, object] = {
             "schema_version": SCHEMA_VERSION,
             "kind": "installed-analytics-probe",
-            "argv": [_tool("sh"), "-c", command],
+            "argv": [_tool("sh"), script.name],
             "cwd": str(workspace),
             "env_allowlist": [],
             "timeout_seconds": 5,
@@ -144,7 +149,7 @@ def _probe() -> dict[str, object]:
             last = replies[-1] if replies else None
             detail = last[:400].decode("utf-8", "replace") if isinstance(last, bytes) else repr(last)
             raise RuntimeError(
-                "installed containment proof could not reach the native runtime "
+                "the native runtime did not run the installed containment proof "
                 f"(status={status.reason}, resident={detail})"
             )
         stdout, stderr = str(result.get("stdout", "")), str(result.get("stderr", ""))
