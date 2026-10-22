@@ -31661,23 +31661,22 @@ function useExtensionAuthorityWatch(input) {
   }, []);
   const load = reactExports.useCallback(async () => {
     try {
-      const [nextEffective, settings] = await Promise.all([
+      const [nextEffective, settings, item] = await Promise.all([
         fetchEffectiveExtensionControls(),
-        fetchSettings().catch(() => null)
+        fetchSettings().catch(() => null),
+        fetchRequest(requestId)
       ]);
       if (!mounted.current) return "unchanged";
       setEffective(nextEffective);
       setLoadFailed(false);
       const gate = settings?.settings.approval_gate;
       if (gate !== void 0 && gate !== null) setLiveGate(gate);
-      if (nextEffective.health !== "protected") {
-        setNoOption(null);
-        return "unchanged";
-      }
-      const item = await fetchRequest(requestId);
-      if (!mounted.current) return "unchanged";
       if (item.status !== "pending") {
         setNoOption("resolved");
+        return "unchanged";
+      }
+      if (nextEffective.health !== "protected") {
+        setNoOption(null);
         return "unchanged";
       }
       const recommendation = item.extension_recommendation;
@@ -31685,6 +31684,7 @@ function useExtensionAuthorityWatch(input) {
         setNoOption("unavailable");
         return "unchanged";
       }
+      if (settings === null) throw new Error("approval settings unavailable");
       onAvailable(recommendation);
       return "available";
     } catch {
@@ -31788,6 +31788,13 @@ function ExtensionAuthoritySetup(props) {
       watch.loadFailed && /* @__PURE__ */ jsxRuntimeExports.jsx(CheckAgain, { watch, note: "" })
     ] });
   }
+  if (watch.noOption !== null) {
+    let message = "Protection settings are ready, but this request no longer offers Always allow. You can still change the permission in the extension.";
+    if (watch.noOption === "resolved") {
+      message = health === "protected" ? "Protection settings are ready. This request was already answered, so there is nothing left to allow here. You can still change the permission in the extension." : "This request was already answered, so there is nothing left to allow here.";
+    }
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-relaxed text-brand-dark/80", role: "status", children: message }) });
+  }
   const gate = watch.approvalGate;
   const proofName = approvalProofName(gate);
   const terminal = watch.effective.terminal_commands;
@@ -31821,9 +31828,6 @@ function ExtensionAuthoritySetup(props) {
         }
       )
     ] });
-  }
-  if (health === "protected" && watch.noOption !== null) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-relaxed text-brand-dark/80", role: "status", children: watch.noOption === "resolved" ? "Protection settings are ready. This request was already answered, so there is nothing left to allow here. You can still change the permission in the extension." : "Protection settings are ready, but this request no longer offers Always allow. You can still change the permission in the extension." }) });
   }
   if (health === "protected") {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3", children: [

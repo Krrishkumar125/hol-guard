@@ -111,6 +111,8 @@ type LiveDevice = {
   revision?: () => number;
   /** When true the protection settings read fails. */
   unreachable?: () => boolean;
+  /** When true the approval settings read fails. */
+  settingsUnreachable?: () => boolean;
 };
 
 async function mount(
@@ -180,7 +182,13 @@ async function mount(
       body = { items: [item], next_cursor: null, total_pending_count: 1, total_count: 1, status: "pending" };
     } else if (path.endsWith("/receipts")) body = emptyReceiptsPayload;
     else if (path.endsWith("/policy")) body = emptyPoliciesPayload;
-    else if (path.endsWith("/settings")) body = gateSettings(gate);
+    else if (path.endsWith("/settings")) {
+      if (live.settingsUnreachable?.()) {
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "unavailable" }) });
+        return;
+      }
+      body = gateSettings(gate);
+    }
     else if (path.endsWith("/inventory")) body = emptyInventoryPayload;
     else if (path.endsWith("/diff")) body = null;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
@@ -448,6 +456,50 @@ test("a request answered elsewhere after enrollment says so and stops checking",
   const settled = calls.length;
   await page.waitForTimeout(6_000);
   expect(calls.length).toBe(settled);
+});
+
+test("a request answered elsewhere before enrollment says so and stops checking", async ({ page }) => {
+  const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  const answered = { ...request(undefined), status: "resolved", resolution_action: "allow" } as GuardApprovalRequest;
+  let fetches = 0;
+  await mount(page, unavailable, calls, {}, {
+    health: () => "unenrolled",
+    item: () => (fetches++ === 0 ? unavailable : answered),
+  });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const card = page.getByTestId("approval-extension-recommendation");
+  await expect(card.getByText("This request was already answered, so there is nothing left to allow here.")).toBeVisible();
+  await expect(card.getByRole("list", { name: "One-time setup" })).toHaveCount(0);
+  const settled = calls.length;
+  await page.waitForTimeout(6_000);
+  expect(calls.length).toBe(settled);
+});
+
+test("always allow waits for a fresh approval settings read after enrollment", async ({ page }) => {
+  let health = "unenrolled";
+  let settingsUnreachable = false;
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  const available = request(recommendation());
+  await mount(page, unavailable, [], {}, {
+    health: () => health,
+    item: () => (health === "protected" ? available : unavailable),
+    settingsUnreachable: () => settingsUnreachable,
+  });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const card = page.getByTestId("approval-extension-recommendation");
+  await expect(card.getByRole("list", { name: "One-time setup" })).toBeVisible();
+  settingsUnreachable = true;
+  health = "protected";
+  await card.getByRole("button", { name: "Check again" }).click();
+  await expect(card.getByText("Guard could not reach this device's protection settings. Try again in a moment.")).toBeVisible();
+  await expect(card.getByRole("button", { name: /Approve & always allow/ })).toHaveCount(0);
+
+  settingsUnreachable = false;
+  await card.getByRole("button", { name: "Check again" }).click();
+  await expect(card.getByRole("button", { name: "Approve & always allow git add" })).toBeVisible();
 });
 
 test("malformed recommendation is not rendered", async ({ page }) => {

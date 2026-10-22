@@ -58,31 +58,34 @@ export function useExtensionAuthorityWatch(input: {
 
   const load = useCallback(async (): Promise<CheckOutcome> => {
     try {
-      const [nextEffective, settings] = await Promise.all([
+      const [nextEffective, settings, item] = await Promise.all([
         fetchEffectiveExtensionControls(),
         fetchSettings().catch(() => null),
+        fetchRequest(requestId),
       ]);
       if (!mounted.current) return "unchanged";
       setEffective(nextEffective);
       setLoadFailed(false);
       const gate = settings?.settings.approval_gate;
       if (gate !== undefined && gate !== null) setLiveGate(gate);
-      if (nextEffective.health !== "protected") {
-        setNoOption(null);
-        return "unchanged";
-      }
-      const item = await fetchRequest(requestId);
-      if (!mounted.current) return "unchanged";
-      // A request answered elsewhere, or one enrollment leaves without a hint, has nothing left to offer.
+      // A request answered elsewhere has nothing left to offer, whatever state setup is in.
       if (item.status !== "pending") {
         setNoOption("resolved");
         return "unchanged";
       }
+      if (nextEffective.health !== "protected") {
+        setNoOption(null);
+        return "unchanged";
+      }
+      // Enrollment can also leave the request without a hint.
       const recommendation = item.extension_recommendation;
       if (recommendation?.status !== "available") {
         setNoOption("unavailable");
         return "unchanged";
       }
+      // Always allow is offered against the live approval gate, so a failed
+      // settings read keeps checking instead of promoting a stale one.
+      if (settings === null) throw new Error("approval settings unavailable");
       onAvailable(recommendation);
       return "available";
     } catch {
@@ -235,6 +238,23 @@ export function ExtensionAuthoritySetup(props: { watch: ExtensionAuthorityWatch;
     );
   }
 
+  if (watch.noOption !== null) {
+    let message = "Protection settings are ready, but this request no longer offers Always allow. You can still change the permission in the extension.";
+    if (watch.noOption === "resolved") {
+      message =
+        health === "protected"
+          ? "Protection settings are ready. This request was already answered, so there is nothing left to allow here. You can still change the permission in the extension."
+          : "This request was already answered, so there is nothing left to allow here.";
+    }
+    return (
+      <div className="mt-3">
+        <p className="text-sm leading-relaxed text-brand-dark/80" role="status">
+          {message}
+        </p>
+      </div>
+    );
+  }
+
   const gate = watch.approvalGate;
   const proofName = approvalProofName(gate);
   const terminal = watch.effective.terminal_commands;
@@ -279,18 +299,6 @@ export function ExtensionAuthoritySetup(props: { watch: ExtensionAuthorityWatch;
           watch={watch}
           note={`When enrollment finishes, Approve & always allow ${commandText} appears here.`}
         />
-      </div>
-    );
-  }
-
-  if (health === "protected" && watch.noOption !== null) {
-    return (
-      <div className="mt-3">
-        <p className="text-sm leading-relaxed text-brand-dark/80" role="status">
-          {watch.noOption === "resolved"
-            ? "Protection settings are ready. This request was already answered, so there is nothing left to allow here. You can still change the permission in the extension."
-            : "Protection settings are ready, but this request no longer offers Always allow. You can still change the permission in the extension."}
-        </p>
       </div>
     );
   }
