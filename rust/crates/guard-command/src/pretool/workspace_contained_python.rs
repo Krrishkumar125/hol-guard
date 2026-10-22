@@ -24,9 +24,10 @@
 use std::path::Path;
 
 /// Whether a Python manager segment runs a query against an environment that
-/// already exists. `uvx` fetches the tool it names, `poetry` and `pipenv`
-/// install what they run, and `pipx` reports a home the sandbox replaces, so
-/// none of them reaches this.
+/// already exists. `uvx` fetches the tool it names, `pipenv` installs what it
+/// runs, and `pipx` reports a home the sandbox replaces, so none of them
+/// reaches this. Poetry reaches it for the verbs that read only the project
+/// in front of them.
 ///
 /// The pip has to be a virtual environment's own. Outside one, pip reports the
 /// user site under the home directory as well, which the sandbox replaces, so
@@ -45,8 +46,56 @@ pub(super) fn local_python_work(
             virtual_environment_executable(executable, directory)
                 && super::super::pip_reads::environment_read_words(&words)
         }
+        "poetry" => local_poetry_work(arguments, directory),
         _ => false,
     }
+}
+
+/// The poetry verbs that read only the project in front of them. Everything
+/// else poetry does - `add`, `install`, `update`, `lock`, `publish` - reaches
+/// a registry, so it keeps the admission it has today. The list is an
+/// allowlist because poetry's installing verbs are many and grow: a verb this
+/// module does not know stays out.
+const POETRY_LOCAL_VERBS: &[&str] = &["check", "run", "version"];
+
+/// Options poetry reads before the verb that change only how it reports.
+/// `-C`, `--directory` and `--project` are deliberately absent: each moves the
+/// project this module checks `.venv` against, so a command carrying one keeps
+/// the admission it has today rather than being judged against the wrong
+/// directory.
+const POETRY_INERT_FLAGS: &[&str] = &["--no-ansi", "--no-interaction", "-n", "--quiet", "-q"];
+
+/// Whether `poetry` runs a verb against the project it stands in.
+///
+/// `poetry run` is the way a poetry project runs its own tools, the way
+/// `uv run` is for uv, and the command it names is decided on its own merits
+/// exactly as it is behind any other runner. It needs the environment to
+/// exist already: poetry puts that environment under its own home unless
+/// `virtualenvs.in-project` writes it beside the project, and a contained run
+/// is given the workspace as its `HOME`, so only the in-project environment is
+/// one the sandbox can still find. Without `.venv` the run keeps the
+/// admission it has today, the same way `uv run` does.
+///
+/// `poetry check` validates the manifest and the lock beside it, and a bare
+/// `poetry version` reports the manifest's version. Both read the project and
+/// nothing else. A `poetry version 2.0.0` writes that version back into the
+/// manifest, so an operand keeps the verb out.
+fn local_poetry_work(arguments: &[String], directory: &Path) -> bool {
+    let mut words = arguments
+        .iter()
+        .map(String::as_str)
+        .take_while(|word| *word != "--")
+        .skip_while(|word| POETRY_INERT_FLAGS.contains(word));
+    let Some(verb) = words.next() else {
+        return false;
+    };
+    if !POETRY_LOCAL_VERBS.contains(&verb) {
+        return false;
+    }
+    if verb == "run" {
+        return directory.join(".venv").is_dir();
+    }
+    words.all(|word| word.starts_with('-'))
 }
 
 /// Whether the spelled executable lives in a virtual environment's `bin`. The
