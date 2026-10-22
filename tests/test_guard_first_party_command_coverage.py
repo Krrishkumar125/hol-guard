@@ -152,3 +152,5 @@ def test_help_exemptions_require_exact_option_parses(extension: str) -> None:
             matcher = variant.get("matcher") or {}
             if matcher.get("op") == "executable-path-set.v1":
                 assert matcher["config"]["fail_secure_unknown_options"] is False, rule["rule_id"]
+                assert matcher["config"]["required_flags"] == ["--help"], rule["rule_id"]
+                assert matcher["config"]["required_flags_in_all_arguments"] is True, rule["rule_id"]

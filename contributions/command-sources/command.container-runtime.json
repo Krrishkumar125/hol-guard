@@ -5616,8 +5616,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -5741,8 +5743,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -5875,8 +5879,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -6007,8 +6013,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -6132,8 +6140,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -6271,8 +6281,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -6422,8 +6434,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -6553,8 +6567,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -6678,8 +6694,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -6828,8 +6846,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
@@ -6978,8 +6998,10 @@
                   "-l"
                 ],
                 "options_with_values": [],
-                "required_flags": [],
-                "required_flags_in_all_arguments": false,
+                "required_flags": [
+                  "--help"
+                ],
+                "required_flags_in_all_arguments": true,
                 "required_option_values": [],
                 "paths": [
                   [
