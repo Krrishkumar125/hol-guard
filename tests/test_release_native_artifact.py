@@ -99,6 +99,8 @@ class FakeAPI:
         }
         self.duplicates = False
         self.inventory = []
+        self.unrelated_count = 0
+        self.full_inventory_reads = 0
 
     def get(self, route):
         if route == "actions/workflows/release-native-prepare.yml":
@@ -111,8 +113,17 @@ class FakeAPI:
         if route == "actions/runs/7/artifacts?per_page=100":
             artifacts = [self.artifact] * (2 if self.duplicates else 1)
             return {"total_count": len(artifacts), "artifacts": artifacts}
+        if route.startswith("actions/artifacts?name="):
+            name = route.split("name=", 1)[1].split("&", 1)[0]
+            artifacts = [artifact for artifact in self.inventory if artifact["name"] == name]
+            return {"total_count": len(artifacts), "artifacts": artifacts[:100]}
         if route.startswith("actions/artifacts?per_page=100&page="):
-            return {"total_count": len(self.inventory), "artifacts": self.inventory}
+            self.full_inventory_reads += 1
+            page = int(route.rsplit("=", 1)[1])
+            return {
+                "total_count": len(self.inventory) + self.unrelated_count,
+                "artifacts": self.inventory[(page - 1) * 100 : page * 100],
+            }
         raise AssertionError(route)
 
     def read(self, route, limit):
@@ -263,6 +274,68 @@ def test_upload_size_ceiling_is_checked_before_any_upload(prepared, monkeypatch)
     monkeypatch.setattr(native, "MAX_ARTIFACT_BYTES", 20)
     with pytest.raises(ValueError, match="128 MiB"):
         native.upload_allowed(FakeAPI(prepared[1]), prepared[0])
+
+
+def test_unrelated_artifact_inventory_does_not_block_feature_budget(prepared, monkeypatch):
+    monkeypatch.setattr(native, "stable_version_change", lambda: True)
+    monkeypatch.delenv("RELEASE_NATIVE_ARTIFACT_BUDGET_BYTES", raising=False)
+    api = FakeAPI(prepared[1])
+    api.unrelated_count = 1001
+    assert native.upload_allowed(api, prepared[0])
+    assert api.full_inventory_reads == 0
+    monkeypatch.setenv("RELEASE_NATIVE_ARTIFACT_BUDGET_BYTES", str(2 * native.MAX_WARM_BYTES))
+    with pytest.raises(ValueError, match="repository artifact inventory exceeds bound"):
+        native.upload_allowed(api, prepared[0])
+
+
+def test_warm_family_inventory_overflow_still_declines_retention(prepared, monkeypatch):
+    monkeypatch.setattr(native, "stable_version_change", lambda: True)
+    api = FakeAPI(prepared[1])
+    api.inventory = [copy.deepcopy(api.artifact) for _ in range(101)]
+    with pytest.raises(ValueError, match="warm artifact family exceeds bounded"):
+        native.upload_allowed(api, prepared[0])
+
+
+def test_known_repo_budget_counts_active_artifacts_and_refuses_incomplete_inventory(prepared, monkeypatch):
+    monkeypatch.setattr(native, "stable_version_change", lambda: True)
+    api = FakeAPI(prepared[1])
+    api.inventory = [copy.deepcopy(api.artifact) for _ in range(3)]
+    for index, artifact in enumerate(api.inventory):
+        artifact.update(id=index + 10, name="other-feature", size_in_bytes=10)
+    api.inventory[1]["expired"] = True
+    api.inventory[2]["workflow_run"]["id"] = 99
+    monkeypatch.setenv("RELEASE_NATIVE_ARTIFACT_BUDGET_BYTES", str(native.MAX_WARM_BYTES + 10))
+    assert native.upload_allowed(api, prepared[0])
+    monkeypatch.setenv("RELEASE_NATIVE_ARTIFACT_BUDGET_BYTES", str(native.MAX_WARM_BYTES + 9))
+    with pytest.raises(ValueError, match="repository artifact budget"):
+        native.upload_allowed(api, prepared[0])
+    api.unrelated_count = 1
+    with pytest.raises(ValueError, match="inventory is incomplete"):
+        native.upload_allowed(api, prepared[0])
+
+
+@pytest.mark.parametrize("mutation", ["changed-count", "duplicate-id"])
+def test_known_repo_budget_refuses_changed_or_duplicate_inventory(prepared, monkeypatch, mutation):
+    monkeypatch.setattr(native, "stable_version_change", lambda: True)
+    monkeypatch.setenv("RELEASE_NATIVE_ARTIFACT_BUDGET_BYTES", str(2 * native.MAX_WARM_BYTES))
+    api = FakeAPI(prepared[1])
+    api.inventory = [copy.deepcopy(api.artifact) for _ in range(101)]
+    for index, artifact in enumerate(api.inventory):
+        artifact.update(id=index + 10, name="other-feature")
+    original_get = api.get
+
+    def unstable_get(route):
+        result = original_get(route)
+        if route == "actions/artifacts?per_page=100&page=2":
+            if mutation == "changed-count":
+                result["total_count"] += 1
+            else:
+                result["artifacts"][0]["id"] = 10
+        return result
+
+    monkeypatch.setattr(api, "get", unstable_get)
+    with pytest.raises(ValueError, match="inventory.*changed during admission"):
+        native.upload_allowed(api, prepared[0])
 
 
 @pytest.mark.parametrize(

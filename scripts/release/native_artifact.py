@@ -119,30 +119,55 @@ def upload_allowed(api: API, directory: Path) -> bool:
         raise ValueError("unexpected prepared artifact files")
     if sum(entry.stat().st_size for entry in entries) + ZIP_RESERVE > MAX_ARTIFACT_BYTES:
         raise RetentionDeniedError("prepared artifact exceeds 128 MiB ceiling")
-    # Bound this feature to one full five-target reservation among retained warm
-    # artifacts. Count every other active artifact too when a repo budget is set.
-    warm_bytes = total_bytes = 0
-    for page in range(1, 11):
-        listing = api.get(f"actions/artifacts?per_page=100&page={page}")
-        if listing["total_count"] > 1000:
-            raise ValueError("artifact inventory exceeds bounded admission scan")
+    # The feature reservation concerns only these five names, independently of
+    # unrelated CI artifacts. A repository allocation additionally needs a full
+    # bounded inventory; an incomplete or changing snapshot cannot admit storage.
+    warm_bytes = 0
+    for target in sorted(TARGETS):
+        name = PREFIX + target
+        listing = api.get(f"actions/artifacts?name={name}&per_page=100")
         artifacts = listing["artifacts"]
-        for artifact in artifacts:
-            if artifact["expired"]:
-                continue
-            if artifact["workflow_run"]["id"] == int(os.environ["GITHUB_RUN_ID"]):
-                continue
-            total_bytes += artifact["size_in_bytes"]
-            if artifact["name"].startswith(PREFIX):
-                warm_bytes += artifact["size_in_bytes"]
-        if page * 100 >= listing["total_count"]:
-            break
+        if (
+            listing["total_count"] > 100
+            or len(artifacts) != listing["total_count"]
+            or any(artifact["name"] != name for artifact in artifacts)
+        ):
+            raise RetentionDeniedError("warm artifact family exceeds bounded admission scan")
+        warm_bytes += retained_bytes(artifacts)
     if warm_bytes + MAX_WARM_BYTES > MAX_WARM_BYTES:
         raise RetentionDeniedError("retained warm artifacts consume the 640 MiB admission budget")
     budget = os.environ.get("RELEASE_NATIVE_ARTIFACT_BUDGET_BYTES", "")
-    if budget and total_bytes + MAX_WARM_BYTES > int(budget):
+    if budget and repository_artifact_bytes(api) + MAX_WARM_BYTES > int(budget):
         raise RetentionDeniedError("repository artifact budget cannot admit a warm run")
     return True
+
+
+def retained_bytes(artifacts: list[dict]) -> int:
+    return sum(
+        artifact["size_in_bytes"]
+        for artifact in artifacts
+        if not artifact["expired"] and artifact["workflow_run"]["id"] != int(os.environ["GITHUB_RUN_ID"])
+    )
+
+
+def repository_artifact_bytes(api: API) -> int:
+    artifacts = {}
+    expected_count = None
+    for page in range(1, 11):
+        listing = api.get(f"actions/artifacts?per_page=100&page={page}")
+        count = listing["total_count"]
+        if count > 1000 or (expected_count is not None and count != expected_count):
+            raise RetentionDeniedError("repository artifact inventory exceeds bound or changed during admission")
+        expected_count = count
+        for artifact in listing["artifacts"]:
+            if artifact["id"] in artifacts:
+                raise RetentionDeniedError("repository artifact inventory changed during admission")
+            artifacts[artifact["id"]] = artifact
+        if page * 100 >= count:
+            break
+    if len(artifacts) != expected_count:
+        raise RetentionDeniedError("repository artifact inventory is incomplete")
+    return retained_bytes(list(artifacts.values()))
 
 
 def trusted_artifact(api: API) -> dict:
