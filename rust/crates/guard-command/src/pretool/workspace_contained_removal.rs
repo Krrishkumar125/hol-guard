@@ -207,12 +207,14 @@ pub(super) fn loses_work(
 /// restore, the same loss a recursive removal is held to.
 pub(super) fn rsync_replaces_work(
     model: &CanonicalCommandV1,
+    command_text: Option<&str>,
     context: PathContext<'_>,
     execution_environment: Option<&GuardExecutionEnvironmentV1>,
 ) -> bool {
     let mut ignore = IgnoreProbe::new(context, execution_environment);
     super::super::rsync_local::replaces_work(
         &model.segments,
+        Some(command_text.unwrap_or(&model.normalized_text)),
         context.cwd.map(Path::new),
         &mut |operand| ignore.ignores(operand),
     )
