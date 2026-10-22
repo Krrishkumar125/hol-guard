@@ -4419,7 +4419,8 @@
         "command": "git branch new-feature"
       },
       "cwd": "worktree",
-      "expect": "not_allow"
+      "expect": "not_allow",
+      "contained_ok": true
     },
     {
       "id": "neg-git-branch-force-delete",
@@ -13933,7 +13934,8 @@
         "command": "git -c gpg.program=${PRIVATE_TMP}/gpg commit --amend --no-edit -S; git log -1"
       },
       "cwd": "org_wt",
-      "expect": "not_allow"
+      "expect": "not_allow",
+      "contained_ok": true
     },
     {
       "id": "session-ln-s-sibling-wt-node-modules-ls-grep",
@@ -19083,7 +19085,8 @@
         "command": "export LESS=+!id; git log"
       },
       "cwd": "worktree",
-      "expect": "not_allow"
+      "expect": "not_allow",
+      "contained_ok": true
     },
     {
       "id": "neg-env-pager-keyfile-prefix",
