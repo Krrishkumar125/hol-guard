@@ -6,8 +6,9 @@
 //!
 //! `go` is admitted with its module cache and toolchain read-only beside the
 //! workspace. A verb only counts as local inside a module the directory it
-//! runs in holds, since outside one go resolves imports through the proxy. An argument naming a version, and `go list`'s
-//! `-u` and `-versions`, reach that proxy even inside a module, so each
+//! runs in holds, since outside one go resolves imports through the proxy.
+//! An argument naming a version, and `go list`'s `-u` and `-versions`,
+//! reach that proxy even inside a module, so each
 //! keeps the admission it has.
 //!
 //! Cargo is admitted for the verbs that compile what the workspace already
@@ -21,6 +22,22 @@
 //! verbs keep the admission they have today.
 
 use std::path::Path;
+
+// A Go build compiles the sources the module cache already holds and writes
+// its objects to a private build cache. Only the verbs that stay there are
+// local: `get`, `install`, `mod` and `work` reach a registry, and `tool` and
+// `clean` are neither a build nor a read.
+const GO_LOCAL_VERBS: &[&str] = &[
+    "build", "test", "vet", "fmt", "list", "doc", "env", "version", "run", "generate",
+];
+// A cargo build compiles the crate sources the registry cache already holds
+// into a target directory the workspace owns. Only the verbs that stay there
+// are local: `install`, `add`, `update`, `publish` and the rest reach a
+// registry, and `vendor` and `fetch` exist to populate a cache.
+const CARGO_LOCAL_VERBS: &[&str] = &[
+    "build", "b", "test", "t", "check", "c", "clippy", "fmt", "doc", "d", "run", "r", "bench",
+    "tree", "metadata", "version", "nextest",
+];
 
 /// Whether `go` runs a local verb inside a module that `directory` holds.
 /// Outside a module these verbs read the wider GOPATH, and the sandbox has no
