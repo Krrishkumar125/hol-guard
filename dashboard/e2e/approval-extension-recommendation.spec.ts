@@ -108,6 +108,7 @@ async function mount(
   item: GuardApprovalRequest,
   calls: Array<{ path: string; body: Record<string, unknown> }>,
   gate: Record<string, unknown> | null = {},
+  live: { health: () => string; item: () => GuardApprovalRequest } = { health: () => "protected", item: () => item },
 ): Promise<void> {
   await page.route("**/v1/**", async (route) => {
     const routeRequest = route.request();
@@ -120,7 +121,7 @@ async function mount(
       calls.push({ path, body: {} });
       body = {
         schema_version: "guard.daemon.extension-controls.v1",
-        health: "protected",
+        health: live.health(),
         revision: 7,
         catalog_digest: DIGEST,
         global_lockdown: false,
@@ -159,7 +160,7 @@ async function mount(
         copy: null,
         codexResume: null,
       };
-    } else if (path.endsWith(`/requests/${item.request_id}`)) body = item;
+    } else if (path.endsWith(`/requests/${item.request_id}`)) body = live.item();
     else if (path.endsWith("/requests")) {
       body = { items: [item], next_cursor: null, total_pending_count: 1, total_count: 1, status: "pending" };
     } else if (path.endsWith("/receipts")) body = emptyReceiptsPayload;
@@ -278,12 +279,71 @@ test("destructive permissions show a caution before allowing", async ({ page }) 
   await card.screenshot({ path: test.info().outputPath("caution.png") });
 });
 
-test("unhealthy protection authority shows the link only", async ({ page }) => {
-  await mount(page, request(recommendation({ status: "authority_unavailable" })), []);
+test("a device that never enrolled walks through setup, then offers always allow", async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+  let health = "unenrolled";
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  const available = request(recommendation());
+  await mount(page, unavailable, calls, {}, { health: () => health, item: () => (health === "protected" ? available : unavailable) });
   await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
 
   const card = page.getByTestId("approval-extension-recommendation");
-  await expect(card.getByText(/Protection settings need attention/)).toBeVisible();
+  await expect(card.getByRole("heading", { name: "Git protection covers git add" })).toBeVisible();
+  const steps = card.getByRole("list", { name: "One-time setup" });
+  await expect(steps.getByText("Your approval password is ready.")).toBeVisible();
+  await expect(steps.getByText("hol-guard command controls enroll", { exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: /Approve & always allow/ })).toHaveCount(0);
+  await card.screenshot({ path: test.info().outputPath("setup.png") });
+
+  await steps.getByRole("button", { name: "Copy enroll command" }).click();
+  await expect(steps.getByRole("button", { name: "Command copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("hol-guard command controls enroll");
+
+  await card.getByRole("button", { name: "Check again" }).click();
+  await expect(card.getByText("Not finished yet. Guard keeps checking while this page is open.")).toBeVisible();
+
+  health = "protected";
+  await card.getByRole("button", { name: "Check again" }).click();
+  await expect(card.getByRole("button", { name: "Approve & always allow git add" })).toBeVisible();
+  await expect(card.getByText("This device is set up. You can now approve and always allow from here.")).toBeVisible();
+  await expect(card.getByRole("list", { name: "One-time setup" })).toHaveCount(0);
+  await card.screenshot({ path: test.info().outputPath("enrolled.png") });
+});
+
+test("enrollment finished in the terminal shows up without a click", async ({ page }) => {
+  let health = "unenrolled";
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  const available = request(recommendation());
+  await mount(page, unavailable, [], {}, { health: () => health, item: () => (health === "protected" ? available : unavailable) });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const card = page.getByTestId("approval-extension-recommendation");
+  await expect(card.getByRole("list", { name: "One-time setup" })).toBeVisible();
+  health = "protected";
+  await expect(card.getByRole("button", { name: "Approve & always allow git add" })).toBeVisible({ timeout: 12_000 });
+});
+
+test("setup starts with the approval password when none is set", async ({ page }) => {
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  await mount(page, unavailable, [], { enabled: false, configured: false }, { health: () => "unenrolled", item: () => unavailable });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const steps = page.getByTestId("approval-extension-recommendation").getByRole("list", { name: "One-time setup" });
+  await expect(steps.getByText(/Choose an approval password/)).toBeVisible();
+  await expect(steps.getByRole("link", { name: "Open approval settings" })).toHaveAttribute("href", /\/settings\?section=approval/);
+  await expect(steps.getByText("hol-guard command controls enroll", { exact: true })).toBeVisible();
+});
+
+test("damaged protection authority points at repair instead of setup", async ({ page }) => {
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  await mount(page, unavailable, [], {}, { health: () => "tampered", item: () => unavailable });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const card = page.getByTestId("approval-extension-recommendation");
+  await expect(card.getByText(/protection settings need repair/)).toBeVisible();
+  await expect(card.getByRole("link", { name: "Repair protection" })).toHaveAttribute("href", /\/protection\/repair/);
+  await expect(card.getByRole("list", { name: "One-time setup" })).toHaveCount(0);
   await expect(card.getByRole("button", { name: /Approve & always allow/ })).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Configure in Git protection" })).toBeVisible();
 });

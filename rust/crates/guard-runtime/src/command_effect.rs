@@ -211,12 +211,34 @@ pub(crate) struct EvaluatedCommand {
     pub(crate) authority_failure: bool,
 }
 
+/// Which authority health an evaluation judges the command under.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AuthorityView {
+    /// The health the control snapshot reports.
+    Reported,
+    /// The health a device that never enrolled reaches once it does: an
+    /// unenrolled authority is judged as protected. Every other health stays
+    /// as reported, so a degraded or tampered authority is still a failure.
+    OnceEnrolled,
+}
+
 /// Evaluate one request into its typed composition. The wire op serializes it;
 /// the allow-hint op reads the matches and re-runs it under a counterfactual
 /// overlay, so both judge a command by exactly the same rules.
 pub(crate) fn evaluate_composite(
     request: &CommandEffectRequestV1,
     controls: Option<&CompiledNativeCommandControls>,
+) -> Result<EvaluatedCommand, String> {
+    evaluate_composite_under(request, controls, AuthorityView::Reported)
+}
+
+/// [`evaluate_composite`] under an explicit [`AuthorityView`]. Only the
+/// advisory allow-hint op asks for [`AuthorityView::OnceEnrolled`]; nothing
+/// that decides a command does.
+pub(crate) fn evaluate_composite_under(
+    request: &CommandEffectRequestV1,
+    controls: Option<&CompiledNativeCommandControls>,
+    view: AuthorityView,
 ) -> Result<EvaluatedCommand, String> {
     use std::path::Path;
 
@@ -255,6 +277,12 @@ pub(crate) fn evaluate_composite(
         {
             return Err("native_command_extension_evidence_binding_mismatch".to_owned());
         }
+    }
+    // Judged once enrolled, an authority that was never enrolled counts as
+    // protected. It is set after the binding check, so the evidence stays bound
+    // to the snapshot the command was actually reviewed under.
+    if view == AuthorityView::OnceEnrolled && binding.health == "unenrolled" {
+        "protected".clone_into(&mut binding.health);
     }
     apply_counterfactual_permissions(&mut binding, &request.counterfactual_enabled_permission_ids)?;
     let workflow_authorization: Option<GitHubWorkflowAuthorizationV1> = request

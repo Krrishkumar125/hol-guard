@@ -1,11 +1,12 @@
 use super::*;
 use guard_command::{parse_command, CommandModelRequestV1};
-use guard_contracts::EXTENSION_ALLOW_HINT_FEATURE;
+use guard_contracts::{NativeCommandControlAuthorityV1, EXTENSION_ALLOW_HINT_FEATURE};
 use serde_json::json;
 
 const DOCKER_PERMISSION: &str = "command.container-runtime.permission.docker-sensitive";
 const HARD_RESET_PERMISSION: &str = "command.git.permission.hard-reset";
 const DOCKER: &str = "docker version --format '{{.Server.Version}}'";
+const DOCKER_CONTEXT: &str = "docker context ls";
 const HARD_RESET: &str = "git reset --hard HEAD~1";
 
 fn admitted_controls(name: &str) -> CompiledNativeCommandControls {
@@ -93,6 +94,94 @@ fn docker_sensitive_review_names_the_container_runtime_permission() {
         hint.catalog_digest,
         controls.command_catalog().unwrap().catalog_digest
     );
+}
+
+/// Controls admitted under `health`. An unenrolled device carries the
+/// first-install binding: no layers, revision zero and the all-zero authority key.
+fn controls_with_health(name: &str, health: &str) -> CompiledNativeCommandControls {
+    let home = std::env::temp_dir().join(format!(
+        "guard-extension-allow-hint-{name}-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&home).unwrap();
+    let home = home.canonicalize().unwrap();
+    crate::contributed_mcp_catalog_test_support::controls_for_binding(
+        &home,
+        false,
+        &[],
+        &[],
+        |binding| {
+            health.clone_into(&mut binding.health);
+            if health == "unenrolled" {
+                binding.revision = 0;
+                binding.layers.clear();
+                binding.authority = Some(NativeCommandControlAuthorityV1 {
+                    epoch: 1,
+                    mutation_revision: 1,
+                    authority_key_id: "0".repeat(64),
+                    recovery: None,
+                });
+            }
+        },
+    )
+}
+
+#[test]
+fn an_unenrolled_device_is_hinted_as_it_will_be_once_enrolled() {
+    let unenrolled = controls_with_health("unenrolled", "unenrolled");
+    let enrolled = admitted_controls("enrolled");
+    for command in [DOCKER_CONTEXT, DOCKER, HARD_RESET] {
+        let hint = hint_for(&unenrolled, command)
+            .unwrap_or_else(|| panic!("{command}: an unenrolled review has a hint"));
+        let once_enrolled = hint_for(&enrolled, command).expect("an enrolled review has a hint");
+        assert_eq!(
+            hint.permission_ids, once_enrolled.permission_ids,
+            "{command}"
+        );
+        assert_eq!(hint.rule_ids, once_enrolled.rule_ids, "{command}");
+        assert_eq!(hint.extension_ids, once_enrolled.extension_ids, "{command}");
+        assert!(hint.relied_permission_ids.is_empty(), "{command}");
+    }
+    let hint = hint_for(&unenrolled, DOCKER_CONTEXT).unwrap();
+    assert_eq!(hint.permission_ids, [DOCKER_PERMISSION]);
+}
+
+#[test]
+fn judging_once_enrolled_never_changes_the_reported_decision() {
+    let unenrolled = controls_with_health("reported", "unenrolled");
+    let query = query(&unenrolled, DOCKER_CONTEXT);
+    let request = CommandEffectRequestV1 {
+        schema: COMMAND_EFFECT_REQUEST_SCHEMA.to_owned(),
+        request_id: String::new(),
+        command_text: query.command_text.clone(),
+        canonical_command: query.canonical_command.clone(),
+        compatibility_action_class: None,
+        compatibility_reason: None,
+        native_extension_evidence: query.native_extension_evidence.clone(),
+        control_snapshot: query.control_snapshot.clone(),
+        workflow_authorization: None,
+        cwd: None,
+        home_dir: None,
+        counterfactual_enabled_permission_ids: Vec::new(),
+    };
+    let reported = crate::command_effect::evaluate_composite(&request, Some(&unenrolled)).unwrap();
+    assert!(reported.authority_failure);
+    let once_enrolled =
+        evaluate_composite_under(&request, Some(&unenrolled), AuthorityView::OnceEnrolled).unwrap();
+    assert!(!once_enrolled.authority_failure);
+}
+
+#[test]
+fn a_tampered_authority_has_no_hint_even_for_an_extension_review() {
+    for health in ["tampered", "recovery-required", "degraded-unacknowledged"] {
+        let controls = controls_with_health(health, health);
+        let mut review = query(&controls, DOCKER_CONTEXT);
+        review.native_extension_evidence["minimum_action"] = json!("review");
+        review.native_extension_evidence["reason_code"] = json!(EXTENSION_REVIEW_REASON);
+        let result = answer(&request(review), &controls);
+        assert_eq!(result.status, "ok", "{health}: {}", result.code);
+        assert!(result.payload.unwrap().hint.is_none(), "{health}");
+    }
 }
 
 #[test]
