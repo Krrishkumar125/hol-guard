@@ -257,17 +257,18 @@ pub(super) fn glob_can_select_sensitive_path(value: &str) -> bool {
     glob_selects_sensitive_path(value, true)
 }
 /// The marker tests `glob_can_select_sensitive_path` makes about the glob's
-/// own text, leaving out the family that asks only whether some longer
-/// string the glob could match would hold a marker. A path operand is
-/// refused on that wider question because another proof can still clear it.
-/// A pattern has no such proof, and the wider question refuses every regex
-/// with a `.*` in it: `cookie.*name` reaches a credential only if a file
-/// named `cookie.<something>name` is sitting there to be expanded onto the
+/// own text, leaving out the two families that ask only whether some longer
+/// string the glob could match would start with, or hold, a marker. A path
+/// operand is refused on those wider questions because another proof can
+/// still clear it. A pattern has no such proof, and the wider questions
+/// refuse every regex with a `.*` in it: `cookie.*name` or `auth.*provider`
+/// reaches a credential only if a file named `cookie.<something>name` or
+/// `auth.<something>provider` is sitting there to be expanded onto the
 /// command line.
 pub(super) fn literal_glob_names_sensitive_path(value: &str) -> bool {
     glob_selects_sensitive_path(value, false)
 }
-fn glob_selects_sensitive_path(value: &str, contains_family: bool) -> bool {
+fn glob_selects_sensitive_path(value: &str, path_operand: bool) -> bool {
     let normalized = value.to_ascii_lowercase();
     if normalized.len() > 512
         || normalized
@@ -315,9 +316,15 @@ fn glob_selects_sensitive_path(value: &str, contains_family: bool) -> bool {
                     .iter()
                     .any(|marker| {
                         glob_matches(bytes, marker.as_bytes())
-                            || glob_intersects_prefix_family(bytes, format!("{marker}.").as_bytes())
-                            || (contains_family
-                                && glob_intersects_contains_family(bytes, marker.as_bytes(), true))
+                            || (path_operand
+                                && (glob_intersects_prefix_family(
+                                    bytes,
+                                    format!("{marker}.").as_bytes(),
+                                ) || glob_intersects_contains_family(
+                                    bytes,
+                                    marker.as_bytes(),
+                                    true,
+                                )))
                     })
             {
                 return true;
@@ -346,7 +353,7 @@ fn glob_selects_sensitive_path(value: &str, contains_family: bool) -> bool {
                 .iter()
                 .any(|candidate| glob_matches(bytes, candidate.as_bytes()))
                 || (env_hint && glob_intersects_prefix_family(bytes, b".env."))
-                || (contains_family
+                || (path_operand
                     && family_hint
                     && [
                         b"private-key".as_slice(),
@@ -441,8 +448,23 @@ mod tests {
             assert!(literal_glob_names_sensitive_path(selecting), "{selecting}");
             assert!(glob_can_select_sensitive_path(selecting), "{selecting}");
         }
-        for regex in ["cookie.*name", "a.*b", "auth_token.*=", "delegate.*=>"] {
+        // A credential marker joined to a second word with `.*` is still a
+        // regex. A path operand spelled the same way is refused, because it
+        // is a glob some credential file could sit under.
+        for regex in [
+            "cookie.*name",
+            "a.*b",
+            "auth_token.*=",
+            "delegate.*=>",
+            "auth.*provider",
+            "token.*expired",
+            "credentials.*load",
+            "auth.*header",
+        ] {
             assert!(!literal_glob_names_sensitive_path(regex), "{regex}");
+        }
+        for operand in ["auth.*provider", "token.*expired", "credentials.*load"] {
+            assert!(glob_can_select_sensitive_path(operand), "{operand}");
         }
     }
 

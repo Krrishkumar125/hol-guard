@@ -211,6 +211,8 @@ fn an_expandable_pattern_is_not_proven_stdin_text() {
         ("-v .git", true),
         ("-i secret", true),
         ("-E ^[a-z]+[0-9]{2}$", true),
+        ("-i auth.*provider", true),
+        ("token.*expired", true),
         ("-v .env{,.local}", false),
         ("-v .env*", false),
         ("-v .en{v..v}", false),

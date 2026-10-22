@@ -544,6 +544,9 @@ mod tests {
             "a.*b",
             "auth_token.*=",
             "Delegate.*=>",
+            "Auth.*Provider",
+            "token.*expired",
+            "-e auth.*header",
         ] {
             assert!(safe_rg_stdin_arguments(&arguments(line)), "{line}");
         }

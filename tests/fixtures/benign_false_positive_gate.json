@@ -194,6 +194,75 @@
       "expect": "allow"
     },
     {
+      "id": "rg-regex-credential-word-then-wildcard",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rg 'Auth.*Provider' src"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "rg-regexp-option-credential-word-then-wildcard",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rg -e 'auth.*header' src"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "grep-recursive-regex-credential-word-then-wildcard",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rn 'token.*expired' src"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-rg-credential-word-wildcard-as-path-operand",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rg -n export auth.*provider"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow",
+      "contained_ok": true
+    },
+    {
       "id": "grep-recursive-list",
       "fix_area": "shell",
       "harnesses": [

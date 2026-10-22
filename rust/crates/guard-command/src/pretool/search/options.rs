@@ -56,9 +56,9 @@ pub(super) fn unsafe_search_value(
         //
         // Only the glob's own text answers that question. A regex carries
         // `.*` wherever it joins two words, and asking whether some string
-        // the glob could match would hold a credential marker says yes to
-        // every one of them: `rg 'Delegate\b.*=>' src` is a search, not a
-        // file name.
+        // the glob could match would start with or hold a credential marker
+        // says yes to every one of them: `rg 'Delegate\b.*=>' src` and
+        // `rg 'Auth.*Provider' src` are searches, not file names.
         SearchValueRole::Pattern => literal_glob_names_sensitive_path(value),
         SearchValueRole::Other => false,
     }
