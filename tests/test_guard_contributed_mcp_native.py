@@ -16,6 +16,7 @@ from codex_plugin_scanner.guard.temporary_mcp_approvals import temporary_mcp_gra
 
 from . import mcp_extension_driver as extension_driver
 from .local_cli_native_fixture import native_local_cli_grant_resident  # noqa: F401
+from .mcp_case_batches import package_case_batches
 from .mcp_recorded_expectations import expected_decision, recorded
 from .test_guard_mcp_server_grants import _artifact, _AuthorityStore, _layer
 from .test_guard_temporary_mcp_approvals import _artifact as _browser_click_artifact
@@ -54,9 +55,14 @@ def test_recorded_expectations_cover_every_state_lockdown_and_action() -> None:
 
 
 @pytest.mark.parametrize("lockdown", [False, True])
-def test_resident_matches_the_recorded_expectations_for_every_bundled_package(lockdown: bool) -> None:
+@pytest.mark.parametrize(
+    "case_batch", package_case_batches(_package_cases()), ids=lambda cases: cases[0][0] + "-" + cases[0][3]
+)
+def test_resident_matches_the_recorded_expectations_for_every_bundled_package(
+    lockdown: bool, case_batch: list[tuple[str, str, str, str, str]]
+) -> None:
     mismatches: list[str] = []
-    for mcp_id, command, package, tool, state in _package_cases():
+    for mcp_id, command, package, tool, state in case_batch:
         catalog_id = "command." + mcp_id.replace(".", "-")
         layer = _layer(ControlLayerKind.LOCAL_ADMIN, catalog_id, ControlState.ENABLED, lockdown=lockdown)
         store = _AuthorityStore((layer,))
