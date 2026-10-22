@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,7 +12,11 @@ from codex_plugin_scanner.guard.cli import desktop_converge, update_commands
 from codex_plugin_scanner.guard.cli.commands_lifecycle_gate import lifecycle_gate_requirement
 from codex_plugin_scanner.guard.cli.commands_parser_desktop import _configure_guard_desktop_parser
 from codex_plugin_scanner.guard.cli.desktop_converge import converge_on_desktop_core, repair_hooks_then_converge
-from codex_plugin_scanner.guard.desktop_foreign_installs import DESKTOP_PATH_SHIM_MARKER
+from codex_plugin_scanner.guard.desktop_foreign_installs import (
+    DESKTOP_PATH_SHIM_MARKER,
+    inventory_foreign_installs,
+    remove_foreign_installs,
+)
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX venv and bin layout")
 
@@ -166,14 +171,62 @@ def test_keeps_installs_when_hook_repair_reports_a_problem(
 
     payload, _, notes = repair_hooks_then_converge(
         _context(home, tmp_path),
-        store=object(),
+        store=object(),  # pyright: ignore[reportArgumentType]
         workspace=None,
-        now="2026-10-22T00:00:00Z",  # pyright: ignore[reportArgumentType]
+        now="2026-10-22T00:00:00Z",
     )
 
     assert payload["status"] == "deferred"
     assert notes == ["Could not repair Codex hooks."]
     assert venv.exists()
+
+
+def test_removes_a_relative_link_left_by_a_deleted_venv(home: Path) -> None:
+    link = home / ".local" / "bin" / "hol-guard"
+    link.symlink_to(Path("..") / "pipx" / "venvs" / "hol-guard" / "bin" / "hol-guard")
+
+    inventory = inventory_foreign_installs(home, path_env=str(link.parent))
+
+    assert inventory.stale_entries == (link,)
+
+
+@pytest.mark.parametrize(
+    ("probe_exit", "probe_stdout", "expected_kind", "uninstalled", "script_kept"),
+    [
+        (0, "{user_site}", "pip_user", True, True),
+        (3, "", "stale_script", False, False),
+        (4, "", None, False, True),
+    ],
+)
+def test_pip_user_removal_checks_where_hol_guard_is_installed(
+    home: Path,
+    tmp_path: Path,
+    probe_exit: int,
+    probe_stdout: str,
+    expected_kind: str | None,
+    uninstalled: bool,
+    script_kept: bool,
+) -> None:
+    script = home / ".local" / "bin" / "hol-guard"
+    _ = script.write_text("#!/bin/sh\nfrom codex_plugin_scanner.cli import main\n")
+    script.chmod(0o755)
+    user_site = tmp_path / "user-site"
+    commands: list[list[str]] = []
+
+    def run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        if command[1] == "-c":
+            return subprocess.CompletedProcess(command, probe_exit, probe_stdout.format(user_site=user_site), "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    inventory = inventory_foreign_installs(home, path_env=str(script.parent))
+    result = remove_foreign_installs(inventory, retire_runtime=lambda _: True, run=run)
+
+    assert inventory.user_site_interpreters == (Path("/bin/sh"),)
+    assert [item["kind"] for item in result.removed] == ([expected_kind] if expected_kind else [])
+    assert any(command[1:3] == ["-m", "pip"] for command in commands) is uninstalled
+    assert script.exists() is script_kept
+    assert bool(result.notes) is (expected_kind is None)
 
 
 def test_converge_requires_the_update_approval_unless_dry_run() -> None:

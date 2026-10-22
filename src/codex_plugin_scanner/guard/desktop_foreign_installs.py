@@ -29,6 +29,22 @@ DESKTOP_PATH_SHIM_MARKER = "HOL_GUARD_DESKTOP_USER_PATH_SHIM"
 DESKTOP_DATA_DIR_NAME = "org.hol.guard.desktop"
 _CONTENT_SCAN_LIMIT = 1024 * 1024
 _PIP_UNINSTALL_TIMEOUT_SECONDS = 120.0
+_USER_SITE_PROBE_TIMEOUT_SECONDS = 30.0
+_NOT_INSTALLED_EXIT = 3
+# Prints the user site-packages that holds hol-guard. Exits 3 when the
+# interpreter has no hol-guard and 4 when the copy it imports lives elsewhere,
+# so pip is never pointed at a system or distro install.
+_USER_SITE_PROBE = """
+import importlib.metadata as metadata, os, site, sys
+try:
+    location = os.path.realpath(str(metadata.distribution("hol-guard").locate_file("")))
+except metadata.PackageNotFoundError:
+    sys.exit(3)
+user_site = os.path.realpath(site.getusersitepackages())
+if location != user_site:
+    sys.exit(4)
+print(location)
+"""
 
 
 @dataclass(frozen=True)
@@ -45,12 +61,16 @@ class ToolVenv:
 class ForeignInventory:
     venvs: tuple[ToolVenv, ...]
     stale_entries: tuple[Path, ...]
-    user_site_interpreters: tuple[Path, ...]
-    user_site_entries: tuple[Path, ...]
+    user_site: tuple[tuple[Path, tuple[Path, ...]], ...]
+    """Each ``pip --user`` interpreter with the console scripts that run it."""
+
+    @property
+    def user_site_interpreters(self) -> tuple[Path, ...]:
+        return tuple(interpreter for interpreter, _ in self.user_site)
 
     @property
     def empty(self) -> bool:
-        return not (self.venvs or self.stale_entries or self.user_site_interpreters)
+        return not (self.venvs or self.stale_entries or self.user_site)
 
 
 @dataclass(frozen=True)
@@ -129,7 +149,7 @@ def inventory_foreign_installs(home: Path, *, path_env: str | None = None) -> Fo
             venv_entries[owner].append(entry)
         elif _dangling_tool_link(entry, collections):
             stale.append(entry)
-        elif (interpreter := _user_site_interpreter(entry, protected)) is not None:
+        elif (interpreter := _user_site_interpreter(entry)) is not None:
             user_site.setdefault(interpreter, []).append(entry)
     venvs = tuple(
         ToolVenv(kind=kind, root=venv, entries=tuple(venv_entries[venv]), runtimes=_venv_runtimes(venv))
@@ -138,8 +158,7 @@ def inventory_foreign_installs(home: Path, *, path_env: str | None = None) -> Fo
     return ForeignInventory(
         venvs=venvs,
         stale_entries=tuple(stale),
-        user_site_interpreters=tuple(user_site),
-        user_site_entries=tuple(entry for entries in user_site.values() for entry in entries),
+        user_site=tuple((interpreter, tuple(entries)) for interpreter, entries in user_site.items()),
     )
 
 
@@ -171,7 +190,18 @@ def remove_foreign_installs(
         if _unlink(entry):
             entry_dirs.add(entry.parent)
             removed.append({"kind": "stale_link", "path": str(entry)})
-    for interpreter in inventory.user_site_interpreters:
+    for interpreter, entries in inventory.user_site:
+        location = _user_site_location(interpreter, run)
+        if location == _NOT_INSTALLED_EXIT:
+            # The package is gone and only its console scripts remain.
+            for entry in entries:
+                if _unlink(entry):
+                    entry_dirs.add(entry.parent)
+                    removed.append({"kind": "stale_script", "path": str(entry)})
+            continue
+        if not isinstance(location, Path) or _is_relative_to(_resolve(Path(__file__)), location):
+            notes.append(f"Kept hol-guard for {interpreter}: it is not a separate pip --user install.")
+            continue
         command = [str(interpreter), "-m", "pip", "uninstall", "-y", "hol-guard"]
         try:
             completed = run(command, capture_output=True, text=True, timeout=_PIP_UNINSTALL_TIMEOUT_SECONDS)
@@ -182,8 +212,24 @@ def remove_foreign_installs(
             notes.append(f"Could not uninstall hol-guard from {interpreter}: pip exited {completed.returncode}.")
             continue
         removed.append({"kind": "pip_user", "path": str(interpreter)})
-        entry_dirs.update(entry.parent for entry in inventory.user_site_entries if not entry.exists())
+        entry_dirs.update(entry.parent for entry in entries if not entry.exists())
     return RemovalResult(removed=tuple(removed), removed_entry_dirs=frozenset(entry_dirs), notes=tuple(notes))
+
+
+def _user_site_location(interpreter: Path, run: Callable[..., subprocess.CompletedProcess[str]]) -> Path | int | None:
+    try:
+        completed = run(
+            [str(interpreter), "-c", _USER_SITE_PROBE],
+            capture_output=True,
+            text=True,
+            timeout=_USER_SITE_PROBE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode == _NOT_INSTALLED_EXIT:
+        return _NOT_INSTALLED_EXIT
+    location = completed.stdout.strip() if completed.returncode == 0 else ""
+    return Path(location) if location and Path(location).is_absolute() else None
 
 
 def _retire(retire_runtime: Callable[[Path], bool], runtime: Path) -> bool:
@@ -254,8 +300,12 @@ def _dangling_tool_link(entry: Path, collections: Iterable[tuple[str, Path]]) ->
     return False
 
 
-def _user_site_interpreter(entry: Path, protected: tuple[Path, ...]) -> Path | None:
-    """Return the system interpreter behind a ``pip --user`` console script."""
+def _user_site_interpreter(entry: Path) -> Path | None:
+    """Return the system interpreter behind a ``pip --user`` console script.
+
+    Whether hol-guard really sits in that interpreter's user site is checked
+    just before removal, so a script for a system install is left alone.
+    """
 
     if sys.platform == "win32" or entry.is_symlink():
         return None
@@ -268,7 +318,7 @@ def _user_site_interpreter(entry: Path, protected: tuple[Path, ...]) -> Path | N
     interpreter = Path(shebang[0])
     if not interpreter.is_absolute() or not interpreter.is_file():
         return None
-    if (interpreter.parent.parent / "pyvenv.cfg").is_file() or _contains_any(interpreter.parent.parent, protected):
+    if (interpreter.parent.parent / "pyvenv.cfg").is_file():
         return None
     return interpreter
 
@@ -296,7 +346,8 @@ def _link_target(entry: Path) -> Path:
         target = Path(os.readlink(entry))
     except OSError:
         return entry
-    return target if target.is_absolute() else entry.parent / target
+    # Normalize so ``../pipx/venvs/...`` still matches once its target is gone.
+    return Path(os.path.normpath(target if target.is_absolute() else entry.parent / target))
 
 
 def _resolve(path: Path) -> Path:

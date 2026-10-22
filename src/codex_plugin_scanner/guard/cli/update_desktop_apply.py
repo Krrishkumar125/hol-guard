@@ -321,7 +321,7 @@ def _desktop_already_current(
             context=context,
             executable=Path(sys.executable).resolve(),
             minimum_version=current_version,
-            required=daemon_refresh_required,
+            required=daemon_refresh_required or restart,
         )
     return payload, 0
 
@@ -375,7 +375,7 @@ def _desktop_apply_target(
             context=context,
             executable=applied.executable,
             minimum_version=applied.version,
-            required=daemon_refresh_required,
+            required=daemon_refresh_required or restart,
         )
     return payload, 0
 

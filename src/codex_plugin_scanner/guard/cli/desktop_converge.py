@@ -29,6 +29,7 @@ from ..stable_guard_cli import durable_desktop_current_hol_guard
 from ..store import GuardStore
 
 _SHIM_TEMP_NAME = "hol-guard.desktop-shim.tmp"
+_CORE_ONLY_MESSAGE = "Run hol-guard desktop converge from the HOL Guard Desktop Core."
 _DEFERRED_NOTE = (
     "Kept the other HOL Guard installs because harness hook repair reported a problem. "
     "Fix it, then run hol-guard desktop converge."
@@ -71,6 +72,8 @@ def converge_on_desktop_core(
         package_note = (refresh_package_shims or (lambda: _refresh_package_shims(context)))()
         notes.extend([package_note] if package_note else [])
     shim = _ensure_user_path_shim(context.home_dir, launcher, result.removed_entry_dirs)
+    if shim.get("status") == "failed":
+        notes.append(f"Could not write the Desktop hol-guard wrapper at {shim.get('path')}: {shim.get('error')}.")
     resolved = shutil.which("hol-guard", path=path_env)
     on_desktop = resolved is not None and _resolves_to_launcher(Path(resolved), launcher)
     if resolved is not None and not on_desktop:
@@ -136,6 +139,11 @@ def run_desktop_converge(
 
     from .update_desktop_apply import refresh_desktop_core_daemon
 
+    if not getattr(sys, "frozen", False):
+        # The daemon restart below runs this process's executable, which must be
+        # the Desktop Core, never an install that converge is about to remove.
+        print(_CORE_ONLY_MESSAGE, file=output_stream)
+        return 1
     payload, repaired, repair_notes = repair_hooks_then_converge(
         context,
         store=store,
