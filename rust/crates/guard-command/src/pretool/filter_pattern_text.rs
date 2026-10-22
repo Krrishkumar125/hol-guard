@@ -34,16 +34,17 @@ pub(super) fn command_without_patterns(model: &CanonicalCommandV1) -> Option<Str
 }
 
 /// Shell text that makes a word do more than match the lines it is handed: a
-/// redirect opens a file, a glob expands into further operands, and a
-/// substitution brings in text no screen has seen. The model keeps each of
-/// them inside the word it was written against.
-const EXPANDABLE: [char; 10] = ['<', '>', '*', '?', '[', '$', '`', '&', ';', '('];
+/// redirect opens a file, a glob or a brace expansion splits into further
+/// operands, and a substitution brings in text no screen has seen. The model
+/// keeps each of them inside the word it was written against.
+const EXPANDABLE: [char; 12] = ['<', '>', '*', '?', '[', '{', '}', '$', '`', '&', ';', '('];
 
 /// Whether a segment is a later pipeline stage whose words a caller may set
 /// aside as patterns. Being handed standard input is not enough on its own:
-/// `grep .env<.env` opens the very file the mask would hide, and
-/// `grep -v .env*` expands into one once `.env.local` exists beside it, so a
-/// word carrying shell syntax stays in view.
+/// `grep .env<.env` opens the very file the mask would hide, `grep -v .env*`
+/// expands into one once `.env.local` exists beside it, and
+/// `grep -v .env{,.local}` writes that second operand out itself, so a word
+/// carrying shell syntax stays in view.
 pub(super) fn maskable_filter_segment(segment: &CommandSegmentV1) -> bool {
     segment.pipeline_index > 0
         && !segment.arguments.is_empty()

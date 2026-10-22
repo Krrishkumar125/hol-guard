@@ -18667,6 +18667,39 @@
       "expect": "allow"
     },
     {
+      "id": "listing-piped-to-dot-git-egrep",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls -R . | egrep -v .git"
+      },
+      "cwd": "parent",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-listing-piped-to-brace-expanded-env",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls -R . | grep -v .env{,.local}"
+      },
+      "cwd": "parent",
+      "expect": "not_allow"
+    },
+    {
       "id": "recursive-listing-working-directory",
       "fix_area": "shell",
       "harnesses": [

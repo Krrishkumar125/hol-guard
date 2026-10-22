@@ -35,6 +35,7 @@ fn only_a_proven_stdin_filter_sheds_its_pattern() {
         "ls -R . | grep -r .env /etc",
         "ls -R . | grep .env<.env",
         "ls -a . | grep -v .env*",
+        "ls -R . | grep -v .env{,.local}",
         "ls -R . | PATTERN=.env grep $PATTERN",
     ] {
         assert!(
