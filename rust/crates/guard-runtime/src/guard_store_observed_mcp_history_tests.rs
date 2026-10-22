@@ -47,16 +47,16 @@ fn history(connection: &Connection, limit: i64) -> Value {
     observed_mcp_history(connection, &Args(&args)).unwrap()
 }
 
+/// The label the scan reads a row under: the command text without its `tool:`
+/// prefix when it carries one, and the artifact name otherwise.
 fn labels(history: &Value, key: &str) -> Vec<String> {
     history[key]
         .as_array()
         .unwrap()
         .iter()
-        .map(|row| {
-            row["raw_command_text"].as_str().map_or_else(
-                || row["artifact_name"].as_str().unwrap().to_owned(),
-                |raw| raw.to_owned(),
-            )
+        .map(|row| match row["raw_command_text"].as_str() {
+            Some(raw) if raw.starts_with("tool:") => raw["tool:".len()..].to_owned(),
+            _ => row["artifact_name"].as_str().unwrap().to_owned(),
         })
         .collect()
 }
@@ -68,24 +68,32 @@ fn only_rows_naming_an_mcp_tool_are_read() {
         &connection,
         None,
         Some("tool:mcp__server__read"),
-        "2026-01-03",
+        "2026-01-06",
     );
-    receipt(&connection, None, Some("tool:git status"), "2026-01-02");
-    receipt(&connection, Some("mcp__server__write"), None, "2026-01-01");
-    receipt(&connection, Some("git"), None, "2026-01-01");
-    receipt(&connection, None, None, "2026-01-01");
-    // A command whose text happens to start with the prefix is still a
-    // command, so the artifact name it ran under decides nothing here.
+    receipt(&connection, None, Some("tool:git status"), "2026-01-05");
+    receipt(&connection, Some("mcp__server__write"), None, "2026-01-04");
+    receipt(&connection, Some("git"), None, "2026-01-03");
+    receipt(&connection, None, None, "2026-01-02");
+    // A row whose command text does not name a tool is read under its artifact
+    // name, which is the label the scan would give it.
+    receipt(
+        &connection,
+        Some("mcp__server__call"),
+        Some("ls"),
+        "2026-01-01",
+    );
+    // A command text that names something else decides the label on its own,
+    // so the artifact name it ran under cannot pull the row back in.
     receipt(
         &connection,
         Some("mcp__server__write"),
-        Some("ls"),
+        Some("tool:git status"),
         "2026-01-01",
     );
     approval(
         &connection,
         None,
-        Some("tool:mcp__server__call"),
+        Some("tool:mcp__client__call"),
         "2026-01-04",
     );
     approval(&connection, None, Some("tool:rm -rf /"), "2026-01-05");
@@ -93,9 +101,13 @@ fn only_rows_naming_an_mcp_tool_are_read() {
     let history = history(&connection, 100);
     assert_eq!(
         labels(&history, "receipts"),
-        ["tool:mcp__server__read", "mcp__server__write"]
+        [
+            "mcp__server__read",
+            "mcp__server__write",
+            "mcp__server__call"
+        ]
     );
-    assert_eq!(labels(&history, "approvals"), ["tool:mcp__server__call"]);
+    assert_eq!(labels(&history, "approvals"), ["mcp__client__call"]);
 }
 
 #[test]
