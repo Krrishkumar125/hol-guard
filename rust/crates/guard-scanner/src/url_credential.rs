@@ -35,10 +35,10 @@ const SLOT_NAMES: &[&str] = &[
 static BRACED: OnceLock<Regex> = OnceLock::new();
 static SUBSTITUTION: OnceLock<Regex> = OnceLock::new();
 
-/// `${NAME}` or `${NAME:-fallback}`, capturing the fallback.
+/// `${NAME}` or `${NAME:-word}`, capturing the operator and the word.
 fn braced_regex() -> &'static Regex {
     BRACED.get_or_init(|| {
-        Regex::new(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(?::?[-=+?]([^}]*))?\}$")
+        Regex::new(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(?::?([-=+?])([^}]*))?\}$")
             .expect("URL braced substitution rule must compile")
     })
 }
@@ -59,10 +59,17 @@ fn substitution_regex() -> &'static Regex {
 /// Whether a URL password is a stand-in rather than a credential.
 pub(crate) fn is_placeholder(password: &str) -> bool {
     if let Some(captures) = braced_regex().captures(password) {
+        // `${NAME:?word}` only uses `word` as an error message, but
         // `${PASSWORD:-Kq7…}` still prints its literal fallback.
-        return captures.get(1).is_none_or(|fallback| {
-            fallback.as_str().is_empty() || is_placeholder(fallback.as_str())
-        });
+        if captures
+            .get(1)
+            .is_some_and(|operator| operator.as_str() == "?")
+        {
+            return true;
+        }
+        return captures
+            .get(2)
+            .is_none_or(|word| word.as_str().is_empty() || is_placeholder(word.as_str()));
     }
     substitution_regex().is_match(password)
         || password
@@ -158,6 +165,8 @@ mod tests {
             "https://alice:$GITEA_TOKEN@git.lan/alice/notes.git",
             "https://alice:${GITEA_TOKEN:-}@git.lan/alice/notes.git",
             "https://alice:${GITEA_TOKEN:-$FALLBACK_TOKEN}@git.lan/alice/notes.git",
+            "git push https://ci:${CI_TOKEN:?required}@git.lan/repo.git",
+            "git push https://ci:${CI_TOKEN?required}@git.lan/repo.git",
             "https://alice:test@git.lan/alice/notes.git",
             "https://alice:%(token)s@git.lan/alice/notes.git",
             "f\"postgres://{user}:{password}@{host}/app\"",
