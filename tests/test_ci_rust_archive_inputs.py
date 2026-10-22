@@ -57,6 +57,31 @@ def test_transitive_workspace_dependency_invalidates_every_consumer(workspace):
     assert all(keys(workspace)[group] != original for group, original in before.items())
 
 
+def test_build_script_component_inputs_invalidate_only_their_consumers(workspace):
+    manifest = workspace / "rust/crates/helper/Cargo.toml"
+    manifest.write_text(manifest.read_text().replace('name="helper"', 'name="guard-rule-contract"'))
+    write(workspace, "rust/crates/helper/component-inputs.tsv", "runtime-edge\t../runtime/src/edge.rs\n")
+    edge = write(workspace, "rust/crates/runtime/src/edge.rs", "original edge")
+    before = keys(workspace)
+    edge.write_text("changed edge")
+    assert all(keys(workspace)[group] != original for group, original in before.items())
+    before = keys(workspace)
+    write(workspace, "rust/crates/runtime/src/runtime_cli.rs", "unrelated CLI change")
+    after = keys(workspace)
+    assert after["core"] == before["core"]
+    assert after["command"] == before["command"]
+    assert after["runtime"] != before["runtime"]
+
+
+@pytest.mark.parametrize("rows", ["edge\t\n", "edge\t../runtime/src/edge.rs\nedge\t../runtime/src/lib.rs\n"])
+def test_invalid_component_input_declarations_fail_closed(workspace, rows):
+    manifest = workspace / "rust/crates/helper/Cargo.toml"
+    manifest.write_text(manifest.read_text().replace('name="helper"', 'name="guard-rule-contract"'))
+    write(workspace, "rust/crates/helper/component-inputs.tsv", rows)
+    with pytest.raises(ValueError, match="component input"):
+        fingerprint(workspace, "core")
+
+
 @pytest.mark.parametrize(
     "kind", ["dependencies", "build-dependencies", "dev-dependencies", "target.'cfg(windows)'.dependencies"]
 )

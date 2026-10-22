@@ -41,6 +41,7 @@ class Inputs:
         self.rust = self.root / "rust"
         self.workspace = tomllib.loads((self.rust / "Cargo.toml").read_text())["workspace"]
         self.files: set[Path] = set()
+        self.component_files: set[Path] = set()
         self.packages: set[Path] = set()
 
     def checked(self, path: Path) -> Path:
@@ -92,6 +93,22 @@ class Inputs:
         self.packages.add(manifest)
         metadata = tomllib.loads(manifest.read_text())
         self.tree(manifest.parent)
+        # These sources are hashed as bytes by build.rs, rather than compiled as
+        # Cargo dependencies. Share its declaration instead of guessing fs::read
+        # arguments or hashing unrelated files in each component's owning crate.
+        if metadata["package"]["name"] == "guard-rule-contract":
+            components = self.checked(manifest.parent / "component-inputs.tsv")
+            names = set()
+            for line in components.read_text().splitlines():
+                name, relative = line.split("\t")
+                if not name or name in names:
+                    raise ValueError("invalid rule-contract component input")
+                names.add(name)
+                if name == "native-command-program-artifact" and relative == "@packaged-program":
+                    continue  # Resolved through the packaged program, not a source file.
+                if not relative:
+                    raise ValueError("invalid rule-contract component input")
+                self.component_files.add(self.checked(manifest.parent / relative))
         tables = [metadata]
         tables.extend(metadata.get("target", {}).values())
         for table in tables:
@@ -154,6 +171,9 @@ class Inputs:
                     plain = reference.group("plain")
                     literal = ast.literal_eval(f'"{plain}"') if plain is not None else reference.group("raw")
                     self.reference(path.parent / literal)
+        # Component digests hash the literal bytes; their includes are not
+        # compiled in this partition. Add them after the compiled-source walk.
+        self.files.update(self.component_files)
         return self.files
 
 

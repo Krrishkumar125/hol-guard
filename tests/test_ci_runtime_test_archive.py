@@ -84,3 +84,19 @@ def test_generated_files_are_excluded_without_excluding_authored_fixtures():
         "rust/crates/guard-runtime/src/main.rs",
     ):
         assert path in paths, path
+
+
+def test_core_archive_covers_every_rule_contract_component():
+    inputs = Inputs(ROOT).collect("core")
+    package = ROOT / "rust/crates/guard-rule-contract"
+    manifest = package / "component-inputs.tsv"
+    assert manifest in inputs
+    for line in manifest.read_text().splitlines():
+        name, relative = line.split("\t")
+        if name == "native-command-program-artifact":
+            assert relative == "@packaged-program"  # Resolved from the packaged program.
+            continue
+        assert (package / relative).resolve() in inputs, relative
+    build = (package / "build.rs").read_text()
+    assert 'include_str!("component-inputs.tsv")' in build
+    assert "rerun-if-changed=component-inputs.tsv" in build
