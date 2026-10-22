@@ -69,9 +69,7 @@ fn limit(input: &Value) -> Result<u64, String> {
 fn permitted(url: &str) -> Result<(), String> {
     let listed = url.bytes().all(|b| b.is_ascii_graphic())
         && url.strip_prefix("https://").is_some_and(|rest| {
-            let end = rest
-                .find(|c| matches!(c, '/' | '?' | '#'))
-                .unwrap_or(rest.len());
+            let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
             let authority = &rest[..end];
             HOSTS.contains(&authority.strip_suffix(":443").unwrap_or(authority))
         });
