@@ -105,6 +105,57 @@ pub(crate) fn local_copy(arguments: &[String]) -> bool {
     local_operands(arguments).is_some()
 }
 
+/// Whether an `rsync` copy in `segments` could overwrite work Git would not
+/// restore. Each copy's destination must be missing from `directory` or
+/// ignored by Git (`ignored`), the bar `rm -rf` clears. Only a literal
+/// `mkdir` may run beside the copies: anything else could create, move or
+/// redirect the destination after it was checked. Without a directory, or
+/// for a copy that is not local, the review stays. Commands with no `rsync`
+/// replace nothing.
+pub(crate) fn replaces_work(
+    segments: &[crate::CommandSegmentV1],
+    directory: Option<&std::path::Path>,
+    ignored: &mut dyn FnMut(&str) -> bool,
+) -> bool {
+    if !segments.iter().any(is_rsync) {
+        return false;
+    }
+    let Some(directory) = directory else {
+        return true;
+    };
+    segments.iter().any(|segment| {
+        if !is_rsync(segment) {
+            return !literal_mkdir(segment);
+        }
+        let Some(&destination) = local_operands(&segment.arguments)
+            .as_ref()
+            .and_then(|operands| operands.last())
+        else {
+            return true;
+        };
+        std::fs::symlink_metadata(directory.join(destination)).is_ok() && !ignored(destination)
+    })
+}
+
+/// A `mkdir` that names every directory in full, which cannot replace a file.
+fn literal_mkdir(segment: &crate::CommandSegmentV1) -> bool {
+    segment
+        .executable
+        .as_deref()
+        .map(super::executable_basename)
+        == Some("mkdir")
+        && segment.wrapper_chain.is_empty()
+        && !segment.path_overridden
+        && segment.environment_names.is_empty()
+        && !redirects_beyond_null(&segment.text)
+        && segment.arguments.iter().all(|word| {
+            matches!(word.as_str(), "-p" | "--parents" | "-v" | "--verbose")
+                || (!word.starts_with('-')
+                    && local_operand(word)
+                    && !word.contains(['*', '?', '[', '{']))
+        })
+}
+
 /// The operands of a local copy, destination last, or `None` for any form
 /// [`local_copy`] refuses.
 fn local_operands(arguments: &[String]) -> Option<Vec<&str>> {
