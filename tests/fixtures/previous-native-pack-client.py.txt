@@ -153,15 +153,18 @@ def initialize(tmp_path, monkeypatch):
     assert "command.agentbridge" in old.selected
     # A catalog migration carries no pack record, and a client older than the
     # installed upgrade wrote its snapshot without the binding the head had
-    # been carrying. Any install whose catalog moved on such a client - an
-    # ordinary release upgrade - therefore hands the upgrade an unbound head
-    # above an activation row that is still bound, so leave one here.
-    store.read_extension_control_authority_for_registry(_upgraded_registry())
+    # been carrying. Homes shared by two installs migrate away and straight
+    # back as each one starts, so the head returns to this registry's catalog
+    # with the binding gone, above an activation row that is still bound.
+    # Leave the upgrade that head, which is the one the field produced.
+    for migrating in (_upgraded_registry(), registry):
+        store.read_extension_control_authority_for_registry(migrating)
     with store._connect() as connection:
         head = connection.execute(
-            "select snapshot_json from extension_control_authority_snapshot where singleton = 1"
+            "select catalog_digest, snapshot_json from extension_control_authority_snapshot where singleton = 1"
         ).fetchone()
-    assert "command_pack_record_digest" not in json.loads(head[0])
+    assert head[0] == registry.catalog_digest
+    assert "command_pack_record_digest" not in json.loads(head[1])
     before, _floor = lifecycle_store.inspect(store)
     remote_identity = {**old_identity, "profile": "remote", "version": "100.7"}
     remote_floor = lifecycle.invoke("transition", key=_key(store).hex(), floor=before, candidate=remote_identity)[
