@@ -27,6 +27,7 @@ from codex_plugin_scanner.guard.daemon.extension_control_api import ExtensionCon
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport
 from codex_plugin_scanner.guard.native_command_control_authority_store import _key
 from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
+from codex_plugin_scanner.guard.runtime.extension_control_authority import AuthorityPhase
 from codex_plugin_scanner.guard.runtime.extension_control_runtime import ExtensionControlRuntime
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.extension_builder_support import use_installed_native_source_compiler
@@ -199,7 +200,45 @@ def test_real_packaged_cross_engine_and_changed_source_offline_api_upgrade(tmp_p
             # client left; no record is read without an installed runtime.
             old = activation_store.read(store)
             assert "command.agentbridge" in old.selected
+        with store._connect() as connection:
+            saved_decisions = [tuple(row) for row in connection.execute("select * from policy_decisions")]
+        previous_registry = candidates.GeneratedCommandCatalog.from_prepared_packs(activation_store.read(store))
+        controls_before = store.read_extension_control_authority_for_registry(
+            previous_registry, include_managed_controls=False, read_only=True
+        )
+        if old.engine != authority.engine and version == "3.50.0a1":
+            original_anchor = store._write_and_verify_anchor
+
+            def interrupt_after_anchor(anchor, _write=original_anchor, **kwargs):
+                _write(anchor, **kwargs)
+                if anchor.phase is AuthorityPhase.ANCHORED:
+                    raise RuntimeError("fixture interrupted after anchored upgrade")
+
+            with monkeypatch.context() as interrupted:
+                interrupted.setattr(store, "_write_and_verify_anchor", interrupt_after_anchor)
+                with pytest.raises(RuntimeError, match="fixture interrupted after anchored upgrade"):
+                    store.migrate_installed_command_pack_authority()
+            assert activation_store.read(store).engine == old.engine
         store.migrate_installed_command_pack_authority()
+        recovered = activation_store.read(store)
+        # Startup must recover without asking the user to reapprove unchanged
+        # controls. A successful floor migration alone left the old IR active.
+        assert recovered.engine == authority.engine
+        assert recovered.selected == old.selected
+        recovered_registry = candidates.GeneratedCommandCatalog.from_prepared_packs(recovered)
+        controls_after = store.read_extension_control_authority_for_registry(
+            recovered_registry, include_managed_controls=False, read_only=True
+        )
+        assert [(layer.kind, layer.global_lockdown, layer.controls) for layer in controls_after.layers] == [
+            (layer.kind, layer.global_lockdown, layer.controls) for layer in controls_before.layers
+        ]
+        with store._connect() as connection:
+            assert [tuple(row) for row in connection.execute("select * from policy_decisions")] == saved_decisions
+        store.migrate_installed_command_pack_authority()
+        assert activation_store.read(store).record_digest == recovered.record_digest
+        service = ExtensionControlApiService(
+            store=store, registry=recovered_registry, runtime=ExtensionControlRuntime(controls_after)
+        )
         active = apply(version)
         assert active.selected == old.selected
         assert active.engine == authority.engine and active.engine != old.engine

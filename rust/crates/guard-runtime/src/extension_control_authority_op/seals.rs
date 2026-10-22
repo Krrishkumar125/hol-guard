@@ -14,7 +14,7 @@ use serde_json::{json, Map, Value};
 use super::layers::{
     layers_from_json, layers_from_values, layers_to_json, validate_serialized_layers,
 };
-use super::plans::{plan, sealed};
+use super::plans::{plan, sealed, with_pack};
 use super::records::{
     authenticated_record, canonical, exact_int, field, private_hash, py_eq, query_row, row_int,
     row_text, tampered, verify_record, Anchor, Phase, Res, ANCHOR_PURPOSE,
@@ -248,30 +248,39 @@ impl Ctx<'_> {
             }
         };
         let revision = migration.previous_revision + 1;
+        let pack_digest = self.installed_upgrade_digest(
+            source
+                .as_ref()
+                .ok_or_else(|| tampered("migration source missing"))?,
+        )?;
         let reference = format!(
             "catalog-migration:{}:{catalog_digest}:{}",
             migration.previous_catalog_digest, migration.previous_revision
         );
         let hashes = trusted_hashes(MIGRATION_ACTOR, &reference, key);
+        let snapshot_payload = json!({
+            "revision": revision,
+            "catalog_digest": catalog_digest,
+            "layers_json": layers_json,
+            "previous_digest": previous_digest,
+            "committed_at": created_at,
+        });
         let snapshot = sealed(
-            json!({
-                "revision": revision,
-                "catalog_digest": catalog_digest,
-                "layers_json": layers_json,
-                "previous_digest": previous_digest,
-                "committed_at": created_at,
-            }),
+            with_pack(snapshot_payload, pack_digest.as_deref()),
             key,
             SNAPSHOT_PURPOSE,
         )?;
         let transition = sealed(
-            transition_payload(
-                revision,
-                &json!(previous_digest),
-                &snapshot["digest"],
-                catalog_digest,
-                &hashes,
-                created_at,
+            with_pack(
+                transition_payload(
+                    revision,
+                    &json!(previous_digest),
+                    &snapshot["digest"],
+                    catalog_digest,
+                    &hashes,
+                    created_at,
+                ),
+                pack_digest.as_deref(),
             ),
             key,
             TRANSITION_PURPOSE,
@@ -286,6 +295,7 @@ impl Ctx<'_> {
                 ("hashes".to_owned(), hashes),
                 ("snapshot".to_owned(), snapshot),
                 ("transition".to_owned(), transition),
+                ("command_pack_record_digest".to_owned(), json!(pack_digest)),
             ]),
         ))
     }

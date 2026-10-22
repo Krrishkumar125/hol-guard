@@ -24,7 +24,7 @@ from ci.gauntlet.installed_registration import (
     install_harness,
     load_contract,
 )
-from ci.gauntlet.installed_replay import handler_argv, replay_case
+from ci.gauntlet.installed_replay import handler_argv, registered_argv, replay_case
 from ci.gauntlet.installed_runtime import (
     FROZEN_ONEDIR,
     SCRIPT,
@@ -35,7 +35,63 @@ from ci.gauntlet.installed_runtime import (
 )
 from ci.gauntlet.installed_store import STALE_COMMAND
 
+
+@pytest.mark.parametrize(
+    "reason_code",
+    [
+        "native_policy_not_ready",
+        "native_pre_tool_unavailable",
+        "native_hook_worker_exception",
+        "native_request_invalid_json",
+        "daemon_hook_deadline_exhausted",
+    ],
+)
+def test_infrastructure_denials_do_not_count_as_attack_protection(tmp_path, monkeypatch, reason_code):
+    import subprocess
+
+    response = {
+        "policy_action": "block",
+        "reason_code": reason_code,
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "HOL Guard could not prepare the native policy safely.",
+        },
+    }
+    monkeypatch.setattr(
+        subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(args, 2, json.dumps(response), "")
+    )
+    result = replay_case(
+        ["registered-hook"],
+        {"id": "attack", "expect": "not-allow", "payload": {}},
+        home=tmp_path,
+        guard_home=tmp_path / ".hol-guard",
+        workspace=tmp_path,
+        repeat=2,
+    )
+    assert any("infrastructure failed" in failure for failure in result["failures"])
+    assert result["runs"][0]["reason_code"] == reason_code
+
+
 HARNESSES = ["claude-code"]
+
+
+@pytest.mark.parametrize("nested", [True, False])
+def test_zcode_requires_current_events_layout_and_replays_its_registered_command(tmp_path, nested):
+    expectation = load_contract()["harnesses"]["zcode"]
+    hook = tmp_path / "hol-guard-hook"
+    hook.write_text("#!/bin/sh\nexit 0\n")
+    hook.chmod(0o700)
+    handler = {"type": "command", "command": str(hook)}
+    events = {event: [{"matcher": "*", "hooks": [handler]}] for event in expectation["required_events"]}
+    config = {"hooks": {"events": events} if nested else events}
+    path = tmp_path / expectation["config"]
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(config))
+    result = assess_harness(tmp_path, "zcode", expectation)
+    assert result["registered"] is nested
+    assert registered_argv(tmp_path, expectation, config) == ([str(hook)] if nested else None)
+
 
 _CLAUDE_EVENTS = ("PreToolUse", "PermissionRequest", "PostToolUse", "Notification", "Stop", "SessionStart")
 

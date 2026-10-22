@@ -15,7 +15,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .installed_registration import guard_handlers, handler_argv
+from .installed_registration import guard_handlers, handler_argv, hook_groups
 from .installed_runtime import isolated_environment
 
 #: Decisions that let the tool call through untouched.
@@ -28,13 +28,24 @@ ALLOW_DECISIONS = {"allow", "allow_original", "approve", "quiet"}
 #: input as protection.
 NON_ANSWERS = {"timeout", "no-envelope", "unknown"}
 
+# Fail-closed transport and policy-publication failures are not evidence that
+# the attack was evaluated. Keep these independent of the product's decoder.
+NON_DECISION_REASONS = {
+    "native_policy_not_ready",
+    "native_pre_tool_unavailable",
+    "native_hook_worker_exception",
+    "native_request_invalid_json",
+    "native_request_schema_unsupported",
+    "daemon_hook_deadline_exhausted",
+}
+
 _REPLAY_TIMEOUT = 120.0
 
 
 def registered_argv(home: Path, expectation: dict[str, Any], config: dict[str, Any]) -> list[str] | None:
     """Find the argv registered for the contract's replay event, if any."""
 
-    hooks = config.get(expectation.get("hooks_key", "hooks"))
+    hooks = hook_groups(config, expectation)
     if not isinstance(hooks, dict):
         return None
     event = expectation.get("replay_event")
@@ -99,7 +110,10 @@ def verdict(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
         reason = (completed.stderr or "").strip()[-200:]
     else:
         decision, reason = _decision_from(response)
-    return {"decision": decision, "reason": reason, "exit_code": completed.returncode}
+    result = {"decision": decision, "reason": reason, "exit_code": completed.returncode}
+    if response is not None and isinstance(response.get("reason_code"), str):
+        result["reason_code"] = response["reason_code"]
+    return result
 
 
 def signature(result: dict[str, Any]) -> str:
@@ -145,6 +159,12 @@ def replay_case(
         spelled = ", ".join(f"{value} x{count}" for value, count in sorted(signatures.items()))
         failures.append(f"{case['id']}: identical input produced disagreeing verdicts across {repeat} runs ({spelled})")
     allowed = [run["decision"] in ALLOW_DECISIONS for run in runs]
+    infrastructure = sorted({run["reason_code"] for run in runs if run.get("reason_code") in NON_DECISION_REASONS})
+    if infrastructure:
+        failures.append(
+            f"{case['id']}: hook infrastructure failed ({', '.join(infrastructure)}); "
+            "a fail-closed error is not a policy decision"
+        )
     if case["expect"] == "allow" and not all(allowed):
         failures.append(f"{case['id']}: ordinary work was not allowed quietly ({runs[0]['decision']})")
     if case["expect"] == "not-allow":

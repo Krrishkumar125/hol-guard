@@ -14,6 +14,7 @@
 //! readers turned into a degraded view, as `{"fault": "degraded"}`.
 
 mod catalog;
+mod installed_upgrade;
 mod chain;
 mod history;
 mod layers;

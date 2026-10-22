@@ -95,7 +95,7 @@ pub(super) fn sealed(payload: Value, key: &[u8], purpose: &str) -> Res<Value> {
     Ok(json!({ "json": record, "digest": digest, "mac": mac }))
 }
 
-fn with_pack(mut payload: Value, pack_record_digest: Option<&str>) -> Value {
+pub(super) fn with_pack(mut payload: Value, pack_record_digest: Option<&str>) -> Value {
     if let (Some(digest), Value::Object(fields)) = (pack_record_digest, &mut payload) {
         fields.insert("command_pack_record_digest".to_owned(), json!(digest));
     }

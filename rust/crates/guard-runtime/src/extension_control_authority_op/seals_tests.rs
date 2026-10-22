@@ -125,6 +125,7 @@ fn migration(previous_catalog_digest: &str) -> ExtensionControlCatalogMigrationV
         previous_revision: 1,
         previous_catalog_digest: previous_catalog_digest.to_owned(),
         layers: layers_to_values(&[local(&catalog('a'))]),
+        installed_upgrade: None,
     }
 }
 
