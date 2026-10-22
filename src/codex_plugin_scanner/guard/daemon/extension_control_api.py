@@ -7,6 +7,7 @@ import json
 import logging
 import threading
 from collections import OrderedDict
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -251,7 +252,12 @@ class ExtensionControlApiService:
             # failed. Serve the snapshot the runtime already holds rather than
             # retrying the read through effective(), which would wait again.
             return self._effective_payload(self._runtime.current())
-        _ = self._runtime.refresh(view)
+        try:
+            _ = self._runtime.refresh(view)
+        except ExtensionControlSnapshotUnavailableError:
+            # The native runtime gave no digest, so nothing new was installed;
+            # serve the snapshot the runtime holds, as for a busy lease.
+            return self._effective_payload(self._runtime.current())
         return self.effective()
 
     def test_command(self, payload: dict[str, object]) -> dict[str, object]:
@@ -556,13 +562,18 @@ class ExtensionControlApiService:
         self._registry = registry
         self.catalog_digest = registry.catalog_digest
         composed_view = self._store.read_extension_control_authority_for_registry(registry)
-        snapshot = self._runtime.refresh(composed_view)
+        revision, catalog_digest = composed_view.revision, composed_view.catalog_digest
+        # The mutation is committed. If the native runtime gives no digest, the
+        # daemon's refresh installs it once it answers again; the audit event
+        # and the replay record below still belong to the committed change.
+        with suppress(ExtensionControlSnapshotUnavailableError):
+            _ = self._runtime.refresh(composed_view)
         self._store.add_event(
             "extension_control_authority_changed",
             {
-                "revision": snapshot.revision,
+                "revision": revision,
                 "previous_revision": mutation.previous_revision,
-                "catalog_digest": snapshot.catalog_digest,
+                "catalog_digest": catalog_digest,
                 "actor_ref": hashlib.sha256(f"actor-ref\u0000{mutation.actor_id}".encode()).hexdigest(),
                 "mutation_ref": mutation.canonical_digest,
                 "semantic_targets": self._semantic_event_targets(semantic_preview),
@@ -572,8 +583,8 @@ class ExtensionControlApiService:
         response: dict[str, object] = {
             "schema_version": _EXTENSION_CONTROL_API_SCHEMA,
             "status": "applied",
-            "revision": snapshot.revision,
-            "catalog_digest": snapshot.catalog_digest,
+            "revision": revision,
+            "catalog_digest": catalog_digest,
         }
         with self._proof_lock:
             _ = self._pending_proofs.pop(proof_id, None)
