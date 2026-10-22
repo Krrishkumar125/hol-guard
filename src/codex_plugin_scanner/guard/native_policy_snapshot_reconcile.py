@@ -40,8 +40,8 @@ def reconcile_policy_inputs(publisher: NativePolicySnapshotPublisher) -> None:
 
     try:
         _reconcile(publisher)
-    except _UNREADABLE_INPUT_ERRORS as error:
-        logger.debug("Native policy inputs could not be read (%s); republishing", type(error).__name__)
+    except _UNREADABLE_INPUT_ERRORS:
+        logger.debug("Native policy inputs could not be read; republishing", exc_info=True)
         _treat_inputs_as_changed(publisher)
 
 
