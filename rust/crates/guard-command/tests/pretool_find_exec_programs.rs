@@ -53,6 +53,11 @@ fn an_exec_child_the_text_names_is_reviewed_rather_than_refused() {
         "find . -mindepth 1 -maxdepth 1 -type d -exec basename {} \\;",
         "find src -type f -exec file {} +",
         "find src -type d -execdir basename {} \\;",
+        // A backslash inside an argument is part of the argument. Reading
+        // every one of them as an interpreter took these back to the
+        // evaluation failure.
+        "find src -type f -name '*.js' -exec grep -l 'foo\\.bar' {} +",
+        "find src -type f -exec \\ls {} +",
     ] {
         let result = evaluate(&root, &controls, command);
         // The owners of the program it names decide. Before this, no owner

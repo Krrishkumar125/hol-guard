@@ -92,10 +92,18 @@ pub(super) fn find_exec_programs(shell: &str) -> Option<BTreeSet<String>> {
 /// reads it.
 ///
 /// `command_basename` treats a backslash as a path separator, so it reads
-/// `s\h` as `h` while the shell unescapes the word and runs `sh`. A word
-/// carrying one is answered as an interpreter rather than read two ways: the
-/// `-exec` terminator is the one backslash that reaches this, and the callers
-/// above take it off first.
+/// `s\h` as `h` while the shell unescapes the word and runs `sh`. The word is
+/// read both ways and answered for either, so neither reading hides an
+/// interpreter. Refusing every word that carries a backslash instead would
+/// take an ordinary argument such as `grep -l 'foo\.bar'`, or an alias
+/// bypass such as `\ls`, back to the evaluation failure this reading exists
+/// to remove.
 fn runs_something_else(word: &str) -> bool {
-    word.contains('\\') || INTERPRETERS.contains(&command_basename(word).as_str())
+    let unescaped: String = word
+        .chars()
+        .filter(|character| *character != '\\')
+        .collect();
+    [command_basename(word), command_basename(&unescaped)]
+        .iter()
+        .any(|name| INTERPRETERS.contains(&name.as_str()))
 }
