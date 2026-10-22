@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from ..extension_builder.io import checked_path, read_bytes
 from . import lifecycle, preparation_authority
@@ -11,6 +12,9 @@ from .authority import VerifiedDistribution
 from .cache_io import Lease, write_once
 from .pack_store import publish_object
 from .transport import cached_fetcher
+
+if TYPE_CHECKING:
+    from .installed_bundle import VerifiedInstalledBundle
 
 
 def _request(authority, directory, operation, *, destination=None):
@@ -59,7 +63,9 @@ def _prefetch(authority, directory: Path, *, fetch=None):
             if installed:
                 needs = [need for need in plan["needs"] if need["kind"] != "archive"]
                 references = [(need["reference"]["location"], need["reference"]["length"]) for need in needs]
-                for need, data in zip(needs, authority.fetch_objects(references), strict=True):
+                for need, data in zip(
+                    needs, cast("VerifiedInstalledBundle", authority).fetch_objects(references), strict=True
+                ):
                     publish_object(objects, need["reference"]["sha256"], data)
             for need in plan["needs"]:
                 ref = need["reference"]
