@@ -173,17 +173,27 @@ fn one_bridged_call_carries_the_reason_the_direct_call_gives() {
         let alone = direct(&session, command, worktree);
         assert_ne!(alone.minimum_action, "allow", "{command}: {}", alone.reason);
         let result = bridged_with_timeout(&session, command, worktree, None);
+        // Whatever the direct call's verdict is, the bridge never degrades it
+        // to "not yet supported", which named no reason the person could act
+        // on and left the review without the approval the direct call offers.
         assert_ne!(
-            result.minimum_action, "allow",
+            result.reason_code, "native_pre_tool_unknown_review",
             "{command}: {}",
             result.reason
         );
-        // The bridge adds nothing to judge, so the program says what the
-        // direct call says instead of "not yet supported".
-        assert_eq!(result.reason_code, alone.reason_code, "{command}");
-        assert_ne!(
-            result.reason_code, "native_pre_tool_unknown_review",
-            "{command}"
-        );
+        if matches!(alone.minimum_action.as_str(), "review" | "block") {
+            // The bridge adds nothing to judge, so the program says exactly
+            // what the direct call says.
+            assert_eq!(result.minimum_action, alone.minimum_action, "{command}");
+            assert_eq!(result.reason_code, alone.reason_code, "{command}");
+        } else {
+            // Containment is the inner call's own hook to arrange, so the
+            // program stays bounded and that hook contains the call.
+            assert_eq!(
+                result.reason_code, "native_omp_eval_bounded_tools",
+                "{command}: {}",
+                result.reason
+            );
+        }
     }
 }
