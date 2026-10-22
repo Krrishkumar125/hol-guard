@@ -181,18 +181,15 @@ fn command_admission_failures_reach_the_publisher_unchanged() {
     // so the resident keeps no policy and every prompt fails closed. Each
     // admission failure must therefore survive the safe-error transport as
     // itself.
-    for code in [
-        "native_active_pack_security_binding_mismatch",
-        "native_active_pack_security_program_mismatch",
-        "native_command_compatibility_inventory_mismatch",
-        "native_command_pack_cache_invalid",
-        "native_command_pack_selection_missing",
-        "native_command_program_digest_mismatch",
-        "native_command_required_pack_missing",
-    ] {
+    // Read the declared vocabulary rather than a hand-picked subset. A list
+    // written out here only ever covers the codes someone remembered to add,
+    // so a newly declared code could be dropped from the transport and no test
+    // would notice.
+    assert!(!guard_contracts::NATIVE_COMMAND_CONTROL_ERROR_CODES.is_empty());
+    for &code in guard_contracts::NATIVE_COMMAND_CONTROL_ERROR_CODES {
         let response: Value = serde_json::from_slice(&safe_error_response(code, false))
             .expect("admission error is JSON");
-        assert_eq!(response["error"], code);
+        assert_eq!(response["error"], code, "{code} was rewritten by the transport");
         assert_eq!(response["retryable"], false);
     }
 }
