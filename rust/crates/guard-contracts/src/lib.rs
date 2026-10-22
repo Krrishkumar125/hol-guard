@@ -5,6 +5,8 @@ use serde_json::Value;
 
 mod approval_contracts;
 pub use approval_contracts::*;
+mod approval_extension_recommendation;
+pub use approval_extension_recommendation::*;
 mod approval_gate;
 pub use approval_gate::*;
 mod approval_reuse;
@@ -78,6 +80,8 @@ mod approval_persist_select;
 pub use approval_persist_select::*;
 mod approval_scope_select;
 pub use approval_scope_select::*;
+mod artifact_content_hash;
+pub use artifact_content_hash::*;
 mod hook_artifact_facts;
 pub use hook_artifact_facts::*;
 mod hook_render;
