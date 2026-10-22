@@ -11,6 +11,22 @@ SAFE_ALTERNATIVE_GUIDANCE = (
 )
 
 
+def approval_wait_hint(request_id: str) -> str:
+    """Render a read-only wait for an already queued request, never an approval."""
+    if (
+        not request_id
+        or request_id.startswith("-")
+        or len(request_id) > 64
+        or not all(c.isascii() and (c.isalnum() or c in "-_") for c in request_id)
+    ):
+        return ""
+    return (
+        f"Wait for the decision with `hol-guard approvals wait {request_id} --json` (bounded to 120 seconds). "
+        "Only after an allow decision, retry the identical action through Guard. "
+        "A timeout or a block is not approval."
+    )
+
+
 def asks_for_approval(config: object) -> bool:
     """Prompt only after the operator explicitly opts in."""
     return getattr(config, "blocked_request_mode", None) == "ask"

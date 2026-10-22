@@ -3,6 +3,37 @@
 
 use crate::guard_store_json::py_strip;
 
+/// Read-only notification for a queued review whose identical retry is bound.
+pub(crate) fn approval_wait_hint(request_id: &str) -> String {
+    if request_id.is_empty()
+        || request_id.starts_with('-')
+        || request_id.len() > 64
+        || !request_id
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
+    {
+        return String::new();
+    }
+    format!(
+        "Wait for the decision with `hol-guard approvals wait {request_id} --json` (bounded to 120 seconds). \
+         Only after an allow decision, retry the identical action through Guard. \
+         A timeout or a block is not approval."
+    )
+}
+
+#[cfg(test)]
+mod wait_hint_tests {
+    use super::approval_wait_hint;
+
+    #[test]
+    fn only_a_literal_request_id_is_a_shell_wait_hint() {
+        assert!(approval_wait_hint("req-1").contains("approvals wait req-1 --json"));
+        for id in ["", "-x", "req;id", "$(id)", "req/1", "réq"] {
+            assert!(approval_wait_hint(id).is_empty(), "{id}");
+        }
+    }
+}
+
 /// `SAFE_ALTERNATIVE_GUIDANCE`.
 const SAFE_ALTERNATIVE_GUIDANCE: &str = "This action remains blocked. Continue with a safe, \
      permitted alternative that respects the same protection. Do not retry an equivalent \
