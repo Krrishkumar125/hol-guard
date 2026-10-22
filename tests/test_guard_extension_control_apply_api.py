@@ -459,12 +459,12 @@ def test_preview_issues_no_proof_when_the_resident_cannot_digest_the_request(
 def test_preview_rejects_non_finite_extra_layer_input_without_issuing_proof(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, number: float
 ) -> None:
-    service = _service(cast(GuardStore, _ApplyingStore(tmp_path / "guard-home")))
+    service = _service(cast(GuardStore, cast(object, _ApplyingStore(tmp_path / "guard-home"))))
     issued: list[object] = []
     monkeypatch.setattr(
         extension_control_api_module,
         "issue_extension_control_proof",
-        lambda *_args, **_kwargs: issued.append(1) or cast(ExtensionControlProof, _FakeProof()),
+        lambda *_args, **_kwargs: issued.append(1) or cast(ExtensionControlProof, cast(object, _FakeProof())),
     )
     payload = _disabled_permission_payload()
     cast(list[dict[str, object]], payload["layers"])[0]["ignored"] = number
