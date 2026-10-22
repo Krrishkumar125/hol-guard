@@ -63,6 +63,8 @@ pub(super) fn creates_nothing(segment: &crate::CommandSegmentV1, strict: bool) -
                 | "cut"
                 | "diff"
                 | "echo"
+                | "egrep"
+                | "fgrep"
                 | "grep"
                 | "head"
                 | "jq"
