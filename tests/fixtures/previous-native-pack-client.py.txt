@@ -28,7 +28,7 @@ from codex_plugin_scanner.guard.native_command_control_authority_io import hold_
 from codex_plugin_scanner.guard.native_command_control_authority_store import _key
 from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
 from codex_plugin_scanner.guard.runtime.extension_control_runtime import ExtensionControlRuntime
-from tests.guard_extension_control_authority_fixtures import _PASSWORD
+from tests.guard_extension_control_authority_fixtures import _PASSWORD, _upgraded_registry
 from tests.guard_extension_control_authority_fixtures import (
     _allow_local_terminal_confirmation as _allow_local_terminal_confirmation,
 )
@@ -151,12 +151,17 @@ def initialize(tmp_path, monkeypatch):
     old = apply("previous-release")
     old_identity = lifecycle.installed_identity(authority)
     assert "command.agentbridge" in old.selected
-    # Every later settings change leaves the pack selection alone and so
-    # commits without a pack record. Clients before the installed upgrade
-    # dropped the retained binding on such a commit, so the head snapshot
-    # this checkpoint hands the upgrade is unbound above a bound activation,
-    # which is the ordinary state of an install that has been used at all.
-    assert apply("previous-release-settings").record_digest == old.record_digest
+    # A catalog migration carries no pack record, and a client older than the
+    # installed upgrade wrote its snapshot without the binding the head had
+    # been carrying. Any install whose catalog moved on such a client - an
+    # ordinary release upgrade - therefore hands the upgrade an unbound head
+    # above an activation row that is still bound, so leave one here.
+    store.read_extension_control_authority_for_registry(_upgraded_registry())
+    with store._connect() as connection:
+        head = connection.execute(
+            "select snapshot_json from extension_control_authority_snapshot where singleton = 1"
+        ).fetchone()
+    assert "command_pack_record_digest" not in json.loads(head[0])
     before, _floor = lifecycle_store.inspect(store)
     remote_identity = {**old_identity, "profile": "remote", "version": "100.7"}
     remote_floor = lifecycle.invoke("transition", key=_key(store).hex(), floor=before, candidate=remote_identity)[

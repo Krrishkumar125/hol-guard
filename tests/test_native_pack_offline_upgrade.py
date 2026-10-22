@@ -244,12 +244,12 @@ def test_real_packaged_cross_engine_and_changed_source_offline_api_upgrade(tmp_p
             head = connection.execute(
                 "select snapshot_json from extension_control_authority_snapshot where singleton = 1"
             ).fetchone()
-        # The first upgrade reads an unbound head: the prior client's last
-        # settings change carried no pack record, so it dropped the retained
-        # binding, and refusing that head would leave the authority stale and
-        # every hook closed. The upgrade rebinds it, and this client keeps the
-        # binding across the packless settings change below, so the second
-        # upgrade reads a bound head.
+        # The first upgrade reads an unbound head: the prior client migrated a
+        # catalog, which carries no pack record, and that client wrote the
+        # snapshot without the binding it had been carrying. Refusing that head
+        # would leave the authority stale and every hook closed. The upgrade
+        # rebinds it, and this client keeps the binding, so the second upgrade
+        # reads a bound head.
         bound = "command_pack_record_digest" in json.loads(head[0])
         assert bound == (version != "3.50.0a1")
         store.migrate_installed_command_pack_authority()

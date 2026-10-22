@@ -513,8 +513,8 @@ fn read_composed_settles_in_one_round_trip_or_hands_back_the_base_view() {
 fn installed_upgrade_reads_the_head_snapshot_binding() {
     let activation = json!(catalog('d'));
     let payload = |value: Value| value.as_object().expect("object").clone();
-    // An install written by a client older than this upgrade dropped the
-    // retained pack record on its last packless control commit, so the head it
+    // An install whose catalog last moved under a client older than this
+    // upgrade lost the binding on that migration's snapshot, so the head it
     // hands the upgrade carries no binding at all. The activation row behind it
     // is already pinned by record, digest and mac, and the upgrade seals the
     // binding the head is missing, so that head is rebound rather than refused.

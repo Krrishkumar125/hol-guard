@@ -28,12 +28,14 @@ const CANDIDATE: &str = "installed command pack upgrade candidate is incomplete"
 
 /// Whether the head snapshot's retained pack binding names `activation`.
 ///
-/// A snapshot keeps the binding across packless control commits only since
-/// the release that introduced this upgrade, so a home whose last control
-/// edit was written by an older runtime has an unbound head above a bound
-/// activation row. That row is already pinned by record, digest and mac,
-/// and the upgrade seals the binding the head is missing, so an unbound
-/// head is rebound here rather than refused forever.
+/// A catalog migration commits no pack record of its own, and only since the
+/// release that introduced this upgrade does it carry the binding the head
+/// already had. An install whose catalog last moved under an older runtime
+/// therefore has an unbound head above an activation row that is still
+/// bound. That row is already pinned by record, digest and mac, and this
+/// upgrade seals the binding the head is missing, so an unbound head is
+/// rebound here rather than refused forever: refusing it leaves the
+/// authority stale and every hook on the install closed.
 pub(super) fn binding_names(payload: &Map<String, Value>, activation: &Value) -> bool {
     let binding = field(payload, "command_pack_record_digest");
     binding.is_null() || binding == activation
