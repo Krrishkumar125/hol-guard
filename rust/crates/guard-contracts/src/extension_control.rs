@@ -9,7 +9,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::NativeExtensionControlLayerV1;
+use crate::{
+    ExtensionControlPreviewRegistryV1, ExtensionControlSemanticPreviewV1,
+    NativeExtensionControlLayerV1,
+};
 
 /// Schema discriminator for the request.
 pub const EXTENSION_CONTROL_REQUEST_SCHEMA: &str = "guard-extension-control-request.v1";
@@ -99,6 +102,12 @@ pub enum ExtensionControlQueryV1 {
         managed_revision: u64,
         layers: Vec<NativeExtensionControlLayerV1>,
     },
+    /// The semantic preview of replacing `current_layers` with `proposed_layers`.
+    Preview {
+        registry: ExtensionControlPreviewRegistryV1,
+        current_layers: Vec<NativeExtensionControlLayerV1>,
+        proposed_layers: Vec<NativeExtensionControlLayerV1>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -171,6 +180,9 @@ pub enum ExtensionControlPayloadV1 {
     },
     SnapshotDigest {
         digest: String,
+    },
+    Preview {
+        preview: ExtensionControlSemanticPreviewV1,
     },
 }
 
