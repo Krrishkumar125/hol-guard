@@ -36,9 +36,7 @@ _KEYRING_FIXTURE = Path(__file__).with_name("keyring_fixture.py")
 
 
 def _safe_hook_diagnostic(value: str) -> str:
-    redacted = re.sub(
-        r"([#&?]guard-token=)[^\s\"'&]+", r"\1[REDACTED]", value.replace(SENTINEL, "[REDACTED]")
-    )
+    redacted = re.sub(r"([#&?]guard-token=)[^\s\"'&]+", r"\1[REDACTED]", value.replace(SENTINEL, "[REDACTED]"))
     return redacted[-_MAX_HOOK_DIAGNOSTIC_CHARS:]
 
 
@@ -296,10 +294,12 @@ def _complete_workflow_authorization(store: GuardStore, request_id: str) -> dict
     _ = _GH_EXECUTABLE.write_bytes(original)
     _GH_EXECUTABLE.chmod(0o700)
     retry = {**drift, "tool_call_id": "codex_lab_workflow_retry_0003"}
-    _run_installed_hook("codex", retry)
+    retry_response = _run_installed_hook("codex", retry)
     claimed = store.list_events(event_name="workflow_capability.claimed")
     if len(claimed) != 1:
-        raise RuntimeError("restored workflow retry did not claim exactly once")
+        raise RuntimeError(
+            f"restored workflow retry did not claim exactly once (claimed={len(claimed)}, response={retry_response})"
+        )
     _assert_capability_event_privacy(store)
     return {
         "activity_proof": "drift-rejected-restored-one-shot-reuse",
