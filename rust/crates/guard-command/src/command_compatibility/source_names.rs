@@ -123,9 +123,9 @@ fn file_operands(tokens: &[String], executable: &str) -> Vec<bool> {
                 redirected = true;
                 return false;
             }
-            let Some(program) = program.filter(|program| index > *program) else {
+            if !program.is_some_and(|program| index > program) {
                 return false;
-            };
+            }
             if token == "--" {
                 ended_options = true;
                 return false;
