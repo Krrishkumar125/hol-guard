@@ -77,6 +77,7 @@ def test_linux_cache_skips_only_compilation_and_always_verifies_current_sources(
         "path": "rust/target/cargo-timings/cargo-timing.html",
         "if-no-files-found": "ignore",
         "retention-days": 1,
+        "overwrite": True,
     }
     assert steps.index(build) < steps.index(binaries) < steps.index(verify) < steps.index(timings)
 
@@ -136,6 +137,7 @@ def test_platform_cache_tracks_compiler_inputs_not_unrelated_workflow_edits(plat
         "path": "rust/target/cargo-timings/cargo-timing.html",
         "if-no-files-found": "ignore",
         "retention-days": 1,
+        "overwrite": True,
     }
     assert steps.index(restore) < steps.index(build) < steps.index(upload) < steps.index(timings)
 
