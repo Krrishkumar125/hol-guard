@@ -198,6 +198,63 @@ fn registry_manifest_changes_and_redirected_queries_stay_reviewed() {
     }
 }
 
+/// Reading back what a container or a Compose project already printed is a
+/// read: nothing starts, nothing is pulled, no project file is resolved.
+#[test]
+fn bounded_container_and_service_logs_are_admitted() {
+    for words in [
+        vec!["logs", "web"],
+        vec!["logs", "web", "--tail", "50"],
+        vec!["logs", "--tail=100", "api-1"],
+        vec!["logs", "-n", "200", "web"],
+        vec!["logs", "--tail", "all", "web"],
+        vec!["logs", "--since", "10m", "web"],
+        vec![
+            "logs",
+            "--since=2026-10-22T09:00:00Z",
+            "--until",
+            "1h",
+            "web",
+        ],
+        vec!["logs", "-t", "web"],
+        vec!["logs", "--timestamps", "--tail", "20", "db_1"],
+        vec!["container", "logs", "web"],
+        vec!["compose", "logs"],
+        vec!["compose", "logs", "api"],
+        vec!["compose", "logs", "--tail=50", "api", "worker"],
+        vec!["compose", "logs", "--no-color", "--no-log-prefix", "api"],
+        vec!["compose", "logs", "--index", "2", "api"],
+    ] {
+        assert!(safe_docker_arguments(&arguments(&words)), "{words:?}");
+    }
+}
+
+/// A log read that never ends, one that reaches another daemon, one that
+/// prints the driver's own attributes, and one that names a compose file are
+/// not that read.
+#[test]
+fn followed_remote_and_file_backed_logs_stay_reviewed() {
+    for words in [
+        vec!["logs"],
+        vec!["logs", "-f", "web"],
+        vec!["logs", "--follow", "web"],
+        vec!["logs", "--details", "web"],
+        vec!["logs", "web", "api"],
+        vec!["logs", "--tail"],
+        vec!["logs", "--tail", "many", "web"],
+        vec!["logs", "--since", "-1h", "web"],
+        vec!["logs", "--tail", "50", "../web"],
+        vec!["-H", "tcp://build.example.com:2376", "logs", "web"],
+        vec!["--context", "production", "logs", "web"],
+        vec!["compose", "-f", "compose.prod.yaml", "logs"],
+        vec!["compose", "logs", "-f"],
+        vec!["compose", "logs", "--follow", "api"],
+        vec!["compose", "logs", "--index", "two", "api"],
+    ] {
+        assert!(!safe_docker_arguments(&arguments(&words)), "{words:?}");
+    }
+}
+
 #[test]
 fn remote_daemons_secrets_and_other_subcommands_stay_reviewed() {
     for words in [
@@ -212,7 +269,6 @@ fn remote_daemons_secrets_and_other_subcommands_stay_reviewed() {
         vec!["inspect", "web"],
         vec!["container", "inspect", "web"],
         vec!["compose", "ps"],
-        vec!["logs", "web", "--tail", "50"],
         vec!["exec", "web", "env"],
         vec!["run", "--rm", "alpine", "env"],
         vec!["compose", "up", "-d"],
