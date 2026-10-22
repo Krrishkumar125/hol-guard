@@ -1,27 +1,36 @@
 //! Scheduling and buffering prefixes that run the program the text names.
 //!
 //! `nice -n 10 npm run build` runs `npm run build`, as this user and in this
-//! directory, with one scheduling number changed. `nohup` keeps that same
-//! child alive past a hangup and `stdbuf` changes how its standard streams are
-//! buffered. None of the three picks a different program, a different user or
-//! a different root, so the owners of the wrapped command are the owners of
-//! the command itself - the reading `timeout` and `time` already get.
+//! directory, with one scheduling number changed, and `stdbuf -oL pytest -q`
+//! changes how the same child's standard streams are buffered. Neither picks a
+//! different program, a different user or a different root, so the owners of
+//! the wrapped command are the owners of the command itself - the reading
+//! `timeout` and `time` already get.
 //!
 //! Without that reading the prefix stayed the executable, and a transparent
 //! wrapper in that position leaves the whole command unmodelled: ordinary work
-//! such as `nice -n 10 cargo build`, `nohup npm run dev` and `stdbuf -oL
-//! pytest -q` reached review with nothing proven about it, while the same
-//! words without the prefix modelled exactly.
+//! such as `nice -n 10 cargo build` and `stdbuf -oL pytest -q` reached review
+//! with nothing proven about it, while the same words without the prefix
+//! modelled exactly.
 //!
 //! Each prefix is walked through its own documented option grammar, because
 //! the program is not at a fixed offset: `nice -n 10 cargo`, `nice -10 cargo`
 //! and `stdbuf -oL -e0 cargo` each put it somewhere else. A word that grammar
 //! does not cover, a value outside the shape the prefix documents, or no
 //! program at all leaves the prefix in place and the command as uncertain as
-//! it is today. `setsid` is not here: it detaches the program into a session
-//! of its own rather than only scheduling it. A prefix spelled as a path
-//! (`./nice`, `/tmp/tools/stdbuf`) is a program of the user's own that shares
-//! a launcher's name, so it is not read as one.
+//! it is today. `nice +10 cargo` is one of those: GNU `nice` reads only `-N` as
+//! an adjustment, so `+10` is the program it runs and the word is left to
+//! name it.
+//!
+//! Two look-alikes are not here. `setsid` detaches the program into a session
+//! of its own rather than only scheduling it. `nohup` also keeps the program
+//! past a hangup, but when its standard output is a terminal it appends the
+//! output to `nohup.out`, a file the text never names; reading only the program
+//! behind it would grant that program's decision to a command that also writes.
+//! A prefix spelled as a path (`./nice`, `/tmp/tools/stdbuf`) is a program of
+//! the user's own that shares a launcher's name, so it is not read as one, and
+//! a `PATH=` assignment in front of the command is tracked on the segment as
+//! it is for every other program.
 
 /// One prefix's option grammar: the short letters that carry a value, the long
 /// spellings that carry one, whether a bare number is its own option, and
@@ -34,20 +43,13 @@ struct Grammar {
     option_required: bool,
 }
 
-const GRAMMARS: [Grammar; 3] = [
+const GRAMMARS: [Grammar; 2] = [
     Grammar {
         prefix: "nice",
         short_values: "n",
         long_values: &["adjustment"],
         // `nice -10 cargo build` is the adjustment spelled on its own.
         numeric_flag: true,
-        option_required: false,
-    },
-    Grammar {
-        prefix: "nohup",
-        short_values: "",
-        long_values: &[],
-        numeric_flag: false,
         option_required: false,
     },
     Grammar {

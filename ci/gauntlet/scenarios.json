@@ -1335,8 +1335,7 @@
       "commands": [
         "nice -n 10 git status --short",
         "nice -10 ls -la",
-        "stdbuf -oL git log --oneline -5",
-        "nohup git diff --stat"
+        "stdbuf -oL git log --oneline -5"
       ]
     },
     {

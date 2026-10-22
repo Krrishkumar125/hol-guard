@@ -17,13 +17,11 @@ fn a_documented_launcher_names_the_program_behind_it() {
         ("nice --adjustment=19 pytest -q", 2),
         ("nice --adjustment 19 pytest -q", 3),
         ("nice -- npm test", 2),
-        ("nohup npm run dev", 1),
         ("stdbuf -oL pytest -q", 2),
         ("stdbuf -o L pytest -q", 3),
         ("stdbuf -i0 -oL -e0 cargo test", 4),
         ("stdbuf --output=L --error=0 npm test", 3),
         ("stdbuf -o 4K npm test", 3),
-        ("nice -n 10 nohup npm run build", 3),
     ] {
         assert_eq!(
             launcher_program(&words(command), 0),
@@ -34,7 +32,8 @@ fn a_documented_launcher_names_the_program_behind_it() {
 }
 
 /// A prefix spelled as a path, an option no grammar documents, a value
-/// outside the shape the prefix takes, and a prefix running nothing at all
+/// outside the shape the prefix takes, a prefix running nothing at all and
+/// `nohup`, which may write `nohup.out` where the program behind it only reads,
 /// each leave the command as uncertain as it arrived.
 #[test]
 fn an_undocumented_word_leaves_the_launcher_in_place() {
@@ -50,7 +49,9 @@ fn an_undocumented_word_leaves_the_launcher_in_place() {
         "nice -n 300 npm test",
         "nice -n L npm test",
         "nice --adjustment=nineteen npm test",
-        "nohup -f npm run dev",
+        "nohup npm run dev",
+        "nohup git diff --stat",
+        "nohup -- npm run dev",
         "nohup --version",
         "stdbuf npm test",
         "stdbuf -oL",
@@ -77,13 +78,10 @@ fn a_program_file_behind_the_launcher_leaves_it_in_place() {
     for command in [
         "nice ./deploy.sh",
         "nice -n 10 ../tools/build.sh",
-        "nohup ./scripts/release.sh",
-        "nohup release.py",
         "stdbuf -oL release.py",
         "stdbuf -oL python3 deploy.py",
         "nice -n 10 sh -c build",
         "nice -n 10 nohup ./deploy.sh",
-        "nohup nice -n 10 node server.js",
     ] {
         assert_eq!(
             launcher_program(&words(command), 0),
@@ -93,7 +91,6 @@ fn a_program_file_behind_the_launcher_leaves_it_in_place() {
     }
     for (command, program) in [
         ("nice python3 -m http.server", 1),
-        ("nohup git diff --stat", 1),
         ("stdbuf -oL git log --oneline -5", 2),
     ] {
         assert_eq!(
@@ -113,4 +110,134 @@ fn the_scan_starts_at_the_word_the_caller_names() {
         Some(5)
     );
     assert_eq!(launcher_program(&words("npm run build"), 0), None);
+}
+
+fn parse(command: &str) -> crate::CanonicalCommandV1 {
+    crate::parse_command(&crate::CommandModelRequestV1 {
+        command: command.to_owned(),
+        dialect: "posix".to_owned(),
+        transport: "shell_string".to_owned(),
+        extraction_provenance: "guard-shell".to_owned(),
+    })
+    .unwrap()
+}
+
+/// Through the whole parser, a documented launcher leaves the program behind
+/// it as the executable and leaves no wrapper in the chain.
+#[test]
+fn a_launcher_leaves_its_program_as_the_executable() {
+    for (command, executable, argument) in [
+        ("nice npm test", "npm", "test"),
+        ("nice -n 10 cargo build", "cargo", "build"),
+        ("nice -n -5 cargo build", "cargo", "build"),
+        ("nice -n10 cargo build", "cargo", "build"),
+        ("nice -10 cargo build", "cargo", "build"),
+        ("nice --adjustment 10 cargo build", "cargo", "build"),
+        ("nice --adjustment=10 cargo build", "cargo", "build"),
+        ("nice -- cargo build", "cargo", "build"),
+        ("stdbuf -oL pytest -q", "pytest", "-q"),
+        ("stdbuf -o L pytest -q", "pytest", "-q"),
+        ("stdbuf --output=L pytest -q", "pytest", "-q"),
+        ("stdbuf --error 0 pytest -q", "pytest", "-q"),
+        ("stdbuf -o0 -e0 pytest -q", "pytest", "-q"),
+        ("stdbuf -i 4096 pytest -q", "pytest", "-q"),
+    ] {
+        let model = parse(command);
+        assert_eq!(model.confidence, "exact", "{command}");
+        assert_eq!(model.segments.len(), 1, "{command}");
+        assert!(model.wrapper_chain.is_empty(), "{command}");
+        assert!(model.segments[0].wrapper_chain.is_empty(), "{command}");
+        assert_eq!(
+            model.segments[0].executable.as_deref(),
+            Some(executable),
+            "{command}"
+        );
+        assert_eq!(model.segments[0].arguments, [argument], "{command}");
+    }
+}
+
+/// Anything the launcher grammars do not read keeps the wrapper as the
+/// executable, so the command is as uncertain as it was before they existed.
+/// These assert the uncertainty itself, not that one program is missing.
+#[test]
+fn a_launcher_that_is_not_read_keeps_the_command_uncertain() {
+    for command in [
+        "nice",
+        "nice -n 10",
+        "nice --help cargo build",
+        "nice -n cargo build",
+        "nice -n ten cargo build",
+        "nice --adjustment=ten cargo build",
+        "nice -n 10 CI=1 cargo build",
+        "nice -n 10 nohup npm run build",
+        "stdbuf pytest -q",
+        "stdbuf -oX pytest -q",
+        "stdbuf --output=X pytest -q",
+        "stdbuf -z L pytest -q",
+        "setsid pytest -q",
+        "./nice -n 10 cargo build",
+        "bin/stdbuf -oL pytest -q",
+        "/usr/bin/nice -n 10 cargo build",
+    ] {
+        let model = parse(command);
+        assert_eq!(model.confidence, "uncertain", "{command}");
+        assert_eq!(
+            model.uncertainty_reason.as_deref(),
+            Some("transparent_wrapper_not_yet_supported"),
+            "{command}"
+        );
+    }
+}
+
+/// `nohup` appends the program's output to `nohup.out` when standard output is
+/// a terminal, so the read-only proof of the program behind it would be
+/// granted to a command that also writes a file.
+#[test]
+fn nohup_is_not_read_as_the_program_behind_it() {
+    for command in [
+        "nohup git diff --stat",
+        "nohup npm test",
+        "nohup -- npm test",
+    ] {
+        let model = parse(command);
+        assert_eq!(model.confidence, "uncertain", "{command}");
+        assert_eq!(
+            model.uncertainty_reason.as_deref(),
+            Some("transparent_wrapper_not_yet_supported"),
+            "{command}"
+        );
+    }
+}
+
+/// GNU `nice` reads only `-N` as an adjustment. `+10` is the program it runs,
+/// so the parser must not name the word after it.
+#[test]
+fn a_plus_sign_is_the_program_and_not_an_adjustment() {
+    let model = parse("nice +10 cargo build");
+    assert!(
+        model
+            .segments
+            .iter()
+            .all(|segment| segment.executable.as_deref() != Some("cargo")),
+        "{:?}",
+        model.segments.first().map(|segment| &segment.executable)
+    );
+    assert_eq!(parse("nice -n +10 cargo build").confidence, "exact");
+}
+
+/// A launcher is read by its spelling, as every other program is. The ways the
+/// same text could make that spelling mean something else stay visible: a
+/// function definition is a compound the parser refuses, and a `PATH=`
+/// assignment in front of the launcher is recorded on the segment.
+#[test]
+fn text_that_could_shadow_a_launcher_stays_visible() {
+    let model = parse("nice() { rm -rf ~; }; nice git status");
+    assert_eq!(model.confidence, "uncertain");
+    assert_eq!(
+        model.uncertainty_reason.as_deref(),
+        Some("compound_shell_not_yet_supported")
+    );
+    let model = parse("PATH=./bin nice git status");
+    assert!(model.path_overridden);
+    assert!(model.segments[0].path_overridden);
 }
