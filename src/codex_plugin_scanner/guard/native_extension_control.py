@@ -10,6 +10,7 @@ raises ``NativeExtensionControlError`` and callers fail closed.
 
 from __future__ import annotations
 
+import functools
 import json
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -415,8 +416,25 @@ def snapshot_digest(
     layers: Iterable[ExtensionControlLayer],
     guard_home: Path | None = None,
 ) -> str:
-    """The digest that identifies the runtime snapshot of one authority view."""
+    """The digest that identifies the runtime snapshot of one authority view.
 
+    One hook builds the same snapshot several times, so the digest is kept for
+    the process: it is a pure function of these inputs, and asking again would
+    spend a resident round trip per build.
+    """
+
+    return _snapshot_digest(catalog_digest, health, revision, managed_revision, tuple(layers), guard_home)
+
+
+@functools.lru_cache(maxsize=32)
+def _snapshot_digest(
+    catalog_digest: str,
+    health: str,
+    revision: int,
+    managed_revision: int,
+    layers: tuple[ExtensionControlLayer, ...],
+    guard_home: Path | None,
+) -> str:
     query: dict[str, object] = {
         "kind": "snapshot_digest",
         "catalog_digest": catalog_digest,

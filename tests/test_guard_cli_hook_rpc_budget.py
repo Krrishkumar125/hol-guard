@@ -40,8 +40,10 @@ from tests.benign_fp_gate_fixture import BenignFixture, build_fixture
 from tests.benign_fp_gate_projects import host_tool_path
 
 # Round trips one CLI PreToolUse hook may spend on its own path. A new port
-# must fold its work into these or memoize it for the invocation.
-_RESIDENT_ROUND_TRIPS_PER_CLI_PRE_TOOL_HOOK = 24
+# must fold its work into these or memoize it for the invocation. The runtime
+# snapshot digest is one such memoized call: the resident computes it once per
+# hook process, however many times the hook builds the snapshot.
+_RESIDENT_ROUND_TRIPS_PER_CLI_PRE_TOOL_HOOK = 25
 
 # Work the hook does not drive request by request: the direct-hook evidence
 # drain pages on its own wake-ups and the snapshot publisher runs on its own
