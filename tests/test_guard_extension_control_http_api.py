@@ -98,7 +98,8 @@ def test_http_routes_authenticate_before_reading_sensitive_post_body(tmp_path: P
         response = connection.getresponse()
         client = GuardSurfaceDaemonClient(f"http://127.0.0.1:{daemon.port}", auth_token)
         refreshed = client.refresh_extension_controls()
-        assert refreshed["health"] == "unenrolled"
+        # The daemon enrolled this fresh home at startup.
+        assert refreshed["health"] == "protected"
         with pytest.raises(GuardDaemonRequestError) as not_recoverable:
             client.recover_extension_control_authority({"session_nonce": "nonce"})
         assert not_recoverable.value.status == 409
