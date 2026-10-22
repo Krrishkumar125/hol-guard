@@ -13,7 +13,8 @@ hash differently than the one the stored approval covers.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
@@ -31,6 +32,9 @@ _TIMEOUT_SECONDS = 10.0
 # request carrying more artifacts than this.
 _MAX_ARTIFACTS = 256
 _MAX_REQUEST_BYTES = 4 * 1024 * 1024
+# A batch stops short of the request cap so the schema, request id and the
+# framing around the artifacts still fit beside them.
+_MAX_BATCH_BYTES = _MAX_REQUEST_BYTES - 64 * 1024
 _HASH_LENGTH = 64
 _HASH_ALPHABET = frozenset("0123456789abcdef")
 
@@ -85,9 +89,39 @@ def native_artifact_content_hashes(
     if not ensure_resident_prerequisite(home):
         raise ArtifactContentHashUnavailableError
     hashes: list[str] = []
-    for start in range(0, len(artifacts), _MAX_ARTIFACTS):
-        hashes.extend(_hashes_for_batch(artifacts[start : start + _MAX_ARTIFACTS], home))
+    for batch in _batches(artifacts):
+        hashes.extend(_hashes_for_batch(batch, home))
     return hashes
+
+
+def _batches(artifacts: Sequence[GuardArtifact]) -> Iterator[Sequence[GuardArtifact]]:
+    """Split the artifacts into batches the resident will accept.
+
+    The contract caps both how many artifacts one request may carry and how
+    large it may be, and a harness whose artifacts carry long arguments reaches
+    the byte cap first. A batch split only by count would then be refused whole
+    and lose every hash in it, so the size is measured as the batch is filled.
+    An artifact that is larger than a whole batch still goes on its own: the
+    resident refuses it by itself rather than taking the rest down with it.
+    """
+
+    start = 0
+    bytes_so_far = 0
+    for index, artifact in enumerate(artifacts):
+        encoded = len(
+            json.dumps(
+                artifact_content_hash_fields(artifact),
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        )
+        if index > start and (index - start >= _MAX_ARTIFACTS or bytes_so_far + encoded > _MAX_BATCH_BYTES):
+            yield artifacts[start:index]
+            start = index
+            bytes_so_far = 0
+        bytes_so_far += encoded
+    if start < len(artifacts):
+        yield artifacts[start:]
 
 
 def native_artifact_content_hash(

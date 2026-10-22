@@ -8,6 +8,7 @@ unavailable resident leaves the approval unminted rather than guessed.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -119,3 +120,75 @@ def test_a_prompt_asks_for_its_hashes_in_one_batch(monkeypatch: pytest.MonkeyPat
     assert calls == [2]
     assert [row.artifact_hash for row in rows] == [_HASH_A, _HASH_B]
     assert [row.snapshot_hash for row in rows] == [_HASH_A, _HASH_B]
+
+
+def test_a_prompt_whose_rows_carry_their_hashes_never_crosses_to_the_resident(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refuse(artifacts, *, guard_home: Path | None = None) -> list[str]:  # type: ignore[no-untyped-def]
+        raise AssertionError("a prompt with every hash in hand must not ask the resident")
+
+    monkeypatch.setattr(prompt_module, "native_artifact_content_hashes", refuse)
+    evaluation = [
+        {
+            "artifact_id": "mcp:acme",
+            "policy_action": "review",
+            "approval_context_hash": _HASH_A,
+            "artifact_hash": _HASH_B,
+        }
+    ]
+
+    rows = prompt_module.build_prompt_artifacts("claude-code", [_artifact("mcp:acme")], evaluation)
+    assert [row.artifact_hash for row in rows] == [_HASH_A]
+    assert [row.snapshot_hash for row in rows] == [_HASH_B]
+
+
+def test_only_the_rows_missing_a_hash_are_asked_for(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[list[str]] = []
+
+    def batched(artifacts, *, guard_home: Path | None = None) -> list[str]:  # type: ignore[no-untyped-def]
+        asked.append([artifact.artifact_id for artifact in artifacts])
+        return [_HASH_B] * len(artifacts)
+
+    monkeypatch.setattr(prompt_module, "native_artifact_content_hashes", batched)
+    artifacts = [_artifact("mcp:acme"), _artifact("mcp:other")]
+    evaluation = [
+        {
+            "artifact_id": "mcp:acme",
+            "policy_action": "review",
+            "approval_context_hash": _HASH_A,
+            "artifact_hash": _HASH_A,
+        },
+        {"artifact_id": "mcp:other", "policy_action": "review"},
+    ]
+
+    rows = prompt_module.build_prompt_artifacts("claude-code", artifacts, evaluation)
+    assert asked == [["mcp:other"]]
+    assert [row.artifact_hash for row in rows] == [_HASH_A, _HASH_B]
+
+
+def test_a_batch_splits_before_it_outgrows_the_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[list[str]] = []
+
+    def fake_request(**kwargs: object) -> dict[str, object]:
+        request = kwargs["request"]
+        assert isinstance(request, dict)
+        sent.append([item["artifact_id"] for item in request["artifacts"]])
+        return {"schema": "guard-artifact-content-hash-result.v1"}
+
+    monkeypatch.setattr(bridge, "_resolve_digest_home", lambda home: Path("/guard-home"))
+    monkeypatch.setattr(bridge, "ensure_resident_prerequisite", lambda home: True)
+    monkeypatch.setattr(bridge, "_resident_request", fake_request)
+    monkeypatch.setattr(
+        bridge,
+        "_payload",
+        lambda response, request, home: {"content_hashes": [_HASH_A] * len(request["artifacts"])},
+    )
+    monkeypatch.setattr(bridge, "_MAX_BATCH_BYTES", 2048)
+
+    def wide(artifact_id: str) -> GuardArtifact:
+        return replace(_artifact(artifact_id), args=["x" * 1200])
+
+    artifacts = [wide("mcp:one"), wide("mcp:two"), wide("mcp:three")]
+    assert bridge.native_artifact_content_hashes(artifacts) == [_HASH_A] * 3
+    assert sent == [["mcp:one"], ["mcp:two"], ["mcp:three"]]
