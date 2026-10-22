@@ -234,6 +234,23 @@ fn valid_target(value: &str) -> bool {
 }
 
 impl NativeCommandControlBindingV1 {
+    /// The binding a device has before it ever enrolls: unenrolled, nothing
+    /// saved, no layers, and the initial authority with no recovery pending.
+    /// Enforcement keeps packaged protection for it instead of a global
+    /// block, and the advisory allow hint judges it as it will be once
+    /// enrolled. Any other unenrolled binding is a lost authority.
+    pub fn is_initial_defaults(&self) -> bool {
+        self.health == "unenrolled"
+            && self.revision == 0
+            && self.managed_revision == 0
+            && self.layers.is_empty()
+            && self.authority.as_ref().is_some_and(|authority| {
+                authority.epoch == 1
+                    && authority.authority_key_id == "0".repeat(64)
+                    && authority.recovery.is_none()
+            })
+    }
+
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.schema != NATIVE_COMMAND_CONTROL_BINDING_SCHEMA
             || [

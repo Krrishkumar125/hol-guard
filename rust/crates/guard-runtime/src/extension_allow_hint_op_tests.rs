@@ -169,6 +169,67 @@ fn a_lost_authority_with_saved_history_has_no_hint() {
 }
 
 #[test]
+fn an_unenrolled_authority_that_is_not_the_initial_one_has_no_hint() {
+    // Enforcement keeps packaged protection only for the initial authority.
+    // A later epoch, a real key or a pending recovery with an otherwise empty
+    // binding is a lost authority there, so the hint must not call it a fresh
+    // install either.
+    let initial = || NativeCommandControlAuthorityV1 {
+        epoch: 1,
+        mutation_revision: 1,
+        authority_key_id: "0".repeat(64),
+        recovery: None,
+    };
+    let later_epoch = NativeCommandControlAuthorityV1 {
+        epoch: 2,
+        ..initial()
+    };
+    let real_key = NativeCommandControlAuthorityV1 {
+        authority_key_id: "a".repeat(64),
+        ..initial()
+    };
+    let recovering = NativeCommandControlAuthorityV1 {
+        epoch: 2,
+        mutation_revision: 2,
+        recovery: Some(guard_contracts::NativeCommandControlRecoveryV1 {
+            schema: "guard.native-command-control-recovery.v1".into(),
+            previous_epoch: 1,
+            previous_mutation_revision: 1,
+            previous_authority_key_id: "b".repeat(64),
+            previous_floor_digest: "c".repeat(64),
+            nonce: "d".repeat(64),
+        }),
+        ..initial()
+    };
+    for (name, authority) in [
+        ("later-epoch", later_epoch),
+        ("real-key", real_key),
+        ("recovering", recovering),
+    ] {
+        let home = std::env::temp_dir().join(format!(
+            "guard-extension-allow-hint-{name}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&home).unwrap();
+        let home = home.canonicalize().unwrap();
+        let lost = crate::contributed_mcp_catalog_test_support::controls_for_binding(
+            &home,
+            false,
+            &[],
+            &[],
+            |binding| {
+                "unenrolled".clone_into(&mut binding.health);
+                binding.revision = 0;
+                binding.layers.clear();
+                binding.authority = Some(authority);
+            },
+        );
+        assert!(!lost.control_binding().is_initial_defaults(), "{name}");
+        assert!(hint_for(&lost, DOCKER_CONTEXT).is_none(), "{name}");
+    }
+}
+
+#[test]
 fn judging_once_enrolled_never_changes_the_reported_decision() {
     let unenrolled = controls_with_health("reported", "unenrolled");
     let query = query(&unenrolled, DOCKER_CONTEXT);
