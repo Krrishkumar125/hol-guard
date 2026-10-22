@@ -165,8 +165,10 @@ fn to_read_factor(row: &ReadFactorRow) -> crate::effect_decision::DecisionFactor
     }
 }
 
-/// Labels, example commands and names are display text the catalog may reword
+/// Names, labels and example commands are display text the catalog may reword
 /// without changing any decision, so the oracle pins semantics, not wording.
+/// Risk tiers and families stay compared: they drive the caution a
+/// recommendation shows.
 fn adopt_display_metadata(expected: &mut CatalogExtension, live: Option<&CatalogExtension>) {
     let Some(live) = live else { return };
     expected.name = live.name.clone();
@@ -179,9 +181,7 @@ fn adopt_display_metadata(expected: &mut CatalogExtension, live: Option<&Catalog
             continue;
         };
         permission.label = current.label.clone();
-        permission.risk_tier = current.risk_tier.clone();
         permission.example_command = current.example_command.clone();
-        permission.family = current.family.clone();
     }
 }
 
