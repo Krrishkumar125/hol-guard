@@ -154,6 +154,22 @@ def test_retry_gives_up_after_a_bounded_number_of_attempts(monkeypatch):
     assert len(calls) == 3
 
 
+def test_every_refusal_is_closed_before_it_is_retried_or_raised(monkeypatch):
+    monkeypatch.setattr(transport.time, "sleep", lambda seconds: None)
+    bodies = []
+
+    def refuse(request, **kwargs):
+        body = io.BytesIO()
+        bodies.append(body)
+        raise urllib.error.HTTPError(request.full_url, 503, "refused", {}, body)
+
+    monkeypatch.setattr(transport, "managed_urlopen", refuse)
+    with pytest.raises(urllib.error.HTTPError):
+        transport.download("https://github.com/asset", 100)
+    assert len(bodies) == 3
+    assert all(body.closed for body in bodies)
+
+
 @pytest.mark.parametrize("location", [None, "", "http://[::1"])
 def test_redirect_without_a_resolvable_target_is_refused_before_a_second_request(monkeypatch, location):
     calls = []

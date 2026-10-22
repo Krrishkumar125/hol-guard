@@ -60,7 +60,8 @@ def _after_refusal(error, url, hop):
     if "redirect" in verdict:
         error.close()
         return verdict["redirect"]
-    # Any other refusal is the caller's to see, unclosed, exactly as raised.
+    # Any other refusal is the caller's to see; its connection must not outlive the attempt.
+    error.close()
     raise error
 
 
