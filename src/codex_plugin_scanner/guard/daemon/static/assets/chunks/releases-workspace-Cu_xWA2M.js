@@ -143,14 +143,18 @@ function pageRangeLabel(index) {
   const last = Math.min(index.total, first + index.releases.length - 1);
   return `Showing ${first}–${last} of ${index.total} ${index.total === 1 ? "release" : "releases"}`;
 }
-const PULL_REQUEST_PATTERN = /#(\d{1,7})\b/;
+const PULL_REQUEST_PATTERN = /#(\d{1,7})\b/g;
+const TRAILING_PULL_REQUEST = /\(#(\d{1,7})\)\s*$/;
 const DOCUMENTED_PREFIX = /^documented change:/i;
 const MERGE_PREFIX = /^merged pull request\b/i;
 function pullRequestKey(change) {
   const fromEvidence = change.evidenceUrl?.match(/\/pull\/(\d{1,7})(?:\D|$)/);
   if (fromEvidence) return fromEvidence[1];
-  const fromSummary = change.summary.match(PULL_REQUEST_PATTERN);
-  return fromSummary ? fromSummary[1] : null;
+  const summary = change.summary.trim();
+  const trailing = TRAILING_PULL_REQUEST.exec(summary);
+  if (trailing) return trailing[1];
+  const numbers = [...summary.matchAll(PULL_REQUEST_PATTERN)];
+  return numbers.length > 0 ? numbers[numbers.length - 1][1] : null;
 }
 function dedupeChanges(changes, hasSourceNotes) {
   const byPullRequest = /* @__PURE__ */ new Map();
@@ -261,8 +265,14 @@ function mergeContributors(roster) {
     }
     if (seen.verificationMethod !== "pull-request-author" && contributor.verificationMethod === "pull-request-author") {
       seen.verificationMethod = contributor.verificationMethod;
-      seen.evidenceUrl = contributor.evidenceUrl;
+      if (contributor.evidenceUrl) seen.evidenceUrl = contributor.evidenceUrl;
     }
+    if (!seen.login && contributor.login) {
+      seen.login = contributor.login;
+      if (seen.type === "unresolved") seen.type = contributor.type;
+    }
+    if (seen.type === "unresolved" && contributor.type !== "unresolved") seen.type = contributor.type;
+    if (!seen.evidenceUrl && contributor.evidenceUrl) seen.evidenceUrl = contributor.evidenceUrl;
   }
   for (const merged of byIdentity.values()) merged.roles.sort();
   return [...byIdentity.values()].sort((a, b) => b.credits - a.credits || contributorName(a).localeCompare(contributorName(b)));
@@ -308,7 +318,7 @@ function ReleaseRow(props) {
 function ReleaseArchiveList(props) {
   const groups = groupReleasesByTrain(props.index.releases);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { "aria-label": "Published Guard releases", className: "flex min-h-0 flex-1 flex-col", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto px-1.5 pb-2", children: groups.map((group) => /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": `${group.train} series`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto px-1.5 pb-2", children: groups.map((group, position) => /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": `${group.train} series`, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "sticky top-0 z-10 bg-white/90 px-1.5 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-dark/45 backdrop-blur", children: group.train }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-0.5 pb-2", children: group.releases.map((release) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         ReleaseRow,
@@ -320,7 +330,7 @@ function ReleaseArchiveList(props) {
         },
         release.slug
       )) })
-    ] }, group.train)) }),
+    ] }, `${group.train}-${position}`)) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center justify-between gap-2 border-t border-brand-dark/10 px-3 py-2.5", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs tabular-nums text-brand-dark/50", children: pageRangeLabel(props.index) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5", children: [
@@ -351,6 +361,7 @@ const MAX_BLOCKS = 1e3;
 const MAX_LIST_ITEMS = 500;
 const MAX_INLINE_NODES = 400;
 const MAX_HREF_CHARS = 2e3;
+const MAX_LIST_DEPTH = 2;
 function safeHref(raw) {
   const href = raw.trim();
   if (!href || href.length > MAX_HREF_CHARS) return null;
@@ -373,7 +384,28 @@ function runLength(source, start, marker, max) {
   while (length < max && source[start + length] === marker) length += 1;
   return length;
 }
-function parseInline(source, depth = 0) {
+function scanBudgetFor(source) {
+  return { left: source.length * 4 + 1e3 };
+}
+function findWithin(source, token, from, budget) {
+  if (budget.left <= 0) return -1;
+  const found = source.indexOf(token, from);
+  const scanned = (found === -1 ? source.length : found + token.length) - from;
+  budget.left -= Math.max(scanned, 1);
+  return budget.left < 0 ? -1 : found;
+}
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+function isWordCharacter(source, position) {
+  if (position < 0 || position >= source.length) return false;
+  return WORD_CHARACTER.test(source[position]);
+}
+function underscoreOpens(source, start) {
+  return !isWordCharacter(source, start - 1);
+}
+function underscoreCloses(source, end) {
+  return !isWordCharacter(source, end);
+}
+function parseInline(source, depth = 0, budget = scanBudgetFor(source)) {
   const nodes = [];
   let index = 0;
   let plain = "";
@@ -400,7 +432,7 @@ function parseInline(source, depth = 0) {
     }
     if (char === "`") {
       const fence = runLength(source, index, "`", 3);
-      const close = source.indexOf("`".repeat(fence), index + fence);
+      const close = findWithin(source, "`".repeat(fence), index + fence, budget);
       if (close !== -1) {
         flush();
         nodes.push({ kind: "code", text: source.slice(index + fence, close).trim() });
@@ -409,7 +441,7 @@ function parseInline(source, depth = 0) {
       }
     }
     if (char === "[" && depth < 3) {
-      const link = readLink(source, index, depth);
+      const link = readLink(source, index, depth, budget);
       if (link) {
         flush();
         nodes.push(link.node);
@@ -420,19 +452,31 @@ function parseInline(source, depth = 0) {
     if ((char === "*" || char === "_") && depth < 3) {
       const marker = runLength(source, index, char, 2);
       const token = char.repeat(marker);
-      const close = source.indexOf(token, index + marker);
+      let close = -1;
+      if (char !== "_" || underscoreOpens(source, index)) {
+        let from = index + marker;
+        while (from < source.length) {
+          const candidate = findWithin(source, token, from, budget);
+          if (candidate === -1) break;
+          if (char !== "_" || underscoreCloses(source, candidate + marker)) {
+            close = candidate;
+            break;
+          }
+          from = candidate + marker;
+        }
+      }
       if (close !== -1 && close > index + marker) {
         const inner = source.slice(index + marker, close);
         flush();
         nodes.push(
-          marker === 2 ? { kind: "strong", children: parseInline(inner, depth + 1) } : { kind: "emphasis", children: parseInline(inner, depth + 1) }
+          marker === 2 ? { kind: "strong", children: parseInline(inner, depth + 1, budget) } : { kind: "emphasis", children: parseInline(inner, depth + 1, budget) }
         );
         index = close + marker;
         continue;
       }
     }
     if (char === "h" && source.startsWith("http", index)) {
-      const bare = readBareUrl(source, index);
+      const bare = readBareUrl(source, index, budget);
       if (bare) {
         flush();
         nodes.push(bare.node);
@@ -446,10 +490,13 @@ function parseInline(source, depth = 0) {
   flush();
   return nodes;
 }
-function readLink(source, start, depth) {
+function readLink(source, start, depth, budget) {
+  if (budget.left <= 0) return null;
   let cursor = start + 1;
   let open = 1;
   while (cursor < source.length && open > 0) {
+    budget.left -= 1;
+    if (budget.left < 0) return null;
     const char = source[cursor];
     if (char === "\\") {
       cursor += 2;
@@ -464,6 +511,8 @@ function readLink(source, start, depth) {
   let hrefCursor = cursor + 1;
   let parens = 1;
   while (hrefCursor < source.length && parens > 0) {
+    budget.left -= 1;
+    if (budget.left < 0) return null;
     const char = source[hrefCursor];
     if (char === "(") parens += 1;
     if (char === ")") parens -= 1;
@@ -473,19 +522,24 @@ function readLink(source, start, depth) {
   if (parens !== 0) return null;
   const label = source.slice(start + 1, labelEnd);
   const href = safeHref(source.slice(cursor + 1, hrefCursor));
-  const children = parseInline(label, depth + 1);
+  const children = parseInline(label, depth + 1, budget);
   return {
     node: href ? { kind: "link", href, children } : { kind: "emphasis", children },
     next: hrefCursor + 1
   };
 }
-function readBareUrl(source, start) {
+function readBareUrl(source, start, budget) {
+  if (budget.left <= 0) return null;
   let end = start;
   while (end < source.length && !/[\s<>"'`)\]]/.test(source[end])) end += 1;
+  budget.left -= end - start;
   while (end > start && /[.,;:!?]/.test(source[end - 1])) end -= 1;
   const href = safeHref(source.slice(start, end));
   if (!href) return null;
   return { node: { kind: "link", href, children: [{ kind: "text", text: href }] }, next: end };
+}
+function startsBlock(line) {
+  return /^(#{1,6})\s+/.test(line) || /^\s*(?:`{3,}|~{3,})/.test(line) || /^\s*>\s?/.test(line) || /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line);
 }
 function listMarker(line) {
   const match = /^(\s*)(?:([-*+])|(\d{1,3})[.)])\s+(.*)$/.exec(line);
@@ -545,8 +599,9 @@ function parseReleaseMarkdown(source) {
       index = result.next;
       continue;
     }
-    const paragraph = [];
-    while (index < lines.length && lines[index].trim() && !listMarker(lines[index]) && !/^(#{1,6})\s+/.test(lines[index]) && !/^\s*(?:`{3,}|~{3,})/.test(lines[index]) && !/^\s*>\s?/.test(lines[index]) && !/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(lines[index])) {
+    const paragraph = [lines[index].trim()];
+    index += 1;
+    while (index < lines.length && lines[index].trim() && !listMarker(lines[index]) && !startsBlock(lines[index])) {
       paragraph.push(lines[index].trim());
       index += 1;
     }
@@ -554,7 +609,7 @@ function parseReleaseMarkdown(source) {
   }
   return blocks;
 }
-function readList(lines, start) {
+function readList(lines, start, depth = 0) {
   const first = listMarker(lines[start]);
   const ordered = first ? first.ordered : false;
   const baseIndent = first ? first.indent : 0;
@@ -572,21 +627,36 @@ function readList(lines, start) {
     if (!marker || marker.indent < baseIndent || marker.ordered !== ordered) break;
     if (marker.indent > baseIndent) {
       const parent = items[items.length - 1];
-      const nested = readList(lines, index);
+      const nested = readList(lines, index, depth + 1);
       if (parent && nested.block.kind === "list") {
         parent.items.push(...nested.block.items);
         if (parent.items.length > MAX_LIST_ITEMS) parent.items.length = MAX_LIST_ITEMS;
+      } else if (nested.block.kind === "list") {
+        items.push(...nested.block.items);
+        if (items.length > MAX_LIST_ITEMS) items.length = MAX_LIST_ITEMS;
       }
       index = nested.next;
       continue;
     }
     const lead = [marker.text];
     index += 1;
-    while (index < lines.length && lines[index].trim() && !listMarker(lines[index])) {
+    while (index < lines.length && lines[index].trim() && !listMarker(lines[index]) && !startsBlock(lines[index])) {
       lead.push(lines[index].trim());
       index += 1;
     }
     items.push({ children: parseInline(lead.join("\n")), items: [] });
+  }
+  if (depth + 1 >= MAX_LIST_DEPTH) {
+    const flattened = [];
+    const collect = (source) => {
+      for (const item of source) {
+        if (flattened.length >= MAX_LIST_ITEMS) return;
+        flattened.push({ children: item.children, items: [] });
+        collect(item.items);
+      }
+    };
+    collect(items);
+    return { block: { kind: "list", ordered, items: flattened }, next: index };
   }
   return { block: { kind: "list", ordered, items }, next: index };
 }
@@ -782,12 +852,12 @@ function ReleaseDetailPanel({
   isInstalled = false
 }) {
   const notes = detail.sourceNotes;
-  const changes = reactExports.useMemo(() => dedupeChanges(detail.changes, notes !== null), [detail.changes, notes]);
+  const notesLead = notes !== null && notes.scope === "exact_release";
+  const changes = reactExports.useMemo(() => dedupeChanges(detail.changes, notesLead), [detail.changes, notesLead]);
   const sections = reactExports.useMemo(() => groupChangesByKind(changes), [changes]);
   const assets = reactExports.useMemo(() => groupReleaseAssets(detail.assets), [detail.assets]);
   const roster = reactExports.useMemo(() => mergeContributors(detail.roster), [detail.roster]);
   const note = coverageNote(detail.coverage);
-  const notesLead = notes !== null && notes.scope === "exact_release";
   const changeList = sections.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-5", children: sections.map((section) => /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-labelledby": `release-changes-${section.kind}`, className: "space-y-2", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { id: `release-changes-${section.kind}`, className: "text-sm font-semibold text-brand-dark", children: section.label }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "list-disc space-y-2 pl-5", children: section.changes.map((change) => /* @__PURE__ */ jsxRuntimeExports.jsx(ChangeItem, { change }, change.id)) })
@@ -843,7 +913,18 @@ function ReleaseDetailPanel({
             " series rather than this exact release."
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(ReleaseNotes, { source: notes.text })
-        ] }) : detail.summary ? /* @__PURE__ */ jsxRuntimeExports.jsx(ReleaseNotes, { source: detail.summary }) : null,
+        ] }) : null,
+        notesLead || !detail.summary ? null : /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-labelledby": "release-summary-heading", className: "space-y-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "h3",
+            {
+              id: "release-summary-heading",
+              className: "text-xs font-semibold uppercase tracking-[0.06em] text-brand-dark/45",
+              children: notes === null ? "Release notes" : "Notes for this release"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ReleaseNotes, { source: detail.summary })
+        ] }),
         changeList === null ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-brand-dark/70", children: "No itemised changes were published for this release." }) : notesLead ? /* @__PURE__ */ jsxRuntimeExports.jsx(Disclosure, { summary: "Itemised changes", count: changes.length, children: changeList }) : changeList,
         detail.roster.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-labelledby": "release-roster-heading", className: "space-y-2.5", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { id: "release-roster-heading", className: "text-sm font-semibold text-brand-dark", children: "Verified contributors" }),
