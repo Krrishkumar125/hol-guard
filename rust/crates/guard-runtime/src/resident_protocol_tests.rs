@@ -189,7 +189,10 @@ fn command_admission_failures_reach_the_publisher_unchanged() {
     for &code in guard_contracts::NATIVE_COMMAND_CONTROL_ERROR_CODES {
         let response: Value = serde_json::from_slice(&safe_error_response(code, false))
             .expect("admission error is JSON");
-        assert_eq!(response["error"], code, "{code} was rewritten by the transport");
+        assert_eq!(
+            response["error"], code,
+            "{code} was rewritten by the transport"
+        );
         assert_eq!(response["retryable"], false);
     }
 }
