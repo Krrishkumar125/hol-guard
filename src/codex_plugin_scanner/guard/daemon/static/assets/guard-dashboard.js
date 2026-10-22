@@ -31649,6 +31649,7 @@ function useExtensionAuthorityWatch(input) {
   const [loadFailed, setLoadFailed] = reactExports.useState(false);
   const [checking, setChecking] = reactExports.useState(false);
   const [checkResult, setCheckResult] = reactExports.useState(null);
+  const [noOption, setNoOption] = reactExports.useState(false);
   const inFlight = reactExports.useRef(null);
   const mounted = reactExports.useRef(true);
   reactExports.useEffect(() => {
@@ -31668,11 +31669,17 @@ function useExtensionAuthorityWatch(input) {
       setLoadFailed(false);
       const gate = settings?.settings.approval_gate;
       if (gate !== void 0 && gate !== null) setLiveGate(gate);
-      if (nextEffective.health !== "protected") return false;
-      const item = await fetchRequest(requestId);
+      if (nextEffective.health !== "protected") {
+        setNoOption(false);
+        return false;
+      }
+      const item = await fetchRequest(requestId).catch(() => null);
       if (!mounted.current) return false;
-      const recommendation = item.extension_recommendation;
-      if (recommendation?.status !== "available") return false;
+      const recommendation = item?.extension_recommendation;
+      if (recommendation?.status !== "available") {
+        setNoOption(true);
+        return false;
+      }
       onAvailable(recommendation);
       return true;
     } catch {
@@ -31689,13 +31696,13 @@ function useExtensionAuthorityWatch(input) {
     return inFlight.current;
   }, [load]);
   reactExports.useEffect(() => {
-    if (!active) return void 0;
+    if (!active || noOption) return void 0;
     void refresh();
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
     }, AUTHORITY_WATCH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [active, refresh]);
+  }, [active, noOption, refresh]);
   const checkAgain = reactExports.useCallback(() => {
     if (checking) return;
     setChecking(true);
@@ -31706,7 +31713,7 @@ function useExtensionAuthorityWatch(input) {
       if (!available) setCheckResult("unchanged");
     });
   }, [checking, refresh]);
-  return { effective, approvalGate: liveGate ?? input.approvalGate, loadFailed, checking, checkResult, checkAgain };
+  return { effective, approvalGate: liveGate ?? input.approvalGate, loadFailed, checking, checkResult, noOption, checkAgain };
 }
 function SetupStep(props) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "flex gap-3", children: [
@@ -31761,7 +31768,7 @@ function CheckAgain(props) {
   const { watch } = props;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-wrap items-center gap-x-3 gap-y-2", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(ActionButton, { variant: "outline", onClick: watch.checkAgain, disabled: watch.checking, "aria-busy": watch.checking, children: watch.checking ? "Checking…" : "Check again" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "min-w-0 flex-1 text-xs leading-5 text-slate-600", role: "status", "aria-live": "polite", children: watch.checking ? "Checking this device…" : watch.checkResult === "unchanged" ? "Not finished yet. Guard keeps checking while this page is open." : props.note })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "min-w-0 flex-1 text-xs leading-5 text-slate-600", role: "status", "aria-live": "polite", children: watch.checking ? "Checking this device…" : watch.checkResult === "unchanged" && !watch.noOption ? "Not finished yet. Guard keeps checking while this page is open." : props.note })
   ] });
 }
 function ExtensionAuthoritySetup(props) {
@@ -31805,6 +31812,12 @@ function ExtensionAuthoritySetup(props) {
           note: `When enrollment finishes, Approve & always allow ${commandText} appears here.`
         }
       )
+    ] });
+  }
+  if (health === "protected" && watch.noOption) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-relaxed text-brand-dark/80", role: "status", children: "Protection settings are ready, but this request no longer offers Always allow. You can still change the permission in the extension." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(CheckAgain, { watch, note: "" })
     ] });
   }
   if (health === "protected") {

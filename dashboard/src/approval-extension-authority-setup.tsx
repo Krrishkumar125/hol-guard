@@ -17,6 +17,8 @@ export type ExtensionAuthorityWatch = {
   loadFailed: boolean;
   checking: boolean;
   checkResult: "unchanged" | null;
+  /** Protection is ready but this request no longer offers Always allow, so polling stops. */
+  noOption: boolean;
   checkAgain: () => void;
 };
 
@@ -37,6 +39,7 @@ export function useExtensionAuthorityWatch(input: {
   const [loadFailed, setLoadFailed] = useState(false);
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<"unchanged" | null>(null);
+  const [noOption, setNoOption] = useState(false);
   // A manual check during a poll joins that poll instead of reporting a stale answer.
   const inFlight = useRef<Promise<boolean> | null>(null);
   const mounted = useRef(true);
@@ -58,11 +61,18 @@ export function useExtensionAuthorityWatch(input: {
       setLoadFailed(false);
       const gate = settings?.settings.approval_gate;
       if (gate !== undefined && gate !== null) setLiveGate(gate);
-      if (nextEffective.health !== "protected") return false;
-      const item = await fetchRequest(requestId);
+      if (nextEffective.health !== "protected") {
+        setNoOption(false);
+        return false;
+      }
+      // A request resolved elsewhere, or one enrollment leaves without a hint, has nothing left to offer.
+      const item = await fetchRequest(requestId).catch(() => null);
       if (!mounted.current) return false;
-      const recommendation = item.extension_recommendation;
-      if (recommendation?.status !== "available") return false;
+      const recommendation = item?.extension_recommendation;
+      if (recommendation?.status !== "available") {
+        setNoOption(true);
+        return false;
+      }
       onAvailable(recommendation);
       return true;
     } catch {
@@ -81,13 +91,13 @@ export function useExtensionAuthorityWatch(input: {
   }, [load]);
 
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active || noOption) return undefined;
     void refresh();
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
     }, AUTHORITY_WATCH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [active, refresh]);
+  }, [active, noOption, refresh]);
 
   const checkAgain = useCallback(() => {
     if (checking) return;
@@ -100,7 +110,7 @@ export function useExtensionAuthorityWatch(input: {
     });
   }, [checking, refresh]);
 
-  return { effective, approvalGate: liveGate ?? input.approvalGate, loadFailed, checking, checkResult, checkAgain };
+  return { effective, approvalGate: liveGate ?? input.approvalGate, loadFailed, checking, checkResult, noOption, checkAgain };
 }
 
 function SetupStep(props: { index: number; done: boolean; title: string; children: ReactNode; current: boolean }) {
@@ -178,7 +188,7 @@ function CheckAgain(props: { watch: ExtensionAuthorityWatch; note: string }) {
       <p className="min-w-0 flex-1 text-xs leading-5 text-slate-600" role="status" aria-live="polite">
         {watch.checking
           ? "Checking this device…"
-          : watch.checkResult === "unchanged"
+          : watch.checkResult === "unchanged" && !watch.noOption
             ? "Not finished yet. Guard keeps checking while this page is open."
             : props.note}
       </p>
@@ -247,6 +257,18 @@ export function ExtensionAuthoritySetup(props: { watch: ExtensionAuthorityWatch;
           watch={watch}
           note={`When enrollment finishes, Approve & always allow ${commandText} appears here.`}
         />
+      </div>
+    );
+  }
+
+  if (health === "protected" && watch.noOption) {
+    return (
+      <div className="mt-3">
+        <p className="text-sm leading-relaxed text-brand-dark/80" role="status">
+          Protection settings are ready, but this request no longer offers Always allow. You can still change the
+          permission in the extension.
+        </p>
+        <CheckAgain watch={watch} note="" />
       </div>
     );
   }

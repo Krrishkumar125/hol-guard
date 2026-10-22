@@ -324,6 +324,26 @@ test("enrollment finished in the terminal shows up without a click", async ({ pa
   await expect(card.getByRole("button", { name: "Approve & always allow git add" })).toBeVisible({ timeout: 12_000 });
 });
 
+test("a request with no option left after enrollment says so and stops checking", async ({ page }) => {
+  const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const unavailable = request(recommendation({ status: "authority_unavailable" }));
+  // The page's own detail load still carries the setup hint; the card's recheck finds it gone.
+  let fetches = 0;
+  const resolved = request(undefined);
+  await mount(page, unavailable, calls, {}, {
+    health: () => "protected",
+    item: () => (fetches++ === 0 ? unavailable : resolved),
+  });
+  await page.goto(`/requests/ext-rec-e2e?${DAEMON}`);
+
+  const card = page.getByTestId("approval-extension-recommendation");
+  await expect(card.getByText(/this request no longer offers Always allow/)).toBeVisible();
+  const settled = calls.length;
+  await page.waitForTimeout(6_000);
+  expect(calls.length).toBe(settled);
+  await expect(card.getByRole("button", { name: /Approve & always allow/ })).toHaveCount(0);
+});
+
 test("setup starts with the approval password when none is set", async ({ page }) => {
   const unavailable = request(recommendation({ status: "authority_unavailable" }));
   await mount(page, unavailable, [], { enabled: false, configured: false }, { health: () => "unenrolled", item: () => unavailable });
