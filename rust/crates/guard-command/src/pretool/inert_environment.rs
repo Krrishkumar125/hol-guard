@@ -86,6 +86,7 @@ pub(super) fn inert_prefix(segment: &CommandSegmentV1) -> bool {
     if segment.environment_names.is_empty()
         || !segment.wrapper_chain.is_empty()
         || segment.path_overridden
+        || guard_launcher(segment)
     {
         return false;
     }
@@ -102,6 +103,18 @@ pub(super) fn inert_prefix(segment: &CommandSegmentV1) -> bool {
             .iter()
             .take(settings)
             .all(|token| inert_assignment(token))
+}
+
+/// Guard's own launchers prove their exact invocation, the environment they
+/// run with included, so a prefix in front of one is never set aside. The
+/// projection in `env_prefix_projection` keeps the same carve-out.
+fn guard_launcher(segment: &CommandSegmentV1) -> bool {
+    segment.executable.as_deref().is_some_and(|executable| {
+        executable
+            .rsplit(['/', '\\'])
+            .next()
+            .is_some_and(|name| name.to_ascii_lowercase().starts_with("hol-guard"))
+    })
 }
 
 /// Whether `set` carries only shell options. A cluster that includes `o`,
