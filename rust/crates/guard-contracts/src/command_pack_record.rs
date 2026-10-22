@@ -3,8 +3,9 @@
 //!
 //! The policy publisher re-reads the active pack record about once a second.
 //! Each read used to start a one-shot `pack-lifecycle` process per record it
-//! authenticated. The resident answers the same record request in process, so
-//! an idle publisher starts no runtime at all.
+//! authenticated, and per active-security answer it needed. The resident
+//! answers the same requests in process, so an idle publisher starts no
+//! runtime at all.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -26,8 +27,10 @@ pub struct CommandPackRecordRequestV1 {
     pub guard_home: String,
     /// The store the record was read from.
     pub store_path: String,
-    /// The `pack-lifecycle` record request, exactly as the one-shot reads it:
-    /// `kind` `record`, `operation` `verify` or `open`, and its fields.
+    /// The `pack-lifecycle` request, exactly as the one-shot reads it: `kind`
+    /// `record` with `operation` `verify` or `open`, or `kind`
+    /// `active-security` with an operation that answers from the request
+    /// alone, and its fields.
     pub record: Value,
 }
 

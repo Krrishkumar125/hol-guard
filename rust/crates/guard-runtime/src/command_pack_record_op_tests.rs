@@ -82,14 +82,69 @@ fn sealing_and_other_kinds_stay_on_the_one_shot() {
     );
     assert!(result.get("payload").is_none());
 
-    let result = ask(
-        "/unused",
-        json!({"kind": "active-security", "operation": "binding"}),
-    );
+    let result = ask("/unused", json!({"kind": "object", "operation": "read"}));
     assert_eq!(
         result["code"],
         json!("native_command_pack_record_kind_invalid")
     );
+}
+
+fn security_request(operation: &str, record: &str) -> Value {
+    json!({
+        "kind": "active-security", "operation": operation,
+        "key": hex::encode(KEY), "record": record,
+    })
+}
+
+#[test]
+fn active_security_reads_answer_exactly_what_the_one_shot_answers() {
+    let (record, applicable) = crate::active_pack_security::fixture_record("p", &KEY, false);
+    for operation in ["scope", "read"] {
+        let request = security_request(operation, &record);
+        let result = ask("/unused", request.clone());
+        assert_eq!(result["status"], json!("ok"));
+        assert_eq!(
+            result["payload"],
+            crate::pack_lifecycle::evaluate(&request).unwrap()
+        );
+    }
+    let scope = ask("/unused", security_request("scope", &record));
+    assert_eq!(scope["payload"]["applicable_digest"], json!(applicable));
+}
+
+#[test]
+fn active_security_refusals_keep_the_one_shots_code() {
+    let (record, _) = crate::active_pack_security::fixture_record("p", &KEY, false);
+    let mut check = security_request("check", &record);
+    check["expected"] = json!("0".repeat(64));
+    let result = ask("/unused", check.clone());
+    assert_eq!(result["status"], json!("error"));
+    assert_eq!(
+        json!(result["code"]),
+        json!(crate::pack_lifecycle::evaluate(&check).unwrap_err())
+    );
+
+    // A record sealed under another key does not authenticate.
+    let (foreign, _) = crate::active_pack_security::fixture_record("p", &[8; 32], false);
+    let result = ask("/unused", security_request("read", &foreign));
+    assert_eq!(result["status"], json!("error"));
+    assert!(result["code"]
+        .as_str()
+        .unwrap()
+        .starts_with("active_security_"));
+}
+
+#[test]
+fn preparing_active_security_stays_on_the_one_shot() {
+    let (record, _) = crate::active_pack_security::fixture_record("p", &KEY, false);
+    for operation in ["begin", "complete", "active", ""] {
+        let result = ask("/unused", security_request(operation, &record));
+        assert_eq!(
+            result["code"],
+            json!("native_command_pack_record_operation_invalid"),
+            "{operation}"
+        );
+    }
 }
 
 #[test]

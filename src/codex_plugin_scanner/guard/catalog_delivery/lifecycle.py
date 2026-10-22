@@ -256,6 +256,18 @@ def _resident_record(request: dict[str, Any]) -> dict[str, Any] | None:
     bound = _RESIDENT.get()
     if bound is None or request["operation"] not in _RESIDENT_RECORD_OPERATIONS:
         return None
+    return _resident_answer(bound, request)
+
+
+def resident_answer(store, request: dict[str, Any]) -> dict[str, Any] | None:
+    """The resident's answer to one `pack-lifecycle` request for this store.
+
+    None means the resident did not answer, and the caller spawns the one-shot.
+    """
+    return _resident_answer((Path(store.guard_home), str(store.path)), request)
+
+
+def _resident_answer(bound: tuple[Path, str], request: dict[str, Any]) -> dict[str, Any] | None:
     import uuid
 
     from .. import native_execution

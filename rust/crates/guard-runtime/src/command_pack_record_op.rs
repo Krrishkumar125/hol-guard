@@ -6,10 +6,13 @@
 //! that re-verified the runtime before answering. The resident runs the same
 //! record evaluator in process, so the answers are the one-shot's own.
 //!
-//! Only the two reading operations are served: `verify` returns the
-//! authenticated header and `open` adds the publication and inventories it
-//! binds in the Guard home's pack cache. Sealing stays on the one-shot path
-//! with the writes it belongs to.
+//! Only reading operations are served. For a pack record, `verify` returns
+//! the authenticated header and `open` adds the publication and inventories
+//! it binds in the Guard home's pack cache; sealing stays on the one-shot path
+//! with the writes it belongs to. For the active-security record, the
+//! operations that answer from the request alone are served, the ones the
+//! publisher repeats on every poll; preparing a newer record reads fetched
+//! proofs and stays on the one-shot path.
 
 use std::path::Path;
 
@@ -23,6 +26,12 @@ use crate::package_authority_op::request_digest_with_limit;
 
 /// Where a Guard home keeps the pack cache an `open` reads.
 const PACK_CACHE: [&str; 2] = ["native-runtime", "command-packs"];
+
+/// Active-security operations that answer from the request alone: no files,
+/// clock or randomness. See the note on `active_pack_security::evaluate`.
+const ACTIVE_SECURITY_OPERATIONS: [&str; 7] = [
+    "scope", "check", "read", "change", "marker", "binding", "resume",
+];
 
 pub(crate) fn evaluate_command_pack_record_request(
     request: &CommandPackRecordRequestV1,
@@ -48,13 +57,18 @@ fn answer(request: &CommandPackRecordRequestV1) -> Result<Value, String> {
         return Err("native_command_pack_record_schema_mismatch".to_owned());
     }
     let record = &request.record;
-    if record["kind"] != "record" {
-        return Err("native_command_pack_record_kind_invalid".to_owned());
-    }
-    match record["operation"].as_str() {
-        Some("verify") => {}
-        Some("open") => require_pack_cache(&request.guard_home, &record["directory"])?,
-        _ => return Err("native_command_pack_record_operation_invalid".to_owned()),
+    let operation = record["operation"].as_str();
+    let invalid = || Err("native_command_pack_record_operation_invalid".to_owned());
+    match (record["kind"].as_str(), operation) {
+        (Some("record"), Some("verify")) => {}
+        (Some("record"), Some("open")) => {
+            require_pack_cache(&request.guard_home, &record["directory"])?
+        }
+        (Some("record"), _) => return invalid(),
+        (Some("active-security"), Some(operation))
+            if ACTIVE_SECURITY_OPERATIONS.contains(&operation) => {}
+        (Some("active-security"), _) => return invalid(),
+        _ => return Err("native_command_pack_record_kind_invalid".to_owned()),
     }
     crate::pack_lifecycle::evaluate(record)
 }
