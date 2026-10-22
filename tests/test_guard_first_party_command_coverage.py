@@ -11,6 +11,12 @@ from tests.native_command_test_support import inspect_command_native_test as ins
 from tests.native_github_capability_support import github_cli_assessment
 
 MAPPED_COMMANDS = (
+    ("docker --future-global value restart api", "container-runtime.container-restart"),
+    ("kubectl --future-global value proxy --port=8001", "kubernetes-operations.api-proxy"),
+    (
+        "docker buildx --builder fixture imagetools create -t example/app:latest example/app:v1",
+        "container-runtime.image-publication",
+    ),
     ("docker restart api", "container-runtime.container-restart"),
     ("docker container restart api", "container-runtime.container-restart"),
     ("docker --context development restart api", "container-runtime.container-restart"),
@@ -85,6 +91,7 @@ def test_missing_commands_have_explicit_permissions(command: str, owner: str, tm
         "docker container create --help",
         "docker network connect --help",
         "docker buildx imagetools create --help",
+        "docker buildx --builder fixture imagetools create --help",
         "kubectl rollout pause --help",
         "kubectl config set-credentials --help",
         "kubectl auth reconcile --help",
@@ -143,11 +150,49 @@ def test_github_command_ownership(args: tuple[str, ...], capability: str) -> Non
     assert github_cli_assessment(args).capability == capability
 
 
+@pytest.mark.parametrize(
+    ("option", "value"),
+    (
+        ("--as-user-extra", "scope=example"),
+        ("--kuberc", "preferences.yaml"),
+        ("--log-flush-frequency", "5s"),
+        ("--vmodule", "component=2"),
+        ("--proxy-url", "http://proxy.example.test"),
+        ("--storage-driver-buffer-duration", "1m"),
+        ("--storage-driver-db", "fixture"),
+        ("--storage-driver-host", "metrics.example.test"),
+        ("--storage-driver-password", "fixture"),
+        ("--storage-driver-table", "fixture"),
+        ("--storage-driver-user", "fixture"),
+    ),
+)
+def test_inherited_value_options_keep_operation_ownership(option: str, value: str, tmp_path: Path) -> None:
+    payload = inspect_command(f"kubectl {option} {value} proxy --port=8001", cwd=tmp_path, home_dir=tmp_path)
+    assert "command.kubernetes-operations.api-proxy" in {r["rule_id"] for r in payload["rules"]}, payload
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "docker --context restart ps",
+        "kubectl --context proxy get pods",
+        "kubectl --kuberc proxy get pods",
+        "kubectl --profile-output proxy get pods",
+    ),
+)
+def test_global_option_values_are_not_command_paths(command: str, tmp_path: Path) -> None:
+    added = {f"command.{owner}" for _, owner in MAPPED_COMMANDS}
+    payload = inspect_command(command, cwd=tmp_path, home_dir=tmp_path)
+    assert added.isdisjoint(r["rule_id"] for r in payload["rules"]), payload
+
+
 @pytest.mark.parametrize("extension", ("command.container-runtime", "command.kubernetes-operations"))
-def test_help_exemptions_require_exact_option_parses(extension: str) -> None:
+def test_command_and_help_matchers_keep_opposite_uncertainty_polarity(extension: str) -> None:
     source = Path(__file__).resolve().parents[1] / "contributions" / "command-sources" / f"{extension}.json"
     rules = json.loads(source.read_text())["extension"]["rules"]
     for rule in rules:
+        if (rule.get("matcher") or {}).get("op") == "executable-path-set.v1":
+            assert rule["matcher"]["config"]["fail_secure_unknown_options"] is True, rule["rule_id"]
         for variant in rule["safe_variants"]:
             matcher = variant.get("matcher") or {}
             if matcher.get("op") == "executable-path-set.v1":
