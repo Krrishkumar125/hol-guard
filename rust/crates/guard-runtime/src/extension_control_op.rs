@@ -210,12 +210,12 @@ fn decide(request: &ExtensionControlRequestV1) -> Result<ExtensionControlPayload
             idempotency_key,
             nonce,
         } => crate::extension_control_prepared_op::request_digest([
-            ("previous_revision", previous_revision),
-            ("catalog_digest", catalog_digest),
-            ("layers", layers),
-            ("actor_id", actor_id),
-            ("idempotency_key", idempotency_key),
-            ("nonce", nonce),
+            ("previous_revision", &**previous_revision),
+            ("catalog_digest", &**catalog_digest),
+            ("layers", &**layers),
+            ("actor_id", &**actor_id),
+            ("idempotency_key", &**idempotency_key),
+            ("nonce", &**nonce),
         ]),
         ExtensionControlQueryV1::CandidateNonce {
             nonce,

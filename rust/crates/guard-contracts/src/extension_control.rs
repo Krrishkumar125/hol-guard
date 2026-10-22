@@ -154,13 +154,16 @@ pub enum ExtensionControlQueryV1 {
     /// exactly the ones that make two requests the same request. They are
     /// hashed as the caller sent them (`null` for a missing field), because the
     /// request is not yet known to be well formed.
+    ///
+    /// The fields are boxed so the arbitrary-shape values do not set the size of
+    /// every query.
     RequestDigest {
-        previous_revision: Value,
-        catalog_digest: Value,
-        layers: Value,
-        actor_id: Value,
-        idempotency_key: Value,
-        nonce: Value,
+        previous_revision: Box<Value>,
+        catalog_digest: Box<Value>,
+        layers: Box<Value>,
+        actor_id: Box<Value>,
+        idempotency_key: Box<Value>,
+        nonce: Box<Value>,
     },
     /// The nonce a prepared candidate's mutation is proven under: the caller's
     /// nonce bound to the identities of the activation records staged for it,
