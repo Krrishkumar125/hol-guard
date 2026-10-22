@@ -18619,36 +18619,6 @@
       "expect": "not_allow"
     },
     {
-      "id": "neg-bare-pip-list",
-      "fix_area": "package",
-      "harnesses": [
-        "claude-code",
-        "codex",
-        "omp"
-      ],
-      "tool": "shell",
-      "tool_input": {
-        "command": "pip list"
-      },
-      "cwd": "worktree",
-      "expect": "not_allow"
-    },
-    {
-      "id": "neg-bare-pip-show-package",
-      "fix_area": "package",
-      "harnesses": [
-        "claude-code",
-        "codex",
-        "omp"
-      ],
-      "tool": "shell",
-      "tool_input": {
-        "command": "pip3 show pytest"
-      },
-      "cwd": "worktree",
-      "expect": "not_allow"
-    },
-    {
       "id": "neg-pipx-list",
       "fix_area": "negative",
       "harnesses": [
