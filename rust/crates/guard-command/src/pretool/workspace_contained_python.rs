@@ -54,7 +54,7 @@ pub(super) fn local_python_work(
 /// a nested program. `run` is deliberately excluded: it can launch `pip
 /// install`, a shell, or any other executable. A workspace `.venv` alone
 /// does not prove that the nested program is safe.
-/// 
+///
 /// Poetry accepts global project-moving options both before and after the
 /// subcommand; reject them everywhere. Likewise `--` can hide operands:
 /// `poetry version -- patch` writes the manifest, not just reads it.
