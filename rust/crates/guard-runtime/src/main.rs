@@ -16,6 +16,7 @@ mod aibom_op;
 mod aibom_paths;
 mod aibom_skill_rules;
 mod aibom_skills;
+mod aibom_symlink;
 #[cfg(all(test, unix))]
 mod aibom_vectors_tests;
 #[path = "adapters/detection/antigravity_detect.rs"]
@@ -263,6 +264,7 @@ mod edge_git_push;
 mod encrypted_secret_store;
 mod extension_allow_hint_op;
 mod extension_control_authority_op;
+mod extension_control_mutation_op;
 mod extension_control_op;
 mod extension_control_preview_op;
 mod extension_control_proof;
@@ -494,6 +496,7 @@ mod hook_path_rules;
 mod hook_policy_config;
 mod hook_process_spawn;
 mod hook_render_op;
+mod inventory_source_evidence_op;
 #[path = "adapters/detection/kimi_detect.rs"]
 mod kimi_detect;
 mod local_cli_grant_op;
