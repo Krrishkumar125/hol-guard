@@ -198,12 +198,14 @@ fn docker_listings_and_loopback_port_probes_need_no_prompt() {
         ),
         "allow"
     );
-    // Container state that prints environments or project secrets, other
-    // daemons, and network modes that move data keep the review.
+    // Container state that prints environments or project secrets, a log read
+    // that never ends, other daemons, and network modes that move data keep
+    // the review.
     for command in [
         "docker inspect web",
         "docker compose ps",
-        "docker logs web --tail 50",
+        "docker logs --follow web",
+        "docker -H tcp://build.example.com:2376 logs web",
         "docker exec web env",
         "docker -H tcp://build.example.com:2376 ps",
         "docker --context production ps",

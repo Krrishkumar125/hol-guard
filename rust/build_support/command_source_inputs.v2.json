@@ -294,6 +294,7 @@
       "src/pretool/directory_targets.rs",
       "src/pretool/directory_targets_sibling.rs",
       "src/pretool/directory_targets_tmp_alias.rs",
+      "src/pretool/docker_logs.rs",
       "src/pretool/docker_reads.rs",
       "src/pretool/docker_start.rs",
       "src/pretool/doctl_reads.rs",
