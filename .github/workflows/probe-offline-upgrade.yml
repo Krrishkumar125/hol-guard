@@ -1,0 +1,81 @@
+name: Probe offline upgrade
+
+on:
+  push:
+    branches: ["probe/**"]
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  CI_PYTHON_VERSION: "3.12.14"
+  NATIVE_OFFLINE_PREVIOUS_SHA: dce81d85485dbc0bb1d88847ffeb0f66db1436b2
+  ARTIFACT_RUN_ID: "39797670202"
+  CI_UV_CACHE_DEPENDENCY_GLOB: |
+    pyproject.toml
+    uv.lock
+    requirements.txt
+    docker-requirements.txt
+
+jobs:
+  offline-upgrade:
+    name: offline-upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - name: Check out matching historical client
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ env.NATIVE_OFFLINE_PREVIOUS_SHA }}
+          path: previous-client
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci-python
+        with:
+          python-version: ${{ env.CI_PYTHON_VERSION }}
+          cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
+      - name: Download pinned prior native command evaluators
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pytest-prior-native-command-evaluators-${{ env.NATIVE_OFFLINE_PREVIOUS_SHA }}
+          path: rust/target/previous-client/release
+          run-id: ${{ env.ARTIFACT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore matching prior command projections
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pytest-prior-native-command-projections-${{ env.NATIVE_OFFLINE_PREVIOUS_SHA }}
+          path: previous-client
+          run-id: ${{ env.ARTIFACT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download current native command evaluators
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pytest-native-command-evaluators
+          path: rust/target/release
+          run-id: ${{ env.ARTIFACT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore current native command projections
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pytest-native-command-projections
+          path: .
+          run-id: ${{ env.ARTIFACT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prove packaged cross-engine recovery with network IO forbidden
+        env:
+          HOL_GUARD_NATIVE_BINARY: ${{ github.workspace }}/rust/target/release/hol-guard-runtime
+          HOL_GUARD_NATIVE_SOURCE_COMPILER: ${{ github.workspace }}/rust/target/release/guard-command-source
+          HOL_GUARD_BUILD_SOURCE_COMPILER: ${{ github.workspace }}/rust/target/release/guard-command-source
+          NATIVE_ACTIVATION_PREVIOUS_BINARY: ${{ github.workspace }}/rust/target/previous-client/release/hol-guard-runtime
+          NATIVE_ACTIVATION_PREVIOUS_SOURCE: ${{ github.workspace }}/previous-client
+          HOL_GUARD_NATIVE_REGRESSION: "1"
+        run: |
+          test "$(git -C previous-client rev-parse HEAD)" = "$NATIVE_OFFLINE_PREVIOUS_SHA"
+          chmod 0755 rust/target/release/guard-command-source rust/target/release/hol-guard-runtime
+          chmod 0755 rust/target/previous-client/release/guard-command-source "$NATIVE_ACTIVATION_PREVIOUS_BINARY"
+          test -x "$NATIVE_ACTIVATION_PREVIOUS_BINARY"
+          uv run --no-sync pytest -q --tb=short tests/test_native_pack_offline_upgrade.py
