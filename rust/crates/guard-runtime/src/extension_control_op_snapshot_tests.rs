@@ -122,3 +122,28 @@ fn snapshot_digest_refuses_an_unknown_health_or_invalid_layer() {
         "native_extension_control_snapshot_invalid"
     );
 }
+
+#[test]
+fn snapshot_digest_refuses_a_snapshot_the_resident_would_not_bind() {
+    let mut other_catalog = protected_layers();
+    other_catalog[1].catalog_digest = "cd".repeat(32);
+    let mut duplicate_kind = protected_layers();
+    duplicate_kind[1].kind = "local-admin".to_owned();
+    let mut duplicate_target = protected_layers();
+    duplicate_target[0].controls.push(disabled_extension(ALPHA));
+    for layers in [other_catalog, duplicate_kind, duplicate_target] {
+        assert_eq!(
+            error_code(&snapshot_request("protected", 3, 2, layers)),
+            "native_extension_control_snapshot_invalid"
+        );
+    }
+    let mut short_catalog = snapshot_request("unenrolled", 0, 0, Vec::new());
+    if let ExtensionControlQueryV1::SnapshotDigest { catalog_digest, .. } = &mut short_catalog.query
+    {
+        catalog_digest.truncate(10);
+    }
+    assert_eq!(
+        error_code(&short_catalog),
+        "native_extension_control_snapshot_invalid"
+    );
+}

@@ -176,6 +176,43 @@ pub fn runtime_snapshot_digest(snapshot: &RuntimeSnapshot<'_>) -> Result<String,
     Ok(hex::encode(digest.finalize()))
 }
 
+/// Checks the layers a runtime snapshot or binding carries: a valid catalog
+/// digest, at most one layer per kind, every layer on that catalog, and
+/// bounded, unique, well-formed controls. A snapshot that fails here could
+/// never be bound, so it is not given a digest either.
+pub fn validate_snapshot_layers(
+    catalog_digest: &str,
+    layers: &[NativeExtensionControlLayerV1],
+) -> Result<(), &'static str> {
+    if !valid_digest(catalog_digest) || layers.len() > 2 {
+        return Err("native_command_control_binding_invalid");
+    }
+    let mut kinds = BTreeSet::new();
+    for layer in layers {
+        if layer.schema_version != "1.0.0"
+            || !matches!(layer.kind.as_str(), "local-admin" | "signed-cloud")
+            || !kinds.insert(&layer.kind)
+            || layer.catalog_digest != catalog_digest
+            || layer.controls.len() > 512
+        {
+            return Err("native_command_control_layer_invalid");
+        }
+        let mut targets = BTreeSet::new();
+        for control in &layer.controls {
+            if !matches!(control.target_kind.as_str(), "extension" | "permission")
+                || !matches!(control.state.as_str(), "enabled" | "disabled")
+                || !valid_target(&control.target_id)
+                || control.target_id.contains(".permission.")
+                    != (control.target_kind == "permission")
+                || !targets.insert((&control.target_kind, &control.target_id))
+            {
+                return Err("native_command_control_target_invalid");
+            }
+        }
+    }
+    Ok(())
+}
+
 fn valid_digest(value: &str) -> bool {
     value.len() == 64
         && value
@@ -230,29 +267,7 @@ impl NativeCommandControlBindingV1 {
         {
             return Err("native_command_control_binding_invalid");
         }
-        let mut kinds = BTreeSet::new();
-        for layer in &self.layers {
-            if layer.schema_version != "1.0.0"
-                || !matches!(layer.kind.as_str(), "local-admin" | "signed-cloud")
-                || !kinds.insert(&layer.kind)
-                || layer.catalog_digest != self.catalog_digest
-                || layer.controls.len() > 512
-            {
-                return Err("native_command_control_layer_invalid");
-            }
-            let mut targets = BTreeSet::new();
-            for control in &layer.controls {
-                if !matches!(control.target_kind.as_str(), "extension" | "permission")
-                    || !matches!(control.state.as_str(), "enabled" | "disabled")
-                    || !valid_target(&control.target_id)
-                    || control.target_id.contains(".permission.")
-                        != (control.target_kind == "permission")
-                    || !targets.insert((&control.target_kind, &control.target_id))
-                {
-                    return Err("native_command_control_target_invalid");
-                }
-            }
-        }
+        validate_snapshot_layers(&self.catalog_digest, &self.layers)?;
         if self.effective_digest != self.compute_effective_digest()? {
             return Err("native_command_control_digest_mismatch");
         }

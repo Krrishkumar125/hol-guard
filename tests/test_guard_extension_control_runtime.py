@@ -25,6 +25,7 @@ from codex_plugin_scanner.guard.runtime.extension_control_contract import (
 from codex_plugin_scanner.guard.runtime.extension_control_runtime import (
     ExtensionControlRuntime,
     ExtensionControlRuntimeSnapshot,
+    ExtensionControlSnapshotUnavailableError,
     current_extension_control_binding_digest,
     current_extension_control_snapshot,
     extension_control_policy_version,
@@ -322,6 +323,53 @@ def test_unavailable_authority_blocks_otherwise_valid_native_destructive_evidenc
     assert any(
         reason.reason_code == "control.resolver-failure" for reason in evaluation.decision_plane.controlling_reasons
     )
+
+
+def _resident_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    from codex_plugin_scanner.guard import native_extension_control
+
+    def unavailable(**_kwargs: object) -> str:
+        raise native_extension_control.NativeExtensionControlError("native_extension_control_unavailable")
+
+    monkeypatch.setattr(native_extension_control, "snapshot_digest", unavailable)
+
+
+def test_resident_outage_keeps_the_installed_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = ExtensionControlRuntime(_view(1))
+    installed = runtime.current()
+    with monkeypatch.context() as patch:
+        _resident_unavailable(patch)
+        with pytest.raises(ExtensionControlSnapshotUnavailableError):
+            runtime.refresh(_view(2))
+    assert runtime.current() is installed
+    assert runtime.refresh(_view(2)).revision == 2
+
+
+def test_runtime_starts_fail_closed_when_the_resident_cannot_digest(monkeypatch: pytest.MonkeyPatch) -> None:
+    with monkeypatch.context() as patch:
+        _resident_unavailable(patch)
+        runtime = ExtensionControlRuntime(_view(4))
+    snapshot = runtime.current()
+    assert snapshot.unread
+    assert snapshot.layers == ()
+    assert snapshot.authority_failure is ResolverFailureCode.AUTHORITY_UNAVAILABLE
+    # The next answered read replaces it, and no protected floor came from it.
+    assert runtime.refresh(_view(1)).health is AuthorityHealth.PROTECTED
+
+
+def test_daemon_starts_fail_closed_without_a_resident_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _resident_unavailable(monkeypatch)
+    daemon = GuardDaemonServer(GuardStore(tmp_path / "guard-home"), host="127.0.0.1", port=0)
+    daemon.start()
+    try:
+        snapshot = daemon._server.extension_control_runtime.current()
+        assert snapshot.unread
+        assert snapshot.authority_failure is ResolverFailureCode.AUTHORITY_UNAVAILABLE
+    finally:
+        daemon.stop()
 
 
 @pytest.mark.parametrize("installed_bundle", [False, True])

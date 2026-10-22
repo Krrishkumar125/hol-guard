@@ -28,6 +28,7 @@ from ..runtime.command_extensions import CommandSafetyExtensionRegistry
 from ..runtime.extension_control_authority import (
     AuthorityHealth,
     ExtensionControlAuthorityError,
+    ExtensionControlAuthorityView,
     layers_from_json,
 )
 from ..runtime.extension_control_contract import (
@@ -50,7 +51,11 @@ from ..runtime.extension_control_proof import (
     ExtensionControlProofError,
     issue_extension_control_proof,
 )
-from ..runtime.extension_control_runtime import ExtensionControlRuntime, ExtensionControlRuntimeSnapshot
+from ..runtime.extension_control_runtime import (
+    ExtensionControlRuntime,
+    ExtensionControlRuntimeSnapshot,
+    ExtensionControlSnapshotUnavailableError,
+)
 from .extension_control_errors import ExtensionControlApiError
 from .extension_control_preparation_failure import preparation_unavailable
 from .extension_control_prepared import (
@@ -341,9 +346,11 @@ class ExtensionControlApiService:
                         _ = self._runtime.refresh(current)
                 except ValueError as exc:
                     raise ExtensionControlApiError(503, "authority_recovery_failed") from exc
+                except ExtensionControlSnapshotUnavailableError as exc:
+                    raise ExtensionControlApiError(503, "native_runtime_unavailable") from exc
                 return self.effective()
             raise ExtensionControlApiError(409, "authority_not_recoverable")
-        _ = self._runtime.refresh(current)
+        self._install_view(current)
         action = "recover-authority"
         subject = f"{action}:{current.health.value}:{current.revision}:{self._registry.catalog_digest}"
         self._require_action_grant(
@@ -365,7 +372,19 @@ class ExtensionControlApiService:
             _ = self._runtime.replace_after_recovery(view)
         except ValueError as exc:
             raise ExtensionControlApiError(503, "authority_recovery_failed") from exc
+        except ExtensionControlSnapshotUnavailableError as exc:
+            # The recovery is durable; the daemon's refresh installs it once
+            # the native runtime answers again.
+            raise ExtensionControlApiError(503, "native_runtime_unavailable") from exc
         return self.effective()
+
+    def _install_view(self, view: ExtensionControlAuthorityView) -> None:
+        try:
+            _ = self._runtime.refresh(view)
+        except ExtensionControlSnapshotUnavailableError as exc:
+            # A change already committed stays durable; the daemon's refresh
+            # installs it once the native runtime answers again.
+            raise ExtensionControlApiError(503, "native_runtime_unavailable") from exc
 
     def acknowledge_degraded(self, payload: dict[str, object]) -> dict[str, object]:
         current_snapshot = self._runtime.current()
@@ -381,7 +400,7 @@ class ExtensionControlApiService:
         subject = f"{action}:{current.health.value}:{current.revision}:{self._registry.catalog_digest}"
         self._require_action_grant(payload, action=action, subject=subject)
         view = self._store.acknowledge_extension_control_degraded_mode()
-        _ = self._runtime.refresh(view)
+        self._install_view(view)
         return self.effective()
 
     def preview(self, payload: dict[str, object]) -> dict[str, object]:

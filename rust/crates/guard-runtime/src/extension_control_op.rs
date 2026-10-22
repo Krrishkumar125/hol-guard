@@ -16,13 +16,14 @@ use guard_command::extension_control::{
 };
 use guard_command::extension_trust::extension_is_active_for_class;
 use guard_contracts::{
-    runtime_snapshot_digest, ExtensionControlComposedControlV1, ExtensionControlComposedV1,
-    ExtensionControlFailureV1, ExtensionControlItemResultV1, ExtensionControlItemV1,
-    ExtensionControlPayloadV1, ExtensionControlQueryV1, ExtensionControlRegistryExtensionV1,
-    ExtensionControlRegistryPermissionV1, ExtensionControlRegistryV1, ExtensionControlRequestV1,
-    ExtensionControlResultV1, ExtensionControlScenarioResultV1, ExtensionControlScenarioV1,
-    NativeExtensionControlLayerV1, RuntimeSnapshot, EXTENSION_CONTROL_MAX_BYTES,
-    EXTENSION_CONTROL_REQUEST_SCHEMA, EXTENSION_CONTROL_RESULT_SCHEMA,
+    runtime_snapshot_digest, validate_snapshot_layers, ExtensionControlComposedControlV1,
+    ExtensionControlComposedV1, ExtensionControlFailureV1, ExtensionControlItemResultV1,
+    ExtensionControlItemV1, ExtensionControlPayloadV1, ExtensionControlQueryV1,
+    ExtensionControlRegistryExtensionV1, ExtensionControlRegistryPermissionV1,
+    ExtensionControlRegistryV1, ExtensionControlRequestV1, ExtensionControlResultV1,
+    ExtensionControlScenarioResultV1, ExtensionControlScenarioV1, NativeExtensionControlLayerV1,
+    RuntimeSnapshot, EXTENSION_CONTROL_MAX_BYTES, EXTENSION_CONTROL_REQUEST_SCHEMA,
+    EXTENSION_CONTROL_RESULT_SCHEMA,
 };
 use serde_json::Value;
 
@@ -100,6 +101,9 @@ fn decide(request: &ExtensionControlRequestV1) -> Result<ExtensionControlPayload
                 return Err("native_extension_control_snapshot_invalid".to_owned());
             }
             typed_layers(layers)?;
+            // Only a snapshot the resident would bind gets a digest.
+            validate_snapshot_layers(catalog_digest, layers)
+                .map_err(|_| "native_extension_control_snapshot_invalid".to_owned())?;
             let digest = runtime_snapshot_digest(&RuntimeSnapshot {
                 catalog_digest,
                 health,
