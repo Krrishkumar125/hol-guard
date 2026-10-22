@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+import pytest
+
+from codex_plugin_scanner.guard.adapters.base import HarnessContext
+from codex_plugin_scanner.guard.cli.commands_lifecycle_gate import lifecycle_gate_requirement
+from codex_plugin_scanner.guard.cli.commands_parser_desktop import _configure_guard_desktop_parser
+from codex_plugin_scanner.guard.cli.desktop_converge import converge_on_desktop_core
+from codex_plugin_scanner.guard.desktop_foreign_installs import DESKTOP_PATH_SHIM_MARKER
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX venv and bin layout")
+
+_ENV = ("PIPX_HOME", "PIPX_BIN_DIR", "UV_TOOL_DIR", "UV_TOOL_BIN_DIR", "XDG_BIN_HOME")
+
+
+@pytest.fixture
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = tmp_path / "home"
+    for name in _ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(home / ".local" / "share"))
+    (home / ".local" / "bin").mkdir(parents=True)
+    return home
+
+
+def _launcher(home: Path) -> Path:
+    launcher = home / ".local" / "share" / "org.hol.guard.desktop" / "core" / "current-hol-guard"
+    launcher.parent.mkdir(parents=True)
+    _ = launcher.write_text("#!/bin/sh\nexit 0\n")
+    launcher.chmod(0o755)
+    return launcher
+
+
+def _pipx_venv(home: Path, name: str = "hol-guard") -> Path:
+    venv = home / ".local" / "pipx" / "venvs" / name
+    scripts = venv / "bin"
+    scripts.mkdir(parents=True)
+    _ = (scripts / "hol-guard").write_text(f"#!{scripts}/python\nfrom codex_plugin_scanner import main\n")
+    (scripts / "hol-guard").chmod(0o755)
+    runtime = venv / "lib" / "python3.12" / "site-packages" / "codex_plugin_scanner" / "guard" / "_native"
+    runtime.mkdir(parents=True)
+    _ = (runtime / "hol-guard-runtime").write_bytes(b"runtime")
+    return venv
+
+
+def _context(home: Path, tmp_path: Path) -> HarnessContext:
+    return HarnessContext(home_dir=home, workspace_dir=tmp_path, guard_home=tmp_path / "guard-home")
+
+
+def _converge(home: Path, tmp_path: Path, *, runtime_stops: bool = True, dry_run: bool = False) -> dict[str, object]:
+    retired: list[Path] = []
+
+    def retire(runtime: Path) -> bool:
+        retired.append(runtime)
+        return runtime_stops
+
+    payload = converge_on_desktop_core(
+        _context(home, tmp_path),
+        dry_run=dry_run,
+        path_env=str(home / ".local" / "bin"),
+        retire_runtime=retire,
+        retire_daemons=lambda: None,
+    )
+    payload["_retired"] = retired
+    return payload
+
+
+def test_removes_pipx_install_and_points_path_at_desktop(home: Path, tmp_path: Path) -> None:
+    launcher = _launcher(home)
+    venv = _pipx_venv(home)
+    sibling = _pipx_venv(home, "hol-guard-dev")
+    bin_dir = home / ".local" / "bin"
+    (bin_dir / "hol-guard").symlink_to(venv / "bin" / "hol-guard")
+    (bin_dir / "plugin-guard").symlink_to(home / ".local" / "share" / "uv" / "tools" / "hol-guard" / "bin" / "gone")
+
+    payload = _converge(home, tmp_path)
+
+    assert payload["status"] == "converged", payload
+    assert not venv.exists()
+    assert sibling.exists()
+    assert not (bin_dir / "plugin-guard").is_symlink()
+    shim = (bin_dir / "hol-guard").read_text()
+    assert DESKTOP_PATH_SHIM_MARKER in shim
+    assert f"exec '{launcher}'" in shim
+    assert payload["resolved_cli_is_desktop"] is True
+    assert payload["daemon_restart_required"] is True
+    assert {item["kind"] for item in payload["removed"]} == {"pipx", "stale_link"}  # pyright: ignore[reportGeneralTypeIssues]
+    assert payload["_retired"] == [
+        venv / "lib/python3.12/site-packages/codex_plugin_scanner/guard/_native/hol-guard-runtime"
+    ]
+
+
+def test_keeps_install_whose_resident_will_not_stop(home: Path, tmp_path: Path) -> None:
+    _ = _launcher(home)
+    venv = _pipx_venv(home)
+    (home / ".local" / "bin" / "hol-guard").symlink_to(venv / "bin" / "hol-guard")
+
+    payload = _converge(home, tmp_path, runtime_stops=False)
+
+    assert payload["status"] == "partial"
+    assert venv.exists()
+    assert (home / ".local" / "bin" / "hol-guard").is_symlink()
+
+
+def test_leaves_everything_when_desktop_has_no_core(home: Path, tmp_path: Path) -> None:
+    venv = _pipx_venv(home)
+
+    payload = _converge(home, tmp_path)
+
+    assert payload["status"] == "skipped"
+    assert venv.exists()
+
+
+def test_dry_run_reports_without_removing(home: Path, tmp_path: Path) -> None:
+    _ = _launcher(home)
+    venv = _pipx_venv(home)
+
+    payload = _converge(home, tmp_path, dry_run=True)
+
+    assert payload["status"] == "planned"
+    assert payload["found"] == [{"kind": "pipx", "path": str(venv)}]
+    assert venv.exists()
+
+
+def test_never_replaces_a_users_own_wrapper(home: Path, tmp_path: Path) -> None:
+    _ = _launcher(home)
+    own = home / ".local" / "bin" / "hol-guard"
+    _ = own.write_text('#!/bin/sh\nexec /opt/custom/hol-guard "$@"\n')
+    own.chmod(0o755)
+
+    payload = _converge(home, tmp_path)
+
+    assert payload["path_shim"] == {"status": "unchanged"}
+    assert "/opt/custom" in own.read_text()
+    assert payload["status"] == "partial"
+
+
+def test_converge_requires_the_update_approval_unless_dry_run() -> None:
+    args = argparse.Namespace(guard_command="desktop", desktop_command="converge", dry_run=False)
+    requirement = lifecycle_gate_requirement(args)
+    assert requirement is not None
+    assert (requirement.action, requirement.subject) == ("update", "hol-guard")
+    args.dry_run = True
+    assert lifecycle_gate_requirement(args) is None
+
+
+def test_parser_accepts_converge() -> None:
+    parser = argparse.ArgumentParser()
+    _configure_guard_desktop_parser(parser.add_subparsers(dest="guard_command"))
+    args = parser.parse_args(["desktop", "converge", "--json", "--dry-run"])
+    assert (args.desktop_command, args.json, args.dry_run) == ("converge", True, True)
