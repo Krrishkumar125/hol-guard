@@ -16,6 +16,7 @@
 //! or harness setting the config resolves, not a reading of the artifact, and
 //! it rides through this op so the facts leave here complete.
 
+use guard_command::artifact_hash::artifact_hash;
 use guard_command::command_action_risk_classes::risk_classes_for_command_action;
 use guard_contracts::{
     normalize_guard_action_result, GuardAction, HookArtifactFactsRequestV1,
@@ -60,10 +61,19 @@ fn refusal(request: &HookArtifactFactsRequestV1) -> Option<&'static str> {
     None
 }
 
-/// One facts object per requested artifact, in the request's order.
+/// One facts object per requested artifact, in the request's order, and the
+/// content hash of each artifact that asked for one.
 pub(crate) fn evaluate_request(request: &HookArtifactFactsRequestV1) -> Value {
     let facts: Vec<Value> = request.artifacts.iter().map(evaluate).collect();
-    serde_json::json!({ "facts": facts })
+    let content_hashes: Vec<Value> = request
+        .artifacts
+        .iter()
+        .map(|artifact| match &artifact.content_hash_artifact {
+            Some(fields) => Value::String(artifact_hash(fields)),
+            None => Value::Null,
+        })
+        .collect();
+    serde_json::json!({ "facts": facts, "content_hashes": content_hashes })
 }
 
 pub(crate) fn evaluate(artifact: &HookArtifactV1) -> Value {

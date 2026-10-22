@@ -41,6 +41,7 @@ from ..local_supply_chain import (
 )
 from ..models import GuardAction
 from ..native_hook_artifact_compose import native_hook_compose
+from ..native_hook_artifact_facts import HookArtifactFactsUnavailableError
 from ..native_hook_artifact_reuse_step import ReusePlan, ReuseSettled, native_artifact_reuse_step
 from ..native_hook_decision import NativeHookDecisionError
 from ..native_shim_admin import NativeShimAdminError
@@ -75,10 +76,11 @@ from .commands_hook_native_state import NativeArtifactHookState
 from .commands_parser_helpers import *
 from .commands_support_hook_state import _load_cursor_native_shell_allowance
 from .commands_support_runtime_artifact_policy import (
+    artifact_content_hash_fields,
     artifact_fact_risk_classes,
     artifact_fact_skip_native_floor,
     record_policy_auto_stops,
-    runtime_policy_artifact_facts_batch,
+    runtime_policy_artifact_facts_with_content_hashes,
     runtime_policy_config_facts,
 )
 from .commands_support_runtime_artifacts import _hook_event_name, _optional_string
@@ -319,8 +321,15 @@ def evaluate_native_artifact_hook(
             execution_context=package_execution_context,
             config=config,
         )
+        approval_context_hash_fields = None
     else:
-        artifact_content_hash = artifact_hash(approval_context_artifact)
+        # The resident spells the digest a saved approval is keyed by, and it
+        # rides the facts request below rather than a request of its own. The
+        # fields are read here because the posture stamp a few lines down
+        # writes into the artifact's metadata, and the digest has to cover the
+        # artifact as it stands before that stamp.
+        artifact_content_hash = None
+        approval_context_hash_fields = artifact_content_hash_fields(approval_context_artifact)
     artifact_id = runtime_artifact.artifact_id
     artifact_name = runtime_artifact.name
     policy_harness = _canonical_harness_name(args.harness)
@@ -336,11 +345,20 @@ def evaluate_native_artifact_hook(
     # ``guard_home`` the composition below uses: the facts and the verdict that
     # reads them must come from one resident, and one round trip rather than
     # two keeps the hook off the resident's critical path twice over.
-    runtime_facts, approval_context_facts = runtime_policy_artifact_facts_batch(
+    (runtime_facts, approval_context_facts), content_hashes = runtime_policy_artifact_facts_with_content_hashes(
         config,
-        ((runtime_artifact, args.harness), (approval_context_artifact, policy_harness)),
+        (
+            (runtime_artifact, args.harness, None),
+            (approval_context_artifact, policy_harness, approval_context_hash_fields),
+        ),
         guard_home=guard_home,
     )
+    if artifact_content_hash is None:
+        artifact_content_hash = content_hashes[1]
+    if not artifact_content_hash:
+        # Without the digest the saved approval cannot be looked up, and this
+        # side will not spell it: an answerless resident fails closed.
+        raise HookArtifactFactsUnavailableError
     # The resident says whether the generic command floor applies: a package
     # install is decided by the package evaluator and a verified
     # explicit-permission allow was already adjudicated, so the floor is only

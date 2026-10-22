@@ -16,7 +16,10 @@ from ..config import GuardConfig
 from ..harness_posture import harness_posture_override
 from ..models import GuardAction, GuardArtifact
 from ..native_hook_artifact_compose import native_hook_compose
-from ..native_hook_artifact_facts import HookArtifactFactsUnavailableError, native_hook_artifact_facts
+from ..native_hook_artifact_facts import (
+    HookArtifactFactsUnavailableError,
+    native_hook_artifact_facts_with_content_hashes,
+)
 from ..protection_events import record_protection_event
 from .commands_support_runtime_resolution import _canonical_harness_name
 
@@ -81,13 +84,54 @@ def runtime_policy_artifact_facts(
     return runtime_policy_artifact_facts_batch(config, ((artifact, harness),), guard_home=guard_home)[0]
 
 
+def artifact_content_hash_fields(artifact: GuardArtifact) -> dict[str, object]:
+    """The artifact's own fields, unredacted, for the resident to digest.
+
+    The digest covers the artifact as ``GuardArtifact.to_dict`` renders it and
+    then restores the raw metadata over the redacted copy, so what travels has
+    to be the raw fields: a copy redacted on this side would hash differently
+    and miss every approval the user has already saved.
+    """
+
+    return {
+        "artifact_id": artifact.artifact_id,
+        "name": artifact.name,
+        "harness": artifact.harness,
+        "artifact_type": artifact.artifact_type,
+        "source_scope": artifact.source_scope,
+        "config_path": artifact.config_path,
+        "command": artifact.command,
+        "args": list(artifact.args),
+        "url": artifact.url,
+        "transport": artifact.transport,
+        "publisher": artifact.publisher,
+        "metadata": dict(artifact.metadata),
+    }
+
+
 def runtime_policy_artifact_facts_batch(
     config: GuardConfig,
     artifacts: Sequence[tuple[GuardArtifact, str]],
     *,
     guard_home: Path | None = None,
 ) -> list[dict[str, object]]:
-    """Return the resident's facts for each ``(artifact, harness)`` pair.
+    """Return the resident's facts for each ``(artifact, harness)`` pair."""
+
+    facts, _ = runtime_policy_artifact_facts_with_content_hashes(
+        config,
+        [(artifact, harness, None) for artifact, harness in artifacts],
+        guard_home=guard_home,
+    )
+    return facts
+
+
+def runtime_policy_artifact_facts_with_content_hashes(
+    config: GuardConfig,
+    artifacts: Sequence[tuple[GuardArtifact, str, Mapping[str, object] | None]],
+    *,
+    guard_home: Path | None = None,
+) -> tuple[list[dict[str, object]], list[str | None]]:
+    """Return the facts, and the content hash of each artifact that asks for one.
 
     Only the configured override is still read here: it is a settings lookup
     for this artifact, publisher and harness, not a reading of the artifact.
@@ -95,24 +139,34 @@ def runtime_policy_artifact_facts_batch(
     one raises instead of letting this side describe the artifact.
 
     One evaluation's artifacts are asked for together, so reading facts costs
-    the hook a single resident round trip however many artifacts it holds.
+    the hook a single resident round trip however many artifacts it holds. The
+    third element of a triple is the fields to digest, from
+    ``artifact_content_hash_fields``; a caller reads them before the run's
+    posture is stamped onto the artifact the facts are read from.
     """
 
-    return native_hook_artifact_facts(
-        [
-            {
-                "artifact_type": artifact.artifact_type,
-                "metadata": artifact.metadata,
-                "configured_override": _typed_text(
-                    config.resolve_action_override(
-                        _canonical_harness_name(harness), artifact.artifact_id, artifact.publisher
-                    )
-                ),
-            }
-            for artifact, harness in artifacts
-        ],
+    return native_hook_artifact_facts_with_content_hashes(
+        [_facts_entry(config, artifact, harness, to_hash) for artifact, harness, to_hash in artifacts],
         guard_home=guard_home if guard_home is not None else config.guard_home,
     )
+
+
+def _facts_entry(
+    config: GuardConfig,
+    artifact: GuardArtifact,
+    harness: str,
+    to_hash: Mapping[str, object] | None,
+) -> dict[str, object]:
+    entry: dict[str, object] = {
+        "artifact_type": artifact.artifact_type,
+        "metadata": artifact.metadata,
+        "configured_override": _typed_text(
+            config.resolve_action_override(_canonical_harness_name(harness), artifact.artifact_id, artifact.publisher)
+        ),
+    }
+    if to_hash is not None:
+        entry["content_hash_artifact"] = to_hash
+    return entry
 
 
 def record_policy_auto_stops(config: GuardConfig, events: object) -> None:

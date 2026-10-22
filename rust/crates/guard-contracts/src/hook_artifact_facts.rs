@@ -6,7 +6,7 @@
 //! ships the artifact as it stands and the resident reads the metadata.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// Schema discriminator for the request.
 pub const HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA: &str = "guard-hook-artifact-facts-request.v1";
@@ -14,6 +14,11 @@ pub const HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA: &str = "guard-hook-artifact-facts-
 pub const HOOK_ARTIFACT_FACTS_RESULT_SCHEMA: &str = "guard-hook-artifact-facts-result.v1";
 /// Capability advertised by the runtime when this operation is available.
 pub const HOOK_ARTIFACT_FACTS_FEATURE: &str = "hook-artifact-facts-v1";
+/// Capability advertised when the op also spells the content hash a saved
+/// approval is keyed by. An older resident rejects `content_hash_artifact`
+/// as an unknown field, so a caller asks for this capability before sending
+/// it.
+pub const HOOK_ARTIFACT_FACTS_CONTENT_HASH_FEATURE: &str = "hook-artifact-facts-content-hash-v1";
 /// Largest canonical request serialization the op will accept.
 pub const HOOK_ARTIFACT_FACTS_MAX_BYTES: usize = 4 * 1024 * 1024;
 /// Most artifacts one request may carry. A hook asks about two; a request
@@ -33,6 +38,13 @@ pub struct HookArtifactV1 {
     /// is a settings lookup rather than a reading of the artifact.
     #[serde(default)]
     pub configured_override: Option<String>,
+    /// The artifact's own fields, from which the resident spells the content
+    /// hash a saved approval is keyed by. It travels apart from `metadata`
+    /// because the hook reads facts off the artifact after stamping it with
+    /// the run's posture, while the digest has to cover the artifact as it
+    /// stood before that stamp. Absent when the caller wants facts only.
+    #[serde(default)]
+    pub content_hash_artifact: Option<Map<String, Value>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -59,8 +71,10 @@ pub struct HookArtifactFactsResultV1 {
     pub status: String,
     /// `ok`, or one of the `native_hook_artifact_facts_*` codes.
     pub code: String,
-    /// `{"facts": [...]}`: one `PolicyArtifactFactsV1` per requested
-    /// artifact, in the order the request listed them.
+    /// `{"facts": [...], "content_hashes": [...]}`: one
+    /// `PolicyArtifactFactsV1` per requested artifact, in the order the
+    /// request listed them, and alongside it one content hash per artifact —
+    /// null for an artifact that named no `content_hash_artifact`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
 }

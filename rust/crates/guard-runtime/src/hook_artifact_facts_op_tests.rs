@@ -7,6 +7,7 @@ fn artifact(artifact_type: &str, metadata: Value) -> HookArtifactV1 {
         artifact_type: artifact_type.to_owned(),
         metadata,
         configured_override: None,
+        content_hash_artifact: None,
     }
 }
 
@@ -472,4 +473,70 @@ fn a_separator_padded_risk_label_is_still_recognized() {
         json!({"risk_classes": ["\u{1c}credential_exfiltration\u{1f}", "  \u{1e}  "]}),
     );
     assert_eq!(value["risk_classes"], json!(["credential_exfiltration"]));
+}
+
+#[test]
+fn an_artifact_that_sends_its_fields_gets_the_hash_the_store_keys_by() {
+    let fields = serde_json::json!({
+        "artifact_id": "shell:rm",
+        "name": "rm",
+        "harness": "claude-code",
+        "artifact_type": "tool_action_request",
+        "source_scope": "workspace",
+        "config_path": "/workspace/.claude/settings.json",
+        "command": Value::Null,
+        "args": [],
+        "url": Value::Null,
+        "transport": Value::Null,
+        "publisher": "local",
+        "metadata": {"action_class": "destructive shell command"},
+    });
+    let fields = fields.as_object().expect("fields").clone();
+    let mut subject = artifact("tool_action_request", json!({}));
+    subject.content_hash_artifact = Some(fields.clone());
+    let payload = evaluate_request(&HookArtifactFactsRequestV1 {
+        schema: HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA.to_owned(),
+        request_id: "hook-artifact-facts-test".to_owned(),
+        artifacts: vec![artifact("tool_action_request", json!({})), subject],
+    });
+    assert_eq!(payload["facts"].as_array().expect("facts").len(), 2);
+    assert_eq!(payload["content_hashes"][0], Value::Null);
+    assert_eq!(
+        payload["content_hashes"][1],
+        json!(guard_command::artifact_hash::artifact_hash(&fields))
+    );
+}
+
+#[test]
+fn the_hashed_fields_are_the_ones_sent_rather_than_the_facts_metadata() {
+    // The hook reads facts off an artifact it has already stamped with the
+    // run's posture, while the digest has to cover the artifact as it stood
+    // before that stamp, so the two travel apart and must not be conflated.
+    let mut subject = artifact("tool_action_request", json!({"risk_signals": ["stamped"]}));
+    let fields = serde_json::json!({"artifact_type": "tool_action_request", "metadata": {}})
+        .as_object()
+        .expect("fields")
+        .clone();
+    subject.content_hash_artifact = Some(fields.clone());
+    let payload = evaluate_request(&HookArtifactFactsRequestV1 {
+        schema: HOOK_ARTIFACT_FACTS_REQUEST_SCHEMA.to_owned(),
+        request_id: "hook-artifact-facts-test".to_owned(),
+        artifacts: vec![subject],
+    });
+    assert_eq!(
+        payload["content_hashes"][0],
+        json!(guard_command::artifact_hash::artifact_hash(&fields))
+    );
+}
+
+#[test]
+fn a_request_asking_for_no_hash_answers_every_artifact_with_none() {
+    let payload = evaluate_request(&request("tool_action_request", json!({})));
+    assert_eq!(payload["content_hashes"], json!([Value::Null]));
+}
+
+#[test]
+fn the_content_hash_capability_is_advertised() {
+    assert!(crate::resident_op_features::RESIDENT_OP_FEATURES
+        .contains(&guard_contracts::HOOK_ARTIFACT_FACTS_CONTENT_HASH_FEATURE));
 }

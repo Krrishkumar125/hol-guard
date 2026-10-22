@@ -37,12 +37,17 @@ def _artifact() -> GuardArtifact:
     )
 
 
-def _recorder(captured: list[dict[str, object]], answers: list[dict[str, object]] | None = None):
+def _recorder(
+    captured: list[dict[str, object]],
+    answers: list[dict[str, object]] | None = None,
+    hashes: list[str | None] | None = None,
+):
     """Stand in for the resident bridge, recording what it was asked."""
 
     def fake(artifacts, *, guard_home=None):  # type: ignore[no-untyped-def]
         captured.append({"artifacts": [dict(item) for item in artifacts], "guard_home": guard_home})
-        return answers if answers is not None else [{} for _ in artifacts]
+        facts = answers if answers is not None else [{} for _ in artifacts]
+        return facts, hashes if hashes is not None else [None for _ in artifacts]
 
     return fake
 
@@ -51,7 +56,7 @@ def test_the_facts_are_the_residents_answer(monkeypatch: pytest.MonkeyPatch) -> 
     captured: list[dict[str, object]] = []
     answer = {"hard_block": True, "risk_classes": ["destructive_shell"]}
 
-    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured, [answer]))
+    monkeypatch.setattr(policy, "native_hook_artifact_facts_with_content_hashes", _recorder(captured, [answer]))
     config = _Config()
     artifact = _artifact()
     assert policy.runtime_policy_artifact_facts(config, artifact, "claude-code") is answer
@@ -76,7 +81,7 @@ def test_an_evaluations_artifacts_are_asked_for_together(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(
         policy,
-        "native_hook_artifact_facts",
+        "native_hook_artifact_facts_with_content_hashes",
         _recorder(captured, [runtime, approval_context]),
     )
     artifact = _artifact()
@@ -88,7 +93,7 @@ def test_an_evaluations_artifacts_are_asked_for_together(monkeypatch: pytest.Mon
 
 def test_nothing_about_the_artifact_is_decided_here(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
-    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
+    monkeypatch.setattr(policy, "native_hook_artifact_facts_with_content_hashes", _recorder(captured))
     artifact = _artifact()
     policy.runtime_policy_artifact_facts(_Config(), artifact, "claude-code")
     # The metadata travels as the artifact carries it: no derived fact rides along.
@@ -99,7 +104,7 @@ def test_nothing_about_the_artifact_is_decided_here(monkeypatch: pytest.MonkeyPa
 
 def test_the_configured_override_is_the_one_local_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
-    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
+    monkeypatch.setattr(policy, "native_hook_artifact_facts_with_content_hashes", _recorder(captured))
     config = _Config(override="review")
     policy.runtime_policy_artifact_facts(config, _artifact(), "claude-code")
     assert captured[0]["artifacts"][0]["configured_override"] == "review"
@@ -108,14 +113,14 @@ def test_the_configured_override_is_the_one_local_lookup(monkeypatch: pytest.Mon
 
 def test_a_non_string_override_arrives_as_the_unknown_action(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
-    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
+    monkeypatch.setattr(policy, "native_hook_artifact_facts_with_content_hashes", _recorder(captured))
     policy.runtime_policy_artifact_facts(_Config(override=7), _artifact(), "claude-code")
     assert captured[0]["artifacts"][0]["configured_override"] == ""
 
 
 def test_an_explicit_guard_home_wins_over_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
-    monkeypatch.setattr(policy, "native_hook_artifact_facts", _recorder(captured))
+    monkeypatch.setattr(policy, "native_hook_artifact_facts_with_content_hashes", _recorder(captured))
     home = Path("/other-home")
     policy.runtime_policy_artifact_facts(_Config(), _artifact(), "claude-code", guard_home=home)
     assert captured[0]["guard_home"] == home
@@ -125,6 +130,50 @@ def test_an_unavailable_resident_yields_no_facts(monkeypatch: pytest.MonkeyPatch
     def unavailable(artifacts, *, guard_home=None):  # type: ignore[no-untyped-def]
         raise HookArtifactFactsUnavailableError
 
-    monkeypatch.setattr(policy, "native_hook_artifact_facts", unavailable)
+    monkeypatch.setattr(policy, "native_hook_artifact_facts_with_content_hashes", unavailable)
     with pytest.raises(HookArtifactFactsUnavailableError):
         policy.runtime_policy_artifact_facts(_Config(), _artifact(), "claude-code")
+
+
+def test_an_artifact_that_asks_for_a_hash_sends_its_raw_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        policy,
+        "native_hook_artifact_facts_with_content_hashes",
+        _recorder(captured, [{}, {}], [None, "beef"]),
+    )
+    artifact = _artifact()
+    fields = policy.artifact_content_hash_fields(artifact)
+    facts, hashes = policy.runtime_policy_artifact_facts_with_content_hashes(
+        _Config(),
+        ((artifact, "claude-code", None), (artifact, "codex", fields)),
+    )
+    assert facts == [{}, {}]
+    assert hashes == [None, "beef"]
+    asked = captured[0]["artifacts"]
+    assert "content_hash_artifact" not in asked[0]
+    assert asked[1]["content_hash_artifact"] == fields
+
+
+def test_the_hashed_fields_are_the_artifacts_own(monkeypatch: pytest.MonkeyPatch) -> None:
+    artifact = _artifact()
+    fields = policy.artifact_content_hash_fields(artifact)
+    # The resident digests ``GuardArtifact.to_dict`` and then restores the raw
+    # metadata over its redacted copy, so the raw fields are what travel.
+    assert fields["metadata"] == artifact.metadata
+    assert fields["artifact_id"] == artifact.artifact_id
+    assert fields["args"] == []
+    assert set(fields) == {
+        "artifact_id",
+        "name",
+        "harness",
+        "artifact_type",
+        "source_scope",
+        "config_path",
+        "command",
+        "args",
+        "url",
+        "transport",
+        "publisher",
+        "metadata",
+    }
