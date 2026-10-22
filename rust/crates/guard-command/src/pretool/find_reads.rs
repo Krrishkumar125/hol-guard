@@ -102,10 +102,16 @@ fn entries_only(expression: &[String]) -> bool {
 ///
 /// Alternation and negation both widen the output back to the whole tree
 /// (`-not -name '*.md'` prints everything else), so the expression must be a
-/// plain conjunction, and it must carry at least one pattern: an expression
-/// that only bounds depth or type still enumerates the tree. `-path` and its
+/// plain conjunction, and it must carry at least one pattern. `-path` and its
 /// spellings match the whole path rather than the entry name, so a directory
 /// prefix alone satisfies them and they bound nothing here.
+///
+/// `-type d` bounds the output the same way without naming anything: it
+/// prints directory names and no file, and a secret is a file. The root is
+/// already one tool's own directory rather than a shared one, so the tree
+/// below it holds no store whose name a deeper walk could print, and
+/// `find ~/.nvm -maxdepth 2 -type d` is the inventory an agent takes of a
+/// toolchain it is about to use.
 fn match_bounded(expression: &[String]) -> bool {
     let mut bounded = false;
     let mut index = 0;
@@ -130,7 +136,13 @@ fn match_bounded(expression: &[String]) -> bool {
             // pattern after it filters nothing:
             // `find ~/.codex -print -name run.sh` prints the whole tree.
             "-print" | "-print0" if !bounded => return false,
-            "-type" | "-maxdepth" | "-mindepth" => index += 1,
+            "-type" => {
+                if expression.get(index).map(String::as_str) == Some("d") {
+                    bounded = true;
+                }
+                index += 1;
+            }
+            "-maxdepth" | "-mindepth" => index += 1,
             _ => {}
         }
     }

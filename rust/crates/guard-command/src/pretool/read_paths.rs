@@ -14,11 +14,11 @@ mod hidden_listing;
 mod omp_json_query;
 #[path = "omp_read_targets.rs"]
 pub(super) mod omp_targets;
-use hidden_listing::resolved_home_hidden_content_read;
 pub(super) use hidden_listing::{
     home_hidden_content_read, home_hidden_directory, home_hidden_tool_directory,
     repository_hidden_directory,
 };
+use hidden_listing::{resolved_home_hidden_content_read, resolved_home_hidden_listing};
 #[path = "private_temporary_workspace.rs"]
 mod private_temporary;
 #[path = "workspace_scratch_reads.rs"]
@@ -334,7 +334,8 @@ fn path_gate(
 /// The screen is asked here rather than inside the gate itself for two
 /// reasons. The gate answers listings and write screens too, and a listing
 /// asks a different question: `ls -la ~/.local/share/data` prints entry names
-/// and has its own screen, which this rule must not stand in for. And a
+/// and has its own screen, which this rule must not stand in for -- a read
+/// tool handed a directory asks that screen instead. And a
 /// spelling that reached the path through a link keeps its review, because a
 /// link below an install root or a skill root is exactly how a benign name
 /// reaches a tree whose own rule would refuse it.
@@ -347,7 +348,8 @@ pub(super) fn resolved_read_target_allowed(
     resolved_path_allowed_for_operation(canonical, home_dir, cwd, false, true)
         || (!guard_secure_fs::contains_symlink_component(candidate)
             && resolved_location_allowed(canonical, home_dir, cwd, false)
-            && resolved_home_hidden_content_read(canonical, home_dir))
+            && (resolved_home_hidden_content_read(canonical, home_dir)
+                || resolved_home_hidden_listing(canonical, home_dir)))
 }
 
 /// A Python virtual environment's activation script, proven by the

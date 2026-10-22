@@ -175,6 +175,37 @@ pub(in crate::pretool) fn resolved_home_hidden_content_read(
         && !narrow_guidance_rule_owns(&lowered)
 }
 
+/// The listing screen for a path a caller has already resolved.
+///
+/// A structured read tool handed a directory lists its entries, or says it is
+/// a directory; either way it returns no file's bytes, so the question is the
+/// listing one rather than the content one. The resolved path has already
+/// followed every link, so a name below the home directory cannot stand in
+/// for a store somewhere else, and the store screen still refuses the trees
+/// whose entry names are themselves the secret.
+pub(in crate::pretool) fn resolved_home_hidden_listing(
+    canonical: &Path,
+    home_dir: Option<&str>,
+) -> bool {
+    let Some(raw_home) = home_dir else {
+        return false;
+    };
+    let Ok(home) = std::fs::canonicalize(raw_home) else {
+        return false;
+    };
+    let Ok(relative) = canonical.strip_prefix(&home) else {
+        return false;
+    };
+    let Some(first) = relative.components().next() else {
+        return false;
+    };
+    let mut names = relative.components().skip(1);
+    canonical.is_dir()
+        && first.as_os_str().to_string_lossy().starts_with('.')
+        && !names.any(|name| name.as_os_str().to_string_lossy().starts_with('.'))
+        && clears_store_screen(relative)
+}
+
 fn expanded(value: &str, home_dir: Option<&str>, cwd: Option<&str>) -> Option<PathBuf> {
     let path = if value == "~" || value.starts_with("~/") || value.starts_with("~\\") {
         PathBuf::from(super::super::expand_home_read_path(value, home_dir)?)
