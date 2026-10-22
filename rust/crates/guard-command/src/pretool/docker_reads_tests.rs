@@ -198,10 +198,10 @@ fn registry_manifest_changes_and_redirected_queries_stay_reviewed() {
     }
 }
 
-/// Reading back what a container or a Compose project already printed is a
-/// read: nothing starts, nothing is pulled, no project file is resolved.
+/// Reading back what one container already printed is a read: nothing starts,
+/// nothing is pulled, no project file is resolved.
 #[test]
-fn bounded_container_and_service_logs_are_admitted() {
+fn bounded_container_logs_are_admitted() {
     for words in [
         vec!["logs", "web"],
         vec!["logs", "web", "--tail", "50"],
@@ -219,21 +219,16 @@ fn bounded_container_and_service_logs_are_admitted() {
         vec!["logs", "-t", "web"],
         vec!["logs", "--timestamps", "--tail", "20", "db_1"],
         vec!["container", "logs", "web"],
-        vec!["compose", "logs"],
-        vec!["compose", "logs", "api"],
-        vec!["compose", "logs", "--tail=50", "api", "worker"],
-        vec!["compose", "logs", "--no-color", "--no-log-prefix", "api"],
-        vec!["compose", "logs", "--index", "2", "api"],
     ] {
         assert!(safe_docker_arguments(&arguments(&words)), "{words:?}");
     }
 }
 
 /// A log read that never ends, one that reaches another daemon, one that
-/// prints the driver's own attributes, and one that names a compose file are
-/// not that read.
+/// prints the driver's own attributes, and a Compose log read, which resolves
+/// the project first, are not that read.
 #[test]
-fn followed_remote_and_file_backed_logs_stay_reviewed() {
+fn followed_remote_and_project_backed_logs_stay_reviewed() {
     for words in [
         vec!["logs"],
         vec!["logs", "-f", "web"],
@@ -246,10 +241,13 @@ fn followed_remote_and_file_backed_logs_stay_reviewed() {
         vec!["logs", "--tail", "50", "../web"],
         vec!["-H", "tcp://build.example.com:2376", "logs", "web"],
         vec!["--context", "production", "logs", "web"],
+        vec!["compose", "logs"],
+        vec!["compose", "logs", "api"],
+        vec!["compose", "logs", "--tail=50", "api", "worker"],
+        vec!["compose", "logs", "--no-color", "--no-log-prefix", "api"],
         vec!["compose", "-f", "compose.prod.yaml", "logs"],
         vec!["compose", "logs", "-f"],
         vec!["compose", "logs", "--follow", "api"],
-        vec!["compose", "logs", "--index", "two", "api"],
     ] {
         assert!(!safe_docker_arguments(&arguments(&words)), "{words:?}");
     }

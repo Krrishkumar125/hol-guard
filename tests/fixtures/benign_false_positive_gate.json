@@ -13214,7 +13214,7 @@
       "expect": "allow"
     },
     {
-      "id": "docker-compose-logs-service-tail",
+      "id": "neg-docker-compose-logs-service",
       "fix_area": "shell",
       "harnesses": [
         "codex",
@@ -13227,23 +13227,8 @@
         "command": "docker compose logs --tail=50 api"
       },
       "cwd": "worktree",
-      "expect": "allow"
-    },
-    {
-      "id": "docker-compose-logs-two-services",
-      "fix_area": "shell",
-      "harnesses": [
-        "codex",
-        "zcode",
-        "claude-code",
-        "omp"
-      ],
-      "tool": "shell",
-      "tool_input": {
-        "command": "docker compose logs --no-color --no-log-prefix api worker"
-      },
-      "cwd": "worktree",
-      "expect": "allow"
+      "expect": "not_allow",
+      "contained_ok": true
     },
     {
       "id": "neg-docker-logs-follow",
