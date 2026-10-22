@@ -102,6 +102,22 @@ pub enum ExtensionControlQueryV1 {
         managed_revision: u64,
         layers: Vec<NativeExtensionControlLayerV1>,
     },
+    /// The digest a commit proof binds: replacing the layers at
+    /// `previous_revision` with `layers`, for this actor and request.
+    MutationDigest {
+        previous_revision: i64,
+        catalog_digest: String,
+        layers: Vec<NativeExtensionControlLayerV1>,
+        actor_id: String,
+        idempotency_key: String,
+        nonce: String,
+    },
+    /// The digest a first-enrollment proof binds.
+    EnrollmentDigest {
+        catalog_digest: String,
+        actor_id: String,
+        nonce: String,
+    },
     /// The semantic preview of replacing `current_layers` with `proposed_layers`.
     Preview {
         registry: ExtensionControlPreviewRegistryV1,
@@ -179,6 +195,12 @@ pub enum ExtensionControlPayloadV1 {
         scenarios: Vec<ExtensionControlScenarioResultV1>,
     },
     SnapshotDigest {
+        digest: String,
+    },
+    MutationDigest {
+        digest: String,
+    },
+    EnrollmentDigest {
         digest: String,
     },
     Preview {

@@ -494,6 +494,55 @@ def resolve_extension_controls(
     return resolve_scenarios(registry, (scenario,), guard_home=guard_home)[0].items[0]
 
 
+def _digest(payload: dict[str, Any]) -> str:
+    digest = payload["digest"]
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise _invalid()
+    return digest
+
+
+def mutation_digest(
+    *,
+    previous_revision: int,
+    catalog_digest: str,
+    layers: Iterable[ExtensionControlLayer],
+    actor_id: str,
+    idempotency_key: str,
+    nonce: str,
+    guard_home: Path | None = None,
+) -> str:
+    """The digest a commit proof binds, computed by the resident from the mutation it describes."""
+
+    query: dict[str, object] = {
+        "kind": "mutation_digest",
+        "previous_revision": previous_revision,
+        "catalog_digest": catalog_digest,
+        "layers": [_layer_wire(layer) for layer in layers],
+        "actor_id": actor_id,
+        "idempotency_key": idempotency_key,
+        "nonce": nonce,
+    }
+    return _ask(query, guard_home, {"digest": str}, _digest)
+
+
+def enrollment_digest(
+    *,
+    catalog_digest: str,
+    actor_id: str,
+    nonce: str,
+    guard_home: Path | None = None,
+) -> str:
+    """The digest a first-enrollment proof binds, computed by the resident."""
+
+    query: dict[str, object] = {
+        "kind": "enrollment_digest",
+        "catalog_digest": catalog_digest,
+        "actor_id": actor_id,
+        "nonce": nonce,
+    }
+    return _ask(query, guard_home, {"digest": str}, _digest)
+
+
 def snapshot_digest(
     *,
     catalog_digest: str,
@@ -531,10 +580,4 @@ def _snapshot_digest(
         "layers": [_layer_wire(layer) for layer in layers],
     }
 
-    def parse(payload: dict[str, Any]) -> str:
-        digest = payload["digest"]
-        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
-            raise _invalid()
-        return digest
-
-    return _ask(query, guard_home, {"digest": str}, parse)
+    return _ask(query, guard_home, {"digest": str}, _digest)

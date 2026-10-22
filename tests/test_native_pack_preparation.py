@@ -250,6 +250,7 @@ def test_remote_identity_stability_and_fail_closed(delivery, monkeypatch, tmp_pa
     # An authenticated catalog really grows by one compiler-generated inactive
     # pack, while the earlier native cache representation remains admissible.
     from extension_delivery_assets import AssetPlan
+    from extension_delivery_located_store import LocatedStore as Publisher
     from extension_policy_delivery import policy_transport
 
     located = LocatedStore(tmp_path / "discovery-read", fetch=installed.fetch)
@@ -273,7 +274,7 @@ def test_remote_identity_stability_and_fail_closed(delivery, monkeypatch, tmp_pa
     objects = ObjectStore(tmp_path / "smaller-index")
     index = objects.index(manifests)
     plan = AssetPlan(tmp_path / "smaller-assets", SOURCE)
-    publisher = LocatedStore(tmp_path / "smaller-metadata", publisher=plan)
+    publisher = Publisher(tmp_path / "smaller-metadata", publisher=plan)
     smaller = verified.manifest()
     smaller["publication_id"] = "11.1"
     smaller["directory"]["count"] -= 1
@@ -319,9 +320,10 @@ def test_revocation_and_substituted_metadata(delivery, monkeypatch, tmp_path):
     # Fetch native policy/defaults using the actual package and compiler first.
     base = preparation.prepare(installed, [], cache, engine=engine, now=1500)
     from extension_delivery_assets import AssetPlan
+    from extension_delivery_located_store import LocatedStore as Publisher
 
     plan = AssetPlan(tmp_path / "assets", SOURCE)
-    store = LocatedStore(tmp_path / "metadata", publisher=plan)
+    store = Publisher(tmp_path / "metadata", publisher=plan)
     identity = sorted(base.selected)[0]
     for kind in ("extension", "pack"):
         value = remote(delivery, monkeypatch).manifest()
@@ -375,9 +377,10 @@ def test_missing_corrupt_and_related_metadata_admission(delivery, monkeypatch, t
         preparation.prepare(installed, [], cache, engine=engine, now=1500)
     path.write_bytes(original)
     from extension_delivery_assets import AssetPlan
+    from extension_delivery_located_store import LocatedStore as Publisher
 
     plan = AssetPlan(tmp_path / "mutations", SOURCE)
-    store = LocatedStore(tmp_path / "metadata-mutations", publisher=plan)
+    store = Publisher(tmp_path / "metadata-mutations", publisher=plan)
     located = LocatedStore(tmp_path / "located", fetch=installed.fetch)
     identity = "command.preparation-external"
     records = {}

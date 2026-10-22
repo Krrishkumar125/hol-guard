@@ -1,10 +1,6 @@
-"""Shared build-time reachability accounting and container inventory checks without directory rendering imports."""
-
-import hashlib
+"""Shared build-time reachability accounting without directory rendering imports."""
 
 from extension_delivery_located_store import LocatedStore
-
-from codex_plugin_scanner.guard.catalog_delivery.containers import inspect
 
 
 class InventoryStore(LocatedStore):
@@ -34,15 +30,3 @@ class InventoryStore(LocatedStore):
         value = super().blob(reference, depth)
         self.mark("object", reference["sha256"], reference["length"], reference["location"])
         return value
-
-
-def verify_inventory(data, asset, expected):
-    archive, infos = inspect(data, asset)
-    with archive:
-        if {info.filename for info in infos} != set(expected):
-            raise ValueError("new delivery container includes unbound or missing members")
-        for info in infos:
-            spec = expected[info.filename]
-            value = archive.read(info)
-            if len(value) != spec["length"] or hashlib.sha256(value).hexdigest() != spec["sha256"]:
-                raise ValueError("new delivery container member differs from authenticated reference")
