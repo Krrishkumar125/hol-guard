@@ -18633,6 +18633,57 @@
       },
       "cwd": "worktree",
       "expect": "not_allow"
+    },
+    {
+      "id": "touch-marker-after-mkdir",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "mkdir -p build && touch build/.keep"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "touch-two-placeholder-files",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "touch a.txt && touch b.txt"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "touch-after-listing",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls && touch a.txt"
+      },
+      "cwd": "parent",
+      "expect": "allow"
     }
   ],
   "mcp_cases": [

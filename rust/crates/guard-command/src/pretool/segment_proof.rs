@@ -328,6 +328,8 @@ pub(super) fn exact_safe_segment_with_context(
         "mktemp" | "mkdir" | "touch" | "mv" | "ln" | "rm" => {
             let alone = basename != "ln" || model.segments.len() == 1;
             (model.segments.len() == 1
+                || (matches!(basename, "mkdir" | "touch")
+                    && super::chain_temporary::creation_chain(model))
                 || (basename == "mkdir" && super::chain_temporary::mkdir_chain(model))
                 || (basename == "ln" && super::symlink_writes::link_chain(model)))
                 && (basename != "ln" && basename != "rm"
