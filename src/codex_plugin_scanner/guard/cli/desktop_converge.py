@@ -153,9 +153,11 @@ def run_desktop_converge(
 
     from .update_desktop_apply import refresh_desktop_core_daemon
 
-    if not getattr(sys, "frozen", False):
+    dry_run = bool(getattr(args, "dry_run", False))
+    if not dry_run and not getattr(sys, "frozen", False):
         # The daemon restart below runs this process's executable, which must be
         # the Desktop Core, never an install that converge is about to remove.
+        # A dry run changes nothing, so any install may preview it.
         print(_CORE_ONLY_MESSAGE, file=output_stream)
         return 1
     payload, repaired, repair_notes = repair_hooks_then_converge(
@@ -163,7 +165,7 @@ def run_desktop_converge(
         store=store,
         workspace=str(workspace) if workspace else None,
         now=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        dry_run=bool(getattr(args, "dry_run", False)),
+        dry_run=dry_run,
     )
     if payload["status"] not in {"skipped", "planned"}:
         payload["managed_installs"] = repaired

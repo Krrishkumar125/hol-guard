@@ -9,6 +9,7 @@ back. Desktop retires those copies so every hook and shell resolves one Core.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -317,6 +318,9 @@ def _user_site_interpreter(entry: Path) -> Path | None:
         return None
     interpreter = Path(shebang[0])
     if not interpreter.is_absolute() or not interpreter.is_file():
+        return None
+    # A user's own shell wrapper that calls Guard is not a pip console script.
+    if re.fullmatch(r"python(\d+(\.\d+)*)?", interpreter.name) is None:
         return None
     if (interpreter.parent.parent / "pyvenv.cfg").is_file():
         return None

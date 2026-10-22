@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import io
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -259,8 +261,11 @@ def test_pip_user_removal_checks_where_hol_guard_is_installed(
     uninstalled: bool,
     script_kept: bool,
 ) -> None:
+    python = tmp_path / "system" / "bin" / "python3.12"
+    python.parent.mkdir(parents=True)
+    _ = python.write_text("")
     script = home / ".local" / "bin" / "hol-guard"
-    _ = script.write_text("#!/bin/sh\nfrom codex_plugin_scanner.cli import main\n")
+    _ = script.write_text(f"#!{python}\nfrom codex_plugin_scanner.cli import main\n")
     script.chmod(0o755)
     user_site = tmp_path / "user-site"
     commands: list[list[str]] = []
@@ -274,11 +279,40 @@ def test_pip_user_removal_checks_where_hol_guard_is_installed(
     inventory = inventory_foreign_installs(home, path_env=str(script.parent))
     result = remove_foreign_installs(inventory, retire_runtime=lambda _: True, run=run)
 
-    assert inventory.user_site_interpreters == (Path("/bin/sh"),)
+    assert inventory.user_site_interpreters == (python,)
     assert [item["kind"] for item in result.removed] == ([expected_kind] if expected_kind else [])
     assert any(command[1:3] == ["-m", "pip"] for command in commands) is uninstalled
     assert script.exists() is script_kept
     assert bool(result.notes) is (expected_kind is None)
+
+
+def test_ignores_a_users_own_shell_wrapper(home: Path) -> None:
+    wrapper = home / ".local" / "bin" / "hol-guard"
+    _ = wrapper.write_text('#!/bin/sh\nexec python3 -m codex_plugin_scanner.cli "$@"\n')
+    wrapper.chmod(0o755)
+
+    inventory = inventory_foreign_installs(home, path_env=str(wrapper.parent))
+
+    assert inventory.empty
+
+
+def test_dry_run_works_outside_the_desktop_core(home: Path, tmp_path: Path) -> None:
+    _ = _launcher(home)
+    venv = _pipx_venv(home)
+    output = io.StringIO()
+    args = argparse.Namespace(dry_run=True, json=True)
+
+    exit_code = desktop_converge.run_desktop_converge(
+        args,
+        context=_context(home, tmp_path),
+        store=object(),  # pyright: ignore[reportArgumentType]
+        workspace=None,
+        output_stream=output,
+    )
+
+    assert exit_code == 0
+    assert json.loads(output.getvalue())["status"] == "planned"
+    assert venv.exists()
 
 
 def test_converge_requires_the_update_approval_unless_dry_run() -> None:
