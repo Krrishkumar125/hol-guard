@@ -101,6 +101,9 @@ def test_native_requirements_set_the_mutation_gates(
         [_STATE, _STATE],
         [_STATE, _state_write({"items": {}}, [], "last_good", "state")],
         [_STATE, {**_REMOVALS, "item_order": []}],
+        [{**_STATE, "stores": ["state", "removals"]}],
+        [{**_STATE, "stores": ["removals", "last_good"]}],
+        [{**_REMOVALS, "stores": ["removals", "state"]}],
         ["not-a-write"],
     ],
 )
@@ -160,6 +163,8 @@ def _local_commit(monkeypatch, **overrides: object) -> None:
         [{**_REMOVALS, "stores": ["last_good"]}],
         [{**_REMOVALS, "stores": ["removals", "last_good"]}],
         [{**_REMOVALS, "item_order": []}],
+        [{**_STATE, "stores": ["state", "removals"]}],
+        [{**_REMOVALS, "stores": ["removals", "state"]}],
         [_STATE, _STATE, _REMOVALS],
     ],
 )

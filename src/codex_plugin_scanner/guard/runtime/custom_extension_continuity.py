@@ -335,11 +335,11 @@ def _sync_payloads(writes: object, *, allowed: frozenset[str], required: str) ->
             or len(set(stores)) != len(stores)
         ):
             raise _malformed()
-        # State records keep the order their items arrive in; the removals record has none.
-        keeps_items = any(role != "removals" for role in stores)
-        if keeps_items == (order is None):
+        # The removals record is written alone and has no item order; every state record keeps one.
+        removals_only = stores == ["removals"]
+        if ("removals" in stores and not removals_only) or removals_only == (order is not None):
             raise _malformed()
-        stored = _ordered_items(payload, order) if keeps_items else payload
+        stored = payload if removals_only else _ordered_items(payload, order)
         for role in stores:
             if _STATE_KEYS[role] in payloads:
                 raise _malformed()
