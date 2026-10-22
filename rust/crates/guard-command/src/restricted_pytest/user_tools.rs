@@ -22,6 +22,13 @@ const TOOL_DIRECTORY_NAMES: &[&str] = &["bin", "shims"];
 /// Agent and Guard state below HOME. Guard's package shims live there and
 /// must never answer for a tool inside the sandbox.
 const AGENT_STATE: &[&str] = &[".claude", ".codex", ".hol-guard", ".omp"];
+/// The directory a package manager installs a dependency tree into. A
+/// harness puts a tool from that tree on the agent shell's PATH under a name
+/// of its own: `node_modules/.bin`, or a vendored directory inside a platform
+/// package, such as the one the Codex CLI prepends so `rg` is always found.
+/// None of them is named `bin` or `shims`, so [`TOOL_DIRECTORY_NAMES`] misses
+/// them and a program the session resolved there has no sandbox to run in.
+const PACKAGE_TREE: &str = "node_modules";
 /// Corepack's default cache, relative to HOME.
 const COREPACK_CACHE: &str = ".cache/node/corepack";
 /// Go's module cache, below GOPATH's default. It holds the dependency sources
@@ -67,6 +74,42 @@ pub(super) fn tool_root(canonical: &Path, homes: &[PathBuf], workspace: &Path) -
         })
         && sealed_ancestry(canonical);
     admitted.then(|| canonical.to_path_buf())
+}
+
+/// The installed dependency tree `canonical` is a tool directory of: the
+/// outermost [`PACKAGE_TREE`] directory above it, when a workspace run may
+/// read and execute from that tree. The tree rather than the PATH entry
+/// alone, because the entries of a `.bin` directory are links into the
+/// packages beside it, and a grant of the directory holding the links would
+/// not reach the programs they name. It is held to what [`tool_root`] asks of
+/// a tool directory: outside the workspace, credential folders and agent
+/// state, and sealed from `/` down, so no other account can swap what it
+/// names. Read-only, like every other granted root.
+pub(super) fn package_tree_root(
+    canonical: &Path,
+    homes: &[PathBuf],
+    workspace: &Path,
+) -> Option<PathBuf> {
+    let workspace = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.to_path_buf());
+    let root = canonical
+        .ancestors()
+        .skip(1)
+        .filter(|ancestor| ancestor.file_name() == Some(OsStr::new(PACKAGE_TREE)))
+        .last()?;
+    let admitted = root.is_absolute()
+        && !homes.is_empty()
+        && !root.starts_with(&workspace)
+        && !workspace.starts_with(root)
+        && homes.iter().all(|home| {
+            !AGENT_STATE
+                .iter()
+                .any(|state| root.starts_with(home.join(state)))
+                && !sensitive_for_exec(root, home)
+        })
+        && sealed_ancestry(canonical);
+    admitted.then(|| root.to_path_buf())
 }
 
 /// Shared directories below HOME that many unrelated tools write into. A

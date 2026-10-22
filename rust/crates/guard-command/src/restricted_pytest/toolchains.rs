@@ -102,11 +102,17 @@ fn accept_entry(entry: &Path, home: Option<&Path>, workspace: &Path) -> Option<V
     // Any other directory must be one of the caller's sealed tool directories.
     let user_tool = || {
         let homes = homes(home);
-        user_tools::tool_root(&canonical, &homes, workspace).map(|root| {
-            let mut roots = vec![root.clone()];
-            roots.extend(user_tools::shim_siblings(&root, &homes, workspace));
-            roots
-        })
+        user_tools::tool_root(&canonical, &homes, workspace)
+            .map(|root| {
+                let mut roots = vec![root.clone()];
+                roots.extend(user_tools::shim_siblings(&root, &homes, workspace));
+                roots
+            })
+            // A tool directory inside an installed dependency tree carries no
+            // name of its own, so it is admitted as that tree instead.
+            .or_else(|| {
+                user_tools::package_tree_root(&canonical, &homes, workspace).map(|root| vec![root])
+            })
     };
     if forbidden(&canonical, home) || !owned_and_sealed(&canonical) {
         return user_tool();
