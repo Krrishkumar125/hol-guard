@@ -11,9 +11,16 @@
     {
       "id": "guard-approval-decision-wait",
       "fix_area": "shell",
-      "harnesses": ["codex", "claude-code", "omp", "cursor"],
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
       "tool": "shell",
-      "tool_input": {"command": "hol-guard approvals wait req-1 --json"},
+      "tool_input": {
+        "command": "hol-guard approvals wait req-1 --json"
+      },
       "cwd": "worktree",
       "expect": "allow"
     },
@@ -18564,38 +18571,6 @@
       "expect": "allow"
     },
     {
-      "id": "poetry-run-interpreter-version",
-      "fix_area": "package",
-      "harnesses": [
-        "codex",
-        "zcode",
-        "claude-code",
-        "omp"
-      ],
-      "tool": "shell",
-      "tool_input": {
-        "command": "poetry run python -V"
-      },
-      "cwd": "worktree",
-      "expect": "allow"
-    },
-    {
-      "id": "poetry-run-project-tests",
-      "fix_area": "package",
-      "harnesses": [
-        "codex",
-        "zcode",
-        "claude-code",
-        "omp"
-      ],
-      "tool": "shell",
-      "tool_input": {
-        "command": "poetry run pytest -q"
-      },
-      "cwd": "worktree",
-      "expect": "allow"
-    },
-    {
       "id": "neg-venv-pip-install-name",
       "fix_area": "negative",
       "harnesses": [
@@ -18902,7 +18877,9 @@
     {
       "id": "find-exec-literal-interpreter-argument",
       "fix_area": "shell",
-      "harnesses": ["claude-code"],
+      "harnesses": [
+        "claude-code"
+      ],
       "tool": "shell",
       "tool_input": {
         "command": "find src -exec echo sh {} \\;"
@@ -18913,7 +18890,9 @@
     {
       "id": "find-exec-escaped-regex-argument",
       "fix_area": "shell",
-      "harnesses": ["claude-code"],
+      "harnesses": [
+        "claude-code"
+      ],
       "tool": "shell",
       "tool_input": {
         "command": "find src -exec grep -l 'foo\\.bar' {} +"
@@ -19223,6 +19202,70 @@
       "tool": "shell",
       "tool_input": {
         "command": "LESSKEY=/tmp/keys git log"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-poetry-run-local-pip-install",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "poetry run pip install ./local-package"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-poetry-run-project-tests",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "poetry run pytest -q"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-poetry-version-separator-write",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "poetry version -- patch"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-poetry-check-project-override",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "poetry check --project=../dashboard"
       },
       "cwd": "worktree",
       "expect": "not_allow"
