@@ -47,7 +47,7 @@ pub(super) fn creates_links(literal: &str) -> bool {
                 | "submodule"
                 | "mv"
                 | "bisect"
-        ) || group_writes_tree(*word, listed.get(index + 1).copied())
+        ) || group_writes_tree(word, listed.get(index + 1).copied())
     });
     command_words(literal).any(|word| {
         let base = word.rsplit(['/', '\\']).next().unwrap_or(word);
