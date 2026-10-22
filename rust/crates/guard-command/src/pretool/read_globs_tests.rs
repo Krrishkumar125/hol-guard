@@ -154,8 +154,8 @@ fn a_pattern_without_a_directory_expands_in_the_working_directory() {
 }
 
 /// Without a directory prefix the expanded word is the name itself, so a name
-/// the program would read as an option, a secret extension and a hidden entry
-/// all keep their review.
+/// the program would read as an option or as a variable assignment, a secret
+/// extension and a hidden entry all keep their review.
 #[test]
 fn a_bare_pattern_still_refuses_an_option_or_a_secret() {
     let root = std::path::Path::new("/tmp").join(format!("guard-glob-dash-{}", std::process::id()));
@@ -180,6 +180,14 @@ fn a_bare_pattern_still_refuses_an_option_or_a_secret() {
     std::fs::write(workspace.join("-n.txt"), "option\n").unwrap();
     assert_eq!(super::glob_file_matches("*.txt", context), None);
     std::fs::remove_file(workspace.join("-n.txt")).unwrap();
+
+    // `awk '{print}' *.txt` hands every match on as an operand, and an
+    // operand spelled `name=value` sets a variable instead of naming a file.
+    // The proof would stand for a read the command never performs, so the
+    // match keeps its review.
+    std::fs::write(workspace.join("FS=x.txt"), "assignment\n").unwrap();
+    assert_eq!(super::glob_file_matches("*.txt", context), None);
+    std::fs::remove_file(workspace.join("FS=x.txt")).unwrap();
 
     assert_eq!(
         super::glob_file_matches("report.*", context),

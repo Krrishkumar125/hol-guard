@@ -13,9 +13,12 @@
 //! shell default. Entries with non-ASCII names also send it to review,
 //! because `?` matches a byte or a character depending on the locale. The
 //! directory prefix stays in every expanded word, so no match can begin with
-//! `-` and be read as an option. A pattern with no directory at all (`cat
-//! *.md`) names the working directory and expands to bare names, so each of
-//! those words is checked for a leading `-` of its own.
+//! `-` and be read as an option, nor spell the `name=value` an `awk` operand
+//! would take as a variable assignment rather than a file. A pattern with no
+//! directory at all (`cat *.md`) names the working directory and expands to
+//! bare names, so each of those words is checked for both shapes of its own:
+//! a name like `FS=x.txt` would make `awk` assign `FS` and fall back to
+//! standard input, leaving the read this proof stands for undone.
 
 use std::path::{Path, PathBuf};
 
@@ -45,7 +48,8 @@ pub(in crate::pretool) fn glob_file_matches(
     // A pattern with no directory names the working directory. The shell
     // passes each match on as the bare name, so `.` anchors the proof exactly
     // as an explicit `./` prefix does while the word stays what the shell
-    // spells, and a match that would read as an option keeps its review.
+    // spells, and a match a reader would take for an option or an assignment
+    // keeps its review.
     let (directory, pattern, bare) = match value.rsplit_once('/') {
         Some((directory, pattern)) => (directory, pattern, false),
         None => (".", value, true),
@@ -83,7 +87,7 @@ pub(in crate::pretool) fn glob_file_matches(
             format!("{directory}/{name}")
         };
         if matches.len() >= MAX_MATCHES
-            || (bare && word.starts_with('-'))
+            || (bare && (word.starts_with('-') || word.contains('=')))
             || !readable_match(&word, name, &base, context)
         {
             return None;
