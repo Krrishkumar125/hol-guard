@@ -19,7 +19,7 @@ def migrate_active(store, installed):
     # Finish an anchored replacement before preparing another one. A shared
     # read cannot resume the SQL/anchor journal after an interrupted startup.
     with store._extension_control_authority_lock():
-        store._read_extension_control_authority_locked(previous.metadata.catalog_digest, allow_migration=False)
+        store._read_extension_control_authority_locked(previous.metadata.catalog_digest)
     previous = activation_store.read(store)
     if previous.engine == installed.engine:
         active_security.reconcile(store)
