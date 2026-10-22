@@ -132,7 +132,10 @@ jobs:
           set -euo pipefail
           prior_sha=$(python3 -c 'import pathlib,re; print(re.search(r"NATIVE_OFFLINE_PREVIOUS_SHA: ([0-9a-f]{40})", pathlib.Path(".github/workflows/ci.yml").read_text()).group(1))')
           test "$(git -C previous-client rev-parse HEAD)" = "$prior_sha"
-          uv run --no-sync python -m pytest -q --tb=short tests/test_native_pack_offline_upgrade.py
+          probe='import json,sys;from codex_plugin_scanner.guard.native_runtime import native_runtime_status as s;t=s();print("DIAG",sys.argv[1],json.dumps({"available":t.available,"compatible":t.compatible,"identity":None if t.identity is None else str(t.identity.path),"features":sorted(t.capabilities.features) if t.capabilities else None}))'
+          uv run --no-sync python -c "$probe" current || true
+          HOL_GUARD_NATIVE_BINARY="$NATIVE_ACTIVATION_PREVIOUS_BINARY" uv run --no-sync python -c "$probe" previous || true
+          uv run --no-sync python -m pytest -q --tb=long -s tests/test_native_pack_offline_upgrade.py
 
       - name: Assemble the native wheel
         env:
