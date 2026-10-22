@@ -405,19 +405,16 @@ fn consume_before(scope: &Path, deadline: Option<Instant>) -> Result<(), String>
 /// Whether a finished resident run was an orderly lifecycle rather than a
 /// restart.
 ///
-/// A one-shot `hol-guard hook` call owns the resident it spawns: the resident
-/// starts, answers, and shuts itself down a second after the call's lease
-/// drops. That is a complete lifecycle, not a restart, and charging it to the
-/// crash-loop budget made four ordinary tool calls inside a minute open the
-/// circuit.
-///
 /// A run that was asked to stop is orderly however briefly it lived. Asking
-/// it to live a second first is not a test of health: a resident is stopped
-/// the moment another runtime wants the home-wide owner lock, so two builds
-/// sharing one guard home stop each other's resident within milliseconds.
-/// Scoring those stops as crashes opened the circuit after three of them in a
-/// minute, and from there no resident could start, no policy could be
-/// published, and every prompt was refused with `native_policy_not_ready`.
+/// it to live a second first is not a test of health. A `shutdown` operation
+/// reaches a resident from exactly two places: a runtime of a different
+/// digest retiring it to take the home-wide owner lock, and an explicit
+/// `resident-stop`. Two builds installed against one guard home -- a desktop
+/// bundle and a package install, say -- therefore stop each other's resident
+/// within milliseconds, over and over. Scoring those stops as crashes opened
+/// the circuit after three of them in a minute, and from there no resident
+/// could start, no policy could be published, and every prompt was refused
+/// with `native_policy_not_ready`.
 ///
 /// Only a run that failed -- a non-zero exit, a signal, or a success reported
 /// so fast the resident cannot have served anything and nobody asked it to
