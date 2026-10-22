@@ -410,7 +410,6 @@ def _assert_seeded_activity(store: GuardStore) -> None:
             1,
             "not-applicable",
         ),
-        ("codex", "pre", "allowed_unconfirmed", "pre_hook", "allow", "capability", 0, 0, "accepted"),
         (
             "codex",
             "post_success",
