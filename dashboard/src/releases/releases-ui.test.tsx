@@ -284,4 +284,36 @@ const detail: ReleaseDetail = {
   assert.match(markup, /Running here/);
 }
 
+// Notes published for the whole series describe the series, so this release's
+// own summary and its documented changes stay on the page beside them.
+{
+  const markup = renderToStaticMarkup(
+    createElement(ReleaseDetailPanel, {
+      detail: {
+        ...detail,
+        summary: "Extensions are now the first thing you see.",
+        changes: [
+          ...detail.changes,
+          {
+            id: "doc-1",
+            kind: "other" as const,
+            summary: "Documented change: the sidebar groups extensions first.",
+            evidenceUrl: null,
+          },
+        ],
+        sourceNotes: {
+          scope: "train_overview",
+          text: "## 3.53 series\n\n- Rolling notes for the series.",
+        },
+      },
+    }),
+  );
+  assert.match(markup, /Extensions are now the first thing you see\./, "the release summary survives series notes");
+  assert.match(markup, /the sidebar groups extensions first/, "a documented change is the only record of this version");
+  assert.ok(
+    !markup.includes("Itemised changes"),
+    "series notes do not speak for this release, so the change list is not collapsed behind them",
+  );
+}
+
 console.log("releases-ui.test.tsx passed");

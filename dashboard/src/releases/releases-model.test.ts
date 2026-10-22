@@ -410,4 +410,63 @@ function change(kind: ReleaseChange["kind"], id: string): ReleaseChange {
   assert.equal(promoted[0].evidenceUrl, "https://github.com/o/r/pull/5");
 }
 
+// Two pull requests that both cite the same issue are two changes: the key
+// has to come from the pull request, not from the first number in the line.
+{
+  const change = (over: Partial<ReleaseChange>): ReleaseChange => ({
+    id: over.id ?? "x",
+    kind: over.kind ?? "other",
+    summary: over.summary ?? "",
+    evidenceUrl: over.evidenceUrl ?? null,
+  });
+  const deduped = dedupeChanges(
+    [
+      change({ id: "1", summary: "fix(native): close #5400 for the resident (#5501)" }),
+      change({ id: "2", summary: "fix(dashboard): close #5400 for the panel (#5502)" }),
+    ],
+    true,
+  );
+  assert.equal(deduped.length, 2, "distinct pull requests citing one issue stay distinct");
+  // The evidence URL outranks any number in the prose.
+  const byUrl = dedupeChanges(
+    [
+      change({ id: "3", summary: "Rework #5400 (#5501)", evidenceUrl: "https://github.com/o/r/pull/5600" }),
+      change({ id: "4", summary: "Rework again (#5502)", evidenceUrl: "https://github.com/o/r/pull/5600" }),
+    ],
+    true,
+  );
+  assert.equal(byUrl.length, 1);
+}
+
+// A roster row that resolved the person outranks one that did not: the chip
+// must not keep an unresolved type or a missing link when a sibling has them.
+{
+  const credit = (over: Partial<ReleaseContributor>): ReleaseContributor =>
+    ({
+      creditId: "c",
+      type: "unresolved",
+      login: null,
+      githubNumericId: 7788,
+      roles: ["implementation"],
+      verificationMethod: "verified-coauthor",
+      evidenceUrl: null,
+      ...over,
+    }) as ReleaseContributor;
+
+  const merged = mergeContributors([
+    credit({ creditId: "1" }),
+    credit({ creditId: "2", type: "human", login: "kantorcodes", evidenceUrl: "https://github.com/o/r/pull/9" }),
+  ]);
+  assert.equal(merged[0].login, "kantorcodes");
+  assert.equal(merged[0].type, "human");
+  assert.equal(merged[0].evidenceUrl, "https://github.com/o/r/pull/9");
+
+  // Stronger proof without a link must not cost the contributor the link.
+  const kept = mergeContributors([
+    credit({ creditId: "1", type: "human", login: "kantorcodes", evidenceUrl: "https://github.com/o/r/pull/9" }),
+    credit({ creditId: "2", type: "human", login: "kantorcodes", verificationMethod: "pull-request-author" }),
+  ]);
+  assert.equal(kept[0].evidenceUrl, "https://github.com/o/r/pull/9");
+}
+
 console.log("releases-model.test.ts passed");

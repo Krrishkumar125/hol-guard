@@ -75,8 +75,8 @@ export function ReleaseArchiveList(props: {
   return (
     <nav aria-label="Published Guard releases" className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
-        {groups.map((group) => (
-          <section key={group.train} aria-label={`${group.train} series`}>
+        {groups.map((group, position) => (
+          <section key={`${group.train}-${position}`} aria-label={`${group.train} series`}>
             <h3 className="sticky top-0 z-10 bg-white/90 px-1.5 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-dark/45 backdrop-blur">
               {group.train}
             </h3>

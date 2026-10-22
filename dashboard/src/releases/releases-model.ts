@@ -247,15 +247,22 @@ export function pageRangeLabel(index: ReleaseIndex): string {
  * over is the loudest problem on this screen, so entries that point at the
  * same pull request collapse to the one that carries a classification.
  */
-const PULL_REQUEST_PATTERN = /#(\d{1,7})\b/;
+const PULL_REQUEST_PATTERN = /#(\d{1,7})\b/g;
+const TRAILING_PULL_REQUEST = /\(#(\d{1,7})\)\s*$/;
 const DOCUMENTED_PREFIX = /^documented change:/i;
 const MERGE_PREFIX = /^merged pull request\b/i;
 
 function pullRequestKey(change: ReleaseChange): string | null {
   const fromEvidence = change.evidenceUrl?.match(/\/pull\/(\d{1,7})(?:\D|$)/);
   if (fromEvidence) return fromEvidence[1];
-  const fromSummary = change.summary.match(PULL_REQUEST_PATTERN);
-  return fromSummary ? fromSummary[1] : null;
+  const summary = change.summary.trim();
+  // A squash-merge title carries the pull request last — "Fix the crash from
+  // #12 (#5500)" — while anything earlier is an issue it mentions. Keying on
+  // the first number would fold two changes that cite the same issue into one.
+  const trailing = TRAILING_PULL_REQUEST.exec(summary);
+  if (trailing) return trailing[1];
+  const numbers = [...summary.matchAll(PULL_REQUEST_PATTERN)];
+  return numbers.length > 0 ? numbers[numbers.length - 1][1] : null;
 }
 
 export function dedupeChanges(
@@ -417,8 +424,19 @@ export function mergeContributors(roster: ReleaseContributor[]): MergedContribut
     // request, so the strongest proof this person has wins the chip.
     if (seen.verificationMethod !== "pull-request-author" && contributor.verificationMethod === "pull-request-author") {
       seen.verificationMethod = contributor.verificationMethod;
-      seen.evidenceUrl = contributor.evidenceUrl;
+      // Stronger proof only replaces the link when it brings one: a credit row
+      // without a URL must not cost the contributor the link they had.
+      if (contributor.evidenceUrl) seen.evidenceUrl = contributor.evidenceUrl;
     }
+    // Rows for one numeric identity can arrive before the feed resolved the
+    // login, so take the name as soon as any row carries it rather than
+    // leaving the chip on its "GitHub user 1234" fallback.
+    if (!seen.login && contributor.login) {
+      seen.login = contributor.login;
+      if (seen.type === "unresolved") seen.type = contributor.type;
+    }
+    if (seen.type === "unresolved" && contributor.type !== "unresolved") seen.type = contributor.type;
+    if (!seen.evidenceUrl && contributor.evidenceUrl) seen.evidenceUrl = contributor.evidenceUrl;
   }
   for (const merged of byIdentity.values()) merged.roles.sort();
   return [...byIdentity.values()].sort((a, b) => b.credits - a.credits || contributorName(a).localeCompare(contributorName(b)));

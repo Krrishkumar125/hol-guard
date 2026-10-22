@@ -146,14 +146,16 @@ export function ReleaseDetailPanel({
   isInstalled?: boolean;
 }) {
   const notes = detail.sourceNotes;
-  const changes = useMemo(() => dedupeChanges(detail.changes, notes !== null), [detail.changes, notes]);
+  // The notes carry the whole release when they were written for it, so the
+  // itemised list derived from the same commits is a second telling.
+  const notesLead = notes !== null && notes.scope === "exact_release";
+  // Train-scoped notes describe a series, not this version, so a documented
+  // change here is the only record of what shipped and has to survive.
+  const changes = useMemo(() => dedupeChanges(detail.changes, notesLead), [detail.changes, notesLead]);
   const sections = useMemo(() => groupChangesByKind(changes), [changes]);
   const assets = useMemo(() => groupReleaseAssets(detail.assets), [detail.assets]);
   const roster = useMemo(() => mergeContributors(detail.roster), [detail.roster]);
   const note = coverageNote(detail.coverage);
-  // The notes carry the whole release when they were written for it, so the
-  // itemised list derived from the same commits is a second telling.
-  const notesLead = notes !== null && notes.scope === "exact_release";
   const changeList =
     sections.length > 0 ? (
       <div className="space-y-5">
@@ -219,9 +221,19 @@ export function ReleaseDetailPanel({
           )}
           <ReleaseNotes source={notes.text} />
         </section>
-      ) : detail.summary ? (
-        <ReleaseNotes source={detail.summary} />
       ) : null}
+
+      {notesLead || !detail.summary ? null : (
+        <section aria-labelledby="release-summary-heading" className="space-y-3">
+          <h3
+            id="release-summary-heading"
+            className="text-xs font-semibold uppercase tracking-[0.06em] text-brand-dark/45"
+          >
+            {notes === null ? "Release notes" : "Notes for this release"}
+          </h3>
+          <ReleaseNotes source={detail.summary} />
+        </section>
+      )}
 
       {changeList === null ? (
         <p className="text-sm text-brand-dark/70">No itemised changes were published for this release.</p>

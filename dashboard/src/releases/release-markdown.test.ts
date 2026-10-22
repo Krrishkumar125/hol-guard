@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { parseReleaseMarkdown, releaseMarkdownToText, safeHref } from "./release-markdown";
-import type { ReleaseBlock, ReleaseInline } from "./release-markdown";
+import type { ReleaseBlock, ReleaseInline, ReleaseListItem } from "./release-markdown";
 
 function flatten(nodes: readonly ReleaseInline[]): string {
   return nodes
@@ -163,6 +163,61 @@ const PUBLISHED_NOTES = [
     releaseMarkdownToText("**11 commits** since [Guard 3.53.0a2](https://github.com/x/y).\n\n## Fixes\n\n- A `fix`"),
     "11 commits since Guard 3.53.0a2. Fixes A fix",
   );
+}
+
+// Underscores inside an identifier are part of the name, not emphasis: a
+// setting such as HOL_GUARD_NATIVE must survive the parser intact.
+{
+  const [block] = parseReleaseMarkdown("Set HOL_GUARD_NATIVE_BINARY and_then restart.");
+  const nodes = block.kind === "paragraph" ? block.children : [];
+  assert.equal(nodes.every((node) => node.kind === "text"), true, "intraword underscores must not italicise");
+  assert.equal(flatten(nodes), "Set HOL_GUARD_NATIVE_BINARY and_then restart.");
+  // A word-boundary underscore is still emphasis.
+  const [emphasised] = parseReleaseMarkdown("_italic_ text");
+  const emphasisedNodes = emphasised.kind === "paragraph" ? emphasised.children : [];
+  assert.equal(emphasisedNodes[0]?.kind, "emphasis");
+}
+
+// A bullet run stops at the next block: a heading, fence, quote or rule that
+// follows an item is its own block and not a continuation line.
+{
+  const blocks = parseReleaseMarkdown("- First item\n## Fixes\n- Second item");
+  assert.equal(only(blocks, "heading").length, 1);
+  assert.equal(only(blocks, "list").length, 2);
+  assert.equal(flatten(only(blocks, "list")[0].items[0].children), "First item");
+}
+
+// A fence the strict matcher rejects must not swallow the rest of the notes.
+{
+  const blocks = parseReleaseMarkdown("```js bad fence\nhol-guard status\n\n## Fixes\n\n- Still rendered");
+  assert.equal(only(blocks, "heading").length, 1);
+  assert.equal(flatten(only(blocks, "list")[0].items[0].children), "Still rendered");
+}
+
+// Lists nested past the panel's depth flatten rather than growing an outline
+// the layout has no indent for.
+{
+  const blocks = parseReleaseMarkdown("- One\n  - Two\n    - Three\n      - Four");
+  const depth = (items: readonly ReleaseListItem[], level = 1): number =>
+    items.reduce(
+      (deepest, item) => (item.items.length > 0 ? Math.max(deepest, depth(item.items, level + 1)) : deepest),
+      level,
+    );
+  const outer = only(blocks, "list")[0];
+  assert.equal(depth(outer.items), 2, "nesting must clamp to MAX_LIST_DEPTH");
+  // Nothing is lost by the clamp: the deepest items move up a level.
+  const flattenedText = outer.items.flatMap((item) => [flatten(item.children), ...item.items.map((child) => flatten(child.children))]);
+  assert.deepEqual(flattenedText, ["One", "Two", "Three", "Four"]);
+}
+
+// Unclosed inline markup stays linear: the scan budget stops the parser from
+// rescanning the tail once per candidate opener.
+{
+  const started = Date.now();
+  const line = "[".repeat(30_000) + "`".repeat(30_000) + "http".repeat(10_000);
+  const blocks = parseReleaseMarkdown(line);
+  assert.ok(Date.now() - started < 4_000, "unclosed inline markup must not scan quadratically");
+  assert.ok(blocks.length >= 1);
 }
 
 console.log("release-markdown tests passed");
