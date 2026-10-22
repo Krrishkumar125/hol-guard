@@ -172,7 +172,7 @@ fn sealed_below(root: &Path, directory: &Path) -> bool {
 /// directories are. Such a grant carries whatever else the tree holds, so the
 /// Linux sandbox hides the credential files inside it as it does the
 /// workspace's.
-pub(super) fn is_package_tree(root: &Path) -> bool {
+pub(in crate::restricted_pytest) fn is_package_tree(root: &Path) -> bool {
     root.file_name() == Some(OsStr::new(PACKAGE_TREE))
 }
 
