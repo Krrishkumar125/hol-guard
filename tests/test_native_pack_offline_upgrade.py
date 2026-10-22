@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -26,8 +27,12 @@ from codex_plugin_scanner.guard.daemon import extension_control_prepared as cand
 from codex_plugin_scanner.guard.daemon.extension_control_api import ExtensionControlApiService
 from codex_plugin_scanner.guard.extension_builder import native_source_compiler as transport
 from codex_plugin_scanner.guard.native_command_control_authority_store import _key
+from codex_plugin_scanner.guard.native_policy_snapshot_publisher import NativePolicySnapshotPublisher
 from codex_plugin_scanner.guard.runtime.command_extensions import BUILT_IN_COMMAND_EXTENSION_REGISTRY
-from codex_plugin_scanner.guard.runtime.extension_control_authority import AuthorityPhase
+from codex_plugin_scanner.guard.runtime.extension_control_authority import (
+    AuthorityPhase,
+    ExtensionControlAuthorityError,
+)
 from codex_plugin_scanner.guard.runtime.extension_control_runtime import ExtensionControlRuntime
 from codex_plugin_scanner.guard.store import GuardStore
 from tests.extension_builder_support import use_installed_native_source_compiler
@@ -208,6 +213,21 @@ def test_real_packaged_cross_engine_and_changed_source_offline_api_upgrade(tmp_p
         )
         if old.engine != authority.engine and version == "3.50.0a1":
             original_anchor = store._write_and_verify_anchor
+            original_migration = store._migrate_extension_control_catalog
+
+            def check_upgrade_boundary(action, _migrate=original_migration, _old=old.engine, **kwargs):
+                changed = copy.deepcopy(action)
+                for layer in changed["layers"]:
+                    layer["controls"] = []
+                with pytest.raises(ExtensionControlAuthorityError, match="changed controls"):
+                    _migrate(changed, **kwargs)
+                for field in ("release", "next_floor"):
+                    evidence = copy.deepcopy(kwargs["installed_upgrade"])
+                    evidence[field] = None
+                    with pytest.raises(ExtensionControlAuthorityError, match="not authorized"):
+                        _migrate(action, **{**kwargs, "installed_upgrade": evidence})
+                assert activation_store.read(store).engine == _old
+                return _migrate(action, **kwargs)
 
             def interrupt_after_anchor(anchor, _write=original_anchor, **kwargs):
                 _write(anchor, **kwargs)
@@ -216,6 +236,7 @@ def test_real_packaged_cross_engine_and_changed_source_offline_api_upgrade(tmp_p
 
             with monkeypatch.context() as interrupted:
                 interrupted.setattr(store, "_write_and_verify_anchor", interrupt_after_anchor)
+                interrupted.setattr(store, "_migrate_extension_control_catalog", check_upgrade_boundary)
                 with pytest.raises(RuntimeError, match="fixture interrupted after anchored upgrade"):
                     store.migrate_installed_command_pack_authority()
             assert activation_store.read(store).engine == old.engine
@@ -234,8 +255,22 @@ def test_real_packaged_cross_engine_and_changed_source_offline_api_upgrade(tmp_p
         ]
         with store._connect() as connection:
             assert [tuple(row) for row in connection.execute("select * from policy_decisions")] == saved_decisions
-        store.migrate_installed_command_pack_authority()
+        lock = store._extension_control_authority_lock
+
+        def shared_only(*args, _lock=lock, **kwargs):
+            assert kwargs.get("shared") is True, "unchanged startup requested an exclusive lease"
+            return _lock(*args, **kwargs)
+
+        with monkeypatch.context() as unchanged:
+            unchanged.setattr(store, "_extension_control_authority_lock", shared_only)
+            store.migrate_installed_command_pack_authority()
         assert activation_store.read(store).record_digest == recovered.record_digest
+        publisher = NativePolicySnapshotPublisher(store=store)
+        try:
+            publisher._publish_once()
+            assert publisher.is_ready(), publisher.last_error
+        finally:
+            publisher.close()
         service = ExtensionControlApiService(
             store=store, registry=recovered_registry, runtime=ExtensionControlRuntime(controls_after)
         )

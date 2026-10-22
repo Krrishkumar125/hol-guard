@@ -30,7 +30,7 @@ def _store(directory: Path) -> Path:
         connection.execute(
             "create table sync_state (state_key text primary key, payload_json text not null, updated_at text not null)"
         )
-        ensure_extension_control_authority_schema(connection)
+        ensure_extension_control_authority_schema(connection, activate_packs=True)
     return path
 
 
@@ -81,6 +81,7 @@ def test_settled_reply_outlives_unrelated_commits_but_not_an_authority_write(tmp
     "statement",
     [
         "insert into extension_control_catalog_manifest values ('d', '{}', '{}', 'r', 'm', 't')",
+        "insert into extension_command_pack_activation values (1, 0, '{}', 'd', 'm', 't')",
         "insert into guard_events (event_name, payload_json, occurred_at) "
         "values ('extension_control_authority_catalog_migrated', '{}', 't')",
         "insert into sync_state values ('managed_controls_active', '{}', 't')",

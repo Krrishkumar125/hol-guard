@@ -24,7 +24,7 @@ from ci.gauntlet.installed_registration import (
     install_harness,
     load_contract,
 )
-from ci.gauntlet.installed_replay import handler_argv, registered_argv, replay_case
+from ci.gauntlet.installed_replay import NON_DECISION_REASONS, handler_argv, registered_argv, replay_case
 from ci.gauntlet.installed_runtime import (
     FROZEN_ONEDIR,
     SCRIPT,
@@ -38,13 +38,7 @@ from ci.gauntlet.installed_store import STALE_COMMAND
 
 @pytest.mark.parametrize(
     "reason_code",
-    [
-        "native_policy_not_ready",
-        "native_pre_tool_unavailable",
-        "native_hook_worker_exception",
-        "native_request_invalid_json",
-        "daemon_hook_deadline_exhausted",
-    ],
+    sorted(NON_DECISION_REASONS),
 )
 def test_infrastructure_denials_do_not_count_as_attack_protection(tmp_path, monkeypatch, reason_code):
     import subprocess
@@ -74,6 +68,17 @@ def test_infrastructure_denials_do_not_count_as_attack_protection(tmp_path, monk
 
 
 HARNESSES = ["claude-code"]
+
+
+def test_lane_owned_infrastructure_codes_cover_product_availability_failures():
+    from codex_plugin_scanner.guard.daemon.hook_availability_policy import (
+        _INTEGRITY_FAIL_CLOSED_REASON_CODES,
+        _REVIEW_CANNOT_FINISH_REASON_CODES,
+    )
+
+    # The oracle stays lane-owned; adding a product outage code cannot silently
+    # make that denial qualify as policy protection.
+    assert (_INTEGRITY_FAIL_CLOSED_REASON_CODES | _REVIEW_CANNOT_FINISH_REASON_CODES) <= NON_DECISION_REASONS
 
 
 def test_registered_hook_percentiles_include_timeouts(tmp_path, monkeypatch):

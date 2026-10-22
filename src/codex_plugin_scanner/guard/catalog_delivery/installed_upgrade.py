@@ -20,8 +20,17 @@ from .cache_io import Lease
 
 @lifecycle.one_runtime
 def migrate_active(store, installed):
-    previous = activation_store.read(store)
-    if previous is None:
+    with store._extension_control_authority_lock(shared=True):
+        previous = activation_store.read(store)
+        if previous is None:
+            return
+        key = store._authority_key(required=True)
+        anchor = store._read_anchor(key=key)
+        current = (
+            previous.engine == installed.engine and anchor is not None and anchor.phase is AuthorityPhase.COMMITTED
+        )
+    if current:
+        active_security.reconcile(store)
         return
     # Finish an anchored replacement before preparing another one. A shared
     # read cannot resume the SQL/anchor journal after an interrupted startup.

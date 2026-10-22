@@ -17,7 +17,7 @@ use super::layers::{
 use super::plans::{plan, sealed, with_pack};
 use super::records::{
     authenticated_record, canonical, exact_int, field, private_hash, py_eq, query_row, row_int,
-    row_text, tampered, verify_record, Anchor, Phase, Res, ANCHOR_PURPOSE,
+    row_text, snapshot_pack_binding, tampered, verify_record, Anchor, Phase, Res, ANCHOR_PURPOSE,
     CATALOG_MANIFEST_PURPOSE, SNAPSHOT_PURPOSE, TRANSITION_PURPOSE,
 };
 use super::Ctx;
@@ -248,11 +248,11 @@ impl Ctx<'_> {
             }
         };
         let revision = migration.previous_revision + 1;
-        let pack_digest = self.installed_upgrade_digest(
-            source
-                .as_ref()
-                .ok_or_else(|| tampered("migration source missing"))?,
-        )?;
+        let source_row = source
+            .as_ref()
+            .ok_or_else(|| tampered("migration source missing"))?;
+        let pack_digest = self.installed_upgrade_digest(source_row)?;
+        let retained = snapshot_pack_binding(source_row, key)?;
         let reference = format!(
             "catalog-migration:{}:{catalog_digest}:{}",
             migration.previous_catalog_digest, migration.previous_revision
@@ -266,7 +266,10 @@ impl Ctx<'_> {
             "committed_at": created_at,
         });
         let snapshot = sealed(
-            with_pack(snapshot_payload, pack_digest.as_deref()),
+            with_pack(
+                snapshot_payload,
+                pack_digest.as_deref().or(retained.as_deref()),
+            ),
             key,
             SNAPSHOT_PURPOSE,
         )?;

@@ -130,6 +130,33 @@ fn migration(previous_catalog_digest: &str) -> ExtensionControlCatalogMigrationV
 }
 
 #[test]
+fn ordinary_catalog_rebinding_retains_the_committed_pack_without_reserving_one() {
+    let home = Home::new();
+    let pack = "a".repeat(64);
+    home.commit_bound(
+        1,
+        &catalog('b'),
+        &[local(&catalog('b'))],
+        "committed",
+        Some(&pack),
+    );
+    let result = run(&ExtensionControlAuthorityRequestV1 {
+        catalog_migration: Some(migration(&catalog('b'))),
+        ..writer(&home, "migrate_plan")
+    });
+    let plan = &result["plan"];
+    assert_eq!(plan["outcome"], "migrate", "{result}");
+    assert_eq!(
+        sealed(&plan["snapshot"], SNAPSHOT_PURPOSE)["command_pack_record_digest"],
+        json!(pack)
+    );
+    assert!(
+        !sealed(&plan["transition"], TRANSITION_PURPOSE).contains_key("command_pack_record_digest")
+    );
+    assert!(plan["command_pack_record_digest"].is_null());
+}
+
+#[test]
 fn a_catalog_migration_seals_the_rebinding_on_the_source_head() {
     let home = Home::new();
     home.commit(1, &catalog('b'), &[local(&catalog('b'))], "committed");
