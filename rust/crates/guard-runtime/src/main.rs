@@ -265,6 +265,7 @@ mod extension_allow_hint_op;
 mod extension_control_authority_op;
 mod extension_control_mutation_op;
 mod extension_control_op;
+mod extension_control_prepared_op;
 mod extension_control_preview_op;
 mod extension_control_proof;
 #[path = "adapters/detection/gemini_detect.rs"]
