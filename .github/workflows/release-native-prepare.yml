@@ -253,6 +253,7 @@ jobs:
         run: python -m scripts.release.native_artifact admit-upload
       - name: Retain stable version-change binaries
         if: steps.native-retention.outputs.accepted == 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-native-warm-${{ matrix.target }}

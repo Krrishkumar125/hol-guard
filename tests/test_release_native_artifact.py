@@ -417,6 +417,14 @@ def test_workflow_keeps_cache_artifact_and_compile_verification_gates():
     for name in ("Install pinned Rust target", "Compile canonical release inputs", "Cache trusted release compilation"):
         assert "steps.native-artifact.outputs.accepted != 'true'" in steps[name]["if"]
     upload = steps["Retain stable version-change binaries"]
+    assert upload["continue-on-error"] is True
     assert upload["with"]["retention-days"] == 1
     assert upload["with"]["compression-level"] == 0
     assert "native-retention.outputs.accepted == 'true'" in upload["if"]
+    for name in (
+        "Verify release enrollment root",
+        "Verify restored native release inputs",
+        "Compile canonical release inputs",
+        "Upload exact-run binaries",
+    ):
+        assert steps[name].get("continue-on-error", False) is False
