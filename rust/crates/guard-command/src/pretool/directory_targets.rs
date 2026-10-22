@@ -419,7 +419,8 @@ impl<'a> super::PathContext<'a> {
         // the running subcommand takes, each of which can add the index query
         // or the log file the command itself leaves out. What counts as inert
         // is pip's own surface, so [`super::pip_reads`] reads it.
-        let pip_config_inert = super::pip_reads::configuration_inert(execution_environment);
+        let pip_config_inert =
+            super::pip_reads::environment_configuration_inert(execution_environment);
         // ripgrep reads RIPGREP_CONFIG_PATH unless the command passes
         // `--no-config`, and ignores it only when it is empty. A stamped
         // environment carries names without values, so any name counts.

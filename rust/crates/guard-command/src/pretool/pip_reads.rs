@@ -295,7 +295,7 @@ const XDG_CONFIG_HOME_NAME: &str = "XDG_CONFIG_HOME";
 /// environment is the session's. Either way a variable pip reads keeps the
 /// command out, and a redirected configuration directory is read where pip
 /// would read it.
-pub(super) fn configuration_inert(
+pub(super) fn environment_configuration_inert(
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> bool {
     match execution_environment {
