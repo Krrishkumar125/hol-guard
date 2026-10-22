@@ -1,0 +1,15 @@
+{
+  "builderVersion": "1.0.0",
+  "contributionId": "command.secret-blast-radius",
+  "managedFiles": {
+    "contributions/authoring/command.secret-blast-radius/README.md": "58b106253ef8a972a0ea77c9cf4c5cddf8667f93cc3c2ff8dbe31ade6319da36",
+    "contributions/authoring/command.secret-blast-radius/discovery.json": "afd66435babdeb4e27412b42ddc9d829b97343789796ae960ecafb76ffc91bf2",
+    "contributions/authoring/command.secret-blast-radius/report.json": "6952018fae1161b4fb97d3e409b6149eff076d69bba5c7b6fd1d6f99e9b6a48d",
+    "contributions/authoring/command.secret-blast-radius/review.json": "31117cb6b6ca6659f776dcfba53b39cf64fb9655c3f7065f2ec5af6222d39dee",
+    "contributions/command-sources/command.secret-blast-radius.json": "7255e936d31ecf12869f8e3f02e79fb246b073d78bfdc6fe63b9117ae4760557",
+    "contributions/extensions/command.secret-blast-radius.json": "97f18ee20e5f03065e93b978c5ecb92b014987af50f7ee0c297696bf33e87850",
+    "tests/fixtures/command-source-secret-blast-radius.v1.json": "216186c93ca80ec26b66152585b1aa35c37f0d5a3bbddd5c94f9427352039f1e"
+  },
+  "revisionDigest": "7e55ab728f3d06867fce33c4b956bbd4d92100e489baecdd26ea8e7f10bc2959",
+  "schemaVersion": "guard.extension-authoring-install.v1"
+}
