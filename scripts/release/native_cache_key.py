@@ -22,6 +22,8 @@ def build_id(environment: Mapping[str, str]) -> str:
     fast = environment.get("FAST_CODEGEN", "false")
     if fast not in {"true", "false"}:
         raise ValueError("release binary cache requires an explicit codegen profile")
+    if fast == "true" and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+a[1-9][0-9]*", bound["VERSION"]) is None:
+        raise ValueError("fast release binaries require a canonical alpha version")
     identity: dict[str, object] = {**bound, "fast_codegen": fast}
     identity["alpha_workspace_opt_level"] = environment.get("ALPHA_WORKSPACE_OPT_LEVEL", "") if fast == "true" else ""
     identity["compiler_environment"] = fingerprint(environment)

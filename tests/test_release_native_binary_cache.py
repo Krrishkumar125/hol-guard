@@ -50,11 +50,13 @@ def environment() -> dict[str, str]:
 )
 def test_binary_reuse_rejects_each_changed_build_input(name, value):
     original = environment()
+    if name == "FAST_CODEGEN":
+        original["VERSION"] = "3.54.0a1"
     assert build_id({**original, name: value}) != build_id(original)
 
 
 def test_alpha_workspace_optimization_is_bound_only_when_used():
-    original = {**environment(), "FAST_CODEGEN": "true", "ALPHA_WORKSPACE_OPT_LEVEL": "1"}
+    original = {**environment(), "VERSION": "3.54.0a1", "FAST_CODEGEN": "true", "ALPHA_WORKSPACE_OPT_LEVEL": "1"}
     assert build_id(original) != build_id({**original, "ALPHA_WORKSPACE_OPT_LEVEL": "2"})
     stable = environment()
     assert build_id(stable) == build_id({**stable, "ALPHA_WORKSPACE_OPT_LEVEL": "1"})
@@ -64,6 +66,12 @@ def test_cache_identity_ignores_scheduling_and_environment_order():
     original = environment()
     reordered = dict(reversed(list(original.items())))
     assert build_id(original) == build_id({**reordered, "GITHUB_RUN_ID": "987", "CI_PYTEST_COVERAGE_SHARDS": "128"})
+
+
+@pytest.mark.parametrize("version", ["3.54.0", "3.54.0.dev123", "3.54.0a0"])
+def test_fast_profile_restriction_is_checked_before_cache_lookup(version):
+    with pytest.raises(ValueError, match="canonical alpha"):
+        build_id({**environment(), "VERSION": version, "FAST_CODEGEN": "true"})
 
 
 @pytest.mark.parametrize(
