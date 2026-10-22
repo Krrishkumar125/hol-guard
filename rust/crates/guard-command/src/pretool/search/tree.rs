@@ -71,10 +71,23 @@ pub(in crate::pretool) const SECRET_EXTENSIONS: &[&str] = &[
     "pem", "p12", "pfx", "jks", "keystore", "asc", "gpg", "kdbx", "ppk",
 ];
 
-/// Names-only recursive listing (`ls -R`).
-pub(in crate::pretool) fn safe_recursive_target(value: &str, context: ReadContext<'_>) -> bool {
-    safe_walk_target(value, context, &[], &[], false, false, None)
+/// Names-only recursive listing (`ls -R`). `lists_hidden` is the `-a`/`-A`
+/// flag. Without it the lister prints no hidden name and descends into no
+/// hidden directory, so a hidden entry below the root is not part of what the
+/// command can emit. Screening one anyway refused every `ls -R` run inside a
+/// repository, because `.git` is hidden and carries no benign-name exemption.
+pub(in crate::pretool) fn safe_recursive_listing_target(
+    value: &str,
+    context: ReadContext<'_>,
+    lists_hidden: bool,
+) -> bool {
+    safe_walk_target(value, context, &[], &[], false, false, None, !lists_hidden)
         || super::agent_root::agent_root_listing(value, context, true)
+}
+
+/// Names-only recursive listing that reaches every entry, as `du` does.
+pub(in crate::pretool) fn safe_recursive_target(value: &str, context: ReadContext<'_>) -> bool {
+    safe_recursive_listing_target(value, context, true)
 }
 
 /// Recursive content search (`grep -r`, `rg`). Oh My Pi agent-state trees are
@@ -123,6 +136,7 @@ pub(super) fn safe_recursive_target_excluding(
         git_metadata,
         follow_links,
         None,
+        false,
     )
 }
 
@@ -145,6 +159,7 @@ pub(super) fn safe_recursive_target_cleared(
             true,
             follow_links,
             Some(clearance),
+            false,
         )
 }
 
@@ -164,6 +179,7 @@ fn safe_walk_target(
     git_metadata: bool,
     follow_links: bool,
     clearance: Option<&PatternClearance>,
+    skip_hidden: bool,
 ) -> bool {
     // A recursive walk through `..` reaches a sibling tree whose ignore rules
     // were never inspected; only the sibling-repository proof admits that.
@@ -177,17 +193,24 @@ fn safe_walk_target(
         return false;
     };
     // A clearance depends on the pattern, so its walk is never memoized.
-    match clearance {
-        Some(clearance) => walk_uncached(
+    match (clearance, skip_hidden) {
+        (Some(clearance), _) => walk_uncached(
             root,
             excluded_files,
             excluded_directories,
             git_metadata,
             follow_links,
             Some(clearance),
-            false,
+            skip_hidden,
         ),
-        None => walk(
+        (None, true) => walk_skipping_hidden(
+            root,
+            excluded_files,
+            excluded_directories,
+            git_metadata,
+            follow_links,
+        ),
+        (None, false) => walk(
             root,
             excluded_files,
             excluded_directories,
@@ -421,6 +444,35 @@ pub(super) fn walk(
                 follow_links,
                 None,
                 false,
+            )
+        },
+    )
+}
+
+/// [`walk`] for a lister that never descends into a hidden entry.
+fn walk_skipping_hidden(
+    root: PathBuf,
+    excluded_files: &[&str],
+    excluded_directories: &[&str],
+    git_metadata: bool,
+    follow_links: bool,
+) -> bool {
+    super::walk_memo::memoized(
+        &root,
+        excluded_files,
+        excluded_directories,
+        git_metadata,
+        follow_links,
+        true,
+        || {
+            walk_uncached(
+                root.clone(),
+                excluded_files,
+                excluded_directories,
+                git_metadata,
+                follow_links,
+                None,
+                true,
             )
         },
     )

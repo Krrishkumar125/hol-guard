@@ -97,6 +97,9 @@ pub(super) fn safe_listing_segment(
     context: super::PathContext<'_>,
 ) -> bool {
     let recursive = arguments.iter().any(|argument| is_recursive_flag(argument));
+    let lists_hidden = arguments
+        .iter()
+        .any(|argument| lists_hidden_entries(argument));
     if !recursive
         && !arguments
             .iter()
@@ -127,7 +130,7 @@ pub(super) fn safe_listing_segment(
         let allowed = match kind {
             Operand::Plain if recursive => {
                 surviving += 1;
-                search::safe_recursive_target(argument, context)
+                search::safe_recursive_listing_target(argument, context, lists_hidden)
             }
             // A listing without a glob admits a name that is not there, because
             // the shell prints an error and nothing else. One glob beside it
@@ -158,7 +161,7 @@ pub(super) fn safe_listing_segment(
     }
     // A recursive listing walks the working directory only when no operand
     // survives. An unmatched bracket beside a real operand does not.
-    surviving > 0 || !recursive || search::safe_recursive_target(".", context)
+    surviving > 0 || !recursive || search::safe_recursive_listing_target(".", context, lists_hidden)
 }
 
 /// `ls` of a path that does not exist prints only an error. Agents probe for
@@ -403,6 +406,36 @@ fn powershell_recursion(argument: &str) -> bool {
     name == "s" || (name.len() >= 2 && ("recurse".starts_with(&name) || "depth".starts_with(&name)))
 }
 
+/// `ls` prints a hidden entry only when asked for one. Without `-a`, `-A` or
+/// their long spellings it neither prints a hidden name nor descends into a
+/// hidden directory, so nothing hidden below the root reaches its output.
+fn lists_hidden_entries(argument: &str) -> bool {
+    if let Some(name) = argument.strip_prefix("--") {
+        let name = name.split('=').next().unwrap_or(name);
+        return !name.is_empty() && ("all".starts_with(name) || "almost-all".starts_with(name));
+    }
+    if crate::powershell_reads::windows_powershell_host() && powershell_hidden(argument) {
+        return true;
+    }
+    argument.starts_with('-')
+        && argument
+            .chars()
+            .skip(1)
+            .any(|flag| flag == 'a' || flag == 'A')
+}
+
+/// On Windows `ls` can be PowerShell's Get-ChildItem, where `-Force` is what
+/// lists a hidden entry. Any case-insensitive prefix of it counts.
+fn powershell_hidden(argument: &str) -> bool {
+    argument
+        .strip_prefix('-')
+        .filter(|name| !name.starts_with('-'))
+        .is_some_and(|name| {
+            let name = name.split(':').next().unwrap_or(name).to_ascii_lowercase();
+            !name.is_empty() && "force".starts_with(name.as_str())
+        })
+}
+
 fn follows_links(argument: &str) -> bool {
     matches!(
         argument,
@@ -463,6 +496,62 @@ mod tests {
             (format!("ls {w}/*/.s.PGSQL*"), false),
             (format!("ls {h}/.ssh/*"), false),
             (format!("ls {h}/.ssh/id*"), false),
+        ] {
+            let words: Vec<String> = command.split(' ').map(str::to_owned).collect();
+            assert_eq!(
+                super::safe_listing_segment(&command, &words[1..], context),
+                allowed,
+                "{command}"
+            );
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// `ls -R` prints no hidden name and descends into no hidden directory, so
+    /// a repository's `.git` is not part of its output and must not decide the
+    /// proof. `-a` asks for those names and restores the screen. A visible
+    /// key file is refused either way.
+    #[test]
+    fn a_recursive_listing_screens_what_it_can_print() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/listing-recursive-hidden")
+            .join(std::process::id().to_string());
+        let home = root.join("home");
+        let project = home.join("work/project");
+        let keyed = home.join("work/keyed");
+        for directory in [
+            project.join("src"),
+            project.join(".git/refs"),
+            keyed.join("certs"),
+        ] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        for file in [
+            project.join("src/app.ts"),
+            project.join(".git/config"),
+            project.join(".env"),
+            keyed.join("certs/service.pem"),
+        ] {
+            std::fs::write(file, "synthetic\n").unwrap();
+        }
+        let (home, project) = (
+            crate::runtime_read_paths::canonicalize_text(&home).unwrap(),
+            crate::runtime_read_paths::canonicalize_text(&project).unwrap(),
+        );
+        let context = crate::pretool::PathContext {
+            home_dir: home.to_str(),
+            cwd: project.to_str(),
+            ..Default::default()
+        };
+        let keyed = home.join("work/keyed").display().to_string();
+        for (command, allowed) in [
+            ("ls -R .".to_owned(), true),
+            ("ls -R".to_owned(), true),
+            ("ls -R src".to_owned(), true),
+            ("ls -aR .".to_owned(), false),
+            ("ls -R -A .".to_owned(), false),
+            ("ls -R --all .".to_owned(), false),
+            (format!("ls -R {keyed}"), false),
         ] {
             let words: Vec<String> = command.split(' ').map(str::to_owned).collect();
             assert_eq!(
