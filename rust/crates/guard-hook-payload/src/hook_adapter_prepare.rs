@@ -196,6 +196,22 @@ fn unwrap_dispatcher_tool(
     (tool_name, tool_input)
 }
 
+/// Record `canonical` as the tool name under every spelling the payload sends.
+///
+/// A harness that names its tools its own way sends `toolName`, `toolname` or
+/// `tool` beside `tool_name`, and the generic extractor reads all of them.
+/// Writing the canonical name over `tool_name` alone leaves the harness's own
+/// spelling behind it, the extractor sees two names for one call, and the
+/// ambiguous payload becomes a denial of work the user asked for.
+fn set_canonical_tool_name(normalized: &mut OMap, canonical: &str) {
+    normalized.insert("tool_name", OValue::str(canonical));
+    for key in ["toolName", "toolname", "tool"] {
+        if let Some(OValue::Str(_)) = normalized.get(key) {
+            normalized.insert(key, OValue::str(canonical));
+        }
+    }
+}
+
 fn apply_qualified_mcp_tool(normalized: &mut OMap, tool_name: String) -> String {
     let lowered = py_lower(&tool_name);
     if !tool_name.contains("__") || GROK_TOOL_ALIASES.iter().any(|(alias, _)| *alias == lowered) {
@@ -234,7 +250,7 @@ fn prepare_grok(payload: &OMap) -> OMap {
         let remapped = canonical_tool_name(GROK_TOOL_ALIASES, Some(&OValue::Str(current.clone())))
             .unwrap_or(current);
         let qualified = apply_qualified_mcp_tool(&mut normalized, remapped);
-        normalized.insert("tool_name", OValue::str(qualified.as_str()));
+        set_canonical_tool_name(&mut normalized, &qualified);
         canonical_tool = Some(qualified);
     }
     let mut effective_input = tool_input.clone();
@@ -319,7 +335,7 @@ fn prepare_claude_shaped(payload: &OMap, events: &[(&str, &str)], tools: &[(&str
     }
     let tool_name = first_present(&normalized, &["tool_name", "toolName"]).cloned();
     if let Some(canonical) = canonical_tool_name(tools, tool_name.as_ref()) {
-        normalized.insert("tool_name", OValue::Str(canonical));
+        set_canonical_tool_name(&mut normalized, &canonical);
     }
     if let Some(tool_input) =
         first_present(&normalized, &["tool_input", "toolInput", "arguments"]).cloned()
