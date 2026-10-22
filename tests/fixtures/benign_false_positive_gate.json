@@ -597,6 +597,89 @@
       "expect": "allow"
     },
     {
+      "id": "git-worktree-status-glob-read",
+      "fix_area": "git",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git status --short && cat *.md"
+      },
+      "cwd": "worktree",
+      "expect": "allow",
+      "contained_ok": true
+    },
+    {
+      "id": "git-worktree-listing-status-glob-read",
+      "fix_area": "git",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls -la && git status --short && cat *.md"
+      },
+      "cwd": "worktree",
+      "expect": "allow",
+      "contained_ok": true
+    },
+    {
+      "id": "neg-git-worktree-config-write-glob-read",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git config user.email agent@example.com && cat *.md"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-git-worktree-push-glob-read",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git push origin HEAD && cat *.md"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-git-worktree-remove-force-glob-read",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree remove --force ../other && cat *.md"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
       "id": "git-worktree-status-short-branch",
       "fix_area": "git",
       "harnesses": [

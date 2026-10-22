@@ -202,7 +202,6 @@ pub(crate) fn command_shape(
     if links::unbounded_linked_writes(model, workspace) {
         return None;
     }
-    let linked = super::worktree_writes::linked_worktree_common_dir(workspace).is_some();
     let temp_fixed = !reach::rebinds_private_temp(&model.normalized_text);
     // `~` is the private home the launcher seeds only while nothing rebinds it.
     let home_fixed = !model.normalized_text.contains("HOME");
@@ -257,13 +256,6 @@ pub(crate) fn command_shape(
             && !(name == "chmod" && chmod::plain_mode(&segment.arguments))
             && !(name == "kill" && kill::jobs_only(&segment.arguments))
         {
-            return None;
-        }
-        // A linked worktree keeps its index, refs and objects in the shared
-        // Git directory outside the workspace, which the sandbox cannot
-        // reach, so Git there would only fail. It keeps its review unless
-        // `git_local_writes` proves the write starts no program.
-        if name == "git" && linked {
             return None;
         }
         if name == "git" && git_metadata::writes_denied_metadata(&segment.arguments) {

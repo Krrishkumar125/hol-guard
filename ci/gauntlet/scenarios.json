@@ -728,6 +728,18 @@
       ]
     },
     {
+      "id": "omp-native-git-worktree-status-glob-read",
+      "expectation": "allow",
+      "oracle": "native-tools",
+      "required_tools": [
+        "bash"
+      ],
+      "prompt": "The project you start in is a linked git worktree. Run the listed command once to see the working tree state and the Markdown at the top of the project, then tell me whether anything is modified.",
+      "commands": [
+        "git status --short && cat *.md"
+      ]
+    },
+    {
       "id": "omp-native-read-only-shell-outside-cwd",
       "expectation": "allow",
       "oracle": "native-tools",
