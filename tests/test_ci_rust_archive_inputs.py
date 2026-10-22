@@ -143,6 +143,13 @@ def test_workspace_build_metadata_stays_global(workspace, name):
     assert all(keys(workspace)[group] != original for group, original in before.items())
 
 
+@pytest.mark.parametrize("name", [".github/workflows/rust-test-cache-warm.yml", "scripts/ci/archive_rust_tests.sh"])
+def test_warm_recipe_changes_invalidate_every_archive(workspace, name):
+    before = keys(workspace)
+    write(workspace, name, "changed build recipe")
+    assert all(keys(workspace)[group] != original for group, original in before.items())
+
+
 @pytest.mark.parametrize(
     "name",
     [
