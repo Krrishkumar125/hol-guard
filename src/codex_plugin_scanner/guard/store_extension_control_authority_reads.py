@@ -187,6 +187,26 @@ class ExtensionControlAuthorityReadsMixin:
             raise ExtensionControlAuthorityError("invalid managed controls revision state")
         return revision
 
+    def _seal_managed_revision(self, revision: int, *, key: bytes) -> dict[str, object]:
+        """The authenticated managed publication epoch the resident sealed for ``revision``."""
+
+        state = self._extension_control_authority_op("seal_managed_revision", key=key, revision=revision).get("state")
+        if not isinstance(state, dict):
+            raise ExtensionControlAuthorityError("invalid managed controls revision seal")
+        return cast(dict[str, object], state)
+
+    def _seal_managed_activation(
+        self, activation: Mapping[str, object], *, key: bytes, catalog_digest: str
+    ) -> dict[str, object]:
+        """The complete activation the resident built and sealed on the authority under ``catalog_digest``."""
+
+        sealed = self._extension_control_authority_op(
+            "seal_managed_activation", key=key, catalog_digest=catalog_digest, managed_activation=dict(activation)
+        ).get("activation")
+        if not isinstance(sealed, dict):
+            raise ExtensionControlAuthorityError("invalid managed controls activation seal")
+        return cast(dict[str, object], sealed)
+
     def _managed_activation(
         self, state: object, *, key: bytes, catalog_digest: str | None = None
     ) -> tuple[tuple[ExtensionControlLayer, ...], int]:

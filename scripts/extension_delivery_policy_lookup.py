@@ -7,6 +7,7 @@ import hashlib
 from extension_delivery_objects import read_index_page, validate_reference
 
 from codex_plugin_scanner.guard.catalog_delivery.containers import location
+from codex_plugin_scanner.guard.catalog_delivery.object_native import sessioned
 from codex_plugin_scanner.guard.catalog_delivery.pack_archives import MAX_ARCHIVE_BYTES, MAX_PARTS
 from codex_plugin_scanner.guard.catalog_delivery.pack_store import MAX_OBJECT_BYTES, digest
 
@@ -110,6 +111,7 @@ def read_transport_page(store, transport, expected, count, prefix):
     return wrapper, page
 
 
+@sessioned
 def lookup(store, native_root, transport, identity, *, expected_reference=None):
     """Caller supplies one authenticated root; this checks its byte proofs only."""
     if not isinstance(identity, str) or not identity.isascii() or not 0 < len(identity) <= 256:

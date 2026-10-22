@@ -153,3 +153,106 @@ def test_installed_answers_are_reused_until_an_installed_file_changes(monkeypatc
         installed_bundle.advertised()
     assert installed_bundle.advertised()
     assert len(answers) == 4
+
+
+def test_a_discovery_preparation_verifies_the_runtime_once_for_its_whole_batch(native, monkeypatch):
+    # A preparation asks for up to 64 members at a time, and every one of them
+    # reaches the runtime. Without an outer session each fetch would verify and
+    # copy the executable again.
+    from codex_plugin_scanner.guard.catalog_delivery import discovery
+    from codex_plugin_scanner.guard.catalog_delivery.authority import VerifiedDistribution
+
+    monkeypatch.setattr(discovery, "_cached", None)
+    monkeypatch.setattr(discovery, "_recheck_runtime", lambda: None)
+    replies = [
+        {"outcome": "fetch_batch", "session": "s", "fetches": [{"location": {}, "length": 1}] * 8},
+        {"outcome": "complete", "handle": "h"},
+    ]
+    monkeypatch.setattr(discovery, "_native", lambda guard_home, action: replies.pop(0))
+
+    def fetch(location, length):
+        lifecycle.invoke("offline", operation="fetch")
+        return b"x"
+
+    authority = object.__new__(VerifiedDistribution)
+    for field, value in {"data": b"{}", "source_sha": "s" * 40, "digest": "d" * 64, "expires_at": 1}.items():
+        object.__setattr__(authority, field, value)
+
+    discovery.prepare_discovery(Path("/guard"), authority, fetch=fetch)
+    assert native == {"verify": 1, "copies": 1, "runs": 8}
+
+
+def test_a_record_traversal_runs_inside_one_session(native, monkeypatch):
+    # The distribution, each selection and executable page, and every registry
+    # catalog is expanded by the runtime inside one read of the record, so the
+    # whole traversal verifies and copies the executable once.
+    from codex_plugin_scanner.guard.catalog_delivery import activation_record
+
+    opened = {
+        "value": {
+            "program_digest": "p" * 64,
+            "catalog_digest": "c" * 64,
+            "trust_digest": "t" * 64,
+            "engine": "engine",
+            "source_sha": "s" * 40,
+        },
+        "selected": ["one"],
+        "registry_ids": ["two"],
+        "executables": ["three"],
+        "registry": [{"kind": "data", "sha256": "r" * 64, "expanded_length": 1}],
+    }
+
+    def decode_output(stdout, returncode, stderr):
+        assert lifecycle._SESSION.get() is not None
+        return opened
+
+    monkeypatch.setattr(transport, "_decode_output", decode_output)
+    result = activation_record.open_record("{}", "d" * 64, "m", key=b"k", directory=Path("/cache"))
+    assert result.engine == "engine"
+    assert result.selected == frozenset({"one"}) and result.candidate_executables == ("three",)
+    assert lifecycle._SESSION.get() is None
+    assert native == {"verify": 1, "copies": 1, "runs": 1}
+
+
+def test_a_record_the_request_cannot_carry_is_refused_by_name(native):
+    # A record arriving as bytes never reaches the runtime, so it is refused
+    # here rather than escaping as a serialisation error.
+    from codex_plugin_scanner.guard.catalog_delivery import activation_record
+
+    with pytest.raises(ValueError, match="pack_lifecycle_record_payload_invalid"):
+        activation_record.verify_header(b"{}", "d" * 64, "m", key=b"k")
+    assert native == {"verify": 0, "copies": 0, "runs": 0}
+
+
+def test_a_security_preparation_runs_inside_one_session(native, monkeypatch):
+    # Its begin/complete rounds and the located reads between them all answer
+    # from the same verified runtime.
+    from types import SimpleNamespace
+
+    def invoke(operation, store, **fields):
+        assert lifecycle._SESSION.get() is not None
+        lifecycle.invoke("offline", operation=operation)
+        raise ValueError("stop before the preparation rounds")
+
+    monkeypatch.setattr(active_security, "invoke", invoke)
+    monkeypatch.setattr(active_security, "lifecycle_store", SimpleNamespace(read=lambda store: None))
+    with pytest.raises(ValueError, match="stop before"):
+        active_security._prepare(object(), None, {}, "publication", None)
+    assert native == {"verify": 1, "copies": 1, "runs": 1}
+
+
+def test_a_preparation_reads_its_publication_once_inside_its_session(native, monkeypatch):
+    # A committed publication is itself a native expansion, so reading it before
+    # the session starts a second verified runtime for the same bytes.
+    from codex_plugin_scanner.guard.catalog_delivery import preparation
+
+    reads = []
+
+    def publication(verified):
+        reads.append(lifecycle._SESSION.get())
+        raise ValueError("stop after the publication read")
+
+    monkeypatch.setattr(preparation, "publication", publication)
+    with pytest.raises(ValueError, match="stop after"):
+        preparation.prepare(object(), (), Path("/cache"), engine="engine")
+    assert len(reads) == 1 and reads[0] is not None
