@@ -108,7 +108,13 @@ pub(super) fn rg_glob_scope_proven(
     roots.iter().all(
         |target| match verified_directory_root(target, home_dir, cwd) {
             Some(root) => {
-                !super::read_paths::inside_agent_state_tree(&root, home_dir)
+                // ripgrep matches a path-shaped glob against the path from
+                // its match base, the working directory. Only a walk that
+                // starts there renders the same path, so a search target of
+                // its own leaves such a glob unmodeled.
+                (!filter.is_path_shaped()
+                    || working_directory_root(home_dir, cwd).as_deref() == Some(root.as_path()))
+                    && !super::read_paths::inside_agent_state_tree(&root, home_dir)
                     && walk_scope(&root, &filter, Ignores::Ripgrep, false, home_dir, &mut None)
                         .is_ok()
             }
@@ -437,6 +443,11 @@ fn verified_directory_root(
     canonical.is_dir().then_some(canonical)
 }
 
+/// The directory ripgrep matches a path-shaped glob against.
+fn working_directory_root(home_dir: Option<&str>, cwd: Option<&str>) -> Option<PathBuf> {
+    verified_directory_root(".", home_dir, cwd)
+}
+
 /// Locate the enclosing repository so its `.gitignore` files apply, as
 /// ripgrep honors them only inside a Git repository.
 fn repository_root(root: &Path) -> Option<PathBuf> {
@@ -523,6 +534,9 @@ fn single_outside_name(path: &Path, target: Option<&Path>, home: Option<&str>) -
 
 struct PendingDirectory {
     path: PathBuf,
+    /// The directory's path from the search root, empty at the root. A
+    /// path-shaped inclusion matches against it.
+    relative: String,
     depth: usize,
     tiers: Rc<IgnoreTiers>,
 }
@@ -615,6 +629,7 @@ fn walk_scope_inner(
     }
     let mut pending = vec![PendingDirectory {
         path: root.to_path_buf(),
+        relative: String::new(),
         depth: 0,
         tiers: Rc::new(tiers),
     }];
@@ -671,8 +686,16 @@ fn walk_scope_inner(
             let name = name.to_str().ok_or(ScopeUnproven)?;
             // Metadata only: never follow links or open a candidate secret.
             let metadata = std::fs::symlink_metadata(&path).map_err(|_| ScopeUnproven)?;
-            // Ripgrep's walk skips .git, a names walk all but a link; a content walk inspects it.
-            if name == ".git" && (ignores == Ignores::Ripgrep || (names && !metadata.is_symlink()))
+            let relative = if directory.relative.is_empty() {
+                name.to_string()
+            } else {
+                format!("{}/{name}", directory.relative)
+            };
+            // Ripgrep's walk passes over .git unless an inclusion selects it,
+            // a names walk all but a link; a content walk inspects it.
+            if name == ".git"
+                && !filter.selects_git(name, &relative)
+                && (ignores == Ignores::Ripgrep || (names && !metadata.is_symlink()))
             {
                 continue;
             }
@@ -709,7 +732,7 @@ fn walk_scope_inner(
                 }
                 return Err(ScopeUnproven);
             }
-            let searched = match filter.override_for(name, is_directory) {
+            let searched = match filter.override_for(name, &relative, is_directory) {
                 Override::Skipped => continue,
                 Override::Searched => true,
                 Override::Undecided => {
@@ -723,6 +746,7 @@ fn walk_scope_inner(
             if is_directory {
                 pending.push(PendingDirectory {
                     path,
+                    relative,
                     depth: directory.depth + 1,
                     tiers: Rc::clone(&tiers),
                 });
