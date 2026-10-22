@@ -147,10 +147,13 @@ const PULL_REQUEST_PATTERN = /#(\d{1,7})\b/g;
 const TRAILING_PULL_REQUEST = /\(#(\d{1,7})\)\s*$/;
 const DOCUMENTED_PREFIX = /^documented change:/i;
 const MERGE_PREFIX = /^merged pull request\b/i;
+const MERGE_PULL_REQUEST = /^merged pull request\s+#(\d{1,7})\b/i;
 function pullRequestKey(change) {
   const fromEvidence = change.evidenceUrl?.match(/\/pull\/(\d{1,7})(?:\D|$)/);
   if (fromEvidence) return fromEvidence[1];
   const summary = change.summary.trim();
+  const merge = MERGE_PULL_REQUEST.exec(summary);
+  if (merge) return merge[1];
   const trailing = TRAILING_PULL_REQUEST.exec(summary);
   if (trailing) return trailing[1];
   const numbers = [...summary.matchAll(PULL_REQUEST_PATTERN)];

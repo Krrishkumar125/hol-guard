@@ -436,6 +436,20 @@ function change(kind: ReleaseChange["kind"], id: string): ReleaseChange {
     true,
   );
   assert.equal(byUrl.length, 1);
+  // A merge commit names its pull request first, so it still folds into the
+  // classified entry even when the title cites an issue after it.
+  const merged = dedupeChanges(
+    [
+      change({ id: "5", kind: "fixed", summary: "**runtime**: fix the crash from #12 (#5496)" }),
+      change({ id: "6", summary: "Merged pull request #5496: fix the crash from #12" }),
+    ],
+    true,
+  );
+  assert.deepEqual(
+    merged.map((entry) => entry.id),
+    ["5"],
+    "a merge restatement keys on its own pull request, not the issue it cites",
+  );
 }
 
 // A roster row that resolved the person outranks one that did not: the chip

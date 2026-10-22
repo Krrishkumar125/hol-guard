@@ -251,11 +251,16 @@ const PULL_REQUEST_PATTERN = /#(\d{1,7})\b/g;
 const TRAILING_PULL_REQUEST = /\(#(\d{1,7})\)\s*$/;
 const DOCUMENTED_PREFIX = /^documented change:/i;
 const MERGE_PREFIX = /^merged pull request\b/i;
+const MERGE_PULL_REQUEST = /^merged pull request\s+#(\d{1,7})\b/i;
 
 function pullRequestKey(change: ReleaseChange): string | null {
   const fromEvidence = change.evidenceUrl?.match(/\/pull\/(\d{1,7})(?:\D|$)/);
   if (fromEvidence) return fromEvidence[1];
   const summary = change.summary.trim();
+  // A merge commit names its pull request first and anything it cites after,
+  // so the leading number is the one that identifies the change.
+  const merge = MERGE_PULL_REQUEST.exec(summary);
+  if (merge) return merge[1];
   // A squash-merge title carries the pull request last — "Fix the crash from
   // #12 (#5500)" — while anything earlier is an issue it mentions. Keying on
   // the first number would fold two changes that cite the same issue into one.
