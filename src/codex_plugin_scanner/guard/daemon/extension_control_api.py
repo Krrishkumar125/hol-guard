@@ -649,9 +649,12 @@ class ExtensionControlApiService:
                 idempotency_key=required_request_string(payload, "idempotency_key"),
                 nonce=required_request_string(payload, "nonce"),
             )
-            _ = mutation.canonical_digest
         except ExtensionControlApiError:
             raise
+        except NativeExtensionControlError as exc:
+            # The resident checks the mutation and computes its digest; without
+            # it there is no mutation to preview or apply.
+            raise ExtensionControlApiError(503, "native_runtime_unavailable") from exc
         except (
             TypeError,
             ValueError,

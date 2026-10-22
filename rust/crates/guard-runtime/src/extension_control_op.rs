@@ -26,6 +26,7 @@ use guard_contracts::{
 };
 use serde_json::Value;
 
+use crate::extension_control_proof::{enrollment_digest, mutation_digest, Mutation};
 use crate::package_authority_op::request_digest_with_limit;
 
 /// Most scenarios and items one request resolves, bounding both the work and
@@ -81,6 +82,32 @@ fn decide(request: &ExtensionControlRequestV1) -> Result<ExtensionControlPayload
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(ExtensionControlPayloadV1::Resolve { scenarios })
         }
+        ExtensionControlQueryV1::MutationDigest {
+            previous_revision,
+            catalog_digest,
+            layers,
+            actor_id,
+            idempotency_key,
+            nonce,
+        } => {
+            let layers = typed_layers(layers)?;
+            let digest = mutation_digest(&Mutation {
+                previous_revision: *previous_revision,
+                catalog_digest,
+                layers: &layers,
+                actor_id,
+                idempotency_key,
+                nonce,
+            })?;
+            Ok(ExtensionControlPayloadV1::MutationDigest { digest })
+        }
+        ExtensionControlQueryV1::EnrollmentDigest {
+            catalog_digest,
+            actor_id,
+            nonce,
+        } => Ok(ExtensionControlPayloadV1::EnrollmentDigest {
+            digest: enrollment_digest(catalog_digest, actor_id, nonce)?,
+        }),
     }
 }
 

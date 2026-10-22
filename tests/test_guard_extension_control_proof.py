@@ -741,3 +741,75 @@ def test_preview_digest_is_independent_of_layer_and_control_order() -> None:
     second = _mutation(layers=(cloud, reordered_local))
 
     assert first.canonical_digest == second.canonical_digest
+
+
+# The digests the Python proof computed for these inputs before the resident
+# took them over; the resident must keep issuing them so outstanding proofs
+# and recorded commits stay valid.
+_GOLDEN_CATALOG = "ab" * 32
+_GOLDEN_ACTOR = "local-admin é"
+
+
+def test_resident_mutation_digest_matches_the_python_digest() -> None:
+    local = ExtensionControlLayer(
+        "1.0.0",
+        ControlLayerKind.LOCAL_ADMIN,
+        _GOLDEN_CATALOG,
+        False,
+        (
+            ExtensionControl(
+                ControlTarget(ControlTargetKind.PERMISSION, "command.alpha.permission.write"), ControlState.ENABLED
+            ),
+            ExtensionControl(ControlTarget(ControlTargetKind.EXTENSION, "command.alpha"), ControlState.DISABLED),
+            ExtensionControl(ControlTarget(ControlTargetKind.EXTENSION, "command.alpha"), ControlState.ENABLED),
+        ),
+    )
+    cloud = ExtensionControlLayer("1.0.0", ControlLayerKind.SIGNED_CLOUD, _GOLDEN_CATALOG, True, ())
+    mutation = ExtensionControlMutation(
+        previous_revision=7,
+        catalog_digest=_GOLDEN_CATALOG,
+        layers=(cloud, local),
+        actor_id=_GOLDEN_ACTOR,
+        idempotency_key="mutation-1",
+        nonce="nonce-1",
+    )
+
+    assert mutation.canonical_digest == "864b425798605db58a8af6761e9224c5f8efca61761e95a8d3ecba1964c1febf"
+
+
+def test_resident_enrollment_digest_matches_the_python_digest() -> None:
+    enrollment = ExtensionControlEnrollment(
+        catalog_digest=_GOLDEN_CATALOG, actor_id=_GOLDEN_ACTOR, nonce="enrollment-nonce"
+    )
+
+    assert enrollment.canonical_digest == "c11b524f977b40ba53292b2d956770a4186c3e46c9f88d2e46a1536ba2ec29e0"
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"previous_revision": -1}, "invalid previous revision"),
+        ({"previous_revision": True}, "invalid previous revision"),
+        ({"catalog_digest": "AB" * 32}, "invalid catalog digest"),
+        ({"actor_id": " \t"}, "invalid mutation identity"),
+        ({"nonce": "n" * 257}, "invalid mutation identity"),
+    ],
+)
+def test_resident_refuses_an_invalid_mutation(changes: dict[str, object], message: str) -> None:
+    fields: dict[str, object] = {
+        "previous_revision": 0,
+        "catalog_digest": _GOLDEN_CATALOG,
+        "layers": (),
+        "actor_id": "local-admin",
+        "idempotency_key": "mutation-1",
+        "nonce": "nonce-1",
+    }
+    with pytest.raises(ExtensionControlProofError, match=message):
+        ExtensionControlMutation(**{**fields, **changes})  # type: ignore[arg-type]
+
+
+def test_resident_refuses_an_invalid_enrollment() -> None:
+    with pytest.raises(ExtensionControlProofError, match="invalid catalog digest"):
+        ExtensionControlEnrollment(catalog_digest="", actor_id="local-admin", nonce="nonce")
+    with pytest.raises(ExtensionControlProofError, match="invalid enrollment identity"):
+        ExtensionControlEnrollment(catalog_digest=_GOLDEN_CATALOG, actor_id="  ", nonce="nonce")
