@@ -63,7 +63,6 @@ fn a_composer_verb_reads_the_vendor_tree_inside_the_sandbox() {
         "composer show",
         "composer show monolog/monolog",
         "composer info",
-        "composer status",
         "composer licenses",
         "composer check-platform-reqs",
         "composer dump-autoload",
@@ -110,6 +109,8 @@ fn everything_that_reaches_a_registry_keeps_its_review() {
         "composer global require friendsofphp/php-cs-fixer",
         "composer diagnose",
         "composer self-update",
+        // Composer status may download a dist comparison copy; keep it reviewed.
+        "composer status",
         // `show` reports the registry once one of these is attached.
         "composer show --latest",
         "composer show --all",

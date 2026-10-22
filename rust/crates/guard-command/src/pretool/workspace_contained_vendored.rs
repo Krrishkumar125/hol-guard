@@ -61,7 +61,6 @@ const COMPOSER_LOCAL_VERBS: &[&str] = &[
     "dumpautoload",
     "check-platform-reqs",
     "licenses",
-    "status",
 ];
 /// The verbs above that need the installed tree beside the manifest.
 const COMPOSER_VENDOR_VERBS: &[&str] = &[
@@ -74,7 +73,6 @@ const COMPOSER_VENDOR_VERBS: &[&str] = &[
     "dumpautoload",
     "check-platform-reqs",
     "licenses",
-    "status",
 ];
 /// Composer options a local verb may carry. The list is an allowlist because
 /// the options that reach a registry are many and grow: `--latest`, `--all`
