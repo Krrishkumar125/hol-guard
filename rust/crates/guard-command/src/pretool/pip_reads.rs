@@ -190,7 +190,7 @@ pub(super) fn safe_pip_words(words: &[&str]) -> bool {
 pub(super) fn environment_read_words(words: &[&str]) -> bool {
     safe_pip_words(words)
         && !matches!(split_subcommand(words), Some((Some("cache"), _)))
-        && !words.iter().any(|word| *word == USER_SCOPE_FLAG)
+        && !words.contains(&USER_SCOPE_FLAG)
 }
 
 /// Splits the leading quiet options off, then the subcommand. `--version`
