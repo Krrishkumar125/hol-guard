@@ -59,6 +59,7 @@ mod substitution;
 mod xargs;
 use find_exec::{find_exec_programs, EXEC_ACTIONS};
 use link_makers::creates_links;
+pub(crate) use prefix::prefix_reads_a_program_file;
 use redirections::without_redirections;
 use shapes::{data_heredocs, without_lookups, without_plain_awk};
 pub(crate) use shapes::{python_is_builtin_only, python_stdin};

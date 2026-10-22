@@ -69,6 +69,41 @@ fn an_undocumented_word_leaves_the_launcher_in_place() {
     }
 }
 
+/// A script file or an interpreter behind the prefix is a program whose own
+/// text was never read, so the prefix stays and the command keeps the
+/// unmodelled failure the scan already gives it.
+#[test]
+fn a_program_file_behind_the_launcher_leaves_it_in_place() {
+    for command in [
+        "nice ./deploy.sh",
+        "nice -n 10 ../tools/build.sh",
+        "nohup ./scripts/release.sh",
+        "nohup release.py",
+        "stdbuf -oL release.py",
+        "stdbuf -oL python3 deploy.py",
+        "nice -n 10 sh -c build",
+        "nice -n 10 nohup ./deploy.sh",
+        "nohup nice -n 10 node server.js",
+    ] {
+        assert_eq!(
+            launcher_program(&words(command), 0),
+            None,
+            "{command} was read past its program file"
+        );
+    }
+    for (command, program) in [
+        ("nice python3 -m http.server", 1),
+        ("nohup git diff --stat", 1),
+        ("stdbuf -oL git log --oneline -5", 2),
+    ] {
+        assert_eq!(
+            launcher_program(&words(command), 0),
+            Some(program),
+            "{command} did not name its program"
+        );
+    }
+}
+
 /// The scan starts where the caller says, so assignments and an earlier
 /// prefix do not move the program this reads.
 #[test]

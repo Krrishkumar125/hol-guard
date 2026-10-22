@@ -249,6 +249,7 @@
       "src/parser_ansi_c.rs",
       "src/parser_brace_command.rs",
       "src/parser_executables.rs",
+      "src/parser_launchers.rs",
       "src/parser_segments.rs",
       "src/parser_shell_tokens.rs",
       "src/parser_wrappers.rs",

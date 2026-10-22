@@ -229,7 +229,7 @@ fn command_reads_a_program_file(piece: &str) -> bool {
 /// A launcher runs that program directly, so a path or a script name there is
 /// a file whose own text names the programs it runs, and this scan has not
 /// read it. `nice ./deploy.sh` is that file, not the one word `deploy.sh`.
-fn prefix_reads_a_program_file(words: &[&str]) -> bool {
+pub(crate) fn prefix_reads_a_program_file(words: &[&str]) -> bool {
     // Options this grammar does not cover leave the program unknown, and an
     // unknown program is read as one this scan never saw.
     let Some(index) = program_index(words) else {

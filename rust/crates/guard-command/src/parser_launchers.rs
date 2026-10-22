@@ -24,12 +24,14 @@
 //! a launcher's name, so it is not read as one.
 
 /// One prefix's option grammar: the short letters that carry a value, the long
-/// spellings that carry one, and whether a bare number is its own option.
+/// spellings that carry one, whether a bare number is its own option, and
+/// whether the prefix refuses to run without at least one option.
 struct Grammar {
     prefix: &'static str,
     short_values: &'static str,
     long_values: &'static [&'static str],
     numeric_flag: bool,
+    option_required: bool,
 }
 
 const GRAMMARS: [Grammar; 3] = [
@@ -39,23 +41,35 @@ const GRAMMARS: [Grammar; 3] = [
         long_values: &["adjustment"],
         // `nice -10 cargo build` is the adjustment spelled on its own.
         numeric_flag: true,
+        option_required: false,
     },
     Grammar {
         prefix: "nohup",
         short_values: "",
         long_values: &[],
         numeric_flag: false,
+        option_required: false,
     },
     Grammar {
         prefix: "stdbuf",
         short_values: "ioe",
         long_values: &["input", "output", "error"],
         numeric_flag: false,
+        // `stdbuf npm test` is an error, not a run of `npm test`: the prefix
+        // exists to set a buffering mode and exits when given none.
+        option_required: true,
     },
 ];
 
 /// Where the program stands behind a launcher at `index`, when every word in
 /// between is one this launcher documents and a program follows it.
+///
+/// The program must also be one the scan can name. A path, a script file, an
+/// interpreter and a prefix this module does not read each hand the run to a
+/// program whose own text was never opened, so `nice ./deploy.sh` and
+/// `stdbuf -oL python3 deploy.py` keep the unmodelled failure they arrive
+/// with rather than reaching an owner as though `deploy.sh` were a program the
+/// text names.
 pub(super) fn launcher_program(tokens: &[String], index: usize) -> Option<usize> {
     let name = tokens.get(index)?;
     if name.contains(['/', '\\']) {
@@ -63,6 +77,7 @@ pub(super) fn launcher_program(tokens: &[String], index: usize) -> Option<usize>
     }
     let grammar = GRAMMARS.iter().find(|grammar| grammar.prefix == name)?;
     let mut next = index + 1;
+    let mut options = 0;
     while let Some(word) = tokens.get(next) {
         if word == "--" {
             next += 1;
@@ -76,10 +91,17 @@ pub(super) fn launcher_program(tokens: &[String], index: usize) -> Option<usize>
             return None;
         }
         next += 1 + option_words(grammar, tokens, next)?;
+        options += 1;
+    }
+    if grammar.option_required && options == 0 {
+        return None;
     }
     let program = tokens.get(next)?;
-    (!program.is_empty() && !program.starts_with('-') && crate::assignment_name(program).is_none())
-        .then_some(next)
+    if program.is_empty() || program.starts_with('-') || crate::assignment_name(program).is_some() {
+        return None;
+    }
+    let words: Vec<&str> = tokens[index..].iter().map(String::as_str).collect();
+    (!crate::native_command_controls::prefix_reads_a_program_file(&words)).then_some(next)
 }
 
 /// How many further words this option word carries, or `None` when the
