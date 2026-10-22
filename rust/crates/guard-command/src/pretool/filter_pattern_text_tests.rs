@@ -5,11 +5,11 @@ use crate::pretool::source_reads::sensitive_command_input;
 #[test]
 fn a_stdin_filter_pattern_is_not_a_sensitive_target() {
     for command in [
-        "ls -R . | grep -v .git",
-        "ls -R . | grep .git",
-        "ls -R . | sort | grep -v .git",
-        "ls -R . | rg .git",
-        "git status --short | grep -v .git",
+        "ls -R . | grep -v .env",
+        "ls -R . | grep .env",
+        "ls -R . | sort | grep -v .env",
+        "ls -R . | rg .env",
+        "git status --short | grep -v .env",
     ] {
         assert!(
             !sensitive_command_input(command),
@@ -29,10 +29,10 @@ fn only_a_proven_stdin_filter_sheds_its_pattern() {
         "ls -la | grep -i secret.txt | head -5",
         "ls -R ~/.ssh | grep -v known_hosts",
         "ls -R . | grep AWS_SECRET_ACCESS_KEY",
-        "ls -R . | grep -f .git/info/exclude",
+        "ls -R . | grep -f .env",
         "ls -R . | grep --file=.ssh/patterns",
-        "ls -R . | grep -r .git /etc",
-        "ls -R . | PATTERN=.git grep $PATTERN",
+        "ls -R . | grep -r .env /etc",
+        "ls -R . | PATTERN=.env grep $PATTERN",
     ] {
         assert!(
             sensitive_command_input(command),
