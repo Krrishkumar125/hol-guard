@@ -78,6 +78,23 @@ fn hint_for(
     payload.hint
 }
 
+/// [`hint_for`] with the review binding a caller outside the runtime sends:
+/// it names no authority, so the admitted snapshot's has to decide.
+fn hint_for_unnamed_authority(
+    controls: &CompiledNativeCommandControls,
+    command: &str,
+) -> Option<ExtensionAllowHintV1> {
+    let mut query = query(controls, command);
+    query
+        .control_snapshot
+        .as_object_mut()
+        .unwrap()
+        .remove("authority");
+    let result = answer(&request(query), controls);
+    assert_eq!(result.status, "ok", "{command}: {}", result.code);
+    result.payload.expect("an ok answer carries a payload").hint
+}
+
 #[test]
 fn docker_sensitive_review_names_the_container_runtime_permission() {
     let controls = admitted_controls("docker");
@@ -143,6 +160,9 @@ fn an_unenrolled_device_is_hinted_as_it_will_be_once_enrolled() {
         assert!(hint.relied_permission_ids.is_empty(), "{command}");
     }
     let hint = hint_for(&unenrolled, DOCKER_CONTEXT).unwrap();
+    assert_eq!(hint.permission_ids, [DOCKER_PERMISSION]);
+    let hint = hint_for_unnamed_authority(&unenrolled, DOCKER_CONTEXT)
+        .expect("the admitted initial authority stands in for an unnamed one");
     assert_eq!(hint.permission_ids, [DOCKER_PERMISSION]);
 }
 
@@ -226,6 +246,10 @@ fn an_unenrolled_authority_that_is_not_the_initial_one_has_no_hint() {
         );
         assert!(!lost.control_binding().is_initial_defaults(), "{name}");
         assert!(hint_for(&lost, DOCKER_CONTEXT).is_none(), "{name}");
+        assert!(
+            hint_for_unnamed_authority(&lost, DOCKER_CONTEXT).is_none(),
+            "{name}"
+        );
     }
 }
 

@@ -232,6 +232,24 @@ pub(crate) fn evaluate_composite(
     evaluate_composite_under(request, controls, AuthorityView::Reported)
 }
 
+/// Whether `binding` is the first-install binding enforcement recognises.
+///
+/// The authority is the admitted snapshot's, already checked to be the
+/// snapshot the review is bound to: a review binding built outside the
+/// runtime names none. With no admitted snapshot the resident evaluates
+/// core-only, so only an authority the binding names can show it was lost.
+fn first_install(
+    binding: &guard_contracts::NativeCommandControlBindingV1,
+    controls: Option<&CompiledNativeCommandControls>,
+) -> bool {
+    let authority = match controls {
+        Some(controls) => controls.control_binding().authority.as_ref(),
+        None => binding.authority.as_ref(),
+    };
+    binding.has_first_install_shape()
+        && authority.map_or(controls.is_none(), |authority| authority.is_initial())
+}
+
 /// [`evaluate_composite`] under an explicit [`AuthorityView`]. Only the
 /// advisory allow-hint op asks for [`AuthorityView::OnceEnrolled`]; nothing
 /// that decides a command does.
@@ -284,7 +302,7 @@ pub(crate) fn evaluate_composite_under(
     // epoch, a real key or a pending recovery was lost, and stays a failure.
     // It is set after the binding check, so the evidence stays bound to the
     // snapshot the command was actually reviewed under.
-    if view == AuthorityView::OnceEnrolled && binding.is_initial_defaults() {
+    if view == AuthorityView::OnceEnrolled && first_install(&binding, controls) {
         "protected".clone_into(&mut binding.health);
     }
     apply_counterfactual_permissions(&mut binding, &request.counterfactual_enabled_permission_ids)?;
