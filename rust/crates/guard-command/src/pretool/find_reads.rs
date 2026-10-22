@@ -60,7 +60,13 @@ pub(super) fn safe_find_listing_arguments(
                             root,
                             context.home_dir,
                             context.cwd,
-                        )))
+                        )
+                        && (!entries_only_bound(expression)
+                            || super::read_paths::home_hidden_walk_clears_stores(
+                                root,
+                                context.home_dir,
+                                context.cwd,
+                            ))))
         })
         && safe_expression(expression)
 }
@@ -90,6 +96,14 @@ fn entries_only(expression: &[String]) -> bool {
     bounded
 }
 
+/// Whether `-type d` is all that bounds the expression, with no `-name`
+/// pattern to decide which paths may be printed.
+fn entries_only_bound(expression: &[String]) -> bool {
+    !expression
+        .iter()
+        .any(|token| matches!(token.as_str(), "-name" | "-iname"))
+}
+
 /// Whether the expression prints only the paths a name pattern selects.
 ///
 /// `find` walks whatever its root holds, but what it prints is what the
@@ -108,10 +122,15 @@ fn entries_only(expression: &[String]) -> bool {
 ///
 /// `-type d` bounds the output the same way without naming anything: it
 /// prints directory names and no file, and a secret is a file. The root is
-/// already one tool's own directory rather than a shared one, so the tree
-/// below it holds no store whose name a deeper walk could print, and
+/// already one tool's own directory rather than a shared one, and
 /// `find ~/.nvm -maxdepth 2 -type d` is the inventory an agent takes of a
-/// toolchain it is about to use.
+/// toolchain it is about to use. What `-type d` cannot say on its own is
+/// that the tree below holds no store, so a walk bounded by nothing else is
+/// also screened against the root's own entries by
+/// [`super::read_paths::home_hidden_walk_clears_stores`]: a store directly
+/// below the root would otherwise have its own layout printed. A `-name`
+/// pattern in the same expression already decides what may be printed, so a
+/// walk carrying one keeps its existing proof.
 fn match_bounded(expression: &[String]) -> bool {
     let mut bounded = false;
     let mut index = 0;
