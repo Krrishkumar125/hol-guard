@@ -468,3 +468,22 @@ def test_soak_baseline_includes_worker_scale_up_but_not_later_growth(monkeypatch
     stress_runtime.run_stress_batches(execution, 640)
 
     assert (execution.rss_baseline_bytes, execution.rss_peak_bytes) == (150, 200)
+
+
+def test_short_soak_counts_growth_after_the_warm_tenth(monkeypatch, tmp_path) -> None:
+    served = []
+
+    def request(_endpoint: str, _token: str) -> float:
+        served.append(1)
+        threading.Event().wait(0.01)
+        return 1.0
+
+    monkeypatch.setattr(stress_runtime, "stress_request", request)
+    monkeypatch.setattr(stress_runtime, "process_tree_resources", lambda _pid: (120 if len(served) > 5 else 100, 1, 1))
+    monkeypatch.setattr(stress_runtime, "health_probe_status", lambda _url: "ready")
+    execution = stress_runtime.StressExecution("u", "e", "t", 1, tmp_path, rss_baseline_bytes=100, rss_peak_bytes=100)
+
+    stress_runtime.run_stress_batches(execution, 50)
+
+    assert (execution.rss_baseline_bytes, execution.rss_peak_bytes) == (100, 120)
+    assert len(served) == 50
