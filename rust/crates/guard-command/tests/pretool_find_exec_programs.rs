@@ -53,6 +53,11 @@ fn an_exec_child_the_text_names_is_reviewed_rather_than_refused() {
         "find . -mindepth 1 -maxdepth 1 -type d -exec basename {} \\;",
         "find src -type f -exec file {} +",
         "find src -type d -execdir basename {} \\;",
+        "find src -exec echo sh {} \\;",
+        "find src -name '*.js' -exec grep -l 'foo\\.bar' {} +",
+        "find src -exec printf '%s\\n' {} \\;",
+        "find src -exec basename {} \\; ; \\ls",
+        "find src -exec \\basename {} \\;",
     ] {
         let result = evaluate(&root, &controls, command);
         // The owners of the program it names decide. Before this, no owner
@@ -121,6 +126,7 @@ fn a_shell_the_find_does_not_name_keeps_the_evaluation_failure() {
         "find src -type f -exec basename {} \\; && bash -c 'echo hi'",
         // A wrapper in front of the child hides the shell it launches.
         "find src -type f -exec nohup sh -c 'echo hi' \\;",
+        "find src -type f -exec /usr/bin/nohup sh -c 'echo hi' \\;",
         "find src -type f -exec command sh -c 'echo hi' \\;",
         "find src -type f -exec time python3 -c 'print(1)' \\;",
         // An escaped name the shell unescapes to `sh` must not read as `h`.

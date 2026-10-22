@@ -58,28 +58,25 @@ pub(super) fn find_exec_programs(shell: &str) -> Option<BTreeSet<String>> {
             if operand.contains(['{', '}']) || matches!(operand, "+" | "\\") {
                 return None;
             }
-            if !plain_program(operand) {
+            // A trailing escape may join the next whitespace-separated word;
+            // that is not a complete executable word this reader can bind.
+            if !plain_program(operand) || operand.ends_with('\\') {
                 return None;
             }
-            // find runs the whole body, not its first word: `-exec nohup sh
-            // -c '...' \;` names `nohup`, which reads as an ordinary program
-            // while the shell behind it runs whatever it is handed. The body
-            // is read through to its terminator so the program that actually
-            // runs cannot hide behind a wrapper.
-            if words[action + 1..]
-                .iter()
-                .take_while(|word| !matches!(**word, "+" | "\\"))
-                .any(|word| runs_something_else(word))
-            {
+            // Only executable positions run programs. `echo sh` and a grep
+            // pattern containing backslashes are ordinary arguments. Prefix
+            // launchers remain unbounded here: naming `nohup` does not bind
+            // the command it launches, including an absolute-path launcher.
+            if runs_something_else(operand) {
                 return None;
             }
-            let program = command_basename(operand);
+            let program = command_basename(&operand.replace('\\', ""));
             // A `.exe` suffix names the same program `command_basename`
             // already strips it from. A `.cmd` is a batch script, and its
             // body is not read here: naming it after its stem would claim
             // `./bin/report.cmd` runs the program `report` and hand the
             // review that program's owners for text nobody has seen.
-            if program.ends_with(".cmd") {
+            if program.ends_with(".cmd") || command_basename(operand).ends_with(".cmd") {
                 return None;
             }
             programs.insert(program);
@@ -91,11 +88,14 @@ pub(super) fn find_exec_programs(shell: &str) -> Option<BTreeSet<String>> {
 /// Whether the word runs something other than itself, read the way the shell
 /// reads it.
 ///
-/// `command_basename` treats a backslash as a path separator, so it reads
-/// `s\h` as `h` while the shell unescapes the word and runs `sh`. A word
-/// carrying one is answered as an interpreter rather than read two ways: the
-/// `-exec` terminator is the one backslash that reaches this, and the callers
-/// above take it off first.
+/// Check both path spelling and shell-unescaped spelling: `s\h` runs `sh`,
+/// while `\ls` still names `ls`. Callers pass executable words only.
 fn runs_something_else(word: &str) -> bool {
-    word.contains('\\') || INTERPRETERS.contains(&command_basename(word).as_str())
+    let unescaped = word.replace('\\', "");
+    [command_basename(word), command_basename(&unescaped)]
+        .iter()
+        .any(|name| {
+            INTERPRETERS.contains(&name.as_str())
+                || matches!(name.as_str(), "nohup" | "command" | "builtin" | "time")
+        })
 }

@@ -18683,6 +18683,28 @@
       "expect": "not_allow"
     },
     {
+      "id": "find-exec-literal-interpreter-argument",
+      "fix_area": "shell",
+      "harnesses": ["claude-code"],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find src -exec echo sh {} \\;"
+      },
+      "cwd": "worktree",
+      "expect": "allow_or_review"
+    },
+    {
+      "id": "find-exec-escaped-regex-argument",
+      "fix_area": "shell",
+      "harnesses": ["claude-code"],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find src -exec grep -l 'foo\\.bar' {} +"
+      },
+      "cwd": "worktree",
+      "expect": "allow_or_review"
+    },
+    {
       "id": "neg-find-exec-shell-child",
       "fix_area": "negative",
       "harnesses": [
