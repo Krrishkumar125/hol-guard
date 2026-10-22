@@ -139,3 +139,20 @@ fn a_shell_the_find_does_not_name_keeps_the_evaluation_failure() {
         );
     }
 }
+
+#[test]
+fn a_batch_script_the_text_names_is_not_a_bounded_program() {
+    let (root, _cleanup) = workspace("batch-child");
+    let controls = git_github_controls("default", "default");
+    for command in [
+        "find src -type f -exec ./bin/report.cmd {} +",
+        "find src -type f -exec report.cmd {} +",
+    ] {
+        let result = evaluate(&root, &controls, command);
+        assert_eq!(
+            result.reason_code, EVALUATION_FAILED,
+            "{command}: {}",
+            result.reason
+        );
+    }
+}

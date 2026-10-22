@@ -74,10 +74,13 @@ pub(super) fn find_exec_programs(shell: &str) -> Option<BTreeSet<String>> {
                 return None;
             }
             let program = command_basename(operand);
-            // A `.cmd` launcher runs the program it is named for, the way
-            // `command_basename` already reads a `.exe` suffix.
-            if let Some(stem) = program.strip_suffix(".cmd") {
-                programs.insert(stem.to_owned());
+            // A `.exe` suffix names the same program `command_basename`
+            // already strips it from. A `.cmd` is a batch script, and its
+            // body is not read here: naming it after its stem would claim
+            // `./bin/report.cmd` runs the program `report` and hand the
+            // review that program's owners for text nobody has seen.
+            if program.ends_with(".cmd") {
+                return None;
             }
             programs.insert(program);
         }
