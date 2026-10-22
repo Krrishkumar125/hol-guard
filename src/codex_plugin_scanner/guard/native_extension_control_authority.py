@@ -53,9 +53,33 @@ class NativeExtensionControlAuthorityUnavailableError(NativeCommandControlAuthor
 
     code = "native_extension_control_authority_unavailable"
 
-    def __init__(self) -> None:
+    def __init__(self, detail: str | None = None) -> None:
         super().__init__(shared=True)
-        self.args = ("The native runtime did not answer the extension control authority read.",)
+        message = "The native runtime did not answer the extension control authority read."
+        if detail:
+            message = f"{message} ({detail})"
+        self.detail = detail
+        self.args = (message,)
+
+
+def _unanswered_detail(response: dict[str, object] | None, request_id: object) -> str:
+    """A short, path-free label for a read the resident did not answer.
+
+    Only the resident's own status and code reach the message. A reply that is
+    not bound to this request is named as such, because an unbound reply and a
+    reported fault need different repairs.
+    """
+
+    if not isinstance(response, dict):
+        return "no reply"
+    status = response.get("status")
+    code = response.get("code")
+    label = status if isinstance(status, str) and status else "unknown status"
+    if isinstance(code, str) and code:
+        label = f"{label}/{code}"
+    if response.get("request_id") != request_id:
+        label = f"{label}, unbound"
+    return label
 
 
 def extension_control_authority(
@@ -100,9 +124,9 @@ def extension_control_authority(
         try:
             provision_native_verifier_key_for_store(store)
         except Exception as exc:
-            raise NativeExtensionControlAuthorityUnavailableError() from exc
+            raise NativeExtensionControlAuthorityUnavailableError("verifier key not provisioned") from exc
     if not ensure_resident_prerequisite(guard_home):
-        raise NativeExtensionControlAuthorityUnavailableError()
+        raise NativeExtensionControlAuthorityUnavailableError("resident prerequisite missing")
     try:
         response = _resident_request(
             operation="extension_control_authority",
@@ -115,10 +139,10 @@ def extension_control_authority(
             record_success=False,
         )
     except (TypeError, ValueError) as exc:
-        raise NativeExtensionControlAuthorityUnavailableError() from exc
+        raise NativeExtensionControlAuthorityUnavailableError("request rejected") from exc
     payload = _payload(response, wire, guard_home)
     if payload is None:
-        raise NativeExtensionControlAuthorityUnavailableError()
+        raise NativeExtensionControlAuthorityUnavailableError(_unanswered_detail(response, wire["request_id"]))
     memo.keep(memo_key, payload)
     return payload
 

@@ -120,6 +120,32 @@ jobs:
             --compiler "$CARGO_TARGET_DIR/release/guard-command-source"
           echo "PRIOR_NATIVE=$CARGO_TARGET_DIR/release/hol-guard-runtime" >> "$GITHUB_ENV"
 
+      - name: DIAG native runtime status in force mode
+        env:
+          HOL_GUARD_NATIVE: force
+          HOL_GUARD_NATIVE_BINARY: ${{ github.workspace }}/rust/target/${{ env.TARGET }}/release/hol-guard-runtime
+        run: |
+          set -euo pipefail
+          uv run --no-sync python - <<'PY'
+          import json, os
+          from codex_plugin_scanner.guard.native_runtime import native_runtime_status
+          for label, binary in (
+              ("current", os.environ["HOL_GUARD_NATIVE_BINARY"]),
+              ("previous", os.environ.get("PRIOR_NATIVE", "")),
+          ):
+              if not binary:
+                  print("DIAG", label, "unset")
+                  continue
+              os.environ["HOL_GUARD_NATIVE_BINARY"] = binary
+              status = native_runtime_status()
+              print("DIAG", label, json.dumps({
+                  "available": status.available,
+                  "compatible": status.compatible,
+                  "identity": None if status.identity is None else status.identity.sha256[:16],
+                  "features": None if status.capabilities is None else sorted(status.capabilities.features),
+              }))
+          PY
+
       - name: Gauntlet retained-policy upgrade acceptance
         env:
           HOL_GUARD_NATIVE_REGRESSION: '1'
