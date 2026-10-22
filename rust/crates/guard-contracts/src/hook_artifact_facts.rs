@@ -43,7 +43,7 @@ pub struct HookArtifactV1 {
     /// because the hook reads facts off the artifact after stamping it with
     /// the run's posture, while the digest has to cover the artifact as it
     /// stood before that stamp. Absent when the caller wants facts only.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_hash_artifact: Option<Map<String, Value>>,
 }
 

@@ -540,3 +540,24 @@ fn the_content_hash_capability_is_advertised() {
     assert!(crate::resident_op_features::RESIDENT_OP_FEATURES
         .contains(&guard_contracts::HOOK_ARTIFACT_FACTS_CONTENT_HASH_FEATURE));
 }
+
+/// The op recomputes `request_sha256` from the request it parsed, and the hook
+/// refuses an answer whose digest does not match the one it sent. A facts-only
+/// artifact that came back carrying a `null` hash field would change those
+/// bytes, so every pre-tool call would fail closed instead of reaching a
+/// verdict.
+#[test]
+fn an_artifact_round_trips_to_the_bytes_the_hook_sent() {
+    let sent = json!({
+        "artifact_type": "tool_action_request",
+        "metadata": {},
+        "configured_override": null
+    });
+    let parsed: HookArtifactV1 =
+        serde_json::from_value(sent.clone()).expect("the artifact deserializes");
+
+    assert_eq!(
+        serde_json::to_value(&parsed).expect("the artifact serializes"),
+        sent
+    );
+}
