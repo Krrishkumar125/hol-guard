@@ -23,8 +23,8 @@ interface ReadyEvidence {
   prompt_free_hook_count: 2;
   version: string;
   workflow_authorization: {
-    activity_proof: "drift-rejected-restored-one-shot-reuse";
-    capability_claimed: 1;
+    activity_proof: "drift-rejected-unenrolled-retry-unclaimed";
+    capability_claimed: 0;
     capability_issued: 1;
     drift_claimed: 0;
     request_flow: "authenticated-daemon-api";
@@ -493,8 +493,8 @@ export async function runLab(runner: CommandRunner = runCommand): Promise<LabEvi
     await approveWorkflowAuthorization(origin, pending, session);
     const first = await waitForReadyEvidence(project, environment, runner);
     if (JSON.stringify(first.workflow_authorization) !== JSON.stringify({
-      activity_proof: "drift-rejected-restored-one-shot-reuse",
-      capability_claimed: 1,
+      activity_proof: "drift-rejected-unenrolled-retry-unclaimed",
+      capability_claimed: 0,
       capability_issued: 1,
       drift_claimed: 0,
       request_flow: "authenticated-daemon-api",
