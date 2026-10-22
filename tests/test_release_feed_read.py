@@ -297,3 +297,23 @@ def test_a_frame_that_is_not_the_agreed_result_is_refused(
             )
             is None
         )
+
+
+def test_a_connection_that_dies_mid_body_is_a_transport_failure() -> None:
+    # The body read is as exposed as the connect: a reset while streaming must
+    # reach the dashboard as the typed transport failure, not as a traceback
+    # escaping the route.
+    class DyingResponse(io.BytesIO):
+        status = 200
+        headers = {"ETag": ""}
+
+        def read(self, _size: int | None = None) -> bytes:
+            raise TimeoutError("the connection died while the body was read")
+
+    with pytest.raises(feed.ReleaseFeedReadError) as error:
+        feed.fetch_release_document(
+            path=feed.RELEASE_INDEX_PATH,
+            query="page=1",
+            opener=FakeOpener([DyingResponse(b"")]),
+        )
+    assert (error.value.code, error.value.status) == (feed.RELEASE_FEED_TRANSPORT_FAILED, 503)

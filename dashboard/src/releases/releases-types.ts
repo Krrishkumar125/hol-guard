@@ -103,4 +103,5 @@ export type ReleaseFeedFailure =
   | "unavailable"
   | "offline"
   | "not-found"
-  | "unsupported";
+  | "unsupported"
+  | "disabled";

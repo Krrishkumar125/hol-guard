@@ -171,3 +171,21 @@ def test_the_release_routes_require_the_header_token(monkeypatch: pytest.MonkeyP
     )
     handler.do_GET()
     assert denied == ["denied"]
+
+
+def test_a_digit_the_parser_refuses_is_an_invalid_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # "²" is a digit to str.isdigit and not a number to int. The route owes
+    # such a page a 400, not an exception thrown out of the handler.
+    monkeypatch.setattr(daemon_server_module, "release_feed_rollout_enabled", lambda: True)
+
+    def never_called(**_kwargs: object) -> object:  # pragma: no cover - must not run
+        raise AssertionError("an unreadable page must not reach the projection")
+
+    monkeypatch.setattr(daemon_server_module, "release_feed_projection", never_called)
+    for query in ("?page=%C2%B2", "?pageSize=%C2%B2", "?page=١٢"):
+        handler = _handler("/v1/releases/index")
+        answers = _answers(handler)
+        handler._serve_release_feed_read(urlparse(f"/v1/releases/index{query}"))
+        assert answers == [(400, {"error": RELEASE_FEED_REQUEST_INVALID})], query

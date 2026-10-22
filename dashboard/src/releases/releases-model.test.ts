@@ -12,7 +12,9 @@ import {
   hasNextPage,
   hasPreviousPage,
   installedRelease,
+  isRetryable,
   isWhatsNewDismissed,
+  openingSlug,
   normalizeVersionLabel,
   pageRangeLabel,
   verificationLabel,
@@ -167,6 +169,40 @@ function change(kind: ReleaseChange["kind"], id: string): ReleaseChange {
   assert.match(failureCopy("unavailable").body, /Nothing on this device is affected/);
   assert.match(failureCopy("unsupported").body, /native runtime/);
   assert.match(failureCopy("not-found").title, /not published/);
+  // The kill switch is this device's own doing, so the copy must not blame
+  // hol.org for an archive Guard was told not to read.
+  assert.match(failureCopy("disabled").title, /turned off on this device/);
+  assert.match(failureCopy("disabled").body, /Nothing on hol.org is affected/);
+}
+
+// A retry button is only offered where pressing it could change the answer.
+{
+  assert.equal(isRetryable("unavailable"), true);
+  assert.equal(isRetryable("offline"), true);
+  assert.equal(isRetryable("disabled"), false, "the switch stays off however often it is pressed");
+  assert.equal(isRetryable("unsupported"), false);
+  assert.equal(isRetryable("not-found"), false);
+}
+
+// The archive and the installed version are separate reads. When the installed
+// one lands second, the screen moves to it rather than leaving the reader on
+// the newest release they never asked for — unless they opened one themselves.
+{
+  const releases = [summary(), summary({ slug: "v3-52-0", versionLabel: "3.52.0" })];
+  assert.equal(openingSlug(releases, null, null, false), "v3-53-0", "the newest opens first");
+  assert.equal(
+    openingSlug(releases, "3.52.0", "v3-53-0", false),
+    "v3-52-0",
+    "a late installed version takes over from the default",
+  );
+  assert.equal(
+    openingSlug(releases, "3.52.0", "v3-53-0", true),
+    "v3-53-0",
+    "the reader's own choice outranks the installed version",
+  );
+  // A page that does not hold the chosen release opens its own first entry.
+  assert.equal(openingSlug(releases, null, "v2-0-0", true), "v3-53-0");
+  assert.equal(openingSlug([], null, null, false), null);
 }
 
 // Paging controls say what they page.

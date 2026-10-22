@@ -108,10 +108,22 @@ const FAILURE_COPY = {
   unsupported: {
     title: "This Guard build cannot read the archive",
     body: "The release archive needs Guard's native runtime. Update Guard to see release history here."
+  },
+  disabled: {
+    title: "Release history is turned off on this device",
+    body: "Guard is set to skip the release archive (HOL_GUARD_RELEASE_FEED=off). Nothing on hol.org is affected; clear that setting and restart Guard to read release history here."
   }
 };
 function failureCopy(failure) {
   return FAILURE_COPY[failure];
+}
+function isRetryable(failure) {
+  return failure === "unavailable" || failure === "offline";
+}
+function openingSlug(releases, installedVersion, current, readerChose) {
+  const held = current !== null && releases.some((release) => release.slug === current);
+  if (held && readerChose) return current;
+  return installedRelease(releases, installedVersion)?.slug ?? releases[0]?.slug ?? null;
 }
 function hasNextPage(index) {
   return index.page < index.totalPages;
@@ -355,13 +367,25 @@ function WhatsNewCard(props) {
   );
 }
 const RELEASES_PAGE_SIZE = 25;
-function failureForStatus(status) {
-  if (status === 404) return "not-found";
-  if (status === 501) return "unsupported";
-  return "unavailable";
-}
+const CAPABILITY_UNAVAILABLE = "release_feed_capability_unavailable";
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+async function errorCode(response) {
+  try {
+    const payload = await response.json();
+    return isRecord(payload) && typeof payload.error === "string" ? payload.error : null;
+  } catch {
+    return null;
+  }
+}
+async function failureForResponse(response) {
+  if (response.status === 404) return "not-found";
+  if (response.status === 501) return "unsupported";
+  if (response.status === 503 && await errorCode(response) === CAPABILITY_UNAVAILABLE) {
+    return "disabled";
+  }
+  return "unavailable";
 }
 async function readDocument(path, kind, signal) {
   let response;
@@ -371,7 +395,7 @@ async function readDocument(path, kind, signal) {
     return { status: "failed", failure: "offline" };
   }
   if (!response.ok) {
-    return { status: "failed", failure: failureForStatus(response.status) };
+    return { status: "failed", failure: await failureForResponse(response) };
   }
   let payload;
   try {
@@ -425,10 +449,11 @@ function ReleasesWorkspace({ installedVersion }) {
   const [indexState, setIndexState] = reactExports.useState({ kind: "loading" });
   const [selectedSlug, setSelectedSlug] = reactExports.useState(null);
   const [detailState, setDetailState] = reactExports.useState({ kind: "idle" });
-  const [whatsNewDismissed, setWhatsNewDismissed] = reactExports.useState(false);
+  const [dismissedLabel, setDismissedLabel] = reactExports.useState(null);
   const [reloadToken, setReloadToken] = reactExports.useState(0);
   const [detailToken, setDetailToken] = reactExports.useState(0);
   const detailHeadingRef = reactExports.useRef(null);
+  const readerChose = reactExports.useRef(false);
   reactExports.useEffect(() => {
     const controller = new AbortController();
     setIndexState({ kind: "loading" });
@@ -439,17 +464,18 @@ function ReleasesWorkspace({ installedVersion }) {
         return;
       }
       setIndexState({ kind: "ready", index: result.index });
-      const installed2 = installedRelease(result.index.releases, installedVersion);
-      const opening = installed2?.slug ?? result.index.releases[0]?.slug ?? null;
-      const onThisPage = (slug) => slug !== null && result.index.releases.some((release) => release.slug === slug);
-      setSelectedSlug((current) => onThisPage(current) ? current : opening);
     }).catch(() => {
       if (!controller.signal.aborted) {
         setIndexState({ kind: "failed", failure: "unavailable" });
       }
     });
     return () => controller.abort();
-  }, [page, reloadToken, installedVersion]);
+  }, [page, reloadToken]);
+  reactExports.useEffect(() => {
+    if (indexState.kind !== "ready") return;
+    const releases = indexState.index.releases;
+    setSelectedSlug((current) => openingSlug(releases, installedVersion, current, readerChose.current));
+  }, [indexState, installedVersion]);
   reactExports.useEffect(() => {
     if (!selectedSlug) {
       setDetailState({ kind: "idle" });
@@ -470,11 +496,14 @@ function ReleasesWorkspace({ installedVersion }) {
     return () => controller.abort();
   }, [selectedSlug, detailToken]);
   const installed = indexState.kind === "ready" ? installedRelease(indexState.index.releases, installedVersion) : null;
-  reactExports.useEffect(() => {
-    if (!installed) return;
-    setWhatsNewDismissed(isWhatsNewDismissed(installed.versionLabel));
-  }, [installed?.versionLabel]);
+  const installedLabel = installed?.versionLabel ?? null;
+  const dismissedBefore = reactExports.useMemo(
+    () => installedLabel === null ? false : isWhatsNewDismissed(installedLabel),
+    [installedLabel]
+  );
+  const whatsNewDismissed = dismissedBefore || dismissedLabel === installedLabel;
   const handleSelect = reactExports.useCallback((slug) => {
+    readerChose.current = true;
     setSelectedSlug(slug);
     detailHeadingRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
@@ -482,10 +511,10 @@ function ReleasesWorkspace({ installedVersion }) {
     if (installed) handleSelect(installed.slug);
   }, [installed, handleSelect]);
   const handleDismissWhatsNew = reactExports.useCallback(() => {
-    if (!installed) return;
-    dismissWhatsNew(installed.versionLabel);
-    setWhatsNewDismissed(true);
-  }, [installed]);
+    if (!installedLabel) return;
+    dismissWhatsNew(installedLabel);
+    setDismissedLabel(installedLabel);
+  }, [installedLabel]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6 pb-10", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "space-y-1", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-2xl font-semibold tracking-tight text-brand-dark", children: "Releases" }),
@@ -500,7 +529,7 @@ function ReleasesWorkspace({ installedVersion }) {
       FailureNotice,
       {
         failure: indexState.failure,
-        onRetry: indexState.failure === "unsupported" ? void 0 : () => setReloadToken((token) => token + 1)
+        onRetry: isRetryable(indexState.failure) ? () => setReloadToken((token) => token + 1) : void 0
       }
     ) : null,
     indexState.kind === "ready" && indexState.index.releases.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -527,7 +556,7 @@ function ReleasesWorkspace({ installedVersion }) {
           FailureNotice,
           {
             failure: detailState.failure,
-            onRetry: detailState.failure === "unsupported" || detailState.failure === "not-found" ? void 0 : () => setDetailToken((token) => token + 1)
+            onRetry: isRetryable(detailState.failure) ? () => setDetailToken((token) => token + 1) : void 0
           }
         ) : null,
         detailState.kind === "ready" ? /* @__PURE__ */ jsxRuntimeExports.jsx(ReleaseDetailPanel, { detail: detailState.detail }) : null

@@ -19,14 +19,32 @@ export type ReleaseDetailResult =
 /** One screen of history; the daemon caps the page size at the same number. */
 export const RELEASES_PAGE_SIZE = 25;
 
-function failureForStatus(status: number): ReleaseFeedFailure {
-  if (status === 404) return "not-found";
-  if (status === 501) return "unsupported";
-  return "unavailable";
-}
+/** The daemon's answer when the archive is switched off on this device. */
+const CAPABILITY_UNAVAILABLE = "release_feed_capability_unavailable";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function errorCode(response: Response): Promise<string | null> {
+  try {
+    const payload: unknown = await response.json();
+    return isRecord(payload) && typeof payload.error === "string" ? payload.error : null;
+  } catch {
+    return null;
+  }
+}
+
+async function failureForResponse(response: Response): Promise<ReleaseFeedFailure> {
+  if (response.status === 404) return "not-found";
+  if (response.status === 501) return "unsupported";
+  // A 503 carries two different answers: the archive switched off on this
+  // device, and an upstream read that failed. Only one of them is hol.org's
+  // doing, and only one of them is worth retrying.
+  if (response.status === 503 && (await errorCode(response)) === CAPABILITY_UNAVAILABLE) {
+    return "disabled";
+  }
+  return "unavailable";
 }
 
 async function readDocument(
@@ -42,7 +60,7 @@ async function readDocument(
     return { status: "failed", failure: "offline" };
   }
   if (!response.ok) {
-    return { status: "failed", failure: failureForStatus(response.status) };
+    return { status: "failed", failure: await failureForResponse(response) };
   }
   let payload: unknown;
   try {

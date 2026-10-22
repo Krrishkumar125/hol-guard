@@ -76,7 +76,9 @@ const indexBody = {
   assert.equal(result.status, "ok");
   assert.equal(requested.length, 1);
   assert.equal(requested[0], `/v1/releases/index?page=2&pageSize=${RELEASES_PAGE_SIZE}`);
-  assert.ok(!requested[0].includes("hol.org"), "the browser never reaches the portal");
+  // An exact path, not a substring check: the browser leaves its own origin
+  // for nothing, so anything but the daemon's own release route is a defect.
+  assert.ok(requested[0].startsWith("/v1/releases/"), "the request stays on this device");
 }
 
 // A page number that is not a whole page falls back to the first page instead
@@ -99,11 +101,29 @@ const indexBody = {
     [400, "unavailable"],
     [502, "unavailable"],
   ] as const) {
-    installFetch({ status, body: { error: "release_feed_unavailable" } });
+    installFetch({ status, body: { error: "release_feed_transport_failed" } });
     const result = await fetchReleaseIndex();
     assert.equal(result.status, "failed");
     assert.equal(result.status === "failed" ? result.failure : null, failure, `status ${status}`);
   }
+}
+
+// The archive switched off on this device answers 503 like an upstream
+// failure does. They are not the same answer: one can be retried and is
+// hol.org's doing, the other is a setting here.
+{
+  installFetch({ status: 503, body: { error: "release_feed_capability_unavailable" } });
+  const result = await fetchReleaseIndex();
+  assert.equal(result.status === "failed" ? result.failure : null, "disabled");
+
+  installFetch({ status: 503, body: { error: "release_feed_transport_failed" } });
+  const upstream = await fetchReleaseIndex();
+  assert.equal(upstream.status === "failed" ? upstream.failure : null, "unavailable");
+
+  // The same code on another status keeps that status's meaning.
+  installFetch({ status: 501, body: { error: "release_feed_capability_unavailable" } });
+  const missing = await fetchReleaseIndex();
+  assert.equal(missing.status === "failed" ? missing.failure : null, "unsupported");
 }
 
 // No answer at all is the daemon being unreachable, not an upstream problem.

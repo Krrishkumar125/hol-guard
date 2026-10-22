@@ -372,3 +372,92 @@ fn reports_an_unrenderable_upstream_answer_as_an_upstream_failure() {
     assert_eq!(frame.get("http_status").and_then(Value::as_i64), Some(502));
     assert_eq!(frame.get("body"), Some(&Value::Null));
 }
+
+#[test]
+fn prose_keeps_the_angle_brackets_release_notes_are_written_with() {
+    // "Cut startup to <1ms" is ordinary release prose. Refusing it would
+    // reject the whole document and blank the screen over punctuation; the
+    // dashboard renders these fields as text and the daemon escapes the body,
+    // so the brackets are safe by construction rather than by stripping.
+    let mut document = detail_document();
+    document["title"] = json!("Hooks answer in <1ms");
+    document["summary"] = json!("A prompt that took > 5s now takes < 1s.");
+    document["changes"][0]["summary"] = json!("Reject a payload when depth > 8.");
+    document["sourceNotes"]["text"] = json!("Upstream notes mentioning <script> in prose.");
+    let frame = run(request("detail", &document));
+    assert_eq!(outcome(&frame), ("ok", None));
+    let body = projected(&frame);
+    assert_eq!(body["title"], json!("Hooks answer in <1ms"));
+    assert_eq!(body["changes"][0]["summary"], json!("Reject a payload when depth > 8."));
+}
+
+#[test]
+fn an_identity_field_still_refuses_markup() {
+    // A slug, a tag or a login is a key, not prose: it ends up in URLs and
+    // attributes, so it keeps the narrower alphabet.
+    for (field, value) in [
+        ("rawTag", json!("v3.53.0<script>")),
+        ("versionLabel", json!("3.53.0>")),
+        ("train", json!("<3.53")),
+    ] {
+        let mut document = detail_document();
+        document[field] = value;
+        assert_eq!(
+            outcome(&run(request("detail", &document))),
+            ("error", Some("release_feed_payload_invalid")),
+            "{field} must not project markup"
+        );
+    }
+}
+
+#[test]
+fn bidi_and_control_characters_never_reach_the_screen() {
+    // A right-to-left override can make one release read as another in a list.
+    let mut document = detail_document();
+    document["title"] = json!("Guard 3.53.0\u{202e}drowssap");
+    assert_eq!(
+        outcome(&run(request("detail", &document))),
+        ("error", Some("release_feed_payload_invalid"))
+    );
+}
+
+#[test]
+fn an_instant_is_a_whole_timestamp_or_it_is_nothing() {
+    for bad in [
+        "2026-10-14T09:30:00",          // no zone at all
+        "2026-10-14T09:3000.000Z",      // the second separator is missing
+        "2026-10-14T09:30:61Z",         // no such second
+        "2026-10-14T09:30:0aZ",         // the seconds are not digits
+        "2026-10-14T09:30:00.Z",        // a fraction with no digits
+        "2026-10-14T09:30:00.1234567890Z", // more fraction than a timestamp carries
+        "2026-10-14T09:30:00+24:00",    // no such zone
+        "2026-10-14T09:30:00+05:60",    // no such zone minute
+        "2026-10-14T09:30:00+0530",     // the zone separator is missing
+        "2026-10-14T09:30:00Z ",        // trailing text
+    ] {
+        let mut document = detail_document();
+        document["publishedAt"] = json!(bad);
+        assert_eq!(
+            outcome(&run(request("detail", &document))),
+            ("error", Some("release_feed_payload_invalid")),
+            "{bad} must not project"
+        );
+    }
+
+    for good in [
+        "2026-10-14T09:30:00Z",
+        "2026-10-14T09:30:00.123456Z",
+        "2026-10-14T09:30:00+05:30",
+        "2026-10-14T09:30:00.5-08:00",
+        // A leap second is a real instant the portal may publish.
+        "2026-12-31T23:59:60Z",
+    ] {
+        let mut document = detail_document();
+        document["publishedAt"] = json!(good);
+        assert_eq!(
+            outcome(&run(request("detail", &document))),
+            ("ok", None),
+            "{good} must project"
+        );
+    }
+}

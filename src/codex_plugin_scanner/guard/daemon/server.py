@@ -230,7 +230,9 @@ def _release_feed_number(values: list[str] | None, *, default: int) -> int | Non
 
     if not values:
         return default
-    if len(values) != 1 or not values[0].isdigit() or len(values[0]) > 6:
+    # ``str.isdigit`` is true for characters such as "²" that ``int`` refuses,
+    # so the page parameter is read as ASCII digits and nothing else.
+    if len(values) != 1 or len(values[0]) > 6 or not values[0].isascii() or not values[0].isdigit():
         return None
     parsed = int(values[0])
     return parsed if parsed >= 1 else None

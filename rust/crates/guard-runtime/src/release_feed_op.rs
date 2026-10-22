@@ -14,6 +14,11 @@
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
+#[path = "release_feed_fields.rs"]
+mod release_feed_fields;
+
+use release_feed_fields::*;
+
 pub const RELEASE_FEED_FEATURE: &str = "release-feed-projection-v1";
 pub const RELEASE_FEED_REQUEST_SCHEMA: &str = "guard-release-feed-project-request.v1";
 pub const RELEASE_FEED_RESULT_SCHEMA: &str = "guard-release-feed-project-result.v1";
@@ -81,176 +86,6 @@ fn error_frame(error: FeedError) -> Value {
     })
 }
 
-fn json_depth(value: &Value) -> usize {
-    match value {
-        Value::Object(map) => 1 + map.values().map(json_depth).max().unwrap_or(0),
-        Value::Array(items) => 1 + items.iter().map(json_depth).max().unwrap_or(0),
-        _ => 1,
-    }
-}
-
-/// Plain-text bound for every string that reaches the dashboard: no C0/C1
-/// controls, no bidi/format marks, no line/paragraph separators, and no
-/// markup-significant code points.
-fn is_safe_text(value: &str) -> bool {
-    value.chars().all(|c| {
-        !matches!(c,
-            '\u{0000}'..='\u{0008}'
-                | '\u{000b}'..='\u{001f}'
-                | '\u{007f}'..='\u{009f}'
-                | '\u{200b}'..='\u{200f}'
-                | '\u{2028}'..='\u{202e}'
-                | '\u{2066}'..='\u{2069}'
-                | '<'
-                | '>')
-    })
-}
-
-/// A single-line field: safe text with no newlines or tabs either.
-fn single_line(value: &str, limit: usize) -> Option<String> {
-    if value.is_empty()
-        || value.chars().count() > limit
-        || value.contains('\n')
-        || value.contains('\r')
-        || value.contains('\t')
-        || !is_safe_text(value)
-    {
-        return None;
-    }
-    Some(value.to_owned())
-}
-
-/// A multi-line field: newlines allowed, every other control rejected.
-fn multi_line(value: &str, limit: usize) -> Option<String> {
-    if value.chars().count() > limit || !is_safe_text(value) {
-        return None;
-    }
-    Some(value.to_owned())
-}
-
-fn field_str<'a>(object: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
-    object.get(key).and_then(Value::as_str)
-}
-
-fn required_line(
-    object: &Map<String, Value>,
-    key: &str,
-    limit: usize,
-) -> Result<String, FeedError> {
-    field_str(object, key)
-        .and_then(|value| single_line(value, limit))
-        .ok_or(FeedError::Payload)
-}
-
-fn object_at(value: &Value) -> Result<&Map<String, Value>, FeedError> {
-    value.as_object().ok_or(FeedError::Payload)
-}
-
-/// Dates travel as UTC ISO-8601 instants. The projection keeps the upstream
-/// text verbatim once it parses; the dashboard formats it locally.
-fn iso_instant(value: &str) -> Option<String> {
-    if !value.is_ascii() {
-        return None;
-    }
-    let bytes = value.as_bytes();
-    if bytes.len() < 20 || bytes.len() > 32 {
-        return None;
-    }
-    if bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' || bytes[13] != b':' {
-        return None;
-    }
-    let digits =
-        |mut range: std::ops::Range<usize>| range.all(|index| bytes[index].is_ascii_digit());
-    if !digits(0..4) || !digits(5..7) || !digits(8..10) || !digits(11..13) || !digits(14..16) {
-        return None;
-    }
-    let month = i64::from(bytes[5] - b'0') * 10 + i64::from(bytes[6] - b'0');
-    let day = i64::from(bytes[8] - b'0') * 10 + i64::from(bytes[9] - b'0');
-    let hour = i64::from(bytes[11] - b'0') * 10 + i64::from(bytes[12] - b'0');
-    let minute = i64::from(bytes[14] - b'0') * 10 + i64::from(bytes[15] - b'0');
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 {
-        return None;
-    }
-    // The instant must carry a zone: `Z`, or a numeric offset after the
-    // seconds field. A local-looking timestamp is not an instant.
-    let offset = &value[19..];
-    if !(offset.ends_with('Z') || offset.contains('+') || offset.contains('-')) {
-        return None;
-    }
-    Some(value.to_owned())
-}
-
-fn required_instant(object: &Map<String, Value>, key: &str) -> Result<String, FeedError> {
-    field_str(object, key)
-        .and_then(iso_instant)
-        .ok_or(FeedError::Payload)
-}
-
-/// Links the dashboard may open: https only, bounded, and free of whitespace
-/// or markup. Anything else is dropped rather than rendered.
-fn https_url(value: &str) -> Option<String> {
-    if !value.starts_with("https://")
-        || value.chars().count() > MAX_URL_CHARS
-        || !value.is_ascii()
-        || value.chars().any(char::is_whitespace)
-        || !is_safe_text(value)
-    {
-        return None;
-    }
-    Some(value.to_owned())
-}
-
-/// Optional https link: a present-but-unusable link reads as "no evidence"
-/// rather than failing the whole release.
-fn optional_https(object: &Map<String, Value>, key: &str) -> Value {
-    match object.get(key) {
-        Some(Value::String(raw)) => match https_url(raw) {
-            Some(url) => Value::String(url),
-            None => Value::Null,
-        },
-        _ => Value::Null,
-    }
-}
-
-/// Site-relative portal path. Never absolute, never scheme-bearing, never
-/// protocol-relative: the dashboard resolves it against the portal origin.
-fn release_path(value: &str) -> Option<String> {
-    if !value.starts_with("/guard/")
-        || value.starts_with("//")
-        || value.chars().count() > 512
-        || !value.is_ascii()
-        || value.contains("..")
-        || value.chars().any(char::is_whitespace)
-        || !is_safe_text(value)
-    {
-        return None;
-    }
-    Some(value.to_owned())
-}
-
-fn enum_value(
-    object: &Map<String, Value>,
-    key: &str,
-    allowed: &[&str],
-) -> Result<String, FeedError> {
-    let value = field_str(object, key).ok_or(FeedError::Payload)?;
-    if !allowed.contains(&value) {
-        return Err(FeedError::Payload);
-    }
-    Ok(value.to_owned())
-}
-
-fn bounded_count(object: &Map<String, Value>, key: &str) -> Result<i64, FeedError> {
-    let value = object
-        .get(key)
-        .and_then(Value::as_i64)
-        .ok_or(FeedError::Payload)?;
-    if !(0..=1_000_000).contains(&value) {
-        return Err(FeedError::Payload);
-    }
-    Ok(value)
-}
-
 fn project_coverage(object: &Map<String, Value>) -> Result<Value, FeedError> {
     let coverage = object
         .get("coverage")
@@ -300,7 +135,7 @@ fn project_release_identity(object: &Map<String, Value>) -> Result<Map<String, V
     );
     projected.insert(
         "title".to_owned(),
-        json!(required_line(object, "title", 200)?),
+        json!(required_prose_line(object, "title", 200)?),
     );
     projected.insert(
         "publishedAt".to_owned(),

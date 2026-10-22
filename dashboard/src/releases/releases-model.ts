@@ -173,10 +173,39 @@ const FAILURE_COPY: Record<ReleaseFeedFailure, ReleaseFailureCopy> = {
     title: "This Guard build cannot read the archive",
     body: "The release archive needs Guard's native runtime. Update Guard to see release history here.",
   },
+  disabled: {
+    title: "Release history is turned off on this device",
+    body: "Guard is set to skip the release archive (HOL_GUARD_RELEASE_FEED=off). Nothing on hol.org is affected; clear that setting and restart Guard to read release history here.",
+  },
 };
 
 export function failureCopy(failure: ReleaseFeedFailure): ReleaseFailureCopy {
   return FAILURE_COPY[failure];
+}
+
+/** Only a failure that could clear on its own is worth a retry button: an old
+ * build and a switched-off archive both stay failed however often the reader
+ * presses it, and a release that was never published stays unpublished. */
+export function isRetryable(failure: ReleaseFeedFailure): boolean {
+  return failure === "unavailable" || failure === "offline";
+}
+
+/** Which release the detail pane should open.
+ *
+ * The archive and the installed version are two separate reads, and the
+ * installed one often lands second. Until the reader opens a release
+ * themselves, the screen follows the installed version when the page holds it
+ * and the newest release otherwise, so a cold visit never settles on the wrong
+ * release just because Guard answered in that order. */
+export function openingSlug(
+  releases: ReleaseSummary[],
+  installedVersion: string | null | undefined,
+  current: string | null,
+  readerChose: boolean,
+): string | null {
+  const held = current !== null && releases.some((release) => release.slug === current);
+  if (held && readerChose) return current;
+  return installedRelease(releases, installedVersion)?.slug ?? releases[0]?.slug ?? null;
 }
 
 export function hasNextPage(index: ReleaseIndex): boolean {

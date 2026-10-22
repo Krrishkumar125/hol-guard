@@ -219,4 +219,20 @@ const detail: ReleaseDetail = {
   assert.match(archive, />3.0.99</);
 }
 
+// Two rules the workspace has to keep that only its wiring can show.
+//
+// A card dismissed last week must not paint once before an effect hides it:
+// the decision is read while rendering, so the first frame is already right.
+// And the archive read must not depend on the installed version, or the
+// version landing second refetches the whole page the reader is looking at.
+{
+  const workspace = readFileSync(new URL("./releases-workspace.tsx", import.meta.url), "utf8");
+  assert.ok(
+    !/useEffect\([^)]*setDismissed/s.test(workspace),
+    "dismissal is decided during render, not in an effect",
+  );
+  assert.match(workspace, /const whatsNewDismissed =/);
+  assert.match(workspace, /\}, \[page, reloadToken\]\);/, "the archive read pages, nothing else");
+}
+
 console.log("releases-ui.test.tsx passed");

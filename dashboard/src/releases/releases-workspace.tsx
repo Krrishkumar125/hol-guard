@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ActionButton, EmptyState } from "../approval-center-primitives";
 import { ReleaseArchiveList } from "./components/release-archive-list";
 import { ReleaseDetailPanel } from "./components/release-detail-panel";
 import { WhatsNewCard } from "./components/whats-new-card";
 import { fetchReleaseDetail, fetchReleaseIndex } from "./releases-api";
-import { dismissWhatsNew, failureCopy, installedRelease, isWhatsNewDismissed } from "./releases-model";
+import {
+  dismissWhatsNew,
+  failureCopy,
+  installedRelease,
+  isRetryable,
+  isWhatsNewDismissed,
+  openingSlug,
+} from "./releases-model";
 import type { ReleaseDetail, ReleaseFeedFailure, ReleaseIndex } from "./releases-types";
 
 type IndexState =
@@ -54,10 +61,13 @@ export function ReleasesWorkspace({ installedVersion }: { installedVersion?: str
   const [indexState, setIndexState] = useState<IndexState>({ kind: "loading" });
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [detailState, setDetailState] = useState<DetailState>({ kind: "idle" });
-  const [whatsNewDismissed, setWhatsNewDismissed] = useState(false);
+  const [dismissedLabel, setDismissedLabel] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [detailToken, setDetailToken] = useState(0);
   const detailHeadingRef = useRef<HTMLDivElement | null>(null);
+  // A release the reader opened themselves outranks the one the screen would
+  // have opened for them.
+  const readerChose = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -70,13 +80,6 @@ export function ReleasesWorkspace({ installedVersion }: { installedVersion?: str
           return;
         }
         setIndexState({ kind: "ready", index: result.index });
-        // Open the release this device runs when the archive page holds it,
-        // otherwise the newest one, so the screen is never blank on arrival.
-        const installed = installedRelease(result.index.releases, installedVersion);
-        const opening = installed?.slug ?? result.index.releases[0]?.slug ?? null;
-        const onThisPage = (slug: string | null) =>
-          slug !== null && result.index.releases.some((release) => release.slug === slug);
-        setSelectedSlug((current) => (onThisPage(current) ? current : opening));
       })
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -84,7 +87,18 @@ export function ReleasesWorkspace({ installedVersion }: { installedVersion?: str
         }
       });
     return () => controller.abort();
-  }, [page, reloadToken, installedVersion]);
+  }, [page, reloadToken]);
+
+  // Open the release this device runs when the archive page holds it,
+  // otherwise the newest one, so the screen is never blank on arrival. The
+  // installed version arrives from Guard on its own schedule: when it lands
+  // after the archive, the screen moves to it rather than leaving the reader
+  // on the newest release they did not ask for.
+  useEffect(() => {
+    if (indexState.kind !== "ready") return;
+    const releases = indexState.index.releases;
+    setSelectedSlug((current) => openingSlug(releases, installedVersion, current, readerChose.current));
+  }, [indexState, installedVersion]);
 
   useEffect(() => {
     if (!selectedSlug) {
@@ -112,13 +126,19 @@ export function ReleasesWorkspace({ installedVersion }: { installedVersion?: str
 
   const installed =
     indexState.kind === "ready" ? installedRelease(indexState.index.releases, installedVersion) : null;
+  const installedLabel = installed?.versionLabel ?? null;
 
-  useEffect(() => {
-    if (!installed) return;
-    setWhatsNewDismissed(isWhatsNewDismissed(installed.versionLabel));
-  }, [installed?.versionLabel]);
+  // Read during render, not in an effect: an effect would paint the card once
+  // before hiding it, so a reader who dismissed it last week sees it flash on
+  // every visit.
+  const dismissedBefore = useMemo(
+    () => (installedLabel === null ? false : isWhatsNewDismissed(installedLabel)),
+    [installedLabel],
+  );
+  const whatsNewDismissed = dismissedBefore || dismissedLabel === installedLabel;
 
   const handleSelect = useCallback((slug: string) => {
+    readerChose.current = true;
     setSelectedSlug(slug);
     detailHeadingRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
@@ -128,10 +148,10 @@ export function ReleasesWorkspace({ installedVersion }: { installedVersion?: str
   }, [installed, handleSelect]);
 
   const handleDismissWhatsNew = useCallback(() => {
-    if (!installed) return;
-    dismissWhatsNew(installed.versionLabel);
-    setWhatsNewDismissed(true);
-  }, [installed]);
+    if (!installedLabel) return;
+    dismissWhatsNew(installedLabel);
+    setDismissedLabel(installedLabel);
+  }, [installedLabel]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -152,7 +172,7 @@ export function ReleasesWorkspace({ installedVersion }: { installedVersion?: str
       {indexState.kind === "failed" ? (
         <FailureNotice
           failure={indexState.failure}
-          onRetry={indexState.failure === "unsupported" ? undefined : () => setReloadToken((token) => token + 1)}
+          onRetry={isRetryable(indexState.failure) ? () => setReloadToken((token) => token + 1) : undefined}
         />
       ) : null}
 
@@ -178,9 +198,7 @@ export function ReleasesWorkspace({ installedVersion }: { installedVersion?: str
               <FailureNotice
                 failure={detailState.failure}
                 onRetry={
-                  detailState.failure === "unsupported" || detailState.failure === "not-found"
-                    ? undefined
-                    : () => setDetailToken((token) => token + 1)
+                  isRetryable(detailState.failure) ? () => setDetailToken((token) => token + 1) : undefined
                 }
               />
             ) : null}
