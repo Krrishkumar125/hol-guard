@@ -454,7 +454,6 @@ def test_soak_baseline_includes_worker_scale_up_but_not_later_growth(monkeypatch
 
     def request(_endpoint: str, _token: str) -> float:
         served.append(1)
-        threading.Event().wait(0.01)
         return 1.0
 
     def resources(_pid: int) -> tuple[int, int, int]:
@@ -475,7 +474,6 @@ def test_short_soak_counts_growth_after_the_warm_tenth(monkeypatch, tmp_path) ->
 
     def request(_endpoint: str, _token: str) -> float:
         served.append(1)
-        threading.Event().wait(0.01)
         return 1.0
 
     monkeypatch.setattr(stress_runtime, "stress_request", request)

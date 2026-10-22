@@ -291,9 +291,12 @@ def run_stress_batches(execution: StressExecution, request_count: int) -> None:
             if start < warm_requests:
                 size = min(size, warm_requests - start)
             futures = [executor.submit(stress_request, execution.endpoint, execution.auth_token) for _ in range(size)]
+            # Sample at least once per batch, even one that finishes before the
+            # first check, so the warm-window ceiling and the peak see it.
+            sample_stress_runtime(execution)
             while not all(future.done() for future in futures):
-                sample_stress_runtime(execution)
                 time.sleep(0.05)
+                sample_stress_runtime(execution)
             collect_batch(execution, futures)
             start += size
             if start <= warm_requests:
