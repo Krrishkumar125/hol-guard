@@ -1,0 +1,138 @@
+"""Resident bridge for the ``artifact_content_hash`` op.
+
+``GuardStore`` keys every saved decision by the artifact's content hash, so
+the hash is an approval key, not a convenience digest: a caller that spelled
+it differently would miss every approval the user already granted. The
+resident spells it, from the artifact's own fields; this module only ships
+those fields and transports the answer back.
+
+The fields travel raw. The hash reads the artifact's own redaction of its
+arguments, url and metadata before digesting, so a copy redacted here would
+hash differently than the one the stored approval covers.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from pathlib import Path
+from typing import cast
+from uuid import uuid4
+
+from .models import GuardArtifact
+from .native_context import _resolve_digest_home, ensure_resident_prerequisite
+from .native_execution import _resident_request
+from .native_store_policy import _payload
+
+ARTIFACT_CONTENT_HASH_FEATURE = "artifact-content-hash-v1"
+_REQUEST_SCHEMA = "guard-artifact-content-hash-request.v1"
+_RESULT_SCHEMA = "guard-artifact-content-hash-result.v1"
+_TIMEOUT_SECONDS = 10.0
+# Mirrors ``ARTIFACT_CONTENT_HASH_MAX_ARTIFACTS``: the resident refuses a
+# request carrying more artifacts than this.
+_MAX_ARTIFACTS = 256
+_MAX_REQUEST_BYTES = 4 * 1024 * 1024
+_HASH_LENGTH = 64
+_HASH_ALPHABET = frozenset("0123456789abcdef")
+
+
+class ArtifactContentHashUnavailableError(RuntimeError):
+    """The resident could not spell the artifact content hash."""
+
+    code = "native_artifact_content_hash_unavailable"
+
+
+def artifact_content_hash_fields(artifact: GuardArtifact) -> dict[str, object]:
+    """The artifact's own fields, unredacted, as the resident reads them."""
+
+    return {
+        "artifact_id": artifact.artifact_id,
+        "name": artifact.name,
+        "harness": artifact.harness,
+        "artifact_type": artifact.artifact_type,
+        "source_scope": artifact.source_scope,
+        "config_path": artifact.config_path,
+        "command": artifact.command,
+        "args": list(artifact.args),
+        "url": artifact.url,
+        "transport": artifact.transport,
+        "publisher": artifact.publisher,
+        "metadata": dict(artifact.metadata),
+    }
+
+
+def native_artifact_content_hashes(
+    artifacts: Sequence[GuardArtifact],
+    *,
+    guard_home: Path | None = None,
+) -> list[str]:
+    """Return one content hash per artifact, in the caller's order.
+
+    A scan and a prompt both hash every artifact a harness defines, so they
+    are asked for together: one round trip per artifact would put the resident
+    on the critical path once per artifact rather than once per batch.
+
+    Raises ``ArtifactContentHashUnavailableError`` when the resident cannot
+    answer, so a caller that needs an approval key fails closed rather than
+    keying a decision by a hash nothing authoritative spelled.
+    """
+
+    if not artifacts:
+        return []
+    try:
+        home = Path(_resolve_digest_home(guard_home))
+    except (OSError, RuntimeError, ValueError):
+        raise ArtifactContentHashUnavailableError from None
+    if not ensure_resident_prerequisite(home):
+        raise ArtifactContentHashUnavailableError
+    hashes: list[str] = []
+    for start in range(0, len(artifacts), _MAX_ARTIFACTS):
+        hashes.extend(_hashes_for_batch(artifacts[start : start + _MAX_ARTIFACTS], home))
+    return hashes
+
+
+def native_artifact_content_hash(
+    artifact: GuardArtifact,
+    *,
+    guard_home: Path | None = None,
+) -> str:
+    """Return the content hash of one artifact."""
+
+    return native_artifact_content_hashes([artifact], guard_home=guard_home)[0]
+
+
+def _hashes_for_batch(artifacts: Sequence[GuardArtifact], home: Path) -> list[str]:
+    """Ask the resident about one batch the contract is willing to accept."""
+
+    wire: dict[str, object] = {
+        "schema": _REQUEST_SCHEMA,
+        "request_id": f"artifact-content-hash-{uuid4().hex}",
+        "artifacts": [artifact_content_hash_fields(artifact) for artifact in artifacts],
+    }
+    try:
+        response = _resident_request(
+            operation="artifact_content_hash",
+            request=wire,
+            guard_home=home,
+            timeout_seconds=_TIMEOUT_SECONDS,
+            required_feature=ARTIFACT_CONTENT_HASH_FEATURE,
+            response_schema=_RESULT_SCHEMA,
+            max_request_bytes=_MAX_REQUEST_BYTES,
+            record_success=False,
+        )
+    except (TypeError, ValueError, OSError, RuntimeError):
+        raise ArtifactContentHashUnavailableError from None
+    payload = _payload(response, wire, home)
+    if not isinstance(payload, dict):
+        raise ArtifactContentHashUnavailableError
+    hashes = payload.get("content_hashes")
+    if not isinstance(hashes, list) or len(hashes) != len(artifacts):
+        raise ArtifactContentHashUnavailableError
+    if not all(_is_content_hash(item) for item in hashes):
+        raise ArtifactContentHashUnavailableError
+    return cast("list[str]", hashes)
+
+
+def _is_content_hash(value: object) -> bool:
+    """Whether a payload entry is a hash this bridge will hand to a caller."""
+
+    return isinstance(value, str) and len(value) == _HASH_LENGTH and set(value) <= _HASH_ALPHABET

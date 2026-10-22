@@ -11,8 +11,8 @@ from rich.table import Table
 from rich.text import Text
 
 from ..approval_gate import ApprovalGateError, ApprovalGateGrant, public_config, require_approval_decision
-from ..consumer import artifact_hash
 from ..models import GuardArtifact, PolicyDecision
+from ..native_artifact_content_hash import native_artifact_content_hashes
 from ..store import GuardStore
 from .approval_gate_prompt import prompt_for_approval_gate
 
@@ -324,6 +324,13 @@ def build_prompt_artifacts(
     """Combine detected artifacts with evaluation results for prompting."""
 
     artifacts_by_id = {artifact.artifact_id: artifact for artifact in artifacts}
+    # Each hash is an approval key the resident spells. They are asked for in
+    # one batch: a prompt listing a harness's artifacts would otherwise cross
+    # to the resident once per row.
+    content_hashes = {
+        artifact.artifact_id: digest
+        for artifact, digest in zip(artifacts, native_artifact_content_hashes(artifacts), strict=True)
+    }
     prompt_artifacts: list[PromptArtifact] = []
     for item in evaluation_artifacts:
         artifact_id = str(item.get("artifact_id"))
@@ -369,7 +376,7 @@ def build_prompt_artifacts(
                 harness=harness,
                 artifact_id=artifact.artifact_id,
                 artifact_name=artifact.name,
-                artifact_hash=exact_approval_hash or artifact_hash(artifact),
+                artifact_hash=exact_approval_hash or content_hashes[artifact.artifact_id],
                 policy_action=str(item.get("policy_action") or "review"),
                 changed_fields=changed_fields,
                 provenance_summary=f"{artifact.source_scope} artifact defined at {artifact.config_path}",
@@ -383,7 +390,7 @@ def build_prompt_artifacts(
                 metadata=dict(artifact.metadata),
                 current_snapshot=_prompt_artifact_snapshot(artifact),
                 removed=False,
-                snapshot_hash=content_hash or artifact_hash(artifact),
+                snapshot_hash=content_hash or content_hashes[artifact.artifact_id],
             )
         )
     return prompt_artifacts
