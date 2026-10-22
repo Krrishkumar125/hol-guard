@@ -106,10 +106,8 @@ def _assert_background_growth(samples: list[Counter[str]]) -> None:
     """Each background operation answers to its own ceiling, not to a total."""
 
     ceilings = {
-        "policy_snapshot_push": _BATCH * _PUBLICATIONS_PER_CLI_PRE_TOOL_HOOK
-        + _PUBLICATION_JITTER_PER_BATCH,
-        "hook_direct_evidence_drain": _BATCH * _DRAIN_ROUND_TRIPS_PER_CLI_PRE_TOOL_HOOK
-        + _DRAIN_JITTER_PER_BATCH,
+        "policy_snapshot_push": _BATCH * _PUBLICATIONS_PER_CLI_PRE_TOOL_HOOK + _PUBLICATION_JITTER_PER_BATCH,
+        "hook_direct_evidence_drain": _BATCH * _DRAIN_ROUND_TRIPS_PER_CLI_PRE_TOOL_HOOK + _DRAIN_JITTER_PER_BATCH,
     }
     for name, ceiling in ceilings.items():
         _assert_growth_within([Counter({name: sample[name]}) for sample in samples], ceiling)
@@ -301,9 +299,7 @@ def test_publication_growth_answers_to_the_background_ceiling(tmp_path: Path, ex
     """
 
     added = b"" if extra == "none" else b"policy_snapshot_push\n"
-    _, background = _replay(
-        tmp_path / "resident-requests.log", extra=added, once=extra == "one-more-publication"
-    )
+    _, background = _replay(tmp_path / "resident-requests.log", extra=added, once=extra == "one-more-publication")
     if extra == "per-request":
         with pytest.raises(AssertionError):
             _assert_background_growth(background)
