@@ -16,6 +16,7 @@ Rollback: ``HOL_GUARD_RELEASE_FEED=off`` makes every route answer
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
@@ -236,7 +237,7 @@ def fetch_release_document(
             if error.code == 404:
                 raise ReleaseFeedReadError("release_not_found", 404) from error
             raise ReleaseFeedReadError("release_feed_upstream_error", 502) from error
-        except (urllib.error.URLError, OSError, ValueError) as error:
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as error:
             raise ReleaseFeedReadError(RELEASE_FEED_TRANSPORT_FAILED, 503) from error
         try:
             if response.status != 200:
@@ -249,7 +250,7 @@ def fetch_release_document(
             etag = response.headers.get("ETag")
         except ReleaseFeedReadError:
             raise
-        except (urllib.error.URLError, OSError, ValueError) as error:
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as error:
             # A connection that dies while its body is read is the same
             # transport failure as one that never opened, and the route owes
             # the dashboard that answer rather than a traceback.

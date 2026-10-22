@@ -9,6 +9,7 @@ resident-client boundary so the adapter's own contract is what fails.
 
 from __future__ import annotations
 
+import http.client
 import io
 import json
 import urllib.error
@@ -42,9 +43,7 @@ class FakeOpener:
 
 
 def http_error(code: int) -> urllib.error.HTTPError:
-    return urllib.error.HTTPError(
-        feed.RELEASE_INDEX_PATH, code, "error", hdrs=None, fp=io.BytesIO(b"{}")
-    )
+    return urllib.error.HTTPError(feed.RELEASE_INDEX_PATH, code, "error", hdrs=None, fp=io.BytesIO(b"{}"))
 
 
 @pytest.fixture(autouse=True)
@@ -70,23 +69,15 @@ def index_body() -> bytes:
 
 def native_status() -> SimpleNamespace:
     identity = SimpleNamespace(path="/usr/bin/false")
-    capabilities = SimpleNamespace(
-        features={feed._RESIDENT_PROTOCOL_FEATURE, feed.RELEASE_FEED_NATIVE_FEATURE}
-    )
-    return SimpleNamespace(
-        available=True, compatible=True, identity=identity, capabilities=capabilities
-    )
+    capabilities = SimpleNamespace(features={feed._RESIDENT_PROTOCOL_FEATURE, feed.RELEASE_FEED_NATIVE_FEATURE})
+    return SimpleNamespace(available=True, compatible=True, identity=identity, capabilities=capabilities)
 
 
 def test_index_reads_the_fixed_origin_with_no_identifier_on_the_wire() -> None:
     opener = FakeOpener([FakeResponse(index_body())])
-    feed.fetch_release_document(
-        path=feed.RELEASE_INDEX_PATH, query="page=1&pageSize=25", opener=opener
-    )
+    feed.fetch_release_document(path=feed.RELEASE_INDEX_PATH, query="page=1&pageSize=25", opener=opener)
     request = opener.requests[0]
-    assert request.full_url == (
-        "https://hol.org/api/guard/releases/v1/index?page=1&pageSize=25"
-    )
+    assert request.full_url == ("https://hol.org/api/guard/releases/v1/index?page=1&pageSize=25")
     assert request.method == "GET"
     assert not request.has_header("Authorization")
     assert not request.has_header("Cookie")
@@ -122,21 +113,15 @@ def test_a_fresh_document_is_reused_and_a_refetch_sends_the_validator() -> None:
     feed.fetch_release_document(path=feed.RELEASE_INDEX_PATH, query="page=1", opener=opener)
     feed.fetch_release_document(path=feed.RELEASE_INDEX_PATH, query="page=1", opener=opener)
     assert len(opener.requests) == 1
-    feed.fetch_release_document(
-        path=feed.RELEASE_INDEX_PATH, query="page=1", opener=opener, force=True
-    )
+    feed.fetch_release_document(path=feed.RELEASE_INDEX_PATH, query="page=1", opener=opener, force=True)
     assert opener.requests[1].has_header("If-none-match")
 
 
 def test_a_304_reuses_the_stored_body() -> None:
     opener = FakeOpener([FakeResponse(index_body(), headers={"ETag": '"rf-def"'})])
-    original = feed.fetch_release_document(
-        path=feed.RELEASE_INDEX_PATH, query="page=1", opener=opener, force=True
-    )
+    original = feed.fetch_release_document(path=feed.RELEASE_INDEX_PATH, query="page=1", opener=opener, force=True)
     opener.responses.append(http_error(304))
-    reused = feed.fetch_release_document(
-        path=feed.RELEASE_INDEX_PATH, query="page=1", opener=opener, force=True
-    )
+    reused = feed.fetch_release_document(path=feed.RELEASE_INDEX_PATH, query="page=1", opener=opener, force=True)
     assert reused.body == original.body
     assert reused.etag == original.etag
 
@@ -144,25 +129,17 @@ def test_a_304_reuses_the_stored_body() -> None:
 def test_an_unknown_release_is_a_404_not_an_upstream_failure() -> None:
     opener = FakeOpener([http_error(404)])
     with pytest.raises(feed.ReleaseFeedReadError) as error:
-        feed.fetch_release_document(
-            path=feed.RELEASE_DETAIL_PATH, query="slug=v9-9-9", opener=opener
-        )
+        feed.fetch_release_document(path=feed.RELEASE_DETAIL_PATH, query="slug=v9-9-9", opener=opener)
     assert (error.value.code, error.value.status) == ("release_not_found", 404)
 
 
 def test_redirects_and_oversized_bodies_are_refused() -> None:
-    redirect = urllib.error.HTTPError(
-        feed.RELEASE_INDEX_PATH, 302, "Found", hdrs=None, fp=io.BytesIO(b"")
-    )
+    redirect = urllib.error.HTTPError(feed.RELEASE_INDEX_PATH, 302, "Found", hdrs=None, fp=io.BytesIO(b""))
     with pytest.raises(feed.ReleaseFeedReadError):
-        feed.fetch_release_document(
-            path=feed.RELEASE_INDEX_PATH, query="page=1", opener=FakeOpener([redirect])
-        )
+        feed.fetch_release_document(path=feed.RELEASE_INDEX_PATH, query="page=1", opener=FakeOpener([redirect]))
     oversized = FakeResponse(b"x" * (feed.MAX_RELEASE_FEED_RESPONSE_BYTES + 1))
     with pytest.raises(feed.ReleaseFeedReadError) as error:
-        feed.fetch_release_document(
-            path=feed.RELEASE_INDEX_PATH, query="page=2", opener=FakeOpener([oversized])
-        )
+        feed.fetch_release_document(path=feed.RELEASE_INDEX_PATH, query="page=2", opener=FakeOpener([oversized]))
     assert error.value.code == "release_feed_response_too_large"
 
 
@@ -187,9 +164,7 @@ def test_the_rollout_switch_answers_without_any_upstream_or_native_work(
 
     monkeypatch.setattr(feed, "native_runtime_status", never_called)
     monkeypatch.setattr(feed, "fetch_release_document", never_called)
-    result = feed.release_feed_projection(
-        guard_home=Path("/tmp"), kind="index", opener=FakeOpener([])
-    )
+    result = feed.release_feed_projection(guard_home=Path("/tmp"), kind="index", opener=FakeOpener([]))
     assert result is not None
     assert (result.status, result.error_code) == (503, feed.RELEASE_FEED_UNAVAILABLE)
 
@@ -205,12 +180,7 @@ def test_an_absent_native_capability_has_no_python_fallback(
         "fetch_release_document",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no fetch without the projector")),
     )
-    assert (
-        feed.release_feed_projection(
-            guard_home=Path("/tmp"), kind="index", opener=FakeOpener([])
-        )
-        is None
-    )
+    assert feed.release_feed_projection(guard_home=Path("/tmp"), kind="index", opener=FakeOpener([])) is None
 
 
 def test_the_projected_body_is_what_the_route_serves(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -278,10 +248,31 @@ def test_a_frame_that_is_not_the_agreed_result_is_refused(
 ) -> None:
     monkeypatch.setattr(feed, "native_runtime_status", lambda **_kwargs: native_status())
     for frame in (
-        {"schema": "something-else", "outcome": "ok", "http_status": 200, "etag": None, "body": "{}", "error_code": None},
-        {"schema": feed.RELEASE_FEED_RESULT_SCHEMA, "outcome": "ok", "http_status": 200, "etag": None, "body": "{}", "error_code": "release_feed_body_invalid"},
+        {
+            "schema": "something-else",
+            "outcome": "ok",
+            "http_status": 200,
+            "etag": None,
+            "body": "{}",
+            "error_code": None,
+        },
+        {
+            "schema": feed.RELEASE_FEED_RESULT_SCHEMA,
+            "outcome": "ok",
+            "http_status": 200,
+            "etag": None,
+            "body": "{}",
+            "error_code": "release_feed_body_invalid",
+        },
         # An error status the operation never produces cannot be relayed.
-        {"schema": feed.RELEASE_FEED_RESULT_SCHEMA, "outcome": "error", "http_status": 418, "etag": None, "body": None, "error_code": "release_feed_payload_invalid"},
+        {
+            "schema": feed.RELEASE_FEED_RESULT_SCHEMA,
+            "outcome": "error",
+            "http_status": 418,
+            "etag": None,
+            "body": None,
+            "error_code": "release_feed_payload_invalid",
+        },
     ):
         monkeypatch.setattr(
             feed,
@@ -310,10 +301,21 @@ def test_a_connection_that_dies_mid_body_is_a_transport_failure() -> None:
         def read(self, _size: int | None = None) -> bytes:
             raise TimeoutError("the connection died while the body was read")
 
-    with pytest.raises(feed.ReleaseFeedReadError) as error:
-        feed.fetch_release_document(
-            path=feed.RELEASE_INDEX_PATH,
-            query="page=1",
-            opener=FakeOpener([DyingResponse(b"")]),
-        )
-    assert (error.value.code, error.value.status) == (feed.RELEASE_FEED_TRANSPORT_FAILED, 503)
+    # A chunked body cut off partway raises IncompleteRead, which descends from
+    # HTTPException rather than OSError, so a tuple of the socket error classes
+    # alone would let it escape as a traceback.
+    class TruncatedResponse(io.BytesIO):
+        status = 200
+        headers = {"ETag": ""}
+
+        def read(self, _size: int | None = None) -> bytes:
+            raise http.client.IncompleteRead(b'{"schemaVersion"', 4096)
+
+    for dying in (DyingResponse, TruncatedResponse):
+        with pytest.raises(feed.ReleaseFeedReadError) as error:
+            feed.fetch_release_document(
+                path=feed.RELEASE_INDEX_PATH,
+                query="page=1",
+                opener=FakeOpener([dying(b"")]),
+            )
+        assert (error.value.code, error.value.status) == (feed.RELEASE_FEED_TRANSPORT_FAILED, 503), dying.__name__
