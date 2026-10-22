@@ -152,6 +152,19 @@ def test_a_resident_that_cannot_run_fails_closed(monkeypatch: pytest.MonkeyPatch
         _ask(_entries(1))
 
 
+def test_a_deleted_working_directory_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reading the working directory is I/O, and it answers like any other."""
+
+    _resident(monkeypatch, _answers)
+
+    def gone() -> Path:
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr(bridge.Path, "cwd", staticmethod(gone))
+    with pytest.raises(bridge.InventorySourceEvidenceUnavailableError):
+        _ask(_entries(1))
+
+
 def test_a_transport_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     def explode(request):
         raise OSError("no socket")

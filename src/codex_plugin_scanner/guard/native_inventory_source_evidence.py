@@ -104,7 +104,15 @@ def _evidence_for_batch(
 ) -> list[dict[str, object]]:
     """Ask the resident about one batch the contract is willing to accept."""
 
-    cwd = Path.cwd()
+    try:
+        # A relative path in the inventory is anchored here, and reading the
+        # working directory is itself an I/O call: it raises when the directory
+        # the process started in has since been removed. That is the same
+        # unavailability every other failure below reports, so it is named as
+        # such rather than escaping as a bare OSError the callers do not expect.
+        cwd = Path.cwd()
+    except OSError:
+        raise InventorySourceEvidenceUnavailableError from None
     wire: dict[str, object] = {
         "schema": _REQUEST_SCHEMA,
         "request_id": f"inventory-source-evidence-{uuid4().hex}",
