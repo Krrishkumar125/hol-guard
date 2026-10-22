@@ -27,7 +27,17 @@ from .native_store_policy import _payload
 INVENTORY_SOURCE_EVIDENCE_FEATURE = "inventory-source-evidence-v1"
 _REQUEST_SCHEMA = "guard-inventory-source-evidence-request.v1"
 _RESULT_SCHEMA = "guard-inventory-source-evidence-result.v1"
-_TIMEOUT_SECONDS = 10.0
+# The deadline covers a whole batch, and a batch is as large as the contract
+# allows, so a fixed one would fail an inventory purely for being big: the
+# resident hashes every primary document and fingerprints every linked tree it
+# is handed. The floor carries a small batch over a cold filesystem; the
+# per-entry share is what the work actually scales with. The resident's own
+# file-count bound on a linked tree keeps one entry from spending the batch.
+# The ceiling is what the batch is still worth waiting for: past it the hook
+# that asked has already lost, and failing closed beats hanging the snapshot.
+_TIMEOUT_FLOOR_SECONDS = 10.0
+_TIMEOUT_PER_ENTRY_SECONDS = 0.1
+_TIMEOUT_CEILING_SECONDS = 60.0
 # Mirrors ``INVENTORY_SOURCE_EVIDENCE_MAX_ENTRIES``: the resident refuses a
 # request carrying more entries than this.
 _MAX_ENTRIES = 512
@@ -94,22 +104,23 @@ def _evidence_for_batch(
 ) -> list[dict[str, object]]:
     """Ask the resident about one batch the contract is willing to accept."""
 
+    cwd = Path.cwd()
     wire: dict[str, object] = {
         "schema": _REQUEST_SCHEMA,
         "request_id": f"inventory-source-evidence-{uuid4().hex}",
-        "home_dir": str(home_dir),
+        "home_dir": _absolute(str(home_dir), cwd),
         "include_symlinks": include_symlinks,
         "follow_unsafe_symlinks": follow_unsafe_symlinks,
-        "entries": [_entry_wire(entry) for entry in entries],
+        "entries": [_entry_wire(entry, cwd) for entry in entries],
     }
     if workspace_dir is not None:
-        wire["workspace_dir"] = str(workspace_dir)
+        wire["workspace_dir"] = _absolute(str(workspace_dir), cwd)
     try:
         response = _resident_request(
             operation="inventory_source_evidence",
             request=wire,
             guard_home=home,
-            timeout_seconds=_TIMEOUT_SECONDS,
+            timeout_seconds=_batch_timeout_seconds(len(entries)),
             required_feature=INVENTORY_SOURCE_EVIDENCE_FEATURE,
             response_schema=_RESULT_SCHEMA,
             max_request_bytes=_MAX_REQUEST_BYTES,
@@ -128,7 +139,16 @@ def _evidence_for_batch(
     return cast("list[dict[str, object]]", evidence)
 
 
-def _entry_wire(entry: Mapping[str, object]) -> dict[str, object]:
+def _batch_timeout_seconds(entry_count: int) -> float:
+    """The deadline one batch of this size is allowed."""
+
+    return min(
+        _TIMEOUT_CEILING_SECONDS,
+        _TIMEOUT_FLOOR_SECONDS + _TIMEOUT_PER_ENTRY_SECONDS * entry_count,
+    )
+
+
+def _entry_wire(entry: Mapping[str, object], cwd: Path) -> dict[str, object]:
     """Ship an entry's identity, leaving out a config path it does not carry."""
 
     wire: dict[str, object] = {
@@ -138,5 +158,26 @@ def _entry_wire(entry: Mapping[str, object]) -> dict[str, object]:
     }
     config_path = entry.get("config_path")
     if isinstance(config_path, str) and config_path:
-        wire["config_path"] = config_path
+        wire["config_path"] = _absolute(config_path, cwd)
     return wire
+
+
+def _absolute(value: str, cwd: Path) -> str:
+    """Anchor a relative path to the caller's working directory.
+
+    The resident resolves a path before it checks containment, and it can only
+    resolve an absolute one: a relative workspace or config path would arrive
+    with nothing to resolve against and lose its evidence. Detection hands back
+    whatever the harness wrote, so a relative path is ordinary input, not a
+    caller mistake.
+
+    The join is deliberate rather than ``Path.resolve()``: the config path's
+    own final component is the symlink the inspection exists to read, and
+    resolving here would hand the resident the target instead. A leading ``~``
+    is left alone for the resident to expand, as the Python source did.
+    """
+
+    if not value or value.startswith("~"):
+        return value
+    path = Path(value)
+    return value if path.is_absolute() else str(cwd / path)

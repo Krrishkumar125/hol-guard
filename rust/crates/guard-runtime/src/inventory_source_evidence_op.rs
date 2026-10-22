@@ -15,6 +15,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
+use guard_command::inventory_item_metadata::safe_roots_for_inspection;
 use guard_contracts::{
     InventorySourceEvidenceEntryV1, InventorySourceEvidenceRequestV1,
     InventorySourceEvidenceResultV1, INVENTORY_SOURCE_EVIDENCE_MAX_BYTES,
@@ -101,17 +102,6 @@ pub(crate) fn evaluate_request(request: &InventorySourceEvidenceRequestV1) -> Va
         })
         .collect();
     json!({ "evidence": evidence })
-}
-
-/// `_safe_roots_for_inspection`: the workspace first, so a path inside it is
-/// bounded by the narrower root.
-fn safe_roots_for_inspection(home_dir: &Path, workspace_dir: Option<&Path>) -> Vec<PathBuf> {
-    let mut roots = Vec::with_capacity(2);
-    if let Some(workspace) = workspace_dir {
-        roots.push(workspace.to_path_buf());
-    }
-    roots.push(home_dir.to_path_buf());
-    roots
 }
 
 /// `_apply_source_of_truth_metadata`, as the `sourceOfTruth` value alone: a

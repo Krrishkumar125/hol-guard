@@ -31,6 +31,11 @@ const MAX_SYMLINK_HOPS: usize = 16;
 const MAX_SYMLINK_TARGET_BYTES: usize = 1024 * 1024;
 /// `_MAX_FINGERPRINT_FILE_BYTES`: how much of a tree member is fingerprinted.
 const MAX_FINGERPRINT_FILE_BYTES: usize = 1024 * 1024;
+/// How many files a linked directory may hold before it stops being
+/// fingerprintable. The caller asks for a whole detection's artifacts under one
+/// deadline, so a single tree cannot be allowed to spend it: past this the
+/// target reports no hash, the way an unreadable member already does.
+const MAX_TREE_FILES: usize = 20_000;
 /// `_IGNORED_TREE_DIR_NAMES`.
 const IGNORED_TREE_DIR_NAMES: [&str; 8] = [
     ".git",
@@ -382,8 +387,20 @@ fn fingerprint_path_tree(root: &Path, home_dir: &Path) -> Option<String> {
         vec![root.to_path_buf()]
     } else {
         let mut collected = Vec::new();
-        collect_tree_files(root, &mut collected);
-        collected.sort_by(|left, right| left.to_string_lossy().cmp(&right.to_string_lossy()));
+        let mut visited = 0_usize;
+        collect_tree_files(root, &mut collected, &mut visited);
+        if visited > MAX_TREE_FILES {
+            return None;
+        }
+        // `sorted()` over `Path` objects compares them component by component,
+        // so `foo/bar.md` precedes `foo.md`. Comparing the whole path string
+        // would reverse that pair and change the fingerprint of a tree nothing
+        // had touched.
+        collected.sort_by_cached_key(|path| {
+            path.components()
+                .map(|component| component.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        });
         collected
     };
     let mut entries = Vec::with_capacity(paths.len());
@@ -399,14 +416,22 @@ fn fingerprint_path_tree(root: &Path, home_dir: &Path) -> Option<String> {
 /// `root.rglob("*")` filtered as the Python source filters it: files only,
 /// never `.env`, and nothing whose absolute path names an ignored directory.
 /// A directory symlink is not descended into, matching `pathlib`.
-fn collect_tree_files(directory: &Path, collected: &mut Vec<PathBuf>) {
+///
+/// `visited` counts every entry the walk looks at, directories included, and
+/// the walk stops once it passes `MAX_TREE_FILES` so the caller can tell a
+/// bounded tree from one it only half read.
+fn collect_tree_files(directory: &Path, collected: &mut Vec<PathBuf>, visited: &mut usize) {
     let Ok(entries) = fs::read_dir(directory) else {
         return;
     };
     for entry in entries.flatten() {
+        if *visited > MAX_TREE_FILES {
+            return;
+        }
+        *visited += 1;
         let path = entry.path();
         if is_dir(&path) && !is_symlink(&path) {
-            collect_tree_files(&path, collected);
+            collect_tree_files(&path, collected, visited);
             continue;
         }
         if !is_file(&path) {

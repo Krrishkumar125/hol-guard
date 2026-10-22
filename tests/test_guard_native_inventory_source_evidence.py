@@ -90,6 +90,37 @@ def test_a_workspace_the_caller_does_not_have_is_left_out(monkeypatch: pytest.Mo
     assert "workspace_dir" not in sent[0]
 
 
+def test_relative_paths_are_anchored_to_the_callers_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The resident resolves before it checks containment, and only absolutes resolve."""
+
+    sent = _resident(monkeypatch, lambda request: {"evidence": [{}, {}]})
+    monkeypatch.setattr(bridge.Path, "cwd", classmethod(lambda _cls: Path("/run/from")))
+    bridge.native_inventory_source_evidence(
+        [
+            {"harness": "codex", "item_kind": "skill", "artifact_type": "skill", "config_path": "skills/s0/SKILL.md"},
+            {"harness": "codex", "item_kind": "skill", "artifact_type": "skill", "config_path": "~/skills/s1/SKILL.md"},
+        ],
+        home_dir=Path("home"),
+        workspace_dir=Path("work"),
+    )
+    (wire,) = sent
+    assert wire["home_dir"] == "/run/from/home"
+    assert wire["workspace_dir"] == "/run/from/work"
+    assert [entry["config_path"] for entry in wire["entries"]] == [
+        "/run/from/skills/s0/SKILL.md",
+        # Left for the resident to expand, as the Python source did.
+        "~/skills/s1/SKILL.md",
+    ]
+
+
+def test_a_bigger_batch_is_given_a_longer_deadline() -> None:
+    """A fixed deadline would fail an inventory purely for being big."""
+
+    small = bridge._batch_timeout_seconds(1)
+    large = bridge._batch_timeout_seconds(bridge._MAX_ENTRIES)
+    assert bridge._TIMEOUT_FLOOR_SECONDS <= small < large <= bridge._TIMEOUT_CEILING_SECONDS
+
+
 def test_more_entries_than_the_cap_are_asked_for_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
     sent = _resident(monkeypatch, _answers)
     answers = _ask(_entries(bridge._MAX_ENTRIES + 7))

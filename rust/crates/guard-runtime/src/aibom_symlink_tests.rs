@@ -283,6 +283,32 @@ mod links {
     }
 
     #[test]
+    fn a_nested_member_precedes_the_sibling_its_directory_is_named_after() {
+        // Python sorted the collected paths as `Path` objects, which compare
+        // component by component, so `foo/bar.md` comes before `foo.md`.
+        // Comparing whole path strings reverses that pair, because `.` sorts
+        // below `/`, and the fingerprint of an untouched tree would move.
+        let home = TempDir::new().expect("home");
+        let tree = home.path().join("tree");
+        write(&tree.join("foo.md"), "alpha");
+        write(&tree.join("foo/bar.md"), "beta");
+        let source = home.path().join("link");
+        link(&tree, &source);
+
+        let inspection =
+            inspect_aibom_source_path(&source, &roots(home.path()), home.path(), None, false);
+
+        let expected = fingerprint_mapping(&json!([
+            {"path": "{home}/tree/foo/bar.md", "sha256": hex_digest("beta")},
+            {"path": "{home}/tree/foo.md", "sha256": hex_digest("alpha")},
+        ]));
+        assert_eq!(
+            inspection.target_content_hash.as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
     fn a_relative_link_target_resolves_against_the_parent_when_a_workspace_is_in_play() {
         let home = TempDir::new().expect("home");
         let workspace = home.path().join("code");
