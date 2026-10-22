@@ -57,7 +57,7 @@ pub struct ApprovalExtensionRecommendationSnapshotV1 {
 pub enum ApprovalExtensionRecommendationQueryV1 {
     /// Re-check a queued hint against the active catalog and the controls.
     Recommend {
-        hint: ExtensionAllowHintV1,
+        hint: Box<ExtensionAllowHintV1>,
         /// Digest of the registry the caller serves; the op answers from its
         /// own admitted catalog only when the two are the same catalog.
         registry_catalog_digest: String,

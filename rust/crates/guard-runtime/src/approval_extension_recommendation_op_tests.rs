@@ -98,7 +98,7 @@ fn recommend_request(
     snapshot: ApprovalExtensionRecommendationSnapshotV1,
 ) -> ApprovalExtensionRecommendationRequestV1 {
     request(ApprovalExtensionRecommendationQueryV1::Recommend {
-        hint,
+        hint: Box::new(hint),
         registry_catalog_digest: catalog.catalog_digest.clone(),
         snapshot,
     })
@@ -338,7 +338,7 @@ fn a_registry_the_resident_has_not_admitted_is_refused() {
     let mut other = hint(&catalog, &[GIT_ADD]);
     other.catalog_digest = "1".repeat(64);
     let query = ApprovalExtensionRecommendationQueryV1::Recommend {
-        hint: other,
+        hint: Box::new(other),
         registry_catalog_digest: "1".repeat(64),
         snapshot: snapshot(&catalog, "protected", &[], &[]),
     };
