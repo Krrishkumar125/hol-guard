@@ -21,6 +21,7 @@ const WELL_FORMED_TOKEN: &str = "guard-approval-context:v1:eyJjYXBhYmlsaXRpZXMiO
 const LEGACY_EXACT_KEY: &str =
     "runtime-exact:44869672e5a90ec571e6ba62a2aec9cded44bdf7a09b4d477a679f972b70a534";
 /// The same command bound to its config path, scope, text and wrapper chain.
+#[cfg(not(windows))]
 const LEGACY_EXACT_KEY_WITH_CONTEXT: &str =
     "runtime-exact:7ee804454b012f82e91b2fbd4b5471f53c41c1fb9d6ad108a3625a22f01e79bc";
 const TOOL_ACTION_ID: &str = "claude-code:runtime:tool-action:abc123";
@@ -109,6 +110,9 @@ fn legacy_hash_is_stored_as_the_exact_key() {
     assert_eq!(payload["events"].as_array().unwrap().len(), 1);
 }
 
+// The expected key binds the POSIX rendering of the config path, as the path
+// vectors do; Windows renders the same spelling with backslashes.
+#[cfg(not(windows))]
 #[test]
 fn legacy_hash_with_context_is_stored_as_the_exact_key_with_context() {
     let mut facts = inputs("hash-native");
