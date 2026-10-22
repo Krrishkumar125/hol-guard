@@ -6319,6 +6319,16 @@
       }
     }
 
+    .hover\:bg-brand-dark\/90:hover {
+      background-color: var(--brand-dark);
+    }
+
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-brand-dark\/90:hover {
+        background-color: color-mix(in oklab, var(--brand-dark) 90%, transparent);
+      }
+    }
+
     .hover\:bg-brand-dark\/\[0\.035\]:hover {
       background-color: var(--brand-dark);
     }

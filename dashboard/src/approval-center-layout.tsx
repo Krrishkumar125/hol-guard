@@ -103,6 +103,7 @@ type LayoutProps = {
     scope_contract_digest?: string;
   }) => void;
   onBulkApprove?: (ids: string[], gateCredentials?: BulkGateCredentials) => void | Promise<void>;
+  onBulkBlock?: (requests: GuardApprovalRequest[]) => Promise<void>;
   onRepair?: () => Promise<void>;
   onClearEvidence?: () => void;
   onRetryResume?: () => void;
@@ -191,6 +192,7 @@ function renderInboxContent(props: LayoutProps): ReactNode {
       onGoHome={props.onGoHome}
       onRetryResume={props.onRetryResume}
       onBulkApprove={props.onBulkApprove}
+      onBulkBlock={props.onBulkBlock}
     />
   );
 }

@@ -33,6 +33,7 @@ import { ErrorBoundary } from "./error-boundary";
 import { lazyWorkspace } from "./lazy-workspace";
 import { runAutomaticProtectionRepair } from "./protection-repair-flow";
 import { selectNextAfterResolution } from "./queue-state";
+import { blockRequestsOnce, bulkBlockFailureMessage, bulkBlockSummary } from "./bulk-block-requests";
 import { useRouteFocus } from "./use-route-focus";
 import { commitDashboardLocation, useDashboardPathname } from "./dashboard-location";
 
@@ -868,6 +869,23 @@ export function App() {
     }
   }, [refreshApprovalGate, refreshStateAfterAction, setResolutionMessage]);
 
+  const handleBulkBlock = useCallback(async (selected: GuardApprovalRequest[]) => {
+    if (bulkApproveInFlight.current) {
+      return;
+    }
+    bulkApproveInFlight.current = true;
+    try {
+      const outcome = await blockRequestsOnce(selected, resolveRequestWithQueueResult);
+      await refreshStateAfterAction();
+      if (outcome.failed > 0) {
+        throw new Error(bulkBlockFailureMessage(outcome));
+      }
+      setResolutionMessage(bulkBlockSummary(outcome));
+    } finally {
+      bulkApproveInFlight.current = false;
+    }
+  }, [refreshStateAfterAction, setResolutionMessage]);
+
   const handleRetry = useCallback(() => {
     setRuntime({ kind: "loading" });
     setRequests({ kind: "loading" });
@@ -1044,6 +1062,7 @@ export function App() {
       onOpenRequest={handleOpenRequest}
       onResolve={handleResolve}
       onBulkApprove={handleBulkApprove}
+      onBulkBlock={handleBulkBlock}
       onRetry={handleRetry}
       onRetryDetail={() => setDetailRefreshKey((key) => key + 1)}
       onRepair={handleRepair}
