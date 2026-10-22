@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard import desktop_foreign_installs
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.cli import desktop_converge, update_commands
 from codex_plugin_scanner.guard.cli.commands_lifecycle_gate import lifecycle_gate_requirement
@@ -215,6 +216,28 @@ def test_converges_when_hook_repair_only_reports_information(
     assert not venv.exists()
 
 
+def test_restart_reminder_alone_reports_converged(home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    note = "Refreshed the OpenCode pretool plugin during update. Restart OpenCode to load it."
+    monkeypatch.setattr(desktop_converge.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        desktop_converge,
+        "repair_hooks_then_converge",
+        lambda *_, **__: ({"status": "converged", "notes": []}, [], [note]),
+    )
+    output = io.StringIO()
+
+    exit_code = desktop_converge.run_desktop_converge(
+        argparse.Namespace(dry_run=False, json=True),
+        context=_context(home, tmp_path),
+        store=object(),  # pyright: ignore[reportArgumentType]
+        workspace=None,
+        output_stream=output,
+    )
+
+    payload = json.loads(output.getvalue())
+    assert (exit_code, payload["status"], payload["notes"]) == (0, "converged", [note])
+
+
 def test_keeps_installs_when_the_daemon_will_not_stop(home: Path, tmp_path: Path) -> None:
     _ = _launcher(home)
     venv = _pipx_venv(home)
@@ -296,9 +319,11 @@ def test_ignores_a_users_own_shell_wrapper(home: Path) -> None:
     assert inventory.empty
 
 
-def test_dry_run_works_outside_the_desktop_core(home: Path, tmp_path: Path) -> None:
+def test_dry_run_works_outside_the_desktop_core(home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = _launcher(home)
     venv = _pipx_venv(home)
+    # The preview runs from the very pipx install the Core run would remove.
+    monkeypatch.setattr(desktop_foreign_installs, "_protected_roots", lambda: (venv,))
     output = io.StringIO()
     args = argparse.Namespace(dry_run=True, json=True)
 
@@ -310,8 +335,9 @@ def test_dry_run_works_outside_the_desktop_core(home: Path, tmp_path: Path) -> N
         output_stream=output,
     )
 
-    assert exit_code == 0
-    assert json.loads(output.getvalue())["status"] == "planned"
+    payload = json.loads(output.getvalue())
+    assert (exit_code, payload["status"]) == (0, "planned")
+    assert {"kind": "pipx", "path": str(venv)} in payload["found"]
     assert venv.exists()
 
 

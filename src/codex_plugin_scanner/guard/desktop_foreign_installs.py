@@ -128,10 +128,16 @@ def entry_file_names() -> tuple[str, ...]:
     return tuple(f"{name}{suffix}" for name in ENTRY_POINT_NAMES for suffix in ("", ".exe", ".cmd"))
 
 
-def inventory_foreign_installs(home: Path, *, path_env: str | None = None) -> ForeignInventory:
-    """Return every hol-guard tool venv and bin entry Desktop should retire."""
+def inventory_foreign_installs(
+    home: Path, *, path_env: str | None = None, protect_running: bool = True
+) -> ForeignInventory:
+    """Return every hol-guard tool venv and bin entry Desktop should retire.
 
-    protected = _protected_roots()
+    ``protect_running`` leaves out the install this process runs from; only a
+    preview that removes nothing may turn it off.
+    """
+
+    protected = _protected_roots() if protect_running else ()
     candidates: list[tuple[str, Path]] = []
     collections = [("pipx", root) for root in pipx_venv_dirs(home)] + [("uv", root) for root in uv_tool_dirs(home)]
     for kind, collection in collections:

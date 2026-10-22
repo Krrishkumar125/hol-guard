@@ -56,7 +56,9 @@ def converge_on_desktop_core(
             "reason_code": "desktop_core_launcher_missing",
             "message": "Desktop has not activated a Core yet, so other installs were left in place.",
         }
-    inventory = inventory_foreign_installs(context.home_dir, path_env=path_env)
+    # A preview from a pip or uv install lists that install too: the Desktop
+    # Core run removes it. Real removal never touches the running install.
+    inventory = inventory_foreign_installs(context.home_dir, path_env=path_env, protect_running=not dry_run)
     payload: dict[str, object] = {"launcher": str(launcher), "found": _describe(inventory)}
     if dry_run:
         payload["status"] = "planned"
@@ -169,14 +171,18 @@ def run_desktop_converge(
     )
     if payload["status"] not in {"skipped", "planned"}:
         payload["managed_installs"] = repaired
+        # Informational repair notes, such as a restart reminder, are reported
+        # but do not make a successful converge partial.
+        failures = [*(note for note in repair_notes if _REPAIR_FAILURE_MARKER in note), *converge_notes(payload)]
         notes = [*repair_notes, *converge_notes(payload)]
         if payload.get("daemon_restart_required"):
             refreshed, refresh_note = refresh_desktop_core_daemon(context, executable=Path(sys.executable).resolve())
             payload["daemon_refresh"] = refreshed
             notes.extend([refresh_note] if refresh_note else [])
+            failures.extend([refresh_note] if refresh_note and refreshed is None else [])
         payload["notes"] = notes
         if payload["status"] != "deferred":
-            payload["status"] = "partial" if notes else "converged"
+            payload["status"] = "partial" if failures else "converged"
     if bool(getattr(args, "json", False)):
         print(json.dumps(payload, sort_keys=True), file=output_stream)
     else:
