@@ -440,9 +440,16 @@ fn supervised_exit_budget(scope: &Path) -> Option<serde_json::Value> {
 }
 
 /// Drive one managed run the way the two processes really do: the supervisor
-/// claims the scope and charges the spawn, the serving child leaves its note
-/// if it was asked to stop, and the supervisor closes the run out.
-fn drive_supervised_run(state_base: &Path, digest: &str, scope: &Path, stop_requested: bool) {
+/// claims the scope and charges the spawn, the serving child leaves a note
+/// named after itself if it was asked to stop, and the supervisor closes the
+/// run out against the child it reaped.
+fn drive_supervised_run(
+    state_base: &Path,
+    digest: &str,
+    scope: &Path,
+    serving_child: u32,
+    stop_requested: bool,
+) {
     let supervised = exit_record::supervised_scope(state_base, digest).unwrap();
     restart_budget::consume(scope).unwrap();
     // Measure the run from the charge the supervisor gives back, so the
@@ -450,12 +457,19 @@ fn drive_supervised_run(state_base: &Path, digest: &str, scope: &Path, stop_requ
     // before it.
     let serving = Instant::now();
     if stop_requested {
-        restart_budget::record_requested_stop(scope).unwrap();
+        requested_stop::record(scope, serving_child).unwrap();
     }
     // The serve loops return as soon as the `shutdown` operation lands, so a
     // stop reaches the supervisor as a clean run far shorter than the second
     // an unexplained success has to clear, and as nothing else.
-    exit_record::record_supervised_exit(supervised, None, true, Some(0), serving.elapsed());
+    exit_record::record_supervised_exit(
+        supervised,
+        None,
+        true,
+        Some(0),
+        serving.elapsed(),
+        serving_child,
+    );
 }
 
 /// Two builds installed against one guard home stop each other's resident to
@@ -470,9 +484,10 @@ fn requested_stops_driven_through_the_supervisor_never_open_the_circuit() {
     let scope = crate::resident_state::state_scope(&root, &digest).unwrap();
 
     // Twice the free restarts a window allows, so a charged stop could not
-    // survive the loop.
-    for _ in 0..6 {
-        drive_supervised_run(&root, &digest, &scope, true);
+    // survive the loop. Each run is a fresh child, as it is in a real loop of
+    // two runtimes stopping each other.
+    for serving_child in 1..=6 {
+        drive_supervised_run(&root, &digest, &scope, serving_child, true);
     }
     let budget = supervised_exit_budget(&scope).unwrap();
     let spawn_after_the_stops = restart_budget::consume(&scope);
@@ -508,7 +523,14 @@ fn immediate_exits_nobody_asked_for_still_open_the_circuit() {
         }
         let supervised = exit_record::supervised_scope(&root, &digest).unwrap();
         let serving = Instant::now();
-        exit_record::record_supervised_exit(supervised, None, true, Some(0), serving.elapsed());
+        exit_record::record_supervised_exit(
+            supervised,
+            None,
+            true,
+            Some(0),
+            serving.elapsed(),
+            attempt,
+        );
     }
 
     fs::remove_dir_all(&root).unwrap();

@@ -235,18 +235,11 @@ pub(super) fn record_supervised_exit(
     success: bool,
     exit_code: Option<i32>,
     ran_for: Duration,
+    child_process_id: u32,
 ) {
     let code = exit_code.map_or_else(|| "none".to_owned(), |code| code.to_string());
     let ran_for_ms = ran_for.as_millis();
-    let stop_requested = restart_budget::take_requested_stop(
-        &supervised.scope,
-        supervised
-            .started
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since_epoch| {
-                u64::try_from(since_epoch.as_millis()).unwrap_or(u64::MAX)
-            }),
-    );
+    let stop_requested = super::requested_stop::take(&supervised.scope, child_process_id);
     let orderly = restart_budget::orderly_exit(success, ran_for, stop_requested);
     let note = if !success {
         Some(format!(
@@ -288,9 +281,17 @@ pub(super) fn record_supervised_run(
     stderr: Option<std::sync::mpsc::Receiver<Vec<u8>>>,
     status: std::process::ExitStatus,
     ran_for: Duration,
+    child_process_id: u32,
 ) {
     let stderr = stderr.and_then(|stderr| stderr.recv_timeout(super::MANAGED_STOP_TIMEOUT).ok());
-    record_supervised_exit(supervised, stderr, status.success(), status.code(), ran_for);
+    record_supervised_exit(
+        supervised,
+        stderr,
+        status.success(),
+        status.code(),
+        ran_for,
+        child_process_id,
+    );
 }
 
 #[cfg(all(test, windows))]

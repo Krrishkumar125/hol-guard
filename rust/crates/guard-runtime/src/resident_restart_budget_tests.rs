@@ -1,6 +1,15 @@
-use super::*;
 #[cfg(windows)]
+use super::super::private_file::backup_path;
+use super::super::requested_stop::{record as record_requested_stop, take as take_requested_stop};
+use super::*;
 use std::fs;
+#[cfg(windows)]
+use std::io::{Read, Write};
+use std::path::PathBuf;
+
+/// Any process id will do here: the note is only ever read back for the same
+/// one, and these tests stand in for both halves of that handshake.
+const SERVING_CHILD: u32 = 4_242;
 
 #[test]
 fn repeated_updates_replace_budget_without_leaving_temporary_state() {
@@ -317,36 +326,6 @@ fn a_run_that_was_asked_to_stop_is_orderly_however_briefly_it_lived() {
 }
 
 #[test]
-fn a_requested_stop_note_is_read_once_by_the_run_that_left_it() {
-    let scope = temp_scope("requested-stop");
-    let started_ms = now_ms().unwrap();
-
-    assert!(!take_requested_stop(&scope, started_ms));
-    record_requested_stop(&scope).unwrap();
-    assert!(take_requested_stop(&scope, started_ms));
-    // Reading the note consumes it, so the next run starts without one.
-    assert!(!take_requested_stop(&scope, started_ms));
-    assert!(!scope.join(REQUESTED_STOP_FILE).exists());
-
-    std::fs::remove_dir_all(scope).unwrap();
-}
-
-#[test]
-fn a_note_left_before_a_run_began_cannot_forgive_its_crash() {
-    // A child whose supervisor never reaped it leaves its note behind. The
-    // run after it is still judged on its own exit, and takes the stale note
-    // away on its way past.
-    let scope = temp_scope("stale-note");
-    record_requested_stop(&scope).unwrap();
-    let started_later_ms = now_ms().unwrap() + 1;
-
-    assert!(!take_requested_stop(&scope, started_later_ms));
-    assert!(!scope.join(REQUESTED_STOP_FILE).exists());
-
-    std::fs::remove_dir_all(scope).unwrap();
-}
-
-#[test]
 fn repeated_requested_stops_never_open_the_restart_circuit() {
     // The shape that took every prompt down: a second runtime sharing the
     // guard home stops this one's resident the instant it starts, over and
@@ -354,10 +333,9 @@ fn repeated_requested_stops_never_open_the_restart_circuit() {
     let scope = temp_scope("requested-stop-loop");
     for _ in 0..(MAX_RESTARTS_PER_WINDOW * 3) {
         consume(&scope).expect("a stop that was asked for is never a restart");
-        let started_ms = now_ms().unwrap();
-        record_requested_stop(&scope).unwrap();
+        record_requested_stop(&scope, SERVING_CHILD).unwrap();
         backdate_window(&scope, INSTANT_RUN.as_millis() as u64 + 1_000);
-        let stop_requested = take_requested_stop(&scope, started_ms);
+        let stop_requested = take_requested_stop(&scope, SERVING_CHILD);
         assert!(stop_requested);
         release_after_exit(
             &scope,

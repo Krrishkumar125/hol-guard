@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-#[cfg(not(windows))]
-use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+#[cfg(windows)]
+use super::private_file::recover_interrupted_replace;
+use super::private_file::{existing_private_file, read_private_bytes, write_private};
 
 const RESTART_WINDOW_MS: u64 = 60_000;
 // A crash loop is slowed by bounded exponential backoff, not stopped for a
@@ -42,19 +43,6 @@ fn backoff_ms(steps: u32) -> u64 {
     RESTART_BACKOFF_BASE_MS
         .saturating_mul(1u64 << steps.min(8))
         .min(RESTART_BACKOFF_MAX_MS)
-}
-
-/// The note a serving child leaves when a `shutdown` operation, rather than a
-/// fault, ended its run. It crosses exactly one process boundary -- from the
-/// child to the supervisor that reaps it -- and is removed as it is read.
-const REQUESTED_STOP_SCHEMA: &str = "hol-guard-resident-requested-stop.v1";
-const REQUESTED_STOP_FILE: &str = "requested-stop.json";
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RequestedStop {
-    schema: String,
-    requested_at_ms: u64,
 }
 
 struct RestartBudgetLock {
@@ -103,213 +91,6 @@ fn now_ms() -> Result<u64, String> {
             .as_millis(),
     )
     .map_err(|_| "native_resident_clock_invalid".to_owned())
-}
-
-fn write_private(path: &Path, bytes: &[u8], private_root: &Path) -> Result<(), String> {
-    let temporary = temporary_path(path)?;
-    if existing_private_file(&temporary, private_root)? {
-        #[cfg(windows)]
-        crate::resident_state::remove_windows_private_file(&temporary, private_root)
-            .map_err(|_| "native_resident_restart_budget_recovery_failed".to_owned())?;
-        #[cfg(not(windows))]
-        fs::remove_file(&temporary)
-            .map_err(|_| "native_resident_restart_budget_recovery_failed".to_owned())?;
-    }
-    #[cfg(not(windows))]
-    let mut options = OpenOptions::new();
-    #[cfg(not(windows))]
-    options.create_new(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
-    }
-    #[cfg(windows)]
-    let mut file = crate::resident_state::private_file(&temporary, true, private_root)
-        .map_err(|_| "native_resident_restart_budget_write_failed".to_owned())?;
-    #[cfg(not(windows))]
-    let mut file = options
-        .open(&temporary)
-        .map_err(|_| "native_resident_restart_budget_write_failed".to_owned())?;
-    let write_result = file
-        .write_all(bytes)
-        .and_then(|()| file.sync_all())
-        .map_err(|_| "native_resident_restart_budget_write_failed".to_owned());
-    drop(file);
-    if write_result.is_err() {
-        #[cfg(windows)]
-        let _ = crate::resident_state::remove_windows_private_file(&temporary, private_root);
-        #[cfg(not(windows))]
-        let _ = fs::remove_file(&temporary);
-        return write_result;
-    }
-    let replace_result = replace_temporary(&temporary, path, private_root);
-    if replace_result.is_err() {
-        #[cfg(windows)]
-        let _ = crate::resident_state::remove_windows_private_file(&temporary, private_root);
-        #[cfg(not(windows))]
-        let _ = fs::remove_file(&temporary);
-        return replace_result;
-    }
-    #[cfg(unix)]
-    File::open(
-        path.parent()
-            .ok_or_else(|| "native_resident_restart_budget_write_failed".to_owned())?,
-    )
-    .and_then(|directory| directory.sync_all())
-    .map_err(|_| "native_resident_restart_budget_write_failed".to_owned())?;
-    Ok(())
-}
-
-fn existing_private_file(path: &Path, private_root: &Path) -> Result<bool, String> {
-    #[cfg(not(windows))]
-    let _ = private_root;
-
-    #[cfg(windows)]
-    {
-        // Existence and type are established by one validated handle.  Do
-        // not use pathname metadata here: a same-name replacement between a
-        // stat and the subsequent open must never be treated as our budget
-        // file, and foreign-owner/reparse objects must fail closed.
-        crate::resident_state::open_private_read(path, 4096, "restart_budget", private_root)
-            .map(|file| file.is_some())
-            .map_err(|_| "native_resident_restart_budget_invalid".to_owned())
-    }
-
-    #[cfg(not(windows))]
-    {
-        let metadata = match fs::symlink_metadata(path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-            Err(_) => return Err("native_resident_restart_budget_stat_failed".to_owned()),
-        };
-        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 4096 {
-            return Err("native_resident_restart_budget_invalid".to_owned());
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::{MetadataExt, PermissionsExt};
-            let owner = path
-                .parent()
-                .and_then(|parent| fs::symlink_metadata(parent).ok())
-                .map(|parent| parent.uid());
-            if owner != Some(metadata.uid()) || metadata.permissions().mode() & 0o077 != 0 {
-                return Err("native_resident_restart_budget_invalid".to_owned());
-            }
-        }
-        Ok(true)
-    }
-}
-
-#[cfg(not(windows))]
-fn replace_temporary(temporary: &Path, path: &Path, _private_root: &Path) -> Result<(), String> {
-    fs::rename(temporary, path).map_err(|_| {
-        let _ = fs::remove_file(temporary);
-        "native_resident_restart_budget_write_failed".to_owned()
-    })
-}
-
-#[cfg(windows)]
-fn replace_temporary(temporary: &Path, path: &Path, private_root: &Path) -> Result<(), String> {
-    crate::resident_state::replace_windows_private_file(temporary, path, private_root)
-        .map_err(|_| "native_resident_restart_budget_write_failed".to_owned())
-}
-
-#[cfg(windows)]
-fn backup_path(path: &Path) -> PathBuf {
-    path.with_extension("json.previous")
-}
-
-#[cfg(windows)]
-fn recover_interrupted_replace(path: &Path, private_root: &Path) -> Result<(), String> {
-    let backup = backup_path(path);
-    let path_exists = existing_private_file(path, private_root)
-        .map_err(|_| "native_resident_restart_budget_recovery_failed".to_owned())?;
-    let backup_exists = existing_private_file(&backup, private_root)
-        .map_err(|_| "native_resident_restart_budget_recovery_failed".to_owned())?;
-    match (path_exists, backup_exists) {
-        (false, true) => {
-            crate::resident_state::replace_windows_private_file(&backup, path, private_root)
-                .map_err(|_| "native_resident_restart_budget_recovery_failed".to_owned())
-        }
-        (true, true) => crate::resident_state::remove_windows_private_file(&backup, private_root)
-            .map(|_| ())
-            .map_err(|_| "native_resident_restart_budget_recovery_failed".to_owned()),
-        _ => Ok(()),
-    }
-}
-
-fn temporary_path(path: &Path) -> Result<PathBuf, String> {
-    let name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| "native_resident_restart_budget_write_failed".to_owned())?;
-    Ok(path.with_file_name(format!(".{name}.{}.tmp", std::process::id())))
-}
-
-/// Read one small private file this module owns. The budget and the
-/// requested-stop note sit in the same directory and are validated the same
-/// way, so a foreign or swapped file fails closed whichever one is read.
-fn read_private_bytes(
-    path: &Path,
-    private_root: &Path,
-    label: &'static str,
-) -> Result<Option<Vec<u8>>, String> {
-    if !existing_private_file(path, private_root)? {
-        return Ok(None);
-    }
-    let mut bytes = Vec::new();
-    let file = {
-        #[cfg(windows)]
-        {
-            crate::resident_state::open_private_read(path, 4096, label, private_root)?
-                .ok_or_else(|| "native_resident_restart_budget_read_failed".to_owned())?
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = label;
-            let mut options = OpenOptions::new();
-            options.read(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                options.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
-            }
-            options
-                .open(path)
-                .map_err(|_| "native_resident_restart_budget_read_failed".to_owned())?
-        }
-    };
-    let metadata = file
-        .metadata()
-        .map_err(|_| "native_resident_restart_budget_stat_failed".to_owned())?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 4096 {
-        return Err("native_resident_restart_budget_invalid".to_owned());
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        let path_metadata = fs::symlink_metadata(path)
-            .map_err(|_| "native_resident_restart_budget_stat_failed".to_owned())?;
-        if path_metadata.file_type().is_symlink()
-            || !path_metadata.is_file()
-            || path_metadata.dev() != metadata.dev()
-            || path_metadata.ino() != metadata.ino()
-            || metadata.nlink() != 1
-            || path
-                .parent()
-                .and_then(|parent| fs::symlink_metadata(parent).ok())
-                .map(|parent| parent.uid())
-                != Some(metadata.uid())
-            || metadata.permissions().mode() & 0o077 != 0
-        {
-            return Err("native_resident_restart_budget_invalid".to_owned());
-        }
-    }
-    file.take(4097)
-        .read_to_end(&mut bytes)
-        .map_err(|_| "native_resident_restart_budget_read_failed".to_owned())?;
-    Ok(Some(bytes))
 }
 
 /// Read this scope's budget when it already exists, validating the private
@@ -421,65 +202,6 @@ fn consume_before(scope: &Path, deadline: Option<Instant>) -> Result<(), String>
 /// stop -- keeps the charge its spawn took.
 pub(super) fn orderly_exit(success: bool, ran_for: Duration, stop_requested: bool) -> bool {
     success && (stop_requested || ran_for.as_millis() >= HEALTHY_RUN_MIN_MS)
-}
-
-/// Say that this run is ending because something asked it to stop.
-///
-/// The serving child is the only process that knows a `shutdown` operation
-/// ended its serve loop: its supervisor sees a process that exited cleanly
-/// after a few milliseconds, which on its own is indistinguishable from a
-/// crash loop reporting success.
-pub(super) fn record_requested_stop(scope: &Path) -> Result<(), String> {
-    let private_root = crate::resident_state::private_root_for_scope(scope)?;
-    let note = RequestedStop {
-        schema: REQUESTED_STOP_SCHEMA.to_owned(),
-        requested_at_ms: now_ms()?,
-    };
-    let encoded = serde_json::to_vec(&note)
-        .map_err(|_| "native_resident_restart_budget_encode_failed".to_owned())?;
-    write_private(&scope.join(REQUESTED_STOP_FILE), &encoded, &private_root)
-}
-
-/// Take the requested-stop note left by the run that started at `started_ms`.
-///
-/// The note is removed whether or not it belongs to that run: one written
-/// before the run began was left by an earlier child whose supervisor never
-/// reaped it, and it must not forgive a later crash. A note that cannot be
-/// read is no note, so an unreadable or foreign file keeps the charge.
-pub(super) fn take_requested_stop(scope: &Path, started_ms: u64) -> bool {
-    let Ok(private_root) = crate::resident_state::private_root_for_scope(scope) else {
-        return false;
-    };
-    let path = scope.join(REQUESTED_STOP_FILE);
-    #[cfg(windows)]
-    {
-        if recover_interrupted_replace(&path, &private_root).is_err() {
-            return false;
-        }
-    }
-    let requested_at_ms = read_requested_stop(&path, &private_root);
-    remove_private(&path, &private_root);
-    requested_at_ms.is_some_and(|requested_at_ms| requested_at_ms >= started_ms)
-}
-
-fn read_requested_stop(path: &Path, private_root: &Path) -> Option<u64> {
-    let bytes = read_private_bytes(path, private_root, "requested_stop").ok()??;
-    let value = crate::strict_json_value(&bytes).ok()?;
-    let note = serde_json::from_value::<RequestedStop>(value).ok()?;
-    (note.schema == REQUESTED_STOP_SCHEMA).then_some(note.requested_at_ms)
-}
-
-/// Removing the note is best effort in the same way writing it is: a note
-/// that outlives its run is rejected on age, so a failed removal costs
-/// nothing but the file.
-fn remove_private(path: &Path, private_root: &Path) {
-    #[cfg(windows)]
-    let _ = crate::resident_state::remove_windows_private_file(path, private_root);
-    #[cfg(not(windows))]
-    {
-        let _ = private_root;
-        let _ = fs::remove_file(path);
-    }
 }
 
 fn acquire_budget_lock_waiting(

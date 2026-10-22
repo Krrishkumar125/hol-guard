@@ -110,6 +110,10 @@ fn supervise_managed_child(
     let started = Instant::now();
     let mut child = spawn_managed_child(executable, &argument_refs)
         .map_err(|_| "native_resident_spawn_failed".to_owned())?;
+    // Held across the wait, as on Unix: it is how the exit record tells this
+    // child's requested-stop note from one left by a run this supervisor did
+    // not start.
+    let child_process_id = child.id();
     let mut liveness_writer = child.take_stdin().ok_or_else(|| {
         let _ = child.terminate_with_timeout(super::MANAGED_STOP_TIMEOUT);
         "native_resident_spawn_stdin_failed".to_owned()
@@ -142,7 +146,14 @@ fn supervise_managed_child(
         status_result.map_err(|_| "native_resident_supervisor_wait_failed".to_owned())?;
     // Windows spawns the serving child without a stderr pipe, so the record
     // carries the supervisor's own classification of this exit.
-    super::exit_record::record_supervised_exit(supervised, None, status_success, None, ran_for);
+    super::exit_record::record_supervised_exit(
+        supervised,
+        None,
+        status_success,
+        None,
+        ran_for,
+        child_process_id,
+    );
     if status_success {
         Ok(())
     } else {
