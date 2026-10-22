@@ -198,11 +198,12 @@ def declared_benign_exit(scenario: Scenario, call: dict[str, Any]) -> bool:
         return False
     # The declaration excuses the command's own nonzero exit, not every way the call can fail.
     # OMP reports ``exitCode`` only for a command that ran and exited nonzero, so a host-tool
-    # fault carries none and a sandbox refusal reports 126; both stay harness faults.
+    # fault carries none, a sandbox refusal reports 126 and a runner missing the binary reports
+    # 127; none of them is the command's own answer, so all three stay harness faults.
     result = call.get("result")
     details = result.get("details") if isinstance(result, dict) else None
     exit_code = details.get("exitCode") if isinstance(details, dict) else None
-    return isinstance(exit_code, int) and exit_code not in (0, 126)
+    return isinstance(exit_code, int) and exit_code not in (0, 126, 127)
 
 
 def virtual_uri_error(scenario: Scenario, calls: list[dict[str, Any]]) -> str | None:

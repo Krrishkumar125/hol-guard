@@ -75,13 +75,14 @@ def test_a_declaration_cannot_cover_a_command_the_author_did_not_list(fixture):
     assert assess_case(narrowed, _nonzero_exit(narrowed, fixture, 1))["outcome"] == "harness-error"
 
 
-@pytest.mark.parametrize("exit_code", [None, 126])
+@pytest.mark.parametrize("exit_code", [None, 126, 127])
 def test_a_declaration_covers_the_commands_own_exit_and_nothing_else(fixture, exit_code):
     """A listed command still fails the case when the status is not one the command returned.
 
     OMP reports ``exitCode`` only for a command that ran and exited nonzero, so a call that
-    carries none failed before the command started, and 126 is the sandbox refusing to run it.
-    Neither is the `fatal: not a git repository` answer the prompt asked for.
+    carries none failed before the command started, 126 is the sandbox refusing to run it and
+    127 is a runner without the binary. None is the `fatal: not a git repository` answer the
+    prompt asked for.
     """
     case = _nonzero_exit(BENIGN_EXIT_CASE, fixture, 0, exit_code=exit_code)
     result = assess_case(BENIGN_EXIT_CASE, case)
