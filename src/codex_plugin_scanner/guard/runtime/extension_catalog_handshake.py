@@ -7,13 +7,18 @@ import urllib.parse
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from .extension_catalog_sync import ExtensionCatalogLimitError
+from .extension_catalog_sync import ExtensionCatalogLimitError, ExtensionCatalogUnavailableError
 from .extension_control_limits import CLOUD_V1_CATALOG_SYNC_MAX_BODY_BYTES, CLOUD_V1_MAX_CATALOG_PAYLOAD_BYTES
 
 _CATALOG_OVER_CLOUD_LIMIT: dict[str, object] = {
     "managedControlsCapabilities": [],
     "extension_catalog_sync_status": "downgraded",
     "extension_catalog_sync_reason": "catalog_upload_exceeds_cloud_limit",
+}
+_CATALOG_RUNTIME_UNAVAILABLE: dict[str, object] = {
+    "managedControlsCapabilities": [],
+    "extension_catalog_sync_status": "downgraded",
+    "extension_catalog_sync_reason": "catalog_runtime_unavailable",
 }
 
 
@@ -81,6 +86,8 @@ def prepare_extension_catalog_handshake(
         catalog = catalog_factory(generated_at)
     except ExtensionCatalogLimitError:
         return dict(_CATALOG_OVER_CLOUD_LIMIT), None
+    except ExtensionCatalogUnavailableError:
+        return dict(_CATALOG_RUNTIME_UNAVAILABLE), None
     if catalog.get("catalogDigest") != digest:
         raise RuntimeError("Extension catalog changed during runtime synchronization")
     catalog_bytes = len(_compact_json(catalog))
@@ -190,7 +197,7 @@ def _exceeds_cloud_limit(catalog_factory: Callable[[str], Mapping[str, object]],
         catalog_factory(generated_at)
     except ExtensionCatalogLimitError:
         return True
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, ExtensionCatalogUnavailableError):
         return False
     return False
 

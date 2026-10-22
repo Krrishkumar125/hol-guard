@@ -33,6 +33,11 @@ use crate::package_authority_op::request_digest_with_limit;
 /// the reply, which the transport caps at 2 MiB.
 const MAX_SCENARIOS: usize = 64;
 const MAX_ITEMS: usize = 4_096;
+/// The request asks for more work than one reply may cost.
+pub(crate) const TOO_MANY_ITEMS: &str = "native_extension_control_too_many_items";
+/// The answer does not fit the transport's reply cap; it is refused whole,
+/// never cut, because a cut answer would be reviewed and approved as complete.
+pub(crate) const REPLY_TOO_LARGE: &str = "native_extension_control_reply_too_large";
 const TRUST_CLASSES: [&str; 3] = ["first-party", "trusted-library", "external"];
 
 pub(crate) fn evaluate_extension_control_request(
@@ -42,14 +47,37 @@ pub(crate) fn evaluate_extension_control_request(
     // oversized request has no digest to bind.
     let request_sha256 = request_digest_with_limit(request, EXTENSION_CONTROL_MAX_BYTES)
         .map_err(|_| "native_extension_control_too_large".to_owned())?;
-    let (status, code, payload) = match decide(request) {
+    encode_outcome(request, &request_sha256, decide(request))
+}
+
+/// The reply for an outcome. An answer that does not fit the transport's reply
+/// cap is the refusal `REPLY_TOO_LARGE`, so the transport never meets one.
+pub(crate) fn encode_outcome(
+    request: &ExtensionControlRequestV1,
+    request_sha256: &str,
+    outcome: Result<ExtensionControlPayloadV1, String>,
+) -> Result<Vec<u8>, String> {
+    match encode_result(request, request_sha256, outcome) {
+        Err(reason) if reason == "native_response_too_large" => {
+            encode_result(request, request_sha256, Err(REPLY_TOO_LARGE.to_owned()))
+        }
+        other => other,
+    }
+}
+
+fn encode_result(
+    request: &ExtensionControlRequestV1,
+    request_sha256: &str,
+    outcome: Result<ExtensionControlPayloadV1, String>,
+) -> Result<Vec<u8>, String> {
+    let (status, code, payload) = match outcome {
         Ok(payload) => ("ok", "ok".to_owned(), Some(payload)),
         Err(code) => ("error", code, None),
     };
     crate::encode_response(&ExtensionControlResultV1 {
         schema: EXTENSION_CONTROL_RESULT_SCHEMA.to_owned(),
         request_id: request.request_id.clone(),
-        request_sha256,
+        request_sha256: request_sha256.to_owned(),
         status: status.to_owned(),
         code,
         payload,
@@ -73,7 +101,7 @@ fn decide(request: &ExtensionControlRequestV1) -> Result<ExtensionControlPayload
         } => {
             let items: usize = scenarios.iter().map(|scenario| scenario.items.len()).sum();
             if scenarios.len() > MAX_SCENARIOS || items > MAX_ITEMS {
-                return Err("native_extension_control_too_many_items".to_owned());
+                return Err(TOO_MANY_ITEMS.to_owned());
             }
             let registry = RequestRegistry::new(registry)?;
             let scenarios = scenarios
@@ -108,10 +136,21 @@ fn decide(request: &ExtensionControlRequestV1) -> Result<ExtensionControlPayload
         } => Ok(ExtensionControlPayloadV1::EnrollmentDigest {
             digest: enrollment_digest(catalog_digest, actor_id, nonce)?,
         }),
+        ExtensionControlQueryV1::Preview {
+            registry,
+            current_layers,
+            proposed_layers,
+        } => Ok(ExtensionControlPayloadV1::Preview {
+            preview: crate::extension_control_preview_op::semantic_preview(
+                registry,
+                current_layers,
+                proposed_layers,
+            )?,
+        }),
     }
 }
 
-fn typed_layers(
+pub(crate) fn typed_layers(
     layers: &[NativeExtensionControlLayerV1],
 ) -> Result<Vec<ExtensionControlLayer>, String> {
     control_layers_from_wire_unbounded(layers)
@@ -241,14 +280,14 @@ fn composed_wire(composed: &ComposedExtensionControls) -> ExtensionControlCompos
 }
 
 /// Lookup normalization of the Python catalog the request projects.
-fn normalize(value: &str) -> String {
+pub(crate) fn normalize(value: &str) -> String {
     value.trim().to_lowercase()
 }
 
 /// The registry projection a request carries, indexed as the Python catalog
 /// indexes it: an extension resolves through its normalized id or an alias
 /// (alias keys are taken as listed), a permission through its normalized id.
-struct RequestRegistry<'a> {
+pub(crate) struct RequestRegistry<'a> {
     catalog_digest: &'a str,
     extensions: HashMap<&'a str, &'a ExtensionControlRegistryExtensionV1>,
     aliases: HashMap<&'a str, &'a str>,
@@ -256,7 +295,7 @@ struct RequestRegistry<'a> {
 }
 
 impl<'a> RequestRegistry<'a> {
-    fn new(registry: &'a ExtensionControlRegistryV1) -> Result<Self, String> {
+    pub(crate) fn new(registry: &'a ExtensionControlRegistryV1) -> Result<Self, String> {
         let invalid = || "native_extension_control_registry_invalid".to_owned();
         let mut extensions = HashMap::with_capacity(registry.extensions.len());
         let mut aliases = HashMap::new();
@@ -293,7 +332,10 @@ impl<'a> RequestRegistry<'a> {
         })
     }
 
-    fn lookup(&self, extension_id: &str) -> Option<&'a ExtensionControlRegistryExtensionV1> {
+    pub(crate) fn lookup(
+        &self,
+        extension_id: &str,
+    ) -> Option<&'a ExtensionControlRegistryExtensionV1> {
         let normalized = normalize(extension_id);
         let key = self
             .aliases
