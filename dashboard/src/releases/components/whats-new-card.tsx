@@ -1,7 +1,7 @@
 import { HiMiniSparkles, HiMiniXMark } from "react-icons/hi2";
 
 import { ActionButton } from "../../approval-center-primitives";
-import { channelLabel, formatReleaseDate } from "../releases-model";
+import { channelLabel, formatReleaseDate, normalizeVersionLabel } from "../releases-model";
 import type { ReleaseSummary } from "../releases-types";
 
 /**
@@ -28,7 +28,7 @@ export function WhatsNewCard(props: {
         </span>
         <div className="min-w-0 flex-1 space-y-1">
           <h2 id="whats-new-heading" className="text-base font-semibold text-brand-dark">
-            What's new in Guard {props.release.versionLabel}
+            What's new in Guard {normalizeVersionLabel(props.release.versionLabel)}
           </h2>
           <p className="text-sm text-brand-dark/70">
             {props.release.title} · {channelLabel(props.release.channel)} · released{" "}
@@ -42,7 +42,7 @@ export function WhatsNewCard(props: {
           <button
             type="button"
             onClick={props.onDismiss}
-            aria-label={`Dismiss what's new in Guard ${props.release.versionLabel}`}
+            aria-label={`Dismiss what's new in Guard ${normalizeVersionLabel(props.release.versionLabel)}`}
             className="flex size-11 items-center justify-center rounded-xl text-brand-dark/55 hover:bg-brand-dark/5 hover:text-brand-dark"
           >
             <HiMiniXMark className="size-5" aria-hidden="true" />

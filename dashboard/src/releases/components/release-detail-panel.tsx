@@ -8,6 +8,7 @@ import {
   coverageNote,
   formatReleaseDate,
   groupChangesByKind,
+  normalizeVersionLabel,
   verificationLabel,
 } from "../releases-model";
 import type { ReleaseChange, ReleaseContributor, ReleaseDetail } from "../releases-types";
@@ -79,7 +80,7 @@ export function ReleaseDetailPanel({ detail }: { detail: ReleaseDetail }) {
       <header className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <h2 id="release-detail-heading" className="text-xl font-semibold tracking-tight text-brand-dark">
-            Guard {detail.versionLabel}
+            Guard {normalizeVersionLabel(detail.versionLabel)}
           </h2>
           <Tag tone={detail.channel === "stable" ? "green" : "amber"}>{channelLabel(detail.channel)}</Tag>
         </div>

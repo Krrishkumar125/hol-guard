@@ -6,6 +6,7 @@ import {
   formatReleaseDate,
   hasNextPage,
   hasPreviousPage,
+  normalizeVersionLabel,
   pageRangeLabel,
 } from "../releases-model";
 import type { ReleaseIndex, ReleaseSummary } from "../releases-types";
@@ -31,7 +32,7 @@ function ReleaseRow(props: {
       >
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2">
-            <strong className="text-sm font-semibold text-brand-dark">{release.versionLabel}</strong>
+            <strong className="text-sm font-semibold text-brand-dark">{normalizeVersionLabel(release.versionLabel)}</strong>
             {release.channel === "preview" ? <Tag tone="amber">Preview</Tag> : null}
             {props.installed ? <Tag tone="blue">Installed here</Tag> : null}
           </span>

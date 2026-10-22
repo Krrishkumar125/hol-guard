@@ -137,7 +137,7 @@ function ReleaseRow(props) {
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "min-w-0 flex-1", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex flex-wrap items-center gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { className: "text-sm font-semibold text-brand-dark", children: release.versionLabel }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { className: "text-sm font-semibold text-brand-dark", children: normalizeVersionLabel(release.versionLabel) }),
             release.channel === "preview" ? /* @__PURE__ */ jsxRuntimeExports.jsx(Tag, { tone: "amber", children: "Preview" }) : null,
             props.installed ? /* @__PURE__ */ jsxRuntimeExports.jsx(Tag, { tone: "blue", children: "Installed here" }) : null
           ] }),
@@ -253,7 +253,7 @@ function ReleaseDetailPanel({ detail }) {
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { id: "release-detail-heading", className: "text-xl font-semibold tracking-tight text-brand-dark", children: [
               "Guard ",
-              detail.versionLabel
+              normalizeVersionLabel(detail.versionLabel)
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(Tag, { tone: detail.channel === "stable" ? "green" : "amber", children: channelLabel(detail.channel) })
           ] }),
@@ -326,7 +326,7 @@ function WhatsNewCard(props) {
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 space-y-1", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { id: "whats-new-heading", className: "text-base font-semibold text-brand-dark", children: [
             "What's new in Guard ",
-            props.release.versionLabel
+            normalizeVersionLabel(props.release.versionLabel)
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-brand-dark/70", children: [
             props.release.title,
@@ -344,7 +344,7 @@ function WhatsNewCard(props) {
             {
               type: "button",
               onClick: props.onDismiss,
-              "aria-label": `Dismiss what's new in Guard ${props.release.versionLabel}`,
+              "aria-label": `Dismiss what's new in Guard ${normalizeVersionLabel(props.release.versionLabel)}`,
               className: "flex size-11 items-center justify-center rounded-xl text-brand-dark/55 hover:bg-brand-dark/5 hover:text-brand-dark",
               children: /* @__PURE__ */ jsxRuntimeExports.jsx(HiMiniXMark, { className: "size-5", "aria-hidden": "true" })
             }

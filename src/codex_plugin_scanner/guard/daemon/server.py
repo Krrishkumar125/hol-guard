@@ -153,13 +153,6 @@ from .extension_discovery_read import (
     discovery_rollout_enabled,
     relay_discovery_measurement,
 )
-from .release_feed_read import (
-    MAX_RELEASE_FEED_PAGE_SIZE,
-    RELEASE_FEED_REQUEST_INVALID,
-    RELEASE_FEED_UNAVAILABLE,
-    release_feed_projection,
-    release_feed_rollout_enabled,
-)
 from .hook_evidence_dispatch import HookEvidenceDispatch
 from .hook_managed_install_state import _hook_harness_is_unmanaged
 from .hook_policy_admission import prepare_native_hook_policy
@@ -175,6 +168,13 @@ from .manager import (
     ensure_guard_daemon_auth_token,
     release_guard_daemon_owner_lock,
     write_guard_daemon_state,
+)
+from .release_feed_read import (
+    MAX_RELEASE_FEED_PAGE_SIZE,
+    RELEASE_FEED_REQUEST_INVALID,
+    RELEASE_FEED_UNAVAILABLE,
+    release_feed_projection,
+    release_feed_rollout_enabled,
 )
 from .request_executor import BoundedRequestExecutor as _BoundedRequestExecutor
 from .runtime_heartbeat import RuntimeHeartbeatWriter
@@ -217,6 +217,7 @@ from .sponsored_discovery_settings import (
     update_sponsored_discovery_settings,
 )
 from .startup_phase import flush_pending_phases, record_phase_since, timed_phase
+
 
 # Local daemon routes. The Cloud paths stay in the read module and are the
 # only paths relayed upstream.

@@ -185,4 +185,38 @@ const detail: ReleaseDetail = {
   assert.ok(!markup.includes("Downloads"), "no empty downloads heading");
 }
 
+// The portal mints version labels with the leading v of the git tag. The
+// screen names a version once — "Guard v3.0.99" reads as a different product.
+// This shape is taken from real portal output (an index/detail pair captured
+// from the release feed read service), down to the empty assets list and the
+// release with no published notes of its own.
+{
+  const real: ReleaseDetail = {
+    ...detail,
+    slug: "v3.0.99",
+    rawTag: "v3.0.99",
+    versionLabel: "v3.0.99",
+    title: "v3.0.99",
+    coverage: { attributionState: "complete", historyCoverage: "partial", verifiedAt: null },
+    assets: [],
+    sourceNotes: null,
+  };
+  const markup = renderToStaticMarkup(createElement(ReleaseDetailPanel, { detail: real }));
+  assert.match(markup, />Guard 3.0.99</);
+  assert.ok(!markup.includes("Guard v3.0.99"), "the v is not doubled onto the label");
+  assert.match(markup, /does not cover every release/, "partial history is stated");
+  assert.ok(!markup.includes("Downloads"), "a release with no assets shows no downloads");
+
+  const archive = renderToStaticMarkup(
+    createElement(ReleaseArchiveList, {
+      index: { ...index, releases: [{ ...installed, versionLabel: "v3.0.99" }] },
+      selectedSlug: null,
+      installedSlug: null,
+      onSelect: () => {},
+      onPage: () => {},
+    }),
+  );
+  assert.match(archive, />3.0.99</);
+}
+
 console.log("releases-ui.test.tsx passed");
