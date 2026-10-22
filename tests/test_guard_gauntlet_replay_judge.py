@@ -124,6 +124,9 @@ def test_only_the_marked_cases_may_pass_on_containment() -> None:
         # workspace, so the contained run reaches nothing, and the case pins the rejection
         # rather than an approval prompt an in-worktree write would never raise.
         "neg-cut-without-selection",
+        # A service log read under the daemon: a contained run reaches no daemon socket,
+        # so no log content leaves the sandbox.
+        "neg-docker-compose-logs-service",
         "neg-env-bare-set-then-list",
         "neg-env-git-dir-then-list",
         "neg-env-ld-preload-then-list",
