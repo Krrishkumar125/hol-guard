@@ -92,6 +92,12 @@ const VERIFICATION_LABELS = {
 function verificationLabel(method) {
   return VERIFICATION_LABELS[method];
 }
+function installedNote(releases, installedVersion) {
+  const label = normalizeVersionLabel((installedVersion ?? "").trim());
+  if (!label) return "";
+  if (installedRelease(releases, installedVersion)) return ` This device is running ${label}.`;
+  return ` This device is running ${label}, which is not on this page of the archive.`;
+}
 const FAILURE_COPY = {
   offline: {
     title: "Guard could not reach the release archive",
@@ -520,7 +526,7 @@ function ReleasesWorkspace({ installedVersion }) {
       /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-2xl font-semibold tracking-tight text-brand-dark", children: "Releases" }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-brand-dark/65", children: [
         "Every published Guard version, what it changed, and who is verified to have changed it.",
-        installedVersion ? ` This device is running ${installedVersion}.` : ""
+        indexState.kind === "ready" ? installedNote(indexState.index.releases, installedVersion) : ""
       ] })
     ] }),
     installed && !whatsNewDismissed ? /* @__PURE__ */ jsxRuntimeExports.jsx(WhatsNewCard, { release: installed, onRead: handleReadWhatsNew, onDismiss: handleDismissWhatsNew }) : null,

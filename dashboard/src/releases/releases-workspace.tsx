@@ -8,6 +8,7 @@ import { fetchReleaseDetail, fetchReleaseIndex } from "./releases-api";
 import {
   dismissWhatsNew,
   failureCopy,
+  installedNote,
   installedRelease,
   isRetryable,
   isWhatsNewDismissed,
@@ -159,7 +160,7 @@ export function ReleasesWorkspace({ installedVersion }: { installedVersion?: str
         <h1 className="text-2xl font-semibold tracking-tight text-brand-dark">Releases</h1>
         <p className="text-sm text-brand-dark/65">
           Every published Guard version, what it changed, and who is verified to have changed it.
-          {installedVersion ? ` This device is running ${installedVersion}.` : ""}
+          {indexState.kind === "ready" ? installedNote(indexState.index.releases, installedVersion) : ""}
         </p>
       </header>
 

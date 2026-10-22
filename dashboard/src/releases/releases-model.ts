@@ -154,6 +154,21 @@ export function verificationLabel(method: ReleaseVerificationMethod): string {
   return VERIFICATION_LABELS[method];
 }
 
+/** What the screen says about the version this device runs.
+ *
+ * The archive is paged and a device can be many releases behind, so the
+ * installed release is not always on the page in front of the reader. Saying
+ * so beats a page that silently marks nothing as installed. */
+export function installedNote(
+  releases: ReleaseSummary[],
+  installedVersion: string | null | undefined,
+): string {
+  const label = normalizeVersionLabel((installedVersion ?? "").trim());
+  if (!label) return "";
+  if (installedRelease(releases, installedVersion)) return ` This device is running ${label}.`;
+  return ` This device is running ${label}, which is not on this page of the archive.`;
+}
+
 export type ReleaseFailureCopy = { title: string; body: string };
 
 const FAILURE_COPY: Record<ReleaseFeedFailure, ReleaseFailureCopy> = {

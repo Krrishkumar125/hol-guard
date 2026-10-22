@@ -11,6 +11,7 @@ import {
   groupChangesByKind,
   hasNextPage,
   hasPreviousPage,
+  installedNote,
   installedRelease,
   isRetryable,
   isWhatsNewDismissed,
@@ -119,6 +120,16 @@ function change(kind: ReleaseChange["kind"], id: string): ReleaseChange {
   installThrowingLocalStorage();
   assert.equal(isWhatsNewDismissed("3.53.0"), false);
   assert.doesNotThrow(() => dismissWhatsNew("3.53.0"));
+}
+
+// A device can be many releases behind, and the archive is paged. Saying the
+// installed version is not on this page beats a page that marks nothing.
+{
+  const releases = [summary(), summary({ slug: "v3-52-0", versionLabel: "3.52.0" })];
+  assert.equal(installedNote(releases, "v3.53.0"), " This device is running 3.53.0.");
+  assert.match(installedNote(releases, "3.0.57"), /not on this page of the archive/);
+  assert.equal(installedNote(releases, null), "");
+  assert.equal(installedNote(releases, "  "), "");
 }
 
 // Coverage is published, not implied.
