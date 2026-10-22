@@ -68,6 +68,7 @@
       "src/command_compatibility/interpreter.rs",
       "src/command_compatibility/redirects.rs",
       "src/command_compatibility/settles.rs",
+      "src/command_compatibility/source_names.rs",
       "src/command_critical_floors.rs",
       "src/command_curl_operations.rs",
       "src/command_curl_targets.rs",
