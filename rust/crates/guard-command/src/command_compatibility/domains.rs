@@ -330,8 +330,9 @@ pub(super) fn observe(
         // A proven read takes no option that sends stdin or a file, so a
         // pipe after it only filters the response. A zero-I/O loopback
         // `nc -z` probe reads no stdin and sends nothing.
-        // A proven local `rsync` copy names two host paths and takes no
-        // option that reaches another host, so it sends nothing anywhere.
+        // A proven local `rsync` copy names two host paths, takes no option
+        // that reaches another host and redirects nothing but to `/dev/null`,
+        // so it sends nothing anywhere.
         let proven_read = (executable == "curl"
             && crate::pretool::curl_reads::proven_read_segment(command, segment, context))
             || crate::pretool::port_probes::proven_probe_segment(command, segment, context)

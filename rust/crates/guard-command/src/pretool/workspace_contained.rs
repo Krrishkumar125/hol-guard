@@ -545,6 +545,7 @@ pub(super) fn convert(
         || command_shape(shaped, &workspace, command_text.filter(|_| rest.is_none())).is_none()
         || removal::destroys_workspace(result, issued, &workspace)
         || removal::loses_work(result, issued, context, execution_environment)
+        || removal::rsync_replaces_work(issued, context, execution_environment)
     {
         return;
     }

