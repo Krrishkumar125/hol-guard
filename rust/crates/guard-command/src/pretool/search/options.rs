@@ -46,7 +46,14 @@ pub(super) fn unsafe_search_value(
         }),
         SearchValueRole::RgType => !SOURCE_TYPES.contains(&value),
         SearchValueRole::DirectoryAction => value.eq_ignore_ascii_case("recurse"),
-        SearchValueRole::Pattern | SearchValueRole::Other => false,
+        // A pattern matches the text a stage is handed, so an ordinary word
+        // there names no file. The shell reaches it first: `.env{,.local}`
+        // leaves `.env` as the pattern and `.env.local` as an operand the
+        // stage then opens, and `.env*` becomes one as soon as a second name
+        // is beside it. A pattern whose expansions can select a credential
+        // path is therefore not a pattern yet.
+        SearchValueRole::Pattern => glob_can_select_sensitive_path(value),
+        SearchValueRole::Other => false,
     }
 }
 

@@ -352,6 +352,12 @@ fn scan_into(
                 return false;
             }
         } else {
+            // The first positional is the pattern, and it meets the same
+            // screen a `-e` pattern does: a word the shell can still expand
+            // into a credential operand is not matching text yet.
+            if unsafe_search_value(SearchValueRole::Pattern, argument, context) {
+                return false;
+            }
             pattern_supplied = true;
             scan.patterns.push(argument.clone());
         }
