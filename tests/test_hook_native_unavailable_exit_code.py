@@ -6,6 +6,8 @@ deny/allow envelope through it.
 """
 
 import argparse
+import re
+from pathlib import Path
 
 import pytest
 
@@ -127,3 +129,91 @@ class TestNativeUnavailableExitCode:
         for h in ("opencode", "superagent"):
             assert _native_unavailable_exit_code(_args(h), {"policy_action": "block"}, "PreToolUse") == 1, h
             assert _native_unavailable_exit_code(_args(h), {"policy_action": "allow"}, "PreToolUse") == 0, h
+
+
+class TestRustTableParity:
+    """The unavailable path is the one place Python decides an exit code itself.
+
+    Everywhere else the resident's directive carries it
+    (``rust/crates/guard-runtime/src/hook_decision_directive.rs``). Native is
+    gone by definition on this path, so the table cannot be fetched from the
+    resident and has to be restated here -- which makes it the second source
+    of truth for a contract the hosts read. This pins the two together: the
+    harness sets and preemptive events are parsed out of the Rust source, and
+    every harness/action/event the two share has to resolve the same way.
+    """
+
+    RUST_DIRECTIVE = (
+        Path(__file__).resolve().parents[1]
+        / "rust/crates/guard-runtime/src/hook_decision_directive.rs"
+    )
+    ACTIONS = (
+        "allow",
+        "observe",
+        "review",
+        "require-reapproval",
+        "sandbox-required",
+        "block",
+    )
+    EVENTS = (
+        "PreToolUse",
+        "UserPromptSubmit",
+        "PermissionRequest",
+        "PostToolUse",
+        None,
+    )
+
+    @classmethod
+    def _rust_list(cls, name):
+        source = cls.RUST_DIRECTIVE.read_text(encoding="utf-8")
+        match = re.search(
+            rf"const {name}: \[&str; \d+\] = \[(.*?)\];", source, re.DOTALL
+        )
+        assert match, f"{name} is no longer declared in {cls.RUST_DIRECTIVE.name}"
+        return tuple(re.findall(r'"([^"]+)"', match.group(1)))
+
+    def test_harness_sets_match_the_resident_directive(self):
+        assert set(self._rust_list("EXIT_TWO_HARNESSES")) == {
+            "cursor",
+            "devin",
+            "kimi",
+            "hermes",
+        }
+        assert set(self._rust_list("EXIT_ONE_HARNESSES")) == {"opencode", "superagent"}
+        assert set(self._rust_list("ENVELOPE_HARNESSES")) == {
+            "codex",
+            "claude-code",
+            "copilot",
+            "pi",
+            "omp",
+        }
+        assert set(self._rust_list("PREEMPTIVE_EVENTS")) == {
+            "PreToolUse",
+            "UserPromptSubmit",
+            "PermissionRequest",
+        }
+
+    def test_every_shared_harness_resolves_the_same_exit_code(self):
+        blocking = {"review", "require-reapproval", "sandbox-required", "block"}
+        two = set(self._rust_list("EXIT_TWO_HARNESSES"))
+        one = set(self._rust_list("EXIT_ONE_HARNESSES"))
+        envelope = set(self._rust_list("ENVELOPE_HARNESSES"))
+        preemptive = set(self._rust_list("PREEMPTIVE_EVENTS"))
+        # grok and zcode keep their adapter's own contract on both sides and
+        # are covered by the cases above; everything else is table-driven.
+        for harness in sorted(two | one | envelope | {"unknown-harness"}):
+            for action in self.ACTIONS:
+                for event in self.EVENTS:
+                    blocks = action in blocking
+                    if harness in two:
+                        expected = 2 if blocks else 0
+                    elif harness in one:
+                        expected = int(blocks)
+                    elif harness in envelope:
+                        expected = int(blocks and event not in preemptive)
+                    else:
+                        expected = int(blocks)
+                    assert (
+                        native_hook_verdict_exit_code(harness, action, event_name=event)
+                        == expected
+                    ), f"{harness}/{action}/{event} drifted from the resident's table"
