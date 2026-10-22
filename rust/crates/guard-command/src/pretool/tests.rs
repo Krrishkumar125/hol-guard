@@ -191,6 +191,7 @@ fn read_only_github_predecessor_counts_as_benign_for_git_context() {
                 cdpath_unset: false,
                 rustup_override_absent: false,
                 npm_config_inert: false,
+                pip_config_inert: false,
                 shell_home_matches: false,
                 ripgrep_config_absent: false,
                 psql_environment: Default::default(),
@@ -296,10 +297,7 @@ fn git_c_rejects_external_gitfile_pointers() {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/gitfile-pointer-fixtures");
     std::fs::create_dir_all(&base).unwrap();
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let nonce = crate::unique_nanos::unique_nanos();
     let fixture = base.join(format!("fixture-{}-{nonce}", std::process::id()));
     let workspace = fixture.join("workspace");
     let external = fixture.join("external-admin");
@@ -327,10 +325,7 @@ fn git_c_rejects_forged_external_linked_worktree_metadata() {
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/gitfile-pointer-fixtures");
     std::fs::create_dir_all(&base).unwrap();
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let nonce = crate::unique_nanos::unique_nanos();
     let fixture = base.join(format!("linked-fixture-{}-{nonce}", std::process::id()));
     let workspace = fixture.join("workspace");
     let common = fixture.join("external-common/.git");
@@ -399,6 +394,37 @@ fn reviews_dotenv_family_shell_reads() {
         assert_eq!(
             decision.reason_code, "native_sensitive_access_review",
             "{command}"
+        );
+    }
+}
+
+#[test]
+fn windows_aliases_of_secret_paths_get_the_plain_path_decision() {
+    // Win32 drops trailing dots and spaces from each name and reads
+    // `name::$DATA` as the file's default stream.
+    for (alias, plain) in [
+        ("cat '.env::$DATA'", "cat .env"),
+        ("cat '.env::$DATA.'", "cat .env"),
+        ("cat '.ENV. '", "cat .env"),
+        ("cat ~/.npmrc.", "cat ~/.npmrc"),
+        ("cat ~/.ssh./id_rsa.", "cat ~/.ssh/id_rsa"),
+        ("cat '.aws\\credentials::$DATA'", "cat .aws/credentials"),
+        ("cat notes.md.", "cat notes.md"),
+    ] {
+        let alias_decision = evaluate_pre_tool(&request(alias)).unwrap();
+        let plain_decision = evaluate_pre_tool(&request(plain)).unwrap();
+        assert_eq!(
+            (
+                alias_decision.decision,
+                alias_decision.minimum_action,
+                alias_decision.reason_code
+            ),
+            (
+                plain_decision.decision,
+                plain_decision.minimum_action,
+                plain_decision.reason_code
+            ),
+            "{alias}"
         );
     }
 }
@@ -540,6 +566,12 @@ fn reviews_only_materially_risky_variants_of_safe_commands() {
     let inert_pattern = evaluate_pre_tool(&request("rg -e '.env.local' src")).unwrap();
     assert_eq!(inert_pattern.decision, "allow");
     assert_eq!(inert_pattern.minimum_action, "allow");
+    // An ordinary project setting in front of a proven read is a value that
+    // read takes for itself. Every name that could steer lookup, loading,
+    // configuration, a home, a credential, the trust anchor or an endpoint
+    // keeps its review, and the cases below still cover those families.
+    let ordinary_setting = evaluate_pre_tool(&request("FOO=bar git status --short")).unwrap();
+    assert_eq!(ordinary_setting.decision, "allow");
     for command in [
             "rg --pre /opt/guard-test/payload authority src",
             "rg --hostname-bin=/opt/guard-test/payload --hyperlink-format='file://{host}{path}' TOKEN src",
@@ -582,7 +614,6 @@ fn reviews_only_materially_risky_variants_of_safe_commands() {
             "rg --hidd TOKEN .",
             "rg --globx '*.ts' TOKEN .",
             "/opt/guard-test/rg authority src",
-            "FOO=bar git status --short",
             "GIT_EXTERNAL_DIFF=/opt/guard-test/payload git diff --ext-diff README.md",
             "git diff --output=/opt/guard-test/diff README.md",
             "git log -1 --output=/opt/guard-test/log",
@@ -716,6 +747,8 @@ fn secret_selecting_globs_are_a_fixed_floor() {
         // A brace value is screened per alternative, whatever else it holds.
         "dd if={safe:dummy,.env} of=copy",
         "dd if={x\\\"y,.env} of=copy",
+        // An unterminated quote leaves no proven segment to screen.
+        "dd if='{x,.env} of=copy",
         // A `/` makes the word a path, whatever its first component holds.
         "git log -p -1 -- 'x=y/../.en*'",
         "git diff --no-index a=b/{.env,x} README.md",

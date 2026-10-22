@@ -7,18 +7,15 @@ import json
 import logging
 import re
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from .approval_resolution import approval_resolution_block_reason
+from .approval_resolution import approval_resolution_block_reason, approval_resolution_block_reasons
 from .native_approval_queue_identity import (
     ApprovalQueueIdentityUnavailableError,
     connection_guard_home,
     native_approval_queue_identities,
     queue_identity_item,
-)
-from .store_approval_projection import (
-    _json_object as _json_object,
 )
 from .store_approval_projection import (
     _optional_json_object as _optional_json_object,
@@ -227,18 +224,6 @@ def get_approval_request(
     return payload
 
 
-def get_approval_extension_allow_hint(connection: sqlite3.Connection, request_id: str) -> dict[str, object] | None:
-    """Return the private queue-time hint; it never rides along on request payloads."""
-
-    if "extension_allow_hint_json" not in _approval_columns(connection):
-        return None
-    row = connection.execute(
-        "select extension_allow_hint_json from approval_requests where request_id = ?",
-        (request_id,),
-    ).fetchone()
-    return _json_object(row[0]) if row is not None else None
-
-
 def _approval_columns(connection: sqlite3.Connection) -> set[str]:
     rows = connection.execute("pragma table_info(approval_requests)").fetchall()
     return {str(row["name"]) for row in rows}
@@ -353,7 +338,7 @@ def resolve_request_with_queue_result(
         return _unresolved_queue_result(connection, error="not_found")
     if request["status"] != "pending":
         return _unresolved_queue_result(connection, error="already_resolved", item=request)
-    resolution_block_reason = approval_resolution_block_reason(request)
+    resolution_block_reason = approval_resolution_block_reason(request, guard_home=connection_guard_home(connection))
     if resolution_block_reason is not None:
         return _unresolved_queue_result(connection, error=resolution_block_reason, item=request)
     did_resolve = resolve_one_request_only(
@@ -596,15 +581,16 @@ def resolvable_approval_request_ids(connection: sqlite3.Connection, rows: Sequen
     unreadable row reads as inconsistent instead of aborting the sweep.
     """
 
-    projections = _project_listing_rows(list(rows), guard_home=connection_guard_home(connection))
-    resolvable: list[str] = []
-    for row, projection in zip(rows, projections, strict=True):
+    guard_home = connection_guard_home(connection)
+    projections = _project_listing_rows(list(rows), guard_home=guard_home)
+    requests: list[Mapping[str, object]] = []
+    for projection in projections:
         request: dict[str, object] = {"policy_action": projection.policy_action}
         if projection.contract_error is not None:
             request["decision_contract_error"] = projection.contract_error
-        if approval_resolution_block_reason(request) is None:
-            resolvable.append(str(row["request_id"]))
-    return resolvable
+        requests.append(request)
+    reasons = approval_resolution_block_reasons(requests, guard_home=guard_home)
+    return [str(row["request_id"]) for row, reason in zip(rows, reasons, strict=True) if reason is None]
 
 
 def _resolve_request_ids(

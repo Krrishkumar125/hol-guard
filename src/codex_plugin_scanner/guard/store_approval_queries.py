@@ -13,6 +13,20 @@ from .store_base import *
 from .temporary_mcp_approvals import temporary_mcp_approval_payload
 from .trusted_local_tools import local_tool_approval_payload
 
+_NO_ANSWER = "native_guard_store_unavailable"
+_RETRYABLE_READS = frozenset(
+    {
+        "approval_desktop_notified_at",
+        "count_approval_requests",
+        "get_approval_extension_allow_hint",
+        "get_approval_request",
+        "get_next_pending_request",
+        "list_approval_request_page",
+        "list_approval_requests",
+        "oldest_approval_request_created_at",
+    }
+)
+
 
 def _with_approval_hints(payload: dict[str, object]) -> dict[str, object]:
     """Attach the queue hints the resident leaves to Python, as the scope payload did."""
@@ -133,17 +147,28 @@ class StoreApprovalQueriesMixin:
         except OSError:
             cwd = None
         try:
-            return self._native_store_call(method, {**args, "cwd": cwd})
+            return self._native_approval_call(method, {**args, "cwd": cwd})
+        except NativeGuardStoreUnavailable as error:
+            if method not in _RETRYABLE_READS or error.reason != _NO_ANSWER:
+                raise ApprovalScopeUnavailableError from error
+        # A read changes nothing, so a resident that dropped one round trip
+        # (a restart, a busy socket) gets one more before the queue reads as
+        # unavailable. Writes are never retried: the first may have landed.
+        try:
+            return self._native_approval_call(method, {**args, "cwd": cwd})
         except NativeGuardStoreUnavailable as error:
             raise ApprovalScopeUnavailableError from error
+
+    def _native_approval_call(self, method: str, args: dict[str, object]) -> Any:
+        try:
+            return self._native_store_call(method, args)
         except ValueError as error:
             if str(error) == SCOPE_UNAVAILABLE:
                 raise ApprovalScopeUnavailableError from error
             raise
 
     def get_approval_extension_allow_hint(self, request_id: str) -> dict[str, object] | None:
-        with self._connect() as connection:
-            return get_approval_extension_allow_hint(connection, request_id)
+        return self._native_approval_read("get_approval_extension_allow_hint", {"request_id": request_id})
 
     def get_raw_approval_request_snapshot(self, request_id: str) -> dict[str, object] | None:
         with self._connect() as connection:
@@ -154,31 +179,12 @@ class StoreApprovalQueriesMixin:
         return dict(row) if row is not None else None
 
     def approval_desktop_notified_at(self, request_id: str) -> str | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                select desktop_notified_at
-                from approval_requests
-                where request_id = ?
-                """,
-                (request_id,),
-            ).fetchone()
-        if row is None:
-            return None
-        value = row["desktop_notified_at"]
-        return str(value) if isinstance(value, str) and value else None
+        return self._native_approval_read("approval_desktop_notified_at", {"request_id": request_id})
 
     def mark_approval_desktop_notified(self, request_id: str, notified_at: str) -> None:
-        with self._connect() as connection:
-            connection.execute(
-                """
-                update approval_requests
-                set desktop_notified_at = ?
-                where request_id = ?
-                  and desktop_notified_at is null
-                """,
-                (notified_at, request_id),
-            )
+        self._native_approval_read(
+            "mark_approval_desktop_notified", {"request_id": request_id, "notified_at": notified_at}
+        )
 
     def get_next_pending_request(self, *, exclude_ids: set[str] | None = None) -> dict[str, object] | None:
         return self._native_approval_read("get_next_pending_request", {"exclude_ids": sorted(exclude_ids or ())})
@@ -208,15 +214,7 @@ class StoreApprovalQueriesMixin:
         )
 
     def oldest_approval_request_created_at(self, *, status: str = "pending") -> str | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                "select min(created_at) as oldest_created_at from approval_requests where status = ?",
-                (status,),
-            ).fetchone()
-        if row is None:
-            return None
-        value = row["oldest_created_at"]
-        return str(value) if isinstance(value, str) and value else None
+        return self._native_approval_read("oldest_approval_request_created_at", {"status": status})
 
     def clear_approval_requests(self, *, harness: str | None = None, status: str | None = None) -> int:
         conditions: list[str] = []

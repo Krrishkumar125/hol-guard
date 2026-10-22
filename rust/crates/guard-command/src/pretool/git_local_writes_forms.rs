@@ -1,6 +1,7 @@
 //! The argument forms of the local Git writes `git_local_writes` proves:
 //! `add`, a non-forced `rm`, `commit` with its message on the command line
-//! and a non-forced `branch` rename, plus the `stash list` read beside them.
+//! and a non-forced `branch` rename, plus the `stash list` and `stash show`
+//! reads beside them.
 
 use super::super::git_remote_config::GitConfig;
 use crate::{CanonicalCommandV1, CommandSegmentV1};
@@ -135,24 +136,10 @@ pub(super) fn branch_rename(rest: &[&str]) -> bool {
     moved && matches!(names.len(), 1 | 2)
 }
 
-/// `stash list` with at most a count limit. Git runs it as `git log -g
-/// refs/stash`; other log options can ask for patches whose diff drivers the
-/// proof below does not clear.
-pub(super) fn stash_list(rest: &[&str]) -> bool {
-    match rest {
-        [] => true,
-        ["-n" | "--max-count", value] => count(value),
-        [flag] => flag
-            .strip_prefix("--max-count=")
-            .or_else(|| flag.strip_prefix('-').filter(|_| !flag.starts_with("--")))
-            .is_some_and(count),
-        _ => false,
-    }
-}
-
-fn count(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 6 && value.bytes().all(|byte| byte.is_ascii_digit())
-}
+/// The two `git stash` spellings that only print are judged by the read
+/// grammar, so a listing proved here and a listing proved as an ordinary
+/// read can never drift apart.
+pub(super) use crate::pretool::git_stash_reads::{list as stash_list, show as stash_show};
 
 /// `stash apply` or `stash pop` with `-q`, `--index` and at most one entry
 /// (`stash@{N}` or `N`). Git refuses to apply an entry over a modified file,
@@ -161,7 +148,7 @@ pub(super) fn stash_restore(rest: &[&str]) -> bool {
     let mut entries = 0;
     rest.iter().all(|option| match *option {
         "-q" | "--quiet" | "--index" => true,
-        entry if stash_entry(entry) => {
+        entry if crate::pretool::git_stash_reads::entry_name(entry) => {
             entries += 1;
             entries == 1
         }
@@ -169,17 +156,39 @@ pub(super) fn stash_restore(rest: &[&str]) -> bool {
     })
 }
 
-fn stash_entry(value: &str) -> bool {
-    let index = value
-        .strip_prefix("stash@{")
-        .and_then(|rest| rest.strip_suffix('}'))
-        .unwrap_or(value);
-    !index.is_empty() && index.len() <= 4 && index.bytes().all(|byte| byte.is_ascii_digit())
+/// `(external diff disarmed, textconv disarmed)` for a `stash show`.
+/// A summary never runs textconv; a patch does unless `--no-textconv` wins.
+pub(super) fn show_diff_drivers_disarmed(segment: &CommandSegmentV1) -> Option<(bool, bool)> {
+    if segment.arguments.first().map(String::as_str) != Some("stash")
+        || segment.arguments.get(1).map(String::as_str) != Some("show")
+    {
+        return None;
+    }
+    let mut external = false;
+    let mut textconv_flag = None;
+    let mut patch = false;
+    for flag in segment.arguments[2..]
+        .iter()
+        .map(String::as_str)
+        .filter(|word| word.starts_with('-'))
+    {
+        match flag {
+            "--no-ext-diff" => external = true,
+            "--ext-diff" => external = false,
+            "--no-textconv" => textconv_flag = Some(true),
+            "--textconv" => textconv_flag = Some(false),
+            "-p" | "-u" | "--patch" => patch = true,
+            _ => {}
+        }
+    }
+    Some((external, textconv_flag.unwrap_or(!patch)))
 }
 
 /// Whether the `git stash` at `index` starts no program its hooks do not
-/// cover. Stash pages only under its own `pager.stash` setting. `list` runs
+/// cover. Stash pages only under its own `pager.stash` setting, and the
+/// command each form runs keeps its own pager key besides. `list` runs
 /// `git log -g refs/stash`, held to the configuration proof of that log
+/// read; `show` prints the entry's diff, held to the proof of a `git diff`
 /// read; `apply` and `pop` merge the entry, which may run a configured merge
 /// driver, and then run `git status`, held to the proof of that read.
 pub(super) fn stash_free(
@@ -194,11 +203,12 @@ pub(super) fn stash_free(
     let stripped = super::super::segment_proof::without_stderr_merge(original);
     let segment = stripped.as_ref().unwrap_or(original);
     let stdout_piped = super::super::git_helper_context::stdout_piped(model, index);
-    let free = |arguments: &[&str]| {
+    let free = |arguments: &[&str], pager: Option<&str>| {
         let arguments: Vec<String> = arguments.iter().map(|word| (*word).to_owned()).collect();
-        super::super::git_config::execution_free(
+        super::super::git_config::execution_free_paging(
             "git",
             &arguments,
+            pager,
             context,
             deadline,
             execution_environment,
@@ -212,13 +222,32 @@ pub(super) fn stash_free(
         let key = key.to_ascii_lowercase();
         key.starts_with("merge.") && key.ends_with(".driver")
     });
-    (stdout_piped
+    let stash_pages = stdout_piped
         || effective
             .get("pager.stash")
-            .is_none_or(|values| values.iter().all(pager_off)))
+            .is_none_or(|values| values.iter().all(pager_off));
+    // `stash show` prints the entry's diff, so it clears under the same
+    // configuration proof a `git diff` read clears under, read with the
+    // options the caller gave. `--no-ext-diff` and `--no-textconv` keep a
+    // configured driver out of the read, and a summary form runs no textconv
+    // program. It pages twice over: `pager.stash` decides whether the stash
+    // command pages at all, and `show_stash` then asks for the diff pager, so
+    // `pager.diff` starts a program of its own where `pager.stash` left the
+    // choice open. Both keys are held to the proof.
+    stash_pages
         && match segment.arguments.get(1).map(String::as_str) {
-            Some("list") => free(&["log", "-g", "--first-parent", "refs/stash"]),
-            Some("apply" | "pop") => !merge_driver && free(&["status"]),
+            Some("list") => free(&["log", "-g", "--first-parent", "refs/stash"], None),
+            Some("show") => {
+                let mut arguments = vec!["diff"];
+                arguments.extend(
+                    segment.arguments[2..]
+                        .iter()
+                        .map(String::as_str)
+                        .filter(|word| word.starts_with('-')),
+                );
+                free(&arguments, None)
+            }
+            Some("apply" | "pop") => !merge_driver && free(&["status"], None),
             _ => true,
         }
 }

@@ -152,6 +152,10 @@ pub(in crate::pretool) fn bounded_omp_directory_read_target(
     bounded_omp_directory_read_target_without_selector(value, home_dir, cwd)
 }
 
+#[path = "directory_read_tools.rs"]
+mod tools;
+pub(in crate::pretool) use tools::bounded_directory_read_tool_target;
+
 fn bounded_omp_directory_read_target_without_selector(
     value: &str,
     home_dir: Option<&str>,
@@ -371,11 +375,11 @@ fn bounded_existing_file_read_target(
     if guard_secure_fs::contains_symlink_component(&candidate) {
         return false;
     }
-    let Ok(canonical) = std::fs::canonicalize(candidate) else {
+    let Ok(canonical) = std::fs::canonicalize(&candidate) else {
         return false;
     };
     canonical.is_file()
-        && resolved_path_allowed_for_operation(&canonical, home_dir, cwd, false, true)
+        && super::resolved_read_target_allowed(&candidate, &canonical, home_dir, cwd)
 }
 
 /// Resolve selector targets through the verified context roots first. macOS
@@ -390,18 +394,18 @@ fn verified_selector_candidate(
     let expanded = expand_home_read_path(value, home_dir).unwrap_or_else(|| value.to_owned());
     let expanded_path = std::path::Path::new(&expanded);
     if expanded_path.is_absolute() {
+        // The same fixed alias mapping `verified_cwd_target` accepts.
+        let aliased =
+            super::super::directory_targets::tmp_alias::private_tmp_spelling(expanded_path);
         for root in [home_dir, cwd].into_iter().flatten() {
             let root = expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned()))?;
             let root_path = std::path::Path::new(&root);
             let canonical_root = std::fs::canonicalize(root_path).ok()?;
             let Ok(relative) = expanded_path.strip_prefix(root_path) else {
-                let tmp_alias = std::path::Path::new("/tmp");
-                let Ok(tmp_relative) = expanded_path.strip_prefix(tmp_alias) else {
-                    continue;
-                };
-                let canonical_tmp = std::fs::canonicalize(tmp_alias).ok()?;
-                let mapped = canonical_tmp.join(tmp_relative);
-                let Ok(relative) = mapped.strip_prefix(&canonical_root) else {
+                let Some(relative) = aliased
+                    .as_deref()
+                    .and_then(|mapped| mapped.strip_prefix(&canonical_root).ok())
+                else {
                     continue;
                 };
                 return Some(canonical_root.join(relative));
@@ -410,8 +414,10 @@ fn verified_selector_candidate(
         }
         // Location alone is not a denial reason for OMP's names-only listing.
         // Callers still canonicalize this path and apply every sensitive-root,
-        // credential, foreign-home, and hidden-component check below.
-        return Some(expanded_path.to_path_buf());
+        // credential, foreign-home, and hidden-component check below. A
+        // sibling project below the `/tmp` alias keeps those checks on its
+        // `/private/tmp` spelling, so only links below the alias still count.
+        return Some(aliased.unwrap_or_else(|| expanded_path.to_path_buf()));
     }
     let root = cwd
         .and_then(|root| expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned())))

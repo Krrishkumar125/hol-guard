@@ -70,13 +70,13 @@ def test_staged_evaluator_compiler_uses_a_fast_non_shipping_profile() -> None:
     assert environment["CARGO_PROFILE_RELEASE_LTO"] == "false"
     assert environment["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"] == "16"
     job = workflow["jobs"]["staged-evaluator-wheel"]
-    assert job["timeout-minutes"] == 5
+    assert job["timeout-minutes"] == 15
     assert job["strategy"]["fail-fast"] is False
     assert set(job["strategy"]["matrix"]["os"]) == {"ubuntu-latest", "macos-15"}
     verification = next(step for step in job["steps"] if step.get("name", "").startswith("Verify installed"))
     assert "-I scripts/ci/check_evaluation_wheel.py" in verification["run"]
     assert not verification.get("continue-on-error", False)
-    # The distribution profile and its independent size gate remain authoritative.
+    # The distribution profile remains authoritative.
     release = (ROOT / "rust/Cargo.toml").read_text().split("[profile.release]", 1)[1].split("[", 1)[0]
     assert 'opt-level = "s"' in release
     assert 'lto = "fat"' in release

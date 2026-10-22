@@ -23,7 +23,7 @@ def test_list_policy_decisions_enriches_source_receipt_and_command(tmp_path) -> 
         changed_capabilities=("package-request",),
         provenance_summary="hook event for package install",
         artifact_name="pnpm install",
-        source_scope="~/projects/hol-points-portal",
+        source_scope="~/projects/cloud-portal",
     )
     store.add_receipt(receipt)
     store.upsert_policy(
@@ -47,7 +47,7 @@ def test_list_policy_decisions_enriches_source_receipt_and_command(tmp_path) -> 
     assert item["source_receipt_id"] == "receipt-policy-ux-1"
     assert item["remembered_command"] == "pnpm install"
     assert item["remembered_context"] == "Package install via pnpm"
-    assert item["workspace_label"] == "hol-points-portal"
+    assert item["workspace_label"] == "cloud-portal"
 
 
 def test_list_policy_decisions_falls_back_to_inventory_launch_command(tmp_path) -> None:
@@ -570,3 +570,31 @@ def test_collapse_duplicate_artifact_policy_rows_keeps_newest() -> None:
         ]
     )
     assert [item["artifact_id"] for item in collapsed] == ["new", "workspace-rule"]
+
+
+def test_attach_policy_source_contexts_sends_action_and_updated_at(tmp_path, monkeypatch) -> None:
+    store = _store(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_native_store_call(method: str, args: dict[str, object]) -> object:
+        captured["method"] = method
+        captured["args"] = args
+        return [None]
+
+    monkeypatch.setattr(store, "_native_store_call", fake_native_store_call, raising=False)
+    item: dict[str, object] = {
+        "harness": "omp",
+        "artifact_id": "omp:native-pretool:bash",
+        "artifact_hash": "guard-approval-context:v1:token",
+        "workspace": None,
+        "reason": "approved in review",
+        "action": "allow",
+        "updated_at": "2026-10-20T10:00:00Z",
+    }
+    store._attach_policy_source_contexts([item])
+    assert captured["method"] == "policy_source_contexts"
+    args = captured["args"]
+    assert isinstance(args, dict)
+    sent = args["items"][0]  # type: ignore[index]
+    assert sent["action"] == "allow"
+    assert sent["updated_at"] == "2026-10-20T10:00:00Z"

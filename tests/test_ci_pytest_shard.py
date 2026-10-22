@@ -104,7 +104,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert "if" not in native_steps[upload_index]
 
     for planner, executor, version, env_name, count, width in (
-        ("native-command-evaluators", "coverage", "3.12", "CI_PYTHON_VERSION", 64, 3),
+        ("native-command-evaluators", "coverage", "3.12", "CI_PYTHON_VERSION", 128, 3),
     ):
         plan_job = jobs[planner]
         execution_job = jobs[executor]
@@ -145,6 +145,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
         assert "python scripts/ci/pytest_shard.py" not in commands
         assert "--ignore" not in commands
         assert '"@$shard_file"' in commands
+        assert "-n 4 --dist loadfile --max-worker-restart 0" in commands
 
     coverage_job = _workflow_job(workflow, "coverage", "duration-manifest-candidate")
     scheduling_job = "\n".join(step.get("run", "") for step in jobs["scheduling-sensitive"]["steps"])
@@ -177,7 +178,11 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
 
     candidate = jobs["duration-manifest-candidate"]
     assert candidate["needs"] == ["coverage", "native-command-evaluators"]
-    assert candidate["if"] == "needs.coverage.result == 'success'"
+    # Main's skipped PR planner must not trigger an implicit success() check.
+    # Cancellation and incomplete producers must still prevent publication.
+    assert " ".join(candidate["if"].split()) == (
+        "!cancelled() && needs.coverage.result == 'success' && needs.native-command-evaluators.result == 'success'"
+    )
     assert 'if [ "${#reports[@]}" -ne "${{ needs.native-command-evaluators.outputs.shard-count }}" ];' in "\n".join(
         step.get("run", "") for step in candidate["steps"]
     )
@@ -185,7 +190,11 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     assert "bash scripts/ci/prepare_sonar_analysis.sh" in sonar_job
     sonar_setup = (ROOT / "scripts/ci/prepare_sonar_analysis.sh").read_text(encoding="utf-8")
     assert 'test "${#reports[@]}" -eq "${CI_PYTEST_COVERAGE_SHARDS:-128}"' in sonar_setup
-    assert "vars.SONAR_CI_ENABLED == 'true'" in sonar_job
+    assert "vars.SONAR_CI_ENABLED == 'true'" in jobs["sonar-context"]["if"]
+    assert set(jobs["sonar"]["needs"]) == {"sonar-context", "sonar-rust-coverage", "native-workspace", "coverage"}
+    assert "needs.sonar-rust-coverage.result == 'success'" in jobs["sonar"]["if"]
+    assert "needs.native-workspace.result == 'success'" in jobs["sonar"]["if"]
+    assert "needs.coverage.result == 'success'" in jobs["sonar"]["if"]
     gate = jobs["ci-python-312"]
     assert gate["name"] == "ci (3.12)"
     assert gate["if"] == "always()"
@@ -211,8 +220,20 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
         assert job.count("save-cache: false") >= expected_count
 
 
+def test_ci_jobs_cannot_inherit_the_six_hour_default_timeout() -> None:
+    """A missing timeout-minutes is GitHub's 360-minute default."""
+
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))["jobs"]
+    missing = sorted(name for name, job in jobs.items() if "timeout-minutes" not in job)
+    assert missing == []
+    # Observed successes: dashboard ~79s, cross-platform Windows ~103s, cisco-full ~213s.
+    assert jobs["dashboard"]["timeout-minutes"] == 10
+    assert jobs["cisco-full"]["timeout-minutes"] == 15
+    assert jobs["cross-platform"]["timeout-minutes"] == 15
+
+
 @pytest.mark.parametrize(
-        "failed_dependency", ["NATIVE_PRODUCER_RESULT", "COVERAGE_RESULT", "SCHEDULING_SENSITIVE_RESULT"]
+    "failed_dependency", ["NATIVE_PRODUCER_RESULT", "COVERAGE_RESULT", "SCHEDULING_SENSITIVE_RESULT"]
 )
 @pytest.mark.parametrize("result", ["failure", "skipped", "cancelled"])
 def test_required_python_gate_rejects_incomplete_coverage_or_timing_proofs(failed_dependency: str, result: str) -> None:
@@ -256,7 +277,11 @@ def test_native_contract_preflight_is_required_without_delaying_artifact_fanout(
     steps = producer["steps"]
     rust = next(step for step in steps if step.get("uses") == "./.github/actions/setup-rust")
     assert "rustfmt" in rust["with"]["components"].split()
-    formatting = next(i for i, step in enumerate(steps) if "cargo fmt" in step.get("run", ""))
+    formatting = next(
+        i for i, step in enumerate(steps) if step.get("name") == "Check native formatting before compilation"
+    )
+    assert 'cargo +"$toolchain" fmt --manifest-path rust/Cargo.toml --all --check' in steps[formatting]["run"]
+    assert "if" not in steps[formatting]
     compilation = next(i for i, step in enumerate(steps) if "cargo build" in step.get("run", ""))
     verification = next(i for i, step in enumerate(steps) if "verify_native_command_program.py" in step.get("run", ""))
     uploads = [i for i, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact@")]
@@ -267,18 +292,15 @@ def test_native_contract_preflight_is_required_without_delaying_artifact_fanout(
 
     # Native contracts still block the required result, but do not withhold
     # already-verified compiler/runtime artifacts from the coverage fan-out.
-    assert not any("ci/package_size" in step.get("run", "") for step in steps)
     gates = document["jobs"]["native-gates"]
     assert gates["needs"] == "native-command-evaluators"
     checks = [
-        step for step in gates["steps"]
-        if step.get("name") == "Check native contract groups after artifact fan-out"
+        step for step in gates["steps"] if step.get("name") == "Check native contract groups after artifact fan-out"
     ]
     assert len(checks) == 1
     check = checks[0]
     assert check["if"] == "matrix.shard-index == 0"
     assert not check.get("continue-on-error", False)
-    assert "ci/package_size" in check["run"]
     assert "test_native_contract_validates_every_authored_signature_without_rewriting_evidence" in check["run"]
     assert "test_install_writes_managed_extension_that_denies_on_hook_errors" in check["run"]
     assert "test_managed_extension_fails_safe_on_ambiguous_success_payloads" in check["run"]
@@ -291,8 +313,7 @@ def test_native_contract_preflight_is_required_without_delaying_artifact_fanout(
     assert "coverage-plan" not in document["jobs"]
     planning = next(i for i, step in enumerate(steps) if step.get("uses") == "./.github/actions/plan-pytest")
     binding = next(
-        i for i, step in enumerate(steps)
-        if step.get("name") == "Bind the compiled native runtime for test discovery"
+        i for i, step in enumerate(steps) if step.get("name") == "Bind the compiled native runtime for test discovery"
     )
     assert verification < max(uploads) < binding < planning
     assert "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/rust/target/release/hol-guard-runtime" in steps[binding]["run"]

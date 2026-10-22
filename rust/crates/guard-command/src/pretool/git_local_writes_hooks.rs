@@ -1,12 +1,12 @@
 //! The hooks each local Git write form runs, and which segments are those
 //! forms (`git_local_writes`).
 
-use super::forms::{add, branch_rename, commit, rm, stash_list, stash_restore};
+use super::forms::{add, branch_rename, commit, rm, stash_list, stash_restore, stash_show};
 use super::{merge, rebase, start};
 use crate::CommandSegmentV1;
 
 const INDEX_HOOKS: &[&str] = &["post-index-change"];
-const COMMIT_HOOKS: &[&str] = &[
+pub(super) const COMMIT_HOOKS: &[&str] = &[
     "pre-commit",
     "prepare-commit-msg",
     "commit-msg",
@@ -17,7 +17,7 @@ const COMMIT_HOOKS: &[&str] = &[
     "pre-auto-gc",
 ];
 const BRANCH_HOOKS: &[&str] = &["reference-transaction"];
-/// `git stash list` writes nothing and runs no hook.
+/// `git stash list` and `git stash show` write nothing and run no hook.
 const LIST_HOOKS: &[&str] = &[];
 pub(super) const CHECKOUT_HOOKS: &[&str] = &[
     "post-checkout",
@@ -53,9 +53,12 @@ pub(super) fn write_hooks(
         (&"branch", rest) => branch_rename(rest).then_some(BRANCH_HOOKS),
         (&"merge", rest) => merge::merge(rest).then_some(merge::HOOKS),
         (&"cherry-pick", rest) => merge::cherry_pick(rest).then_some(merge::HOOKS),
-        (&"rebase", rest) => rebase::resume(rest).then_some(rebase::HOOKS),
+        (&"rebase", rest) => (rebase::resume(rest) || rebase::start(rest)).then_some(rebase::HOOKS),
         (&"stash", [action, rest @ ..]) if *action == "list" => {
             stash_list(rest).then_some(LIST_HOOKS)
+        }
+        (&"stash", [action, rest @ ..]) if *action == "show" => {
+            stash_show(rest).then_some(LIST_HOOKS)
         }
         (&"stash", [action, rest @ ..]) if matches!(*action, "apply" | "pop") => {
             stash_restore(rest).then_some(CHECKOUT_HOOKS)

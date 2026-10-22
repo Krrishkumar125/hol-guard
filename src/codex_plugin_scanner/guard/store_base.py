@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import sqlite3
+import stat as stat_module
 import subprocess
 import sys
 import threading
@@ -58,7 +59,7 @@ from .policy_integrity import (
     is_remote_policy_source,
 )
 from .runtime.actions import GuardActionEnvelope
-from .runtime.approval_context import parse_approval_context_token
+from .runtime.approval_context import approval_context_token_is_well_formed
 from .runtime.scanner_cache import scanner_cache_key
 from .schemas.guard_event_v1 import GuardEventV1
 from .sqlite_tuning import (
@@ -78,9 +79,6 @@ from .store_approvals import (
 )
 from .store_approvals import (
     get_approval_request as load_approval_request,
-)
-from .store_approvals import (
-    get_approval_extension_allow_hint,
 )
 from .store_approvals import (
     list_approval_requests as load_approval_requests,
@@ -199,6 +197,7 @@ _GUARD_CLOUD_RESET_STATE_KEYS = (
     "headless_app_sync_summary",
     "managed_controls_active",
     "managed_controls_negotiated_capabilities",
+    "network_protection_bundle",
     *_GUARD_CLOUD_COMMAND_STATE_KEYS,
 )
 
@@ -1121,21 +1120,68 @@ def _set_private_mode(path: Path, mode: int) -> None:
             _set_windows_private_directory(path)
         return
     try:
+        # A chmod to the current mode still moves ctime, which the policy
+        # snapshot publisher watches, so every store close would wake it.
+        if os.stat(path).st_mode & 0o7777 == mode:
+            return
         os.chmod(path, mode)
     except OSError as exc:
         _store_logger.debug("Could not set private mode %o on %s: %s", mode, path, exc)
         return
 
 
+# Binding a Windows directory opens every ancestor and re-reads the DACL. The
+# store repairs guard home after each connection closes, so a hook request paid
+# for that walk several times. Within one process, a directory bound recently
+# under the same identity is skipped; a recreated directory is bound at once.
+# A path that passes through a junction or link is bound every time, since the
+# directory it reaches can change without the final identity changing first.
+_WINDOWS_PRIVATE_DIRECTORY_RECHECK_SECONDS = 30.0
+_windows_private_directory_lock = threading.Lock()
+_windows_private_directory_bound: dict[str, tuple[int, int, float]] = {}
+
+
+def _windows_path_is_direct(path: str) -> bool:
+    """True when no component of an absolute path is a reparse point (a junction or link)."""
+    current = Path(path)
+    try:
+        for component in (current, *current.parents):
+            if getattr(os.lstat(component), "st_file_attributes", 0) & stat_module.FILE_ATTRIBUTE_REPARSE_POINT:
+                return False
+    except OSError:
+        return False
+    return True
+
+
 def _set_windows_private_directory(path: Path) -> None:
     from .native_policy_snapshot import NativePolicySnapshotError
     from .native_policy_snapshot_windows_state import _windows_ensure_private_directory
 
+    key = os.path.normcase(os.path.abspath(path))
+    try:
+        stat = os.stat(path)
+    except OSError:
+        stat = None
+    now = time.monotonic()
+    if stat is not None and _windows_path_is_direct(key):
+        with _windows_private_directory_lock:
+            bound = _windows_private_directory_bound.get(key)
+        if (
+            bound is not None
+            and bound[:2] == (stat.st_dev, stat.st_ino)
+            and now - bound[2] < _WINDOWS_PRIVATE_DIRECTORY_RECHECK_SECONDS
+        ):
+            return
     try:
         _windows_ensure_private_directory(path)
     except (NativePolicySnapshotError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        with _windows_private_directory_lock:
+            _windows_private_directory_bound.pop(key, None)
         _store_logger.debug("Could not set Windows private directory on %s: %s", path, exc)
         return
+    if stat is not None:
+        with _windows_private_directory_lock:
+            _windows_private_directory_bound[key] = (stat.st_dev, stat.st_ino, now)
 
 
 def _system_keyring_availability_cache_path(guard_home: Path) -> Path:
@@ -1370,17 +1416,6 @@ def _runtime_scoped_exact_match_key(
     return f"{_RUNTIME_SCOPED_EXACT_MATCH_PREFIX}{digest}"
 
 
-def _global_runtime_scoped_exact_match_key(
-    artifact_id: str | None,
-    runtime_exact_match_context: str | None = None,
-) -> str | None:
-    family_key = _artifact_family_key(artifact_id)
-    if family_key is None or _family_key_value(family_key) not in _SCOPED_RUNTIME_EXACT_FAMILIES:
-        return None
-    canonical_artifact_id = f"global:portable:{_family_key_value(family_key)}"
-    return _runtime_scoped_exact_match_key(canonical_artifact_id, runtime_exact_match_context)
-
-
 def runtime_tool_action_policy_artifact_id(artifact_id: str | None) -> str | None:
     """Return a scoped family identity for one exact runtime tool action."""
 
@@ -1441,49 +1476,14 @@ def runtime_tool_action_portable_match_context(runtime_exact_match_context: str 
     )
 
 
-def browser_mcp_exact_match_context(
-    *,
-    intent: str | None,
-    operation: str | None,
-    target_origin: str | None,
-    target_path_prefix: str | None,
-    profile_mode: str | None,
-    mcp_server_identity_hash: str | None,
-    mcp_tool_identity_hash: str | None,
-    mcp_schema_hash: str | None,
-    sensitive_surface_flags: Sequence[object] | None = None,
-) -> str | None:
-    """Build a browser MCP exact-match context for stable identity dedup.
-
-    The context captures security-relevant fields (intent, origin, path,
-    profile, sensitive surfaces) while volatile fields are already stripped
-    by the browser intent normalizer.
-    """
-    if not intent and not operation and not target_origin:
-        return None
-    flags: list[str] = []
-    if sensitive_surface_flags is not None:
-        flags = sorted(str(f) for f in sensitive_surface_flags if isinstance(f, str) and f)
-    payload: dict[str, object] = {
-        "intent": intent,
-        "operation": operation,
-        "target_origin": target_origin,
-        "target_path_prefix": target_path_prefix,
-        "profile_mode": profile_mode,
-        "server_identity_hash": mcp_server_identity_hash,
-        "tool_identity_hash": mcp_tool_identity_hash,
-        "schema_hash": mcp_schema_hash,
-        "sensitive_surface_flags": flags,
-    }
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
-
-
 def _is_runtime_scoped_exact_match_key(value: str | None) -> bool:
     return isinstance(value, str) and value.startswith(_RUNTIME_SCOPED_EXACT_MATCH_PREFIX)
 
 
 def _is_approval_context_token(value: object) -> bool:
-    return parse_approval_context_token(value) is not None
+    # A harness or global policy row drops a hash this rejects, so an
+    # unreachable native authority must not widen the row to the whole family.
+    return approval_context_token_is_well_formed(value, keep_prefixed_when_unavailable=True)
 
 
 def _policy_integrity_ready_for_local_write(payload: Mapping[str, object]) -> bool:

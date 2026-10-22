@@ -211,6 +211,12 @@ LOCAL_ROUTE_OWNERSHIP = (
     RouteOwnership(route="/audit", persona=("solo", "security_lead"), auth_required=True, writes_state=True),
     RouteOwnership(route="/policy", persona=("solo", "team_manager"), auth_required=True, writes_state=True),
     RouteOwnership(route="/feed-health", persona=("solo", "team_manager"), auth_required=True, writes_state=True),
+    RouteOwnership(
+        route="/releases",
+        persona=("vibe_coder", "solo"),
+        auth_required=True,
+        writes_state=False,
+    ),
     RouteOwnership(route="/settings", persona=("solo",), auth_required=True, writes_state=True),
     RouteOwnership(
         route="/protection/repair",
@@ -265,6 +271,27 @@ LOCAL_API_OWNERSHIP = (
     ),
     ApiOwnership(
         path="/v1/harnesses/{harness}/uninstall",
+        method="POST",
+        category="config",
+        auth_required=True,
+        writes_state=True,
+    ),
+    ApiOwnership(
+        path="/v1/harness-versions/refresh",
+        method="POST",
+        category="config",
+        auth_required=True,
+        writes_state=True,
+    ),
+    ApiOwnership(
+        path="/v1/harness-versions/acknowledge",
+        method="POST",
+        category="config",
+        auth_required=True,
+        writes_state=True,
+    ),
+    ApiOwnership(
+        path="/v1/harness-versions/clear-acknowledgement",
         method="POST",
         category="config",
         auth_required=True,

@@ -78,7 +78,7 @@ fn request(
 }
 
 #[cfg(unix)]
-fn account_home() -> Option<String> {
+pub(crate) fn account_home() -> Option<String> {
     let user = nix::unistd::User::from_uid(nix::unistd::Uid::current()).ok()??;
     Path::new(&user.dir)
         .is_absolute()
@@ -86,7 +86,7 @@ fn account_home() -> Option<String> {
 }
 
 #[cfg(not(unix))]
-fn account_home() -> Option<String> {
+pub(crate) fn account_home() -> Option<String> {
     None
 }
 
@@ -186,9 +186,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "hol-guard-edge-push-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |elapsed| elapsed.as_nanos())
+            crate::unique_nanos::unique_nanos()
         ));
         std::fs::create_dir_all(&root).unwrap();
         let root = std::fs::canonicalize(root).unwrap();

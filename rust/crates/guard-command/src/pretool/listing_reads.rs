@@ -129,9 +129,15 @@ pub(super) fn safe_listing_segment(
                 surviving += 1;
                 search::safe_recursive_target(argument, context)
             }
+            // A listing without a glob admits a name that is not there, because
+            // the shell prints an error and nothing else. One glob beside it
+            // does not change what that name prints, so it keeps the same
+            // admission: `ls pkg/bun.lock* pkg/package-lock.json` is how an
+            // agent asks which lockfile a project keeps.
             Operand::Plain => {
                 surviving += 1;
                 safe_reads::bounded_read_target(argument, context.home_dir, context.cwd, true)
+                    || absent_listing_operand(argument, context)
             }
             Operand::QuotedLiteral => {
                 surviving += 1;
@@ -191,14 +197,22 @@ pub(super) fn absent_listing_operand(value: &str, context: super::PathContext<'_
     for ancestor in expanded.ancestors() {
         match std::fs::symlink_metadata(ancestor) {
             Ok(_) => {
+                let private_temporary =
+                    super::listing_temporary::private_temporary_ancestor(ancestor, context);
+                let spelled = missing.iter().enumerate().all(|(index, part)| {
+                    let name = part.to_string_lossy();
+                    // `.git` is the one marker agents probe for. A missing
+                    // leaf prints only an error and reveals no content.
+                    // `.github` holds a project's workflows, never a
+                    // credential, so a probe for them may name it anywhere.
+                    !name.starts_with('.') || (index == 0 && name == ".git") || name == ".github"
+                }) || private_temporary;
+                // The owner's private temporary root itself (`$TMPDIR`) sits
+                // in a location the listing screens deny, but nobody else can
+                // put an entry there, so a missing name below it is enough.
                 return !missing.is_empty()
-                    && missing.iter().enumerate().all(|(index, part)| {
-                        let name = part.to_string_lossy();
-                        // `.git` is the one marker agents probe for. A missing
-                        // leaf prints only an error and reveals no content.
-                        !name.starts_with('.') || (index == 0 && name == ".git")
-                    })
-                    && listable_ancestor(ancestor, context);
+                    && spelled
+                    && (private_temporary || listable_ancestor(ancestor, context));
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 let Some(name) = ancestor.file_name() else {
@@ -231,27 +245,30 @@ fn expanded_path(value: &str, context: super::PathContext<'_>) -> Option<std::pa
 /// Upper bound on the entries a leaf glob's directory may hold.
 const MAX_LEAF_ENTRIES: usize = 4096;
 
-/// `ls /tmp/.s.PGSQL*`: a pattern in the last component only, below a literal
-/// directory that `ls` may list by name. The screened glob expansion refuses
+/// `ls /tmp/pg-run/.s.PGSQL*`: a pattern in the last component only, below a
+/// literal directory that `ls` may list by name and that no other user can
+/// add an entry to. The screened glob expansion refuses
 /// hidden and socket matches, but a listing prints only their names, as
 /// listing the directory itself would. Every entry the pattern could match
 /// under any shell option (`dotglob`, `nocaseglob`) is screened: a directory
 /// match has its entries listed, so it needs the listing proof itself, and
 /// any other match must clear the sensitive-path and credential-name screens.
 fn leaf_glob_operand(value: &str, context: super::PathContext<'_>) -> bool {
-    let Some((directory, pattern)) = value.rsplit_once('/') else {
+    // Windows spells the home path with `\`, so there it is a separator.
+    let separator = |c: char| c == '/' || (c == '\\' && cfg!(windows));
+    let Some((directory, pattern)) = value.rsplit_once(separator) else {
         return false;
     };
     if directory.is_empty()
         || directory.contains(['*', '?', '[', ']'])
         || pattern.is_empty()
-        || value.contains(['$', '`', '|', ';', '&', '<', '>', '\n', '\r', '\0', '\\'])
+        || value.contains(['$', '`', '|', ';', '&', '<', '>', '\n', '\r', '\0'])
+        || (value.contains('\\') && !cfg!(windows))
         || value.contains(['{', '}', '(', ')', '!'])
         // A trailing wildcard can always spell a credential name, so the
         // pattern only screens its fixed path; every match is screened below.
         || super::sensitive_path_argument(value)
         || super::sensitive_read_path_argument(directory)
-        || !safe_reads::safe_listing_arguments(&[directory.to_owned()], context)
     {
         return false;
     }
@@ -273,6 +290,21 @@ fn leaf_glob_operand(value: &str, context: super::PathContext<'_>) -> bool {
     let Some(base) = expanded_path(directory, context) else {
         return false;
     };
+    // The shell expands the pattern after this screen, and anyone can add a
+    // matching link to a world-writable directory (`/tmp`) in between, so a
+    // pattern directly below one keeps its review whatever it matches now.
+    if super::listing_temporary::writable_by_anyone(&base) {
+        return false;
+    }
+    // The listing names the matches, not the directory holding them, so a
+    // temporary directory only the owner can add entries to answers for a
+    // pattern below it (`ls /tmp/tmp.ab12/pg*`) although listing it whole
+    // may stay reviewed. Every match is screened on its own below.
+    if !safe_reads::safe_listing_arguments(&[directory.to_owned()], context)
+        && !super::listing_temporary::temporary_glob_directory(&base, context)
+    {
+        return false;
+    }
     let Ok(entries) = std::fs::read_dir(&base) else {
         return false;
     };
@@ -407,8 +439,8 @@ mod tests {
             std::fs::write(file, "synthetic\n").unwrap();
         }
         let (home, project) = (
-            std::fs::canonicalize(home).unwrap(),
-            std::fs::canonicalize(project).unwrap(),
+            crate::runtime_read_paths::canonicalize_text(&home).unwrap(),
+            crate::runtime_read_paths::canonicalize_text(&project).unwrap(),
         );
         let context = crate::pretool::PathContext {
             home_dir: home.to_str(),

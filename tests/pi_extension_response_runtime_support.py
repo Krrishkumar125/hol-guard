@@ -80,6 +80,10 @@ async function runGuardCliCommand() {{
 
 {native_reply}
 
+function nativeGuardBudgetMs(budgetMs) {{
+  return budgetMs;
+}}
+
 async function nativeGuardReply(query) {{
   if (nativeLines.length === 0) return undefined;
   nativeQueries.push(query);
@@ -301,6 +305,11 @@ let guardResponse = {{ decision: "allow", model_output_action: "allow_original" 
 function sourceFileRefForPostToolUse() {{ return null; }}
 // Containment lifecycle is exercised separately with its real request map.
 function cleanupContainedTestRequest() {{}}
+// No bound Bash invocation is tracked here, so the owner-delivery helpers
+// observe nothing. Their real behaviour is exercised against the generated
+// containment source in the bound-Bash SDK tests.
+function boundBashPostObservation() {{ return undefined; }}
+function markBoundBashResultDelivery() {{ return undefined; }}
 function toolCallIdKey(value) {{ return typeof value === "string" && value.trim() ? value.trim() : null; }}
 function modelVisibleBlockedReason(reason) {{ return `blocked: ${{reason}}`; }}
 function blockedToolResult(reason, details) {{

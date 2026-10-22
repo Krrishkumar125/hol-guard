@@ -237,6 +237,9 @@ def test_signed_receipt_redaction_authority_can_clear_and_relax_again(
 ) -> None:
     store = GuardStore(tmp_path / "guard-home")
     _seed_policy_bundle_trust(store)
+    # Each applied bundle is acknowledged by one receipt-free follow-up request,
+    # which this transport answers with a plain reply.
+    plain_reply = {"syncedAt": "2026-07-01T00:00:00Z", "receiptsStored": 0}
     responses = iter(
         [
             {
@@ -248,6 +251,7 @@ def test_signed_receipt_redaction_authority_can_clear_and_relax_again(
                     issued_at="2026-07-01T00:00:01Z",
                 ),
             },
+            plain_reply,
             {
                 "syncedAt": "2026-07-01T00:00:02Z",
                 "receiptsStored": 0,
@@ -257,6 +261,7 @@ def test_signed_receipt_redaction_authority_can_clear_and_relax_again(
                     issued_at="2026-07-01T00:00:02Z",
                 ),
             },
+            plain_reply,
             {
                 "syncedAt": "2026-07-01T00:00:03Z",
                 "receiptsStored": 0,
@@ -266,6 +271,7 @@ def test_signed_receipt_redaction_authority_can_clear_and_relax_again(
                     issued_at="2026-07-01T00:00:03Z",
                 ),
             },
+            plain_reply,
         ]
     )
 
@@ -631,7 +637,9 @@ def test_relaxed_redaction_sync_adds_recent_blocked_command_detail_backfill(tmp_
         "receipts": 1,
         "queried": 1,
         "before_rowid": 1,
-        "complete": True,
+        # A page that came back short may be one the store shortened to a size
+        # the runtime can reply with, so only an empty page ends the walk.
+        "complete": False,
     }
 
 

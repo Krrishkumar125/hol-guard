@@ -23,9 +23,13 @@ from ..models import (
     HarnessDetection,
     PolicyDecision,
 )
+from ..native_artifact_content_hash import (
+    native_artifact_content_hash,
+    native_artifact_content_hashes,
+)
 from ..native_consumer_artifact_compose import native_consumer_compose
 from ..receipts import build_receipt
-from ..risk import artifact_risk_signals_typed, artifact_risk_summary, summarize_signals
+from ..risk import NO_RISK_SIGNAL_SUMMARY, artifact_risk_profile
 from ..runtime.approval_context import (
     build_approval_context_token,
     build_runtime_launch_identity,
@@ -40,6 +44,7 @@ from ..skill_directory_identity import validated_complete_skill_directory_hash
 from ..store import GuardStore
 from ..types import GuardSignal
 from . import projection
+from .low_trust import low_trust_floor
 from .native_decision_projection import (
     _ConsumerAuthorityInputs as _ConsumerAuthorityInputs,
 )
@@ -156,7 +161,7 @@ def diff_artifact(
         None,
         current,
         payload=payload,
-        content_hash=artifact_hash(current),
+        content_hash=native_artifact_content_hash(current, guard_home=guard_home),
         previous=previous,
         with_history=False,
         guard_home=guard_home,
@@ -565,6 +570,17 @@ def evaluate_detection(
         pending_approval_claims=pending_approval_claims,
     )
     current_artifact_ids: set[str] = set()
+    # Each hash is the approval key its artifact's saved decision is stored
+    # under, and the resident spells it. A scan asks for the harness's whole
+    # detection at once rather than crossing once per artifact.
+    content_hashes = {
+        artifact.artifact_id: digest
+        for artifact, digest in zip(
+            detection.artifacts,
+            native_artifact_content_hashes(detection.artifacts),
+            strict=True,
+        )
+    }
     for artifact in detection.artifacts:
         current_artifact_ids.add(artifact.artifact_id)
         previous = previous_snapshots.get(artifact.artifact_id)
@@ -579,7 +595,7 @@ def evaluate_detection(
             store,
             artifact,
             payload=current_snapshot,
-            content_hash=artifact_hash(artifact),
+            content_hash=content_hashes[artifact.artifact_id],
             previous=previous,
             with_history=not inventory_only,
         )
@@ -650,11 +666,19 @@ def evaluate_detection(
             artifact.artifact_id,
             artifact.publisher,
         )
-        structured_signals = artifact_risk_signals_typed(artifact)
-        risk_signals_v2 = _merge_risk_signals(
-            tuple(RiskSignalV2.from_guard_signal(signal) for signal in structured_signals),
-            runtime_risk_signals_v2,
+        artifact_risk = artifact_risk_profile(artifact)
+        structured_signals = artifact_risk.signals
+        risk_signals_v2 = _merge_risk_signals(artifact_risk.signals_v2, runtime_risk_signals_v2)
+        low_trust = low_trust_floor(
+            getattr(store, "guard_home", None),
+            config,
+            harness=detection.harness,
+            artifact=artifact,
+            configured_action=configured_action,
+            fresh_decision=bool(is_first_seen or diff["changed"]),
         )
+        if low_trust is not None:
+            risk_signals_v2 = _merge_risk_signals(risk_signals_v2, (low_trust.signal,))
         skill_directory_identity_reusable = _skill_directory_identity_reusable(
             artifact_type=artifact.artifact_type,
             metadata=artifact.metadata,
@@ -673,6 +697,7 @@ def evaluate_detection(
             effective_default_action=effective_default_action,
             skill_directory_identity_reusable=skill_directory_identity_reusable,
             scoring=_scoring_inputs(structured_signals, evidence["scoring"]),
+            low_trust_action=low_trust.action if low_trust is not None else None,
         )
         current_policy_action = cast(GuardAction, current["current_action"])
         scanner_action = cast(GuardAction, current["scanner_action"])
@@ -724,9 +749,9 @@ def evaluate_detection(
         risk_summary = (
             authoritative_decision.decision_v2.dashboard_primary_detail
             if authoritative_decision is not None and has_runtime_authority
-            else artifact_risk_summary(artifact)
+            else artifact_risk.summary
             if structured_signals
-            else summarize_signals(())
+            else NO_RISK_SIGNAL_SUMMARY
         )
         result = projection.artifact_result(
             store,

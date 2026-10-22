@@ -8,6 +8,35 @@ impl Drop for FixtureCleanup {
     }
 }
 
+/// The canonical path as an agent would spell it. On Windows,
+/// `std::fs::canonicalize` returns the `\\?\` extended-length form, which no
+/// harness sends, in which `/` is not a separator and which Git for Windows
+/// cannot create directories under; tests resolve links and 8.3 short names
+/// but drop that prefix.
+pub fn canonical_spelling(path: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    let canonical = std::fs::canonicalize(path).unwrap();
+    let Some(text) = canonical.to_str() else {
+        return canonical;
+    };
+    if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
+        return std::path::PathBuf::from(format!(r"\\{share}"));
+    }
+    text.strip_prefix(r"\\?\")
+        .map_or(canonical.clone(), std::path::PathBuf::from)
+}
+
+/// A path as an unquoted shell word. Git Bash strips unquoted backslashes,
+/// so Guard never takes a backslash spelling as proof of a path; Windows
+/// agents write the forward-slash form instead.
+pub fn shell_word(path: &std::path::Path) -> String {
+    let text = path.to_str().unwrap();
+    if cfg!(windows) {
+        text.replace('\\', "/")
+    } else {
+        text.to_owned()
+    }
+}
+
 // Cargo injects dynamic-loader settings into the test process. Model the
 // synthetic hook caller explicitly rather than inheriting the build harness.
 pub fn evaluate_pre_tool_envelope_with_context(
@@ -35,8 +64,104 @@ pub fn evaluate_with_shell_home(
     cwd: Option<&str>,
     shell_home_matches: bool,
 ) -> guard_contracts::PreToolResultV1 {
-    use sha2::{Digest, Sha256};
     let path = std::env::var("PATH").unwrap();
+    evaluate_on_path(
+        (harness, event),
+        payload,
+        (controls, deadline),
+        (home, cwd, shell_home_matches),
+        path,
+    )
+}
+
+/// As [`evaluate_pre_tool_envelope_with_context`], for a shell whose `PATH`
+/// finds a Node the workspace sandbox may run, wherever the host keeps its own.
+/// Hosted CI runners keep Node in a world-writable directory the sandbox
+/// refuses to execute from, so a command that runs it would otherwise stay at
+/// review for the host instead of running contained.
+#[cfg(unix)]
+pub fn evaluate_with_node(
+    harness: &str,
+    event: &str,
+    payload: &serde_json::Value,
+    controls: Option<&guard_command::native_command_controls::CompiledNativeCommandControls>,
+    home: &std::path::Path,
+    cwd: Option<&str>,
+) -> guard_contracts::PreToolResultV1 {
+    let bin = stand_ins(
+        home,
+        ".nvm/versions/node/v25.2.1/bin",
+        &["node", "npm", "npx"],
+    );
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    evaluate_on_path(
+        (harness, event),
+        payload,
+        (controls, None),
+        (home.to_str(), cwd, true),
+        path,
+    )
+}
+
+/// As [`evaluate_with_node`], with a Python the workspace sandbox may run as
+/// well. Hosted runners keep Python in a tool cache the sandbox refuses to
+/// execute from, just as they do Node.
+#[cfg(unix)]
+pub fn evaluate_with_node_and_python(
+    harness: &str,
+    event: &str,
+    payload: &serde_json::Value,
+    controls: Option<&guard_command::native_command_controls::CompiledNativeCommandControls>,
+    home: &std::path::Path,
+    cwd: Option<&str>,
+) -> guard_contracts::PreToolResultV1 {
+    let node = stand_ins(
+        home,
+        ".nvm/versions/node/v25.2.1/bin",
+        &["node", "npm", "npx"],
+    );
+    let python = stand_ins(home, ".pyenv/versions/3.12.8/bin", &["python3"]);
+    let path = format!(
+        "{}:{}:{}",
+        node.display(),
+        python.display(),
+        std::env::var("PATH").unwrap()
+    );
+    evaluate_on_path(
+        (harness, event),
+        payload,
+        (controls, None),
+        (home.to_str(), cwd, true),
+        path,
+    )
+}
+
+/// Writes runnable stand-ins for `names` into `home`/`dir` and returns that
+/// directory.
+#[cfg(unix)]
+fn stand_ins(home: &std::path::Path, dir: &str, names: &[&str]) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = home.join(dir);
+    std::fs::create_dir_all(&bin).unwrap();
+    for name in names {
+        let tool = bin.join(name);
+        std::fs::write(&tool, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    bin
+}
+
+fn evaluate_on_path(
+    (harness, event): (&str, &str),
+    payload: &serde_json::Value,
+    (controls, deadline): (
+        Option<&guard_command::native_command_controls::CompiledNativeCommandControls>,
+        Option<std::time::Instant>,
+    ),
+    (home, cwd, shell_home_matches): (Option<&str>, Option<&str>, bool),
+    path: String,
+) -> guard_contracts::PreToolResultV1 {
+    use sha2::{Digest, Sha256};
     let mut environment = std::collections::BTreeMap::from([
         ("PATH", path.clone()),
         ("GIT_CONFIG_NOSYSTEM", "1".to_owned()),
@@ -69,6 +194,7 @@ pub fn evaluate_with_shell_home(
             cdpath_unset: false,
             rustup_override_absent: false,
             npm_config_inert: false,
+            pip_config_inert: false,
             shell_home_matches: false,
             ripgrep_config_absent: false,
             psql_environment: Default::default(),

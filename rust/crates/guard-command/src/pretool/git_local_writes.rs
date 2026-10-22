@@ -2,8 +2,8 @@
 //! `git rm`, `git commit -m`, a new branch at `HEAD` or at a start point that
 //! replaces no untracked file, a non-forced branch rename, a plain stash push,
 //! `git stash apply` or `pop` of one entry, `git stash list`, a `git merge`
-//! or `git cherry-pick` (`git_local_writes_merge`) and `git rebase
-//! --continue` (`git_local_writes_rebase`), with Git reads the configuration
+//! or `git cherry-pick` (`git_local_writes_merge`) and a `git rebase` onto a
+//! local ref or `--continue` (`git_local_writes_rebase`), with Git reads the configuration
 //! probe proves helper-free around them.
 //! The workspace sandbox runs them in a main checkout, but a linked worktree
 //! keeps its index, refs and objects in the shared Git directory the sandbox
@@ -36,6 +36,8 @@ use guard_contracts::{
 };
 use std::time::Instant;
 
+#[path = "git_local_writes_config.rs"]
+mod config;
 #[path = "git_local_writes_forms.rs"]
 mod forms;
 #[path = "git_local_writes_hooks.rs"]
@@ -52,7 +54,7 @@ mod signing;
 mod start;
 
 use forms::{created_branch, moves_head};
-use hooks::{write_hooks, CHECKOUT_HOOKS};
+use hooks::{write_hooks, CHECKOUT_HOOKS, COMMIT_HOOKS};
 
 pub(crate) const REASON: &str = "native_exact_safe_git_local_write";
 pub(crate) const PUBLISH_REASON: &str = "native_exact_safe_git_publish_chain";
@@ -335,14 +337,27 @@ fn proven(
             .keys()
             .any(|key| key.to_ascii_lowercase().starts_with("includeif.onbranch"));
     let merging = writes.iter().any(|(_, hooks)| *hooks == merge::HOOKS);
-    let rebasing = writes.iter().any(|(_, hooks)| *hooks == rebase::HOOKS);
-    let signs = writes
+    let rebases: Vec<usize> = writes
         .iter()
-        .any(|(index, _)| forms::signs(&model.segments[*index]));
+        .filter(|(_, hooks)| *hooks == rebase::HOOKS)
+        .map(|(index, _)| *index)
+        .collect();
+    let rebasing = !rebases.is_empty();
+    // `commit.gpgsign` signs every commit Git creates, so a commit then runs
+    // the signing program as if it had asked with `-S`. Merges and rebases
+    // already refuse it through `merge::inert`.
+    let committing = writes.iter().any(|(_, hooks)| *hooks == COMMIT_HOOKS);
+    let signs = (committing && signs_by_default(&effective))
+        || writes
+            .iter()
+            .any(|(index, _)| forms::signs(&model.segments[*index]));
+    let (external_off, textconv_off) = config::diff_drivers_disarmed(model, &writes, &stashed);
     if branch_scoped
-        || !inert(&effective, &repository)
+        || !config::inert_with(&effective, &repository, external_off, textconv_off)
         || ((merging || rebasing) && !merge::inert(&effective, &repository))
-        || (rebasing && !rebase::resumable(&probe))
+        || !rebases
+            .iter()
+            .all(|index| rebase::proven(&probe, &model.segments[*index], &effective))
         || (signs
             && !signing::trusted(
                 &effective,
@@ -442,29 +457,18 @@ fn identity_only(segment: &CommandSegmentV1) -> bool {
         .all(|name| crate::command_compatibility::inert_git_environment_name(name))
 }
 
+/// Whether the effective configuration signs commits without `-S`.
+pub(in crate::pretool) fn signs_by_default(effective: &GitConfig) -> bool {
+    effective.get("commit.gpgsign").is_some_and(|values| {
+        values
+            .iter()
+            .any(|value| !super::git_remote_ops::pull::disabled(value))
+    })
+}
+
 /// Whether the effective configuration lets these writes start no program.
+/// Commit signing is left to the caller: only a write that creates a commit
+/// runs the signing program, and [`signs_by_default`] reports it.
 pub(in crate::pretool) fn inert(effective: &GitConfig, repository: &GitConfig) -> bool {
-    !super::git_remote_ops::pull::repository_lfs_program(repository)
-        && !effective.iter().any(|(key, values)| {
-            let enabled = values
-                .iter()
-                .any(|value| !super::git_remote_ops::pull::disabled(value));
-            (key.starts_with("filter.")
-                && (!super::git_remote_ops::pull::standard_lfs(key, values)
-                    || repository.contains_key(key)))
-                || key.starts_with("hook.")
-                || key == "core.worktree"
-                || key == "core.virtualfilesystem"
-                || key == "diff.external"
-                || key == "extensions.partialclone"
-                || (key.starts_with("diff.")
-                    && (key.ends_with(".textconv") || key.ends_with(".command")))
-                || (key.starts_with("trailer.")
-                    && (key.ends_with(".command") || key.ends_with(".cmd")))
-                || (key.starts_with("remote.") && key.ends_with(".promisor") && enabled)
-                || (matches!(
-                    key.as_str(),
-                    "core.fsmonitor" | "commit.gpgsign" | "submodule.recurse"
-                ) && enabled)
-        })
+    config::inert_with(effective, repository, false, false)
 }

@@ -31,10 +31,7 @@ fn home() -> PathBuf {
         .join(format!(
             "home-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            crate::unique_nanos::unique_nanos()
         ));
     let home = root.join("home");
     let project = home.join("project");
@@ -85,6 +82,7 @@ fn shell(home: &Path, command: &str) -> String {
                 cdpath_unset: false,
                 rustup_override_absent: false,
                 npm_config_inert: false,
+                pip_config_inert: false,
                 shell_home_matches: false,
                 ripgrep_config_absent: false,
                 psql_environment: Default::default(),
@@ -145,6 +143,23 @@ fn unproven_size_and_comparison_reads_still_ask() {
 }
 
 #[test]
+fn a_comparison_that_reads_through_a_link_still_asks() {
+    let home = home();
+    write(home.join("outside/notes.md"), "# Outside\n");
+    std::os::unix::fs::symlink(
+        home.join("outside/notes.md"),
+        home.join("project/src/linked.md"),
+    )
+    .unwrap();
+    // `diff -r` opens what the link points at, so the target needs proof of
+    // its own and the comparison keeps asking.
+    assert!(!shell(&home, "diff -ru src old").contains("allow"));
+    // A recursive search lists the same link without reading through it, so
+    // the walk is proven by what it would actually open.
+    assert_eq!(shell(&home, "grep -rn export src"), "allow");
+}
+
+#[test]
 fn configuration_reads_proceed() {
     let home = home();
     for command in [
@@ -157,6 +172,29 @@ fn configuration_reads_proceed() {
     ] {
         assert_eq!(shell(&home, command), "allow", "{command}");
     }
+}
+
+/// A long-lived clone records a remote and merge ref for every branch it ever
+/// tracked; the listing then runs well past a quarter megabyte.
+#[test]
+fn configuration_reads_proceed_in_a_long_lived_clone() {
+    let home = home();
+    let config = home.join("project/.git/config");
+    let mut text = std::fs::read_to_string(&config).unwrap();
+    for branch in 0..8_000 {
+        text.push_str(&format!(
+            "[branch \"feature/b{branch}\"]\n\tremote = origin\n\tmerge = refs/heads/feature/b{branch}\n"
+        ));
+    }
+    std::fs::write(&config, &text).unwrap();
+    assert!(text.len() > 512 * 1024);
+    for command in ["git config --get user.email", "git config --list"] {
+        assert_eq!(shell(&home, command), "allow", "{command}");
+    }
+    text.push_str("[github]\n\ttoken = synthetic\n");
+    std::fs::write(&config, text).unwrap();
+    assert!(!shell(&home, "git config --list").contains("allow"));
+    assert_eq!(shell(&home, "git config --get user.email"), "allow");
 }
 
 #[test]

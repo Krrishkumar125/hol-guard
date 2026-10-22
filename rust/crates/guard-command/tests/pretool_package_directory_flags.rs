@@ -9,10 +9,7 @@ use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 
 fn fixture() -> std::path::PathBuf {
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let nonce = crate::unique_nanos::unique_nanos();
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/package-directory-flag-fixtures")
         .join(format!("fixture-{}-{nonce}", std::process::id()));
@@ -22,7 +19,19 @@ fn fixture() -> std::path::PathBuf {
     std::fs::write(root.join("sibling/.git"), "gitdir: /nonexistent\n").unwrap();
     std::fs::create_dir_all(root.join("outside")).unwrap();
     std::fs::create_dir_all(root.join(".config")).unwrap();
+    for directory in ["project", "sibling"] {
+        package(&root.join(directory));
+    }
     std::fs::canonicalize(root).unwrap()
+}
+
+/// Script bodies the narrow node sinks run, with the local Vite entrypoint.
+fn package(directory: &std::path::Path) {
+    let scripts = r#"{"scripts":{"build":"vite build","test":"node --test"}}"#;
+    std::fs::write(directory.join("package.json"), scripts).unwrap();
+    let entry = directory.join("node_modules/vite/bin/vite.js");
+    std::fs::create_dir_all(entry.parent().unwrap()).unwrap();
+    std::fs::write(entry, "").unwrap();
 }
 
 fn classify(

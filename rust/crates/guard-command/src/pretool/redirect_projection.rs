@@ -6,7 +6,10 @@
 
 use crate::CommandModelRequestV1;
 use guard_contracts::PreToolResultV1;
-use targets::{bounded_write, relative_saved_reads, safe_output_target};
+use targets::{
+    bounded_write, plan_note_output_target, relative_saved_reads, safe_output_target,
+    sibling_heredoc_target,
+};
 
 #[path = "redirect_git_chain.rs"]
 pub(super) mod git_chain;
@@ -151,7 +154,10 @@ pub(super) fn project(
     // parser models those, and the command as written already gets the full
     // evaluation with every control, so a join with an uncontrolled raw
     // evaluation could only lose a proven allow or a configured denial.
-    if command.split_whitespace().eq(raw.split_whitespace()) {
+    // A copy glued to a separator (`;2>&1`) is the same command as the
+    // spaced form. Reparsing the spaced form would name the redirect as the
+    // program and review an interpreter the raw text still fails closed on.
+    if same_command_aside_from_descriptor_spacing(raw, &command) {
         return None;
     }
     let command = relative_saved_reads(command, &targets, context.cwd);
@@ -164,9 +170,14 @@ pub(super) fn project(
     .ok()?;
     // An earlier segment could cd or create a symlink before the shell opens
     // a target, so a chain may only write absolute temp files beside peers.
-    let temporary_chain = temporary_writes && super::super::chain_temporary::peers_only(&model);
+    let temporary_chain =
+        temporary_writes && super::super::chain_temporary::temporary_peers(&model);
     let chain = writes_file && model.segments.len() != 1 && !temporary_chain;
     let leading_write = chain && bounded_writes && !late_write && leading_chain::admits(&model);
+    // Plain peers cannot change directory, rename a file or create a link,
+    // so a write that follows one still opens the file the target check
+    // proved: `cp /tmp/a.ts /tmp/b.ts && cat /tmp/a.ts > src/c.ts`.
+    let peer_write = chain && bounded_writes && super::super::chain_temporary::peers_only(&model);
     scratch_writes &= targets.iter().all(|target| {
         crate::pretool::curl_reads::output_targets::scratch_output_target(target, context)
     });
@@ -177,7 +188,7 @@ pub(super) fn project(
     if model.confidence != "exact"
         || model.uncertainty_reason.is_some()
         || model.segments.is_empty()
-        || (chain && git_chain.is_none() && !leading_write && !init_chain)
+        || (chain && git_chain.is_none() && !leading_write && !init_chain && !peer_write)
     {
         return None;
     }
@@ -191,6 +202,21 @@ pub(super) fn project(
     {
         return None;
     }
+    // A quoted heredoc is literal data, but the bare `cat` that remains reads
+    // standard input, which only the workspace sandbox bounds. A plan note in
+    // the harness home and a repository beside the session's directory lie
+    // outside that sandbox, so the write checked above is all that is left to
+    // prove, and a no-op stands in for the command.
+    let command = if saw_heredoc
+        && bounded_writes
+        && writes_file
+        && targets.iter().all(|target| {
+            plan_note_output_target(target, context) || sibling_heredoc_target(target, context)
+        }) {
+        "true".to_owned()
+    } else {
+        command
+    };
     Some(RedirectProjection {
         command,
         writes_file,
@@ -332,6 +358,42 @@ fn rank(action: &str) -> u8 {
         "sandbox-required" => 4,
         _ => 5,
     }
+}
+
+/// `2>&1` and `2>/dev/null` glued to `;`, `|`, or `&` name the same command
+/// as the form with a space. Other redirects stay in the comparison, so
+/// removing `> out` beside a kept copy still counts as a change.
+fn same_command_aside_from_descriptor_spacing(raw: &str, command: &str) -> bool {
+    spaced_descriptor_copies(raw)
+        .split_whitespace()
+        .eq(spaced_descriptor_copies(command).split_whitespace())
+}
+
+fn spaced_descriptor_copies(text: &str) -> String {
+    const COPIES: &[&str] = &["2>&1", "2>/dev/null"];
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len() + 4);
+    let mut index = 0usize;
+    while index < chars.len() {
+        if matches!(chars[index], ';' | '|' | '&') {
+            if let Some(copy) = COPIES.iter().copied().find(|copy| {
+                chars[index + 1..]
+                    .iter()
+                    .copied()
+                    .take(copy.chars().count())
+                    .eq(copy.chars())
+            }) {
+                out.push(chars[index]);
+                out.push(' ');
+                out.push_str(copy);
+                index += 1 + copy.chars().count();
+                continue;
+            }
+        }
+        out.push(chars[index]);
+        index += 1;
+    }
+    out
 }
 
 fn remove_output_redirect(
@@ -488,7 +550,7 @@ pub(super) fn trailing_word(out: &str) -> &str {
 }
 
 pub(super) fn boundary(value: Option<&char>) -> bool {
-    value.is_none_or(|value| value.is_whitespace() || matches!(value, ';' | '|' | '&'))
+    value.is_none_or(|value| value.is_whitespace() || matches!(value, ';' | '|' | '&' | '<' | '>'))
 }
 
 #[cfg(test)]
